@@ -1071,10 +1071,10 @@ export function createApiServer({
           if (!apiKey) return;
           try {
             const result = await steamAccountsMod.syncAccountLibrary(q, { steamId, apiKey, logger });
-            // 补全目录类型（DLC 统计靠 app_type；只挑缺失的，天然收敛）
+            // 补全目录类型（类型未知数靠 app_type；只挑缺失的，天然收敛）
             const types = await steamAccountsMod.backfillOwnedAppTypes(q, { steamId, apiKey, logger });
             const stats = await steamAccountsMod.ownedTypeStats(q, steamId);
-            return json(res, 200, { ...result, dlc: stats.dlc, typeUnknown: stats.typeUnknown, typesChecked: types.checked, typesTyped: types.typed });
+            return json(res, 200, { ...result, typeUnknown: stats.typeUnknown, typesChecked: types.checked, typesTyped: types.typed });
           } catch (err) {
             return json(res, 502, { error: '拉取游戏库失败：' + String(err.message).slice(0, 160) });
           }

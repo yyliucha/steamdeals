@@ -133,16 +133,14 @@ export async function claimAccount(q, { username, steamId, logger = null }) {
   return { claimed: true, steamId, userId: target.id, personaName: row.persona_name };
 }
 
-/** 当前用户绑定的账号列表（含游戏数/DLC 数/类型未知数/愿望单数/最近同步/是否已配 API Key）。 */
+/** 当前用户绑定的账号列表（含游戏数/类型未知数/愿望单数/最近同步/是否已配 API Key；type_unknown 仅日志/诊断用）。 */
 export async function listUserAccounts(q, userId) {
   const r = await q(
     `select a.steam_id, a.persona_name, a.alias, a.avatar, a.last_login_at,
             (a.api_key_enc is not null) as api_key_set,
             (select count(*)::int from steam_games g where g.steam_id = a.steam_id) as games,
             (select count(*)::int from steam_games g2 join games g3 on g3.steam_appid = g2.appid
-              where g2.steam_id = a.steam_id and lower(coalesce(g3.app_type, '')) = 'dlc') as dlc,
-            (select count(*)::int from steam_games g4 join games g5 on g5.steam_appid = g4.appid
-              where g4.steam_id = a.steam_id and g5.app_type is null) as type_unknown,
+              where g2.steam_id = a.steam_id and g3.app_type is null) as type_unknown,
             (select max(g.synced_at) from steam_games g where g.steam_id = a.steam_id) as library_synced_at,
             (select count(*)::int from steam_wishlist w where w.steam_id = a.steam_id) as wishlist,
             (select max(w.synced_at) from steam_wishlist w where w.steam_id = a.steam_id) as wishlist_synced_at
@@ -176,7 +174,7 @@ export async function listAllBoundAccounts(q) {
 
 /**
  * 补全账号库中「目录里还没有 app_type」的游戏类型（GetItems 批量，一次 100 个）。
- * GetOwnedGames 本身不带类型字段，DLC 数量只能靠目录 app_type 统计；
+ * GetOwnedGames 本身不带类型字段，类型未知数只能靠目录 app_type 判断；
  * 这里只挑 app_type IS NULL 的 appid 请求，补全后天然收敛（下次同步近乎零请求）。
  * storeItemsFetch 可注入（默认走 adapters/store-browse.js 的 fetchStoreItems），便于离线测试。
  */
@@ -215,18 +213,17 @@ export async function backfillOwnedAppTypes(q, { steamId, apiKey, storeItemsFetc
   return { checked: appids.length, typed, failed };
 }
 
-/** 账号库的 DLC 统计与类型未知数（DLC 数按目录 app_type 计算，未知数多时提示需再同步补全）。 */
+/** 账号库的类型未知数（拥有条目中目录 app_type 为空的个数；仅日志/诊断用）。 */
 export async function ownedTypeStats(q, steamId) {
   const r = await q(
-    `select count(*) filter (where lower(coalesce(g.app_type, '')) = 'dlc')::int as dlc,
-            count(*) filter (where g.app_type is null)::int as type_unknown
+    `select count(*) filter (where g.app_type is null)::int as type_unknown
        from steam_games sg
        join games g on g.steam_appid = sg.appid
       where sg.steam_id = $1`,
     [steamId],
   );
   const row = r.rows[0] ?? {};
-  return { dlc: Number(row.dlc ?? 0), typeUnknown: Number(row.type_unknown ?? 0) };
+  return { typeUnknown: Number(row.type_unknown ?? 0) };
 }
 
 /**

@@ -201,7 +201,7 @@ test('认领：未归属账号可认领、幂等、归属他人报错', async ()
   }
 });
 
-test('DLC 统计与类型补全：只挑 app_type 缺失的 appid 请求 GetItems，补全后收敛、失败隔离', async () => {
+test('类型补全：只挑 app_type 缺失的 appid 请求 GetItems，补全后收敛、失败隔离', async () => {
   const store = await freshStore();
   try {
     const q = (sql, p) => store.query(sql, p);
@@ -215,9 +215,9 @@ test('DLC 统计与类型补全：只挑 app_type 缺失的 appid 请求 GetItem
     await q("update games set app_type = 'game' where steam_appid = 550");
     await q('insert into steam_games (steam_id, appid) values ($1, 730), ($1, 570), ($1, 550)', [SID_A]);
 
-    // 补全前统计：dlc=1（570），type_unknown=1（730）
+    // 补全前统计：type_unknown=1（730；570 已是 dlc、550 已是 game，都不计入未知）
     const before = await steamAccounts.ownedTypeStats(q, SID_A);
-    assert.deepEqual(before, { dlc: 1, typeUnknown: 1 });
+    assert.deepEqual(before, { typeUnknown: 1 });
 
     // 第一次补全：只请求 730（缺失类型的），GetItems 回 dlc
     const calls = [];
@@ -232,11 +232,11 @@ test('DLC 统计与类型补全：只挑 app_type 缺失的 appid 请求 GetItem
     assert.equal((await q('select app_type from games where steam_appid = 730')).rows[0].app_type, 'dlc');
 
     const stats = await steamAccounts.ownedTypeStats(q, SID_A);
-    assert.deepEqual(stats, { dlc: 2, typeUnknown: 0 }, '730 补全后 DLC=2、未知=0');
+    assert.deepEqual(stats, { typeUnknown: 0 }, '730 补全后未知=0');
 
-    // 账号列表接口同口径
+    // 账号列表接口同口径：不再返回 dlc；type_unknown 保留（日志/诊断用）
     const list = await steamAccounts.listUserAccounts(q, alice);
-    assert.equal(Number(list[0].dlc), 2);
+    assert.equal('dlc' in list[0], false, '账号列表不再返回 dlc');
     assert.equal(Number(list[0].type_unknown), 0);
 
     // 第二次：无缺失 → 零请求收敛
