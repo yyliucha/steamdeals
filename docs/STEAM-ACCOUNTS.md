@@ -161,6 +161,11 @@ delete from steam_wishlist where steam_id = $1 and appid <> all($2::int[]);
 
 - 配额：GetOwnedGames/GetWishlist 属 Key 配额（10 万/天），几十个账号绰绰有余。
 - 失败隔离：单个账号失败只记日志继续下一个；连续失败触发调度器熔断（已有机制）。
+- **DLC 统计与类型补全**：`GetOwnedGames` 不带游戏类型字段，账号库的 DLC 数按目录
+  `games.app_type` 统计。库同步后自动补全类型——只挑 `app_type IS NULL` 的已拥有 appid
+  走 `IStoreBrowseService/GetItems`（一次 100 个），补全后天然收敛（下次同步近乎零请求）；
+  失败只记日志（`steam.app_types_failed`）。后台「Steam 账号」页展示 DLC 数与类型未知数
+  （`*` 提示可再同步补全）。
 
 ## 9. 愿望单 → 到价提醒
 

@@ -201,6 +201,66 @@ test('认领：未归属账号可认领、幂等、归属他人报错', async ()
   }
 });
 
+test('DLC 统计与类型补全：只挑 app_type 缺失的 appid 请求 GetItems，补全后收敛、失败隔离', async () => {
+  const store = await freshStore();
+  try {
+    const q = (sql, p) => store.query(sql, p);
+    await db.createUser(q, { username: 'alice', password: 'alice123456' });
+    const alice = (await q("select id from users where username = 'alice'")).rows[0].id;
+    await insertAccount(store, { steamId: SID_A, userId: alice });
+    await seedGame(store, 730, 'CS2');
+    await seedGame(store, 570, 'DOTA2');
+    await seedGame(store, 550, 'L4D2');
+    await q("update games set app_type = 'dlc' where steam_appid = 570");
+    await q("update games set app_type = 'game' where steam_appid = 550");
+    await q('insert into steam_games (steam_id, appid) values ($1, 730), ($1, 570), ($1, 550)', [SID_A]);
+
+    // 补全前统计：dlc=1（570），type_unknown=1（730）
+    const before = await steamAccounts.ownedTypeStats(q, SID_A);
+    assert.deepEqual(before, { dlc: 1, typeUnknown: 1 });
+
+    // 第一次补全：只请求 730（缺失类型的），GetItems 回 dlc
+    const calls = [];
+    const fakeFetch = async (appids) => {
+      calls.push([...appids]);
+      return { items: [{ steamAppid: 730, appType: 'dlc' }], failed: [] };
+    };
+    const first = await steamAccounts.backfillOwnedAppTypes(q, { steamId: SID_A, apiKey: 'x', storeItemsFetch: fakeFetch });
+    assert.equal(first.checked, 1);
+    assert.deepEqual(calls[0], [730], '只请求类型缺失的 appid');
+    assert.equal(first.typed, 1);
+    assert.equal((await q('select app_type from games where steam_appid = 730')).rows[0].app_type, 'dlc');
+
+    const stats = await steamAccounts.ownedTypeStats(q, SID_A);
+    assert.deepEqual(stats, { dlc: 2, typeUnknown: 0 }, '730 补全后 DLC=2、未知=0');
+
+    // 账号列表接口同口径
+    const list = await steamAccounts.listUserAccounts(q, alice);
+    assert.equal(Number(list[0].dlc), 2);
+    assert.equal(Number(list[0].type_unknown), 0);
+
+    // 第二次：无缺失 → 零请求收敛
+    const second = await steamAccounts.backfillOwnedAppTypes(q, { steamId: SID_A, apiKey: 'x', storeItemsFetch: fakeFetch });
+    assert.equal(second.checked, 0);
+    assert.equal(calls.length, 1, '收敛后不再发请求');
+
+    // 失败隔离：GetItems 抛错不炸，全部计入 failed
+    await q('update games set app_type = null where steam_appid = 550');
+    const failRun = await steamAccounts.backfillOwnedAppTypes(q, {
+      steamId: SID_A,
+      apiKey: 'x',
+      storeItemsFetch: async () => {
+        throw new Error('网络断了');
+      },
+    });
+    assert.equal(failRun.checked, 1);
+    assert.equal(failRun.typed, 0);
+    assert.deepEqual(failRun.failed, [550]);
+  } finally {
+    await store.close();
+  }
+});
+
 // ---------------------------------------------------------------- API 流程
 
 const login = async (base, username, password) => {

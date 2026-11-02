@@ -1016,6 +1016,11 @@ export function createApiServer({
             logger?.warn('steam.bind_library_failed', { steamId, message: String(err.message).slice(0, 160) });
           }
           try {
+            await steamAccountsMod.backfillOwnedAppTypes(q, { steamId, apiKey, logger });
+          } catch (err) {
+            logger?.warn('steam.bind_types_failed', { steamId, message: String(err.message).slice(0, 160) });
+          }
+          try {
             await steamAccountsMod.syncAccountWishlist(q, { steamId, apiKey, userId: user.id, logger });
           } catch (err) {
             logger?.warn('steam.bind_wishlist_failed', { steamId, message: String(err.message).slice(0, 160) });
@@ -1066,7 +1071,10 @@ export function createApiServer({
           if (!apiKey) return;
           try {
             const result = await steamAccountsMod.syncAccountLibrary(q, { steamId, apiKey, logger });
-            return json(res, 200, result);
+            // 补全目录类型（DLC 统计靠 app_type；只挑缺失的，天然收敛）
+            const types = await steamAccountsMod.backfillOwnedAppTypes(q, { steamId, apiKey, logger });
+            const stats = await steamAccountsMod.ownedTypeStats(q, steamId);
+            return json(res, 200, { ...result, dlc: stats.dlc, typeUnknown: stats.typeUnknown, typesChecked: types.checked, typesTyped: types.typed });
           } catch (err) {
             return json(res, 502, { error: '拉取游戏库失败：' + String(err.message).slice(0, 160) });
           }

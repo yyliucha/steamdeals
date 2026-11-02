@@ -1174,6 +1174,8 @@ async function cmdSteamAccounts() {
       const account = accounts[i];
       try {
         await mod.syncAccountLibrary(q, { steamId: account.steam_id, apiKey, logger });
+        // 库同步后补全目录类型（GetOwnedGames 不带类型字段，DLC 统计靠 app_type；只挑缺失的，天然收敛）
+        await mod.backfillOwnedAppTypes(q, { steamId: account.steam_id, apiKey, logger });
         await mod.syncAccountWishlist(q, { steamId: account.steam_id, apiKey, userId: account.user_id, logger });
         ok += 1;
       } catch (err) {

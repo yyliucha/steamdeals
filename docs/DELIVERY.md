@@ -182,10 +182,14 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 
 ---
 
-### 当前状态（2026-11-02 更新，v1.6.0 已发布：手动愿望单 + 推送到 Steam 账号）
+### 当前状态（2026-11-02 更新，v1.6.0 已发布；另有「账号库 DLC 统计」已提交待发版）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
+- **待发版（已推 main，等"构建 vX.Y.Z"指令）**：账号库 DLC 统计——`GetOwnedGames` 不带类型字段，
+  库同步后自动对 `app_type IS NULL` 的已拥有 appid 走 GetItems 补全类型（一次 100 个、自然收敛），
+  后台「Steam 账号」页新增 DLC 列（类型未知时标 `*`）。规格见
+  [STEAM-ACCOUNTS.md §8](STEAM-ACCOUNTS.md)；测试在 `test/steam-accounts.test.js`（DLC 用例）。
 - **v1.6.0 已发布**（tag `v1.6.0`，docker-hub + docker-tcr 双绿，镜像已推送）。功能：前台「愿望单」按钮
   加入本站并写进所选 Steam 账号（多账号弹窗多选/仅本站）；写操作需账号自配 API Key（后台「Steam 账号 →
   API Key」，密文存储）；移除回推 `RemoveFromWishlist`；新表 `user_wishlist`，推导 = 手动 ∪ Steam 同步。
