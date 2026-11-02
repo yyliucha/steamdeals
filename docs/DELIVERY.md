@@ -156,6 +156,13 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 - **代理并发满**表现为 `UND_ERR_CONNECT_TIMEOUT`（不是批量问题）；`node src/cli.js proxy-check` 看 TCP/CONNECT/实际请求三段。
 - **429**：后台回填/热度 `STEAM_429_RETRIES=Infinity`，冷却 30 分钟→1 小时→2 小时→…→6 小时自动重试；日志 `http.rate_limit_pause` 表示在等待，不是卡死。
 - **搜索性能基准**：`like '%kw%'` count 在生产 EXPLAIN 是 114.87ms（并行全表扫）；暂不上 pg_trgm，超 150ms 再上。
+- **Steam 登录"Steam 校验失败"（2026-11-02 定位）**：应用服务器（腾讯云大陆 106.54.217.8）经香港 tinyproxy
+  （43.129.196.229:8521）访问 `steamcommunity.com` 时，**明文 `CONNECT steamcommunity.com:443` 被大陆→香港链路
+  的 DPI 重置**（tinyproxy 日志：上游 Established、客户端 fd read 被 reset；store 的 CONNECT 放行）。
+  修法：香港代理机用 **stunnel 给 tinyproxy 加 TLS 壳**（8531 → 127.0.0.1:8521，自签证书），安全组放行 8531；
+  应用侧 v1.4.8 起支持 https 代理（自签放行），「系统设置 → 网络 → Steam 专用代理」填
+  `https://steambot1:12345@43.129.196.229:8531`。验证：`curl -k --proxy-insecure -x https://…:8531` 能拿到
+  `ns:http://specs.openid.net/auth/2.0` 即通。
 - **生产库**：`docker exec -i steamdeals sh -c 'cat > /tmp/count.mjs' <<'EOF' … EOF` 方式传入脚本（见 ROADMAP 探测记录）；数据库只读诊断先跑 `node src/cli.js stats`。
 
 ## 7. 会话交接模板（每个会话结束时填）
@@ -173,17 +180,16 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 
 ---
 
-### 当前状态（2026-10-30 更新，v1.4.6 已构建）
+### 当前状态（2026-11-02 更新，v1.4.8 代码就绪待构建）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
-- **v1.4.7 已构建**（tag `v1.4.7` → 提交 `4295ee9`；`docker-hub` 与 `docker-tcr` 双绿，2026-10-30 17:58 确认）：
-  游戏目录指标卡即筛选（含 `offers=priced|none` 参数、「已删除」跳回收站、URL section 联动）。
-  TCR 有 `1.4.7` / `latest` / `sha-4295ee9…`；Docker Hub 有 `1.4.7` / `1.4` / `latest`。
-- 上一个版本 v1.4.6（`ffb3a7b`）：「同步与回填」页精简 + 时区设置化 + 侧栏版本徽标修复（也已构建，未部署）。
-- **服务器现状：已部署 v1.4.5**；升级由部署人员按第 4 节执行（**建议直接升级到 `1.4.7`，跳过 1.4.6**）。
-  升级后自动时序：+10min steam-prices → +1h catalog/heat → +2h rename（约 50 分钟）→ +3h backfill。
-  验收：`games` 表有中文名的行数从 1.14 万涨到 10 万+（SQL 见「发布与升级流程」验证节）。
-- 工作区：干净；HEAD `ffb3a7b`，已同步 origin main。
+- **v1.4.8（待构建）**：Steam 登录修复——应用支持 https 代理（自签放行，`proxyAgentOptions`），
+  配合香港 stunnel TLS 壳解决 community 的 DPI 重置。代码已提交推 main，**tag 未打、构建未触发**
+  （硬规则 5）。收到"构建 v1.4.8"后打 tag 推 CI，双绿后服务器按第 4 节升级。
+- **v1.4.7 已构建**（`4295ee9`，双绿）：游戏目录指标卡即筛选。TCR `1.4.7 / latest / sha-…`；Docker Hub 同。
+- v1.4.6（`ffb3a7b`）：「同步与回填」页精简 + 时区设置化 + 侧栏版本徽标修复（已构建）。
+- **服务器现状：已部署 v1.4.5**；升级由部署人员按第 4 节执行（**建议直接升到最新已构建版本**）。
+- 工作区：干净；HEAD 以最新提交为准，已同步 origin main。
 - 待探测（需服务器）：线上 heat 逐 appid 返回全 `success:false`（[TODO.md C1](TODO.md#c-线上问题--需要探测)）、
   服务器 compose 真实文件名（C2）。

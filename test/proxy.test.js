@@ -3,7 +3,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { parseProxy, parseNoProxy, shouldBypass, decideProxy, redactProxy, describeProxy } from '../src/proxy.js';
-import { fetchText } from '../src/http.js';
+import { fetchText, proxyAgentOptions } from '../src/http.js';
+
+test('https 代理（自签证书 TLS 壳）：ProxyAgent 放行证书校验，http 保持原样', () => {
+  assert.equal(proxyAgentOptions('http://127.0.0.1:7890'), 'http://127.0.0.1:7890', 'http 代理直接传 URI');
+  assert.deepEqual(proxyAgentOptions('https://127.0.0.1:8531'), {
+    uri: 'https://127.0.0.1:8531',
+    proxyTls: { rejectUnauthorized: false },
+  }, 'https 代理放行自签证书（TLS 只负责隐藏 CONNECT 目标域名）');
+  assert.equal(proxyAgentOptions('http://user:pw@host:1'), 'http://user:pw@host:1');
+});
 
 test('代理地址解析：补齐协议、拒绝非法值、忽略非 http 代理', () => {
   assert.equal(parseProxy('http://127.0.0.1:7890'), 'http://127.0.0.1:7890');

@@ -2,6 +2,17 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.4.8] - 2026-11-02
+
+### 修复
+
+- **Steam 登录"Steam 校验失败"**（大陆应用服务器 + 香港代理的典型场景）：明文 HTTP 代理的
+  `CONNECT steamcommunity.com` 被大陆→香港链路的 DPI 重置，导致 OpenID 二次校验失败。
+  应用侧支持 **https 代理**（TLS 壳）：`proxyAgentOptions` 对 `https://` 代理放行自签证书
+  （`proxyTls.rejectUnauthorized=false`，TLS 只负责隐藏 CONNECT 目标域名）。
+  运维侧配套：香港代理机用 stunnel（或 gost）给 tinyproxy 加 TLS 壳、安全组放行新端口、
+  「系统设置 → 网络 → Steam 专用代理」填 `https://用户:密码@代理:8531`（详见 DELIVERY 排障记录）
+
 ## [1.4.7] - 2026-10-30
 
 ### 新增

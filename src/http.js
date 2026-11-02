@@ -18,11 +18,26 @@ export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // 代理连接复用：同一代理地址只建一个 Agent
 const agents = new Map();
 
+/**
+ * 拼 ProxyAgent 构造参数。
+ * https 代理（stunnel/gost 自建 TLS 壳）通常用自签证书：TLS 这层的作用是让
+ * 中间设备看不到 CONNECT 里的目标域名（大陆→香港链路的 DPI 会重置明文的
+ * `CONNECT steamcommunity.com`），证书校验不是目的，故放行自签。
+ * http 代理保持原样（undici 直接收 URI 字符串）。
+ */
+export function proxyAgentOptions(proxyUrl) {
+  return proxyUrl.startsWith('https://')
+    ? { uri: proxyUrl, proxyTls: { rejectUnauthorized: false } }
+    : proxyUrl;
+}
+
 /** 按目标主机挑选出网通道；返回 null 表示直连。 */
 function dispatcherFor(host) {
   const decision = decideProxy(host, process.env);
   if (!decision.url) return { dispatcher: null, via: 'direct', proxy: null };
-  if (!agents.has(decision.url)) agents.set(decision.url, new undici.ProxyAgent(decision.url));
+  if (!agents.has(decision.url)) {
+    agents.set(decision.url, new undici.ProxyAgent(proxyAgentOptions(decision.url)));
+  }
   return { dispatcher: agents.get(decision.url), via: decision.via, proxy: redactProxy(decision.url) };
 }
 
