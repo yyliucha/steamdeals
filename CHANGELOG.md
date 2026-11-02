@@ -2,6 +2,23 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.7.0] - 2026-11-02
+
+### 新增
+
+- **账号库 DLC 统计**：`GetOwnedGames` 本身不带游戏类型字段，账号库的 DLC 数量按目录
+  `games.app_type` 统计；后台「Steam 账号」页新增 **DLC 列**（与游戏库/愿望单并列），
+  类型未知的游戏标 `*` 并悬停提示
+- **同步时自动补全目录类型**：库同步后，把该账号拥有的、目录里 `app_type` 缺失的 appid
+  批量走 `IStoreBrowseService/GetItems`（一次 100 个）补全类型——只挑缺失的，天然收敛
+  （补全后每日同步近乎零额外请求）；补全失败只记日志（`steam.app_types_failed`），不影响同步。
+  手动「同步游戏库」的完成提示同步带上「其中 DLC N 款」
+
+### 变更
+
+- 绑定成功、手动同步、调度器每日 `steam-accounts` 任务都带类型补全步骤；
+  日志新增 `steam.app_types_backfilled` / `steam.app_types_missing`（带 steamId 与计数）
+
 ## [1.6.0] - 2026-11-02
 
 ### 新增

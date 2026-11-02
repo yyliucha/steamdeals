@@ -1,6 +1,6 @@
 # Steam 多账号绑定与「已拥有 / 愿望单」同步（规格，已实现）
 
-> 状态：**v1.5.0 已发布；§16「手动愿望单 + Steam 推送」已实现并发布（v1.6.0，2026-11-02）**。本文档是实现的唯一依据，改动前先读完全文。
+> 状态：**v1.5.0 已发布；§16「手动愿望单 + Steam 推送」已发布（v1.6.0）；§8「DLC 统计与类型补全」已发布（v1.7.0，2026-11-02）**。本文档是实现的唯一依据，改动前先读完全文。
 > 实现落点：`src/steam-accounts.js`（同步/对账/认领/解绑）、`src/steam-login.js`（schema、OpenID state、
 > `fetchWishlist`）、`src/store/pg.js`（推导 SQL）、`src/server.js`（API 路由）、`src/cli.js`
 > （`steam-accounts` / `steam-claim`）、`src/scheduler.js`（`steam-accounts` 每日任务 + `steam-claim`
