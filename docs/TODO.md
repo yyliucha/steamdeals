@@ -68,19 +68,21 @@
 > 讨论中其余两条建议不适用：付费商店接口 403/`success:false` 已按 skipped 处理（不写脏数据）；
 > 数据库是 PostgreSQL（不是 SQLite），容器以 node 用户运行（非 root），调度在进程内（非 systemd timer）。
 
-## G. 待开发：Steam 多账号绑定 + 已拥有/愿望单同步（需求已确认 2026-11-02）
+## G. ~~待开发：Steam 多账号绑定 + 已拥有/愿望单同步~~ → **已实现并发布（v1.5.0，2026-11-02）**
 
-**状态：需求已确认，规格已写，开发未开始**（所有者要求先定稿文档）。完整规格见
-[docs/STEAM-ACCOUNTS.md](STEAM-ACCOUNTS.md)。
+**状态：已发布 v1.5.0**。规格见 [docs/STEAM-ACCOUNTS.md](STEAM-ACCOUNTS.md)（§14 验收标准 7 条已实现）。
 
-已确认的决策：
+落地内容：
 
-1. 多账号**归属站点用户**（系统本来就要求先注册/由管理员建号，Steam 登录即绑定）；
-2. 一个 Steam 账号只能属于一个站点用户（换绑需先解绑）；
-3. 每个站点用户最多绑 **5** 个 Steam 账号；
-4. 前台「已拥有/愿望单」**仅当前登录用户可见**，游客与其它用户不可见；全局 `games.owned` 废弃；
-5. Steam 愿望单同步到前台（**独立「愿望单」标签页**），并**自动加入到价提醒**
-   （`watchlist.source='steam_wishlist'`，目标价为空 = 史低提醒；移出愿望单/解绑时只清理自动项）。
+1. `steam_accounts` 加 `user_id`/`alias`（一账号只属一人，每用户上限 5）；`steam_sessions` 停用（表保留不写入）。
+2. 前台「已拥有」= 手动 `owned=true` ∪ 所有绑定账号库并集；`owned=false` 永久排除（再同步不恢复，可恢复跟随推导）；
+   `owned_by[{steamId,name}]` 徽标（>2 显示 +N，详情列全）；全局 `games.owned` 废弃；游客不可见。
+3. `steam_wishlist` 表 + 前台独立「愿望单」标签页；愿望单自动加入价提醒
+   （`watchlist.source='steam_wishlist'`，目标价空=史低；手动优先不覆盖；移出/解绑只清理自动项）。
+4. 库/愿望单同步一律**差集删除**（`appid <> all(本次集合)`，修掉旧版只增不删的 bug）；
+   绑定成功自动同步；调度器每日 `steam-accounts` 任务逐个串行（间隔 ≥1s，单账号失败隔离）。
+5. 绑定流程：站点登录 → `/api/auth/steam/start`（state 防 CSRF，5 分钟）→ 回调校验 → 唯一性/上限 409。
+6. 后台「Steam 账号」页改账号列表（同步库/愿望单、改别名、解绑、认领）；CLI `steam-claim` +
+   调度器认领任务（`STEAM_CLAIM_USERNAME`/`STEAM_CLAIM_STEAM_ID`）供存量 FF 账号迁移。
 
-实施顺序建议：一期（绑定 + 账号列表 + 库同步差集 + 已拥有推导 + 谁拥有徽标）→
-二期（愿望单同步 + 标签页 + 自动提醒）。验收标准见规格 §14。
+上线后部署人员无需手工跑任何命令：升级后 `steam-accounts` 每日任务自动同步；认领走后台按钮或调度器配置。

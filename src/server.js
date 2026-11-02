@@ -25,6 +25,7 @@ import * as settings from './settings.js';
 import { handleSetupRoutes } from './setup-routes.js';
 import { sessionCookie } from './session-cookie.js';
 import { handleSettingsRoutes } from './settings-routes.js';
+import { ensureSteamSchemaOnce } from './steam-login.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -187,6 +188,7 @@ export function createApiServer({
   setupToken = '',
   getSetupState = null,
   imageFetch = null, // 测试注入：() => { body, bytes, contentType }；默认用 http.js 的 fetchBuffer
+  steamVerify = null, // 测试注入：verifyCallback 的替身 (url, opts) => Promise<steamId|null>；默认走 Steam OpenID 校验
 }) {
   const q = query;
   // 手动同步的进程内状态：同一时刻只允许一个同步任务
@@ -195,6 +197,10 @@ export function createApiServer({
   let syncOutput = ''; // 子进程输出尾巴，供前端轮询
   let syncSettled = true;
   let syncStopRequested = false; // 后台点了"停止"，子进程退出后记为 cancelled
+
+  // Steam 绑定 state 的进程内登记表：随机串 → { userId, expiresAt }，5 分钟过期。
+  // 必须放在请求处理器之外：/start 签发、/callback 消费，跨两次请求共享（steam-login.js 实现）。
+  const bindStates = new Map();
 
   /**
    * 启动一个 Steam 子进程任务（同步 / 回填共用同一个槽位，保证同一时间只有一个任务）。
@@ -567,6 +573,10 @@ export function createApiServer({
       }
 
       const user = token ? await db.userBySession(q, token) : null;
+      // Steam 账号相关表幂等建表（一次后为 no-op）。列表/详情的「已拥有推导」SQL 会 join
+      // steam_games / steam_accounts / steam_wishlist，必须先于任何查询存在——不能只放在
+      // Steam 路由块里，否则该块之前的路由（如 /api/games/search）在全新库上会 500。
+      await ensureSteamSchemaOnce(q);
 
       // 邮箱验证码路由（发送 / 校验），逻辑在 auth-routes.js
       const authRoutes = await import('./auth-routes.js');
@@ -724,6 +734,8 @@ export function createApiServer({
           marks,
           compact,
           guestFlags,
+          // 愿望单是登录用户专属维度；游客传入的 wishlist=true 一律无效
+          wishlist: Boolean(user && guestSearchPost && body?.wishlist === true),
         });
         return json(res, 200, {
           games: result.rows,
@@ -893,93 +905,218 @@ export function createApiServer({
       }
 
       // ---- 管理员：用户管理（编辑 / 改密码 / 禁用）----
-      // ---- Steam OpenID 登录 / 游戏库（独立于站点用户体系）----
+      // ---- Steam 多账号绑定 / 游戏库 / 愿望单（身份由站点会话决定，steam_sessions 已停用）----
       const steamMod = await import('./steam-login.js');
-      await steamMod.ensureSteamSchemaOnce(q);
-      const parseCookies = (header) => Object.fromEntries(String(header ?? '').split(';').map((c) => c.trim().split('=')).filter((x) => x.length === 2));
+      const steamAccountsMod = await import('./steam-accounts.js');
+
+      const MAX_ACCOUNTS_PER_USER = 5;
+
+      const requireSteamApiKey = () => {
+        const apiKey = String(process.env.STEAM_API_KEY ?? '').trim();
+        if (!apiKey) {
+          json(res, 400, { error: '未配置 STEAM_API_KEY（Steam Web API Key）' });
+          return null;
+        }
+        return apiKey;
+      };
+
+      // 当前登录用户对该账号的所有权检查：返回账号行，无权/不存在返回 null（响应已写出）
+      const requireAccountOwner = async (steamId) => {
+        const found = await q('select steam_id, user_id from steam_accounts where steam_id = $1', [steamId]);
+        const row = found.rows[0];
+        if (!row) {
+          json(res, 404, { error: '没有该 Steam 账号' });
+          return null;
+        }
+        if (row.user_id == null || Number(row.user_id) !== Number(user.id)) {
+          json(res, 403, { error: '这个 Steam 账号不属于当前用户' });
+          return null;
+        }
+        return row;
+      };
 
       if (path === '/api/auth/steam/start' && req.method === 'GET') {
-        const target = steamMod.buildLoginUrl(steamMod.baseUrl(req));
-        logger?.info('steam.login_start', { host: req.headers.host });
-        res.writeHead(302, { location: target });
+        if (!requireUser()) return;
+        const state = steamMod.issueBindState(bindStates, user.id);
+        const target = steamMod.buildLoginUrl(steamMod.baseUrl(req), state);
+        logger?.info('steam.bind_start', { userId: user.id, host: req.headers.host });
+        res.writeHead(302, { location: target, 'cache-control': 'no-store' });
         res.end();
         return;
       }
 
       if (path.startsWith('/api/auth/steam/callback')) {
-        const steamId = await steamMod.verifyCallback(url, { logger });
-        if (!steamId) return json(res, 400, { error: 'Steam 校验失败，请重试' });
+        const bindResult = (location) => {
+          const params = new URL(location, 'http://localhost').searchParams;
+          // 成功（带 steamBound）一律 302；错误时浏览器 302 到控制台展示提示、API 客户端回 JSON 状态码
+          if (params.has('steamBound') || !params.has('steamError')) {
+            res.writeHead(302, { location, 'cache-control': 'no-store' });
+            res.end();
+            return;
+          }
+          if (wantsHtml(req)) {
+            res.writeHead(302, { location, 'cache-control': 'no-store' });
+            res.end();
+          } else {
+            const code = String(params.get('steamError') ?? '');
+            const messages = {
+              state: '绑定链接已失效或过期，请重新发起绑定',
+              conflict: '该 Steam 账号已被其他用户绑定',
+              limit: '最多绑定 5 个 Steam 账号',
+              verify: 'Steam 校验失败，请重试',
+            };
+            const status = code === 'conflict' || code === 'limit' ? 409 : 400;
+            json(res, status, { error: messages[code] ?? '绑定失败，请重试', code });
+          }
+          return;
+        };
+        // 1) 校验 state（防 CSRF / 防串号）＋ 与当前站点会话用户一致
+        const stateUserId = steamMod.consumeBindState(bindStates, url.searchParams.get('state'));
+        if (!stateUserId) {
+          logger?.warn('steam.bind_state_invalid', { ip });
+          return bindResult('/console?section=steam&steamError=state');
+        }
+        if (!user || Number(user.id) !== Number(stateUserId)) {
+          logger?.warn('steam.bind_session_mismatch', { stateUserId, sessionUserId: user?.id ?? null });
+          return bindResult('/console?section=steam&steamError=state');
+        }
+        // 2) Steam OpenID 校验 → steamId
+        const steamId = await (steamVerify ?? steamMod.verifyCallback)(url, { logger });
+        if (!steamId) return bindResult('/console?section=steam&steamError=verify');
+        // 3) 唯一性 / 上限校验
+        const existing = await q('select user_id from steam_accounts where steam_id = $1', [steamId]);
+        const ownerId = existing.rows[0]?.user_id ?? null;
+        if (ownerId != null && Number(ownerId) !== Number(user.id)) {
+          logger?.warn('steam.bind_conflict', { steamId, ownedBy: ownerId, by: user.id });
+          return bindResult('/console?section=steam&steamError=conflict');
+        }
+        if (ownerId == null) {
+          const count = await q('select count(*)::int as n from steam_accounts where user_id = $1', [user.id]);
+          if (Number(count.rows[0]?.n ?? 0) >= MAX_ACCOUNTS_PER_USER) {
+            logger?.warn('steam.bind_limit', { steamId, userId: user.id, count: count.rows[0].n });
+            return bindResult('/console?section=steam&steamError=limit');
+          }
+        }
+        // 4) 落库（已绑定同人 = 幂等，只刷新昵称/头像）
         const apiKey = String(process.env.STEAM_API_KEY ?? '').trim();
         const persona = await steamMod.fetchPersona({ apiKey, steamId, logger });
         await q(
-          "insert into steam_accounts (steam_id, persona_name, avatar, last_login_at) values ($1, $2, $3, now()) " +
-          "on conflict (steam_id) do update set persona_name = coalesce(excluded.persona_name, steam_accounts.persona_name), avatar = coalesce(excluded.avatar, steam_accounts.avatar), last_login_at = now()",
-          [steamId, persona.personaName, persona.avatar],
+          "insert into steam_accounts (steam_id, persona_name, avatar, user_id, last_login_at) values ($1, $2, $3, $4, now()) " +
+            'on conflict (steam_id) do update set persona_name = coalesce(excluded.persona_name, steam_accounts.persona_name), ' +
+            'avatar = coalesce(excluded.avatar, steam_accounts.avatar), last_login_at = now()',
+          [steamId, persona.personaName, persona.avatar, user.id],
         );
-        const token = await steamMod.createSteamSession(q, steamId);
-        logger?.info('steam.login_ok', { steamId, persona: persona.personaName ?? null });
-        res.writeHead(302, {
-          location: '/#steam',
-          'set-cookie': 'steam_session=' + token + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000',
-        });
-        res.end();
-        return;
+        logger?.info('steam.bind_ok', { steamId, userId: user.id, persona: persona.personaName ?? null });
+        // 5) 自动同步库 + 愿望单（失败只记日志，不阻断绑定）
+        if (apiKey) {
+          try {
+            await steamAccountsMod.syncAccountLibrary(q, { steamId, apiKey, logger });
+          } catch (err) {
+            logger?.warn('steam.bind_library_failed', { steamId, message: String(err.message).slice(0, 160) });
+          }
+          try {
+            await steamAccountsMod.syncAccountWishlist(q, { steamId, apiKey, userId: user.id, logger });
+          } catch (err) {
+            logger?.warn('steam.bind_wishlist_failed', { steamId, message: String(err.message).slice(0, 160) });
+          }
+        }
+        return bindResult('/console?section=steam&steamBound=1');
+      }
+
+      if (path === '/api/steam/accounts' && req.method === 'GET') {
+        if (!requireUser()) return;
+        const accounts = await steamAccountsMod.listUserAccounts(q, user.id);
+        const unowned = user.role === 'admin' ? await steamAccountsMod.listUnownedAccounts(q) : [];
+        return json(res, 200, { accounts, unowned, limit: MAX_ACCOUNTS_PER_USER });
       }
 
       if (path === '/api/steam/me' && req.method === 'GET') {
-        const cookies = parseCookies(req.headers.cookie);
-        const steamId = await steamMod.steamIdBySession(q, cookies.steam_session);
-        if (!steamId) return json(res, 200, { steamId: null });
-        const acc = await q(
-          'select a.steam_id, a.persona_name, a.avatar, (select count(*)::int from steam_games g where g.steam_id = a.steam_id) as games from steam_accounts a where a.steam_id = $1',
-          [steamId],
-        );
-        return json(res, 200, { ...(acc.rows[0] ?? {}), steamId });
+        // 兼容接口：旧单账号字段取第一个绑定账号，新前端用 accounts 数组。
+        const accounts = user ? await steamAccountsMod.listUserAccounts(q, user.id) : [];
+        const first = accounts[0] ?? null;
+        return json(res, 200, {
+          steamId: first?.steam_id ?? null,
+          persona_name: first?.persona_name ?? null,
+          avatar: first?.avatar ?? null,
+          accounts,
+        });
       }
 
-      if (path === '/api/steam/logout' && req.method === 'POST') {
-        const cookies = parseCookies(req.headers.cookie);
-        await q('delete from steam_sessions where token = $1', [cookies.steam_session ?? '']);
-        res.writeHead(302, { location: '/#steam', 'set-cookie': 'steam_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' });
-        res.end();
-        return;
-      }
+      const accountMatch = path.match(/^\/api\/steam\/accounts\/([^/]+)$/);
+      const accountAction = path.match(/^\/api\/steam\/accounts\/([^/]+)\/(library|wishlist|claim)(?:\/(sync))?$/);
+      if (accountAction) {
+        if (!requireUser()) return;
+        const steamId = decodeURIComponent(accountAction[1]);
 
-      if (path === '/api/steam/library/sync' && req.method === 'POST') {
-        const cookies = parseCookies(req.headers.cookie);
-        const steamId = await steamMod.steamIdBySession(q, cookies.steam_session);
-        if (!steamId) return json(res, 401, { error: '请先登录 Steam' });
-        const apiKey = String(process.env.STEAM_API_KEY ?? '').trim();
-        if (!apiKey) return json(res, 400, { error: '未配置 STEAM_API_KEY（Steam Web API Key）' });
-        let games = [];
-        try {
-          games = await steamMod.fetchOwnedGames({ apiKey, steamId, logger });
-        } catch (err) {
-          return json(res, 502, { error: '拉取游戏库失败：' + String(err.message).slice(0, 160) });
+        // 认领（迁移）：管理员把未归属账号划到自己名下
+        if (accountAction[2] === 'claim' && req.method === 'POST') {
+          if (!requireAdmin()) return;
+          const found = await q('select user_id from steam_accounts where steam_id = $1', [steamId]);
+          if (!found.rows[0]) return json(res, 404, { error: '没有该 Steam 账号' });
+          if (found.rows[0].user_id != null) return json(res, 409, { error: '该账号已被认领' });
+          await q('update steam_accounts set user_id = $1, last_login_at = now() where steam_id = $2 and user_id is null', [user.id, steamId]);
+          logger?.info('steam.claim', { steamId, userId: user.id, by: user.username });
+          return json(res, 200, { ok: true });
         }
-        for (const g of games) {
-          await q(
-            "insert into steam_games (steam_id, appid, name, playtime_minutes, last_played_at, synced_at) values ($1,$2,$3,$4,$5,now()) " +
-            "on conflict (steam_id, appid) do update set name = excluded.name, playtime_minutes = excluded.playtime_minutes, last_played_at = excluded.last_played_at, synced_at = now()",
-            [steamId, g.appid, g.name, g.playtimeMinutes, g.lastPlayedAt],
+        if (accountAction[2] === 'library' && req.method === 'POST' && accountAction[3] === 'sync') {
+          const row = await requireAccountOwner(steamId);
+          if (!row) return;
+          const apiKey = requireSteamApiKey();
+          if (!apiKey) return;
+          try {
+            const result = await steamAccountsMod.syncAccountLibrary(q, { steamId, apiKey, logger });
+            return json(res, 200, result);
+          } catch (err) {
+            return json(res, 502, { error: '拉取游戏库失败：' + String(err.message).slice(0, 160) });
+          }
+        }
+        if (accountAction[2] === 'wishlist' && req.method === 'POST' && accountAction[3] === 'sync') {
+          const row = await requireAccountOwner(steamId);
+          if (!row) return;
+          const apiKey = requireSteamApiKey();
+          if (!apiKey) return;
+          try {
+            const result = await steamAccountsMod.syncAccountWishlist(q, { steamId, apiKey, userId: user.id, logger });
+            return json(res, 200, result);
+          } catch (err) {
+            return json(res, 502, { error: '拉取愿望单失败：' + String(err.message).slice(0, 160) });
+          }
+        }
+        if (accountAction[2] === 'library' && req.method === 'GET') {
+          const row = await requireAccountOwner(steamId);
+          if (!row) return;
+          const games = await q(
+            "select sg.appid, coalesce(g.name, sg.name) as name, sg.playtime_minutes, sg.last_played_at, " +
+              "g.steam_appid is not null as in_db, " +
+              '(select min(o.price_cents) from offers o where o.game_id = g.id and o.in_stock) as low ' +
+              'from steam_games sg left join games g on g.steam_appid = sg.appid where sg.steam_id = $1 order by sg.playtime_minutes desc limit 500',
+            [steamId],
           );
+          return json(res, 200, { steamId, games: games.rows });
         }
-        logger?.info('steam.library_synced', { steamId, total: games.length });
-        return json(res, 200, { total: games.length });
+        return json(res, 404, { error: 'not found' });
       }
 
-      if (path === '/api/steam/library' && req.method === 'GET') {
-        const cookies = parseCookies(req.headers.cookie);
-        const steamId = await steamMod.steamIdBySession(q, cookies.steam_session);
-        if (!steamId) return json(res, 200, { steamId: null, games: [] });
-        const games = await q(
-          "select sg.appid, coalesce(g.name, sg.name) as name, sg.playtime_minutes, sg.last_played_at, " +
-          "g.steam_appid is not null as in_db, " +
-          "(select min(o.price_cents) from offers o where o.game_id = g.id and o.in_stock) as low " +
-          "from steam_games sg left join games g on g.steam_appid = sg.appid where sg.steam_id = $1 order by sg.playtime_minutes desc limit 500",
-          [steamId],
-        );
-        return json(res, 200, { steamId, games: games.rows });
+      if (accountMatch && req.method === 'PATCH') {
+        if (!requireUser()) return;
+        const steamId = decodeURIComponent(accountMatch[1]);
+        const row = await requireAccountOwner(steamId);
+        if (!row) return;
+        const body = await readBody(req);
+        const raw = String(body.alias ?? '').trim().slice(0, 64);
+        const alias = raw || null;
+        await q('update steam_accounts set alias = $1 where steam_id = $2', [alias, steamId]);
+        logger?.info('steam.alias_set', { steamId, alias, userId: user.id });
+        return json(res, 200, { ok: true, alias });
+      }
+
+      if (accountMatch && req.method === 'DELETE') {
+        if (!requireUser()) return;
+        const steamId = decodeURIComponent(accountMatch[1]);
+        const row = await requireAccountOwner(steamId);
+        if (!row) return;
+        const result = await steamAccountsMod.unbindAccount(q, { steamId, userId: user.id, logger });
+        return json(res, 200, result);
       }
 
       // ---- 管理员：游戏同步概览（待同步数量统计）----
@@ -2168,8 +2305,9 @@ export function startApiServer({
   setupToken = '',
   getSetupState = null,
   imageFetch = null,
+  steamVerify = null,
 }) {
-  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch });
+  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify });
   // 黑名单定时刷新（管理端增删后也会即时刷新；unref 不阻止进程退出）
   const blockTimer = setInterval(() => {
     visitors.refreshBlocklist(query).catch(() => {});

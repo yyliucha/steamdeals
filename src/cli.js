@@ -1157,6 +1157,50 @@ async function cmdOwned() {
   logger.info('owned.set', { appid, owned: row.owned });
   console.log(`${row.name ?? appid} → ${row.owned ? '已拥有' : '未拥有'}（默认在列表里收起）`);
 }
+
+/** 批量同步所有已绑定 Steam 账号的库 + 愿望单（调度器每日任务；账号间间隔 ≥ 1s，单个失败不阻断）。 */
+async function cmdSteamAccounts() {
+  const sleepMs = Math.max(1000, Number(flag('sleep', String(process.env.STEAM_ACCOUNTS_SLEEP_MS ?? 1000))) || 1000);
+  const apiKey = String(process.env.STEAM_API_KEY ?? '').trim();
+  if (!apiKey) throw new Error('未配置 STEAM_API_KEY（Steam Web API Key）');
+  const mod = await import('./steam-accounts.js');
+  let accounts = [];
+  let ok = 0;
+  let failed = 0;
+  await withStore(async (store) => {
+    const q = (sql, p) => store.query(sql, p);
+    accounts = await mod.listAllBoundAccounts(q);
+    for (let i = 0; i < accounts.length; i += 1) {
+      const account = accounts[i];
+      try {
+        await mod.syncAccountLibrary(q, { steamId: account.steam_id, apiKey, logger });
+        await mod.syncAccountWishlist(q, { steamId: account.steam_id, apiKey, userId: account.user_id, logger });
+        ok += 1;
+      } catch (err) {
+        failed += 1;
+        logger.warn('sync.steam_account_failed', { steamId: account.steam_id, message: String(err.message).slice(0, 160) });
+      }
+      // 串行 + 账号间间隔（规格 §8：逐个串行，间隔 ≥ 1s）
+      if (i < accounts.length - 1) await sleep(sleepMs);
+    }
+  });
+  logger.info('sync.steam_accounts_done', { accounts: accounts.length, ok, failed });
+  console.log(`Steam 账号同步完成：${ok} 成功 / ${failed} 失败（共 ${accounts.length} 个账号）。`);
+}
+
+/** 认领未归属的 Steam 账号（迁移用；幂等，归属他人时报错）。 */
+async function cmdSteamClaim() {
+  const username = String(args[1] ?? '').trim();
+  const steamId = String(args[2] ?? '').trim();
+  if (!username || !/^\d{17}$/.test(steamId)) {
+    throw new Error('用法: node src/cli.js steam-claim <用户名> <17位SteamID>');
+  }
+  const mod = await import('./steam-accounts.js');
+  const result = await withStore((store) =>
+    mod.claimAccount((sql, p) => store.query(sql, p), { username, steamId, logger }),
+  );
+  console.log(result.claimed ? `已认领：${steamId} → ${username}` : `无需处理：${steamId} 已归属 ${username}`);
+}
 /** 用户管理：add / list。密码只在创建时显示一次。 */
 async function cmdUser() {
   const sub = args[1];
@@ -2206,6 +2250,8 @@ const commands = {
   'proxy-check': cmdProxyCheck,
   images: cmdImages,
   report: cmdReport,
+  'steam-accounts': cmdSteamAccounts,
+  'steam-claim': cmdSteamClaim,
 };
 
 /**
@@ -2428,6 +2474,8 @@ async function main() {
     if (target === 'humble') return runSyncTracked('humble', cmdSyncHumble);
     throw new Error('用法: node src/cli.js sync all|steam|steam-prices|steamall|catalog|sonkwo|itad|gog|humble');
   }
+  if (command === 'steam-accounts') return runSyncTracked('steam-accounts', cmdSteamAccounts);
+  if (command === 'steam-claim') return cmdSteamClaim();
   const fn = commands[command];
   if (!fn) {
     console.log(`用法: node src/cli.js <命令>
@@ -2451,7 +2499,7 @@ async function main() {
   match                把杉果 SKU 对齐到 Steam 游戏（--apply 自动应用、--confirm 手工确认）
   compare <appid>      多区服对比（--region 只看某区、--json 机器可读）
   import steam         导入 Steam 游戏信息（--appids / --urls / --file，双后端自动回落）
-  owned <appid> on|off      标记已拥有（列表默认收起）
+  owned <appid> on|off      标记已拥有（⚠️ 全局标记已废弃，前台按绑定 Steam 账号推导）
   interest <appid> on|off   标记感兴趣 / 不感兴趣
   serve                内置静态页服务：直接 IP:端口 访问页面（--port 8090 --dir out）
   alerts               检查关注列表是否到价（--mark 记录、--json 输出、--webhook 投递）
@@ -2470,6 +2518,10 @@ async function main() {
                        --limit 200000 --sleep 1700（按 heat_at 为 null 自动续跑；全量约 90 小时，可分多周跑）
   prune                定期清理：访问记录/采集与任务记录/验证码
                        --visitor-days 180 --run-days 90 --email-days 7
+  steam-accounts       同步所有已绑定 Steam 账号的游戏库与愿望单（差集删除 + 自动提醒）
+                       --sleep 1000（账号间间隔，≥1s；调度器默认每日执行）
+  steam-claim <用户名> <SteamID>
+                       认领未归属的 Steam 账号（迁移用；幂等，已归属他人时报错）
 
 通用参数：--db <target> --level <trace|debug|info|warn|error> --log-dir <dir>
 环境变量：DATABASE_URL / ITAD_API_KEY / LOG_LEVEL / LOG_DIR

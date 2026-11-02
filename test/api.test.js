@@ -407,45 +407,47 @@ test('合并重复游戏：报价迁移到目标、源行删除、参数校验',
   }
 });
 
-test('个人标记：登录用户个人优先，未标记回退全局标记', async () => {
+test('个人标记：已拥有按用户推导（手动 ∪ 绑定账号库），全局 games.owned 已废弃', async () => {
   const { store, q, srv, base } = await setup();
   try {
     const alice = await login(base, 'alice', 'alice123456');
     const admin = await login(base, 'admin', 'admin123456');
 
-    // 全局标记：管理员把 413150 标成已拥有（游戏只有这一款）
+    // 全局标记已废弃：匿名/未绑定账号的用户一律按「未拥有」看待，owned 筛选对游客无效
     await q('update games set owned = true where steam_appid = 413150');
     const anon = await (await fetch(`${base}/api/games`)).json();
-    assert.equal(anon.total, 0, '默认排除已拥有，匿名看到的是全局标记');
+    assert.equal(anon.total, 1, 'games.owned 全局值不再影响前台（游客看到全量）');
 
-    // alice 个人取消已拥有 → 她能看到；全局仍是已拥有
+    // alice 手动排除（owned=false）→ 有效值 false，游戏可见
     const set = await fetch(`${base}/api/games/413150/flags`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: alice.cookie },
       body: JSON.stringify({ owned: false }),
     });
     assert.equal(set.status, 200);
-    assert.equal((await set.json()).flags.owned, false);
+    const setBody = await set.json();
+    assert.equal(setBody.flags.owned, false);
+    assert.equal(setBody.flags.user_owned, false);
 
     const mine = await (await fetch(`${base}/api/games`, { headers: { cookie: alice.cookie } })).json();
-    assert.equal(mine.total, 1, '个人标记优先于全局');
+    assert.equal(mine.total, 1, '手动排除后游戏可见');
     assert.equal(mine.games[0].owned, false);
 
     const detail = await (await fetch(`${base}/api/games/413150`, { headers: { cookie: alice.cookie } })).json();
     assert.equal(detail.game.owned, false, '详情也返回个人生效值');
 
-    // 'clear' 显式清除个人标记 → 回退全局（owned=true）
+    // 'clear' 显式清除个人标记 → 跟随推导（无绑定账号 → false；不再回退 games.owned）
     const clr = await fetch(`${base}/api/games/413150/flags`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: alice.cookie },
       body: JSON.stringify({ owned: 'clear' }),
     });
     assert.equal(clr.status, 200);
-    assert.equal((await clr.json()).flags.owned, true, '清除后回退全局 owned=true');
+    assert.equal((await clr.json()).flags.owned, false, '清除后跟随推导（未绑账号 → 未拥有）');
 
-    // admin 没有个人标记 → 回退全局（已拥有 → 默认列表排除）
+    // admin 没有个人标记 → 推导也为 false
     const adminList = await (await fetch(`${base}/api/games`, { headers: { cookie: admin.cookie } })).json();
-    assert.equal(adminList.total, 0, '未标记时回退全局');
+    assert.equal(adminList.total, 1, '全局 owned=true 不再推导成已拥有');
 
     // 匿名不能写个人标记
     assert.equal(

@@ -1,6 +1,11 @@
-# Steam 多账号绑定与「已拥有 / 愿望单」同步（规格，待开发）
+# Steam 多账号绑定与「已拥有 / 愿望单」同步（规格，已实现）
 
-> 状态：**需求已确认（2026-11-02），开发未开始**。本文档是实现的唯一依据，改动前先读完全文。
+> 状态：**已实现并发布（v1.5.0，2026-11-02）**。本文档是实现的唯一依据，改动前先读完全文。
+> 实现落点：`src/steam-accounts.js`（同步/对账/认领/解绑）、`src/steam-login.js`（schema、OpenID state、
+> `fetchWishlist`）、`src/store/pg.js`（推导 SQL）、`src/server.js`（API 路由）、`src/cli.js`
+> （`steam-accounts` / `steam-claim`）、`src/scheduler.js`（`steam-accounts` 每日任务 + `steam-claim`
+> 可选任务）、`frontend/src/pages/Home.vue`（愿望单标签页与徽标）、`frontend/src/pages/AdminExtras.vue`
+> （账号列表页）。测试：`test/steam-accounts.test.js` + `test/scheduler.test.js` 新增断言。
 > 相关文档：[DELIVERY.md](DELIVERY.md)（流程）、[TODO.md](TODO.md)（排期）、[ARCHITECTURE.md](ARCHITECTURE.md)。
 
 ---
@@ -200,11 +205,12 @@ delete from steam_wishlist where steam_id = $1 and appid <> all($2::int[]);
 
 ## 12. 迁移方案
 
-1. `steam_accounts.user_id` 先允许为空；生产现有 1 条账号（FF）在后台账号页显示「认领」按钮，
-   认领即写入当前管理员 `user_id`（或 CLI：`node src/cli.js steam-claim <用户名> <steamId>`）。
+1. `steam_accounts.user_id` 允许为空（`alter … add column if not exists`，幂等）。存量账号认领已实现三条等价路径：
+   后台「Steam 账号」页的「认领到当前管理员」按钮 / CLI `node src/cli.js steam-claim <用户名> <steamId>` /
+   调度器任务（compose 配置 `STEAM_CLAIM_USERNAME` + `STEAM_CLAIM_STEAM_ID` 后自动跑，幂等秒退，认领后可删配置）。
 2. `games.owned` 全局值不迁移（详见 §4）。
-3. `steam_session` cookie 失效不影响登录（身份改由站点会话决定）。
-4. 首次上线后跑一次全量同步，把存量 `steam_games` 补齐差集删除。
+3. `steam_session` cookie 失效不影响登录（身份改由站点会话决定；`steam_sessions` 表保留但不再写入）。
+4. 首次上线后调度器的 `steam-accounts` 每日任务（或后台手动点「同步游戏库」）会把存量 `steam_games` 补齐差集删除。
 
 ## 13. 索引与性能
 

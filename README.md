@@ -128,7 +128,10 @@
 | **亮暗色主题** | ✅ | 语义化颜色 token；默认跟随系统，顶栏/后台可切；登录用户跨设备同步（`user_prefs.theme`），设置页可回「跟随系统」 |
 | **移动端适配** | ✅ | 900/760/420 三档断点；后台游戏目录、访问记录在手机上改卡片式 |
 | **站点通知弹窗** | ✅ | 新公告自动弹窗（最多 5 条），关闭记已读，页面不放公告元素 |
-| **标记三态** | ✅ | 感兴趣 / 不感兴趣 / 已拥有 三个显式按钮，支持清除（游客存本地、登录存库）；「全部」页签只显示**未标记**的游戏 |
+| **标记三态** | ✅ | 感兴趣 / 不感兴趣 两个显式按钮（游客存本地、登录存库）；「全部」页签只显示**未标记**的游戏 |
+| **已拥有（按用户推导）** | ✅ | 绑定 Steam 账号后，「已拥有」= 手动标记 ∪ 所有绑定账号游戏库并集；卡片显示 `已拥有 · 账号名`（>2 个 `+N`）；全局 `games.owned` 已废弃 |
+| **愿望单标签页** | ✅ | 同步绑定账号的 Steam 愿望单到前台独立标签页，并自动加入价提醒（`source='steam_wishlist'`，史低提醒；移出愿望单/解绑自动清理） |
+| **Steam 多账号绑定** | ✅ | 每个站点用户最多绑 5 个 Steam 账号、一账号只属一人；OpenID + state 防 CSRF；后台「Steam 账号」页可同步库/愿望单、改别名、解绑、认领 |
 | **后台版本检查** | ✅ | 侧栏显示当前版本，有新版本提示链接，点击强制重查 |
 | **单款历史 CSV** | ⏸ | 前端入口已移除，接口默认 404（`HISTORY_CSV_ENABLED=1` 可临时打开） |
 | 多区服对比 | 🚧 | 列表可按区服切换；同屏多区对比未做展示 |
@@ -339,7 +342,7 @@ node src/cli.js chart --db pglite:./data/demo-pgdata --out out
 | `serve` | 全栈服务：前端 + JSON API（`--port 8090`、`--dir web`）✅ |
 | `user add <名> [--admin]` / `user list` | 用户管理，密码只显示一次 ✅ |
 | `backup` | 8 张核心表导出 gzip JSON，保留 7 份，顺带清理 90 天前浏览记录 ✅ |
-| `owned <appid> on\|off` | 标记已拥有（列表默认收起）✅ |
+| `owned <appid> on\|off` | 标记已拥有（⚠️ 全局 `games.owned` 已废弃，前台不再读取；前台「已拥有」改由绑定 Steam 账号 + 个人标记推导） |
 | `sync itad` | ITAD 官方 API（`ITAD_API_KEY` 未配置则跳过）⚠️ 未验证 |
 | `sync gog` | 按英文名查 GOG（catalog 接口，只接受精确标题）✅ 已跑通 |
 | `sync humble` | 按英文名探测 Humble 商品页（JSON-LD）⚠️ 命中率取决于 slug |
@@ -356,6 +359,8 @@ node src/cli.js chart --db pglite:./data/demo-pgdata --out out
 | `logs` | 查日志（`--level` `--event` `--run` `--since`） |
 | `backfill` | 批量回填全量游戏的元数据/价格（后台「数据回填」卡片同款）：`--limit 200000 --batch 100 --sleep 3000 --fallback 10` |
 | `heat` | 热度回填：评测数 + 发行日期（appdetails recommendations）：`--limit 200000 --batch 30 --sleep 1700`，按 `heat_at is null` 自动续跑，约 3 小时全量 |
+| `steam-accounts` | 同步所有已绑定 Steam 账号的游戏库与愿望单（差集删除 + 愿望单→价提醒对账；`--sleep 1000` 账号间隔）✅ |
+| `steam-claim <用户名> <SteamID>` | 认领未归属的 Steam 账号（迁移用；幂等，已归属他人时报错）✅ |
 | `prune` | 定期清理：访问记录/采集与任务记录/验证码（`--visitor-days 180 --run-days 90 --email-days 7`） |
 | `diagnose` | 环境/数据库/网络自检，报告落盘 `logs/diagnose-*.json` |
 | `probe` | 目标可达性探针，见下 |
@@ -410,6 +415,8 @@ node src/probe.js --target steam --rounds 24 --interval 3600   # 跑 24 小时�
 | `IMG_DIR` | `data/images` | 封面图缓存目录（随 data 卷持久化） |
 | `STEAM_HEAT_INTERVAL_MIN` | `10080` | 热度任务间隔（分钟，每周） |
 | `STEAM_HEAT_LIMIT` | `20000` | 热度任务每轮上限（只刷「过期且已有报价」的条目） |
+| `STEAM_ACCOUNTS_INTERVAL_MIN` / `STEAM_ACCOUNTS_SLEEP_MS` | `1440` / `1000` | 绑定账号同步间隔与账号间间隔（需要 `STEAM_API_KEY`） |
+| `STEAM_CLAIM_USERNAME` / `STEAM_CLAIM_STEAM_ID` | 空 | 配置后调度器自动把历史未归属账号认领给该用户（幂等，完成后可删） |
 | `PRUNE_INTERVAL_MIN` / `PRUNE_ENABLED` | `10080` / 开 | 定期清理任务间隔与开关 |
 | `VISITOR_GEO` | 开 | 置 `0` 不再把访客 IP 发给第三方归属地服务 |
 | `HISTORY_CSV_ENABLED` | 空 | 置 `1` 才开放 `/api/games/:appid/history.csv`（默认 404） |
@@ -614,10 +621,11 @@ steamdeals/
 │   ├── http.js          唯一出网点（超时/重试/脱敏/代理分流/观测）
 │   ├── proxy.js         出网代理决策（按主机分流 + NO_PROXY + 密码脱敏）
 │   ├── visitors.js      访问记录：IP 提取、归属地解析、黑名单内存态
-│   ├── steam-login.js   Steam OpenID 登录与游戏库（独立于站点用户体系）
+│   ├── steam-login.js   Steam OpenID 登录（state 防 CSRF）、账号归属 schema、库/愿望单拉取
+│   ├── steam-accounts.js 多账号同步（差集删除）、愿望单→价提醒对账、认领/解绑
 │   ├── probe.js         目标可达性探针
 ├── frontend/           Vue 3 前端（Vite 构建，页面/组件/composables；dist 不入库）
-├── test/               44 个测试文件（346 项主链 + 33 项链外）+ 真实页面夹具
+├── test/               45 个测试文件（主链 + 链外）+ 真实页面夹具
 ├── data/               games.json（游戏清单）、skus.json（杉果 SKU）
 ├── docs/               PROJECT-OVERVIEW / PLAN / ROADMAP / ARCHITECTURE / DATA-SOURCES / DEPLOY / WEB
 ├── out/                 由 chart 生成的静态页（已 gitignore）

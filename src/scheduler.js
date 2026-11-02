@@ -73,6 +73,27 @@ export function jobsFromEnv(env = process.env) {
       enabled: env.STEAM_ENABLED !== '0',
     },
     {
+      name: 'steam-accounts',
+      // 每天同步所有已绑定 Steam 账号的游戏库与愿望单（差集删除 + 愿望单→到价提醒对账），
+      // 账号间串行、间隔 ≥ 1s；单个账号失败只记日志继续下一个。需要 STEAM_API_KEY。
+      args: ['steam-accounts', '--sleep', String(num(env.STEAM_ACCOUNTS_SLEEP_MS, 1000))],
+      intervalMin: num(env.STEAM_ACCOUNTS_INTERVAL_MIN, 1440),
+      initialDelaySec: num(env.STEAM_ACCOUNTS_INITIAL_DELAY_SEC, 1500),
+      enabled: env.STEAM_ENABLED !== '0' && String(env.STEAM_API_KEY ?? '').trim().length > 10,
+    },
+    {
+      name: 'steam-claim',
+      // 一次性迁移：把历史未归属的 Steam 账号认领到指定用户（幂等，已归属则秒退）。
+      // 只在配置了 STEAM_CLAIM_USERNAME + STEAM_CLAIM_STEAM_ID 时出现，认领完成后可删配置。
+      args: ['steam-claim', String(env.STEAM_CLAIM_USERNAME ?? ''), String(env.STEAM_CLAIM_STEAM_ID ?? '')],
+      intervalMin: num(env.STEAM_CLAIM_INTERVAL_MIN, 1440),
+      initialDelaySec: num(env.STEAM_CLAIM_INITIAL_DELAY_SEC, 60),
+      enabled:
+        env.STEAM_CLAIM_ENABLED !== '0' &&
+        Boolean(String(env.STEAM_CLAIM_USERNAME ?? '').trim()) &&
+        Boolean(String(env.STEAM_CLAIM_STEAM_ID ?? '').trim()),
+    },
+    {
       name: 'prune',
       // 每周清理：访问记录 180 天、采集/任务记录 90 天、验证码 7 天
       args: ['prune'],

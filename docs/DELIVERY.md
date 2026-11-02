@@ -6,7 +6,7 @@
 >
 > **会话分工**：讨论方案用 DeepSeek-V4.1-Flash1017，开发实现用 DeepSeek-V4-Pro（见 CONTRIBUTING.md）。
 >
-> **最后更新：2026-10-30（v1.4.3 已发布：tag v1.4.3，docker-hub 与 docker-tcr 双绿，镜像已推送）。若你读到的时间晚于最近提交，先看 CHANGELOG 与 git log。**
+> **最后更新：2026-11-02（v1.5.0 已发布：Steam 多账号绑定 + 已拥有/愿望单同步；服务器升级待部署人员执行）。若你读到的时间晚于最近提交，先看 CHANGELOG 与 git log。**
 
 ---
 
@@ -15,7 +15,7 @@
 - 仓库：`github.com/yyliucha/steamdeals`，主分支 `main`，本地 `F:\dsh\gameprice`（Windows）。
 - 技术栈：Node ≥22.5（ESM）+ PostgreSQL 15 + Vue 3/Vite/Element Plus（`frontend/`，产物 `frontend/dist` 不入库）+ Docker Compose。
 - 线上：生产库 19.6 万条目（有国区报价 10.6 万）；TCR 镜像 `ccr.ccs.tencentyun.com/tcb-100003189690-pljp/steamdeals:<版本>`，Docker Hub `s1065420329/steamdeals:<版本>`。
-- 版本历史：… 1.1.0 → 1.2.0 → 1.3.0 → 1.4.0 → 1.4.1 → 1.4.2 → 1.4.3 → 1.4.4（详见 CHANGELOG）。
+- 版本历史：… 1.1.0 → 1.2.0 → 1.3.0 → 1.4.0 → 1.4.1 → 1.4.2 → 1.4.3 → 1.4.4 → … → 1.4.9 → 1.5.0（详见 CHANGELOG）。
 
 ## 1. 开发环境与日常开发
 
@@ -135,6 +135,8 @@ docker exec steamdeals node -p "require('./package.json').version"   # 期望输
 | `backfill` 增量回填 | 每周 | 给新游戏补元数据/说明/价格；有说明+报价的自动跳过，没活秒退（`STEAM_BACKFILL_LIMIT` 默认 20000） |
 | `heat` 热度回填 | **每天**（v1.4.3 起） | 首轮自动全量播种（每天 2 万款 ≈ 9.4h，19.6 万款约 10 天播完）；之后只刷"过期 7 天且有报价"的条目 |
 | `rename` 名字重写 | 每周 | 机器英文名补中文（英文挪进 name_en）；选择条件自带收敛，没活秒退 |
+| `steam-accounts` | 每天 | 所有已绑定 Steam 账号的库 + 愿望单同步（差集删除、愿望单→自动提醒）；需 `STEAM_API_KEY`，账号间串行 ≥1s，单账号失败隔离 |
+| `steam-claim`（可选） | 每天 | 仅在 compose 配置 `STEAM_CLAIM_USERNAME` + `STEAM_CLAIM_STEAM_ID` 时出现：把历史未归属账号认领给该用户（幂等，认领后可删配置） |
 | `prune` 定期清理 | 每周 | 访问记录 180 天 / 采集与任务 90 天 / 验证码 7 天 |
 | `images pull` / `backup` / `alerts` | 定时 | 封面缓存 / 每日备份 / 到价提醒 |
 
@@ -142,10 +144,10 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 `rename` / `backfill` 成功后自动重建静态页。
 
 **仍需手工**：`/setup` 首次初始化（一次性）、`diagnose`、`proxy-check`（排查工具，出问题才用）。
-**不要再手工执行** `rename` / `heat` / `backfill` / `sync catalog`——调度器会自动跑（早期运维习惯中的手工
+**不要再手工执行** `rename` / `heat` / `backfill` / `sync catalog` / `steam-accounts`——调度器会自动跑（早期运维习惯中的手工
 `docker exec … heat --limit 200000` 等命令已被 v1.4.3 的调度任务取代）。
 急用时可在控制台「游戏管理 → 同步与回填 → 重写名字」立即触发（v1.4.5 起，带进度显示），
-不需要登服务器敲 CLI。
+不需要登服务器敲 CLI。绑定账号的库/愿望单同步也可以在后台「Steam 账号」页手动触发。
 
 ## 6. 排障速查（历次踩坑汇总）
 
@@ -180,17 +182,22 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 
 ---
 
-### 当前状态（2026-11-02 更新，v1.4.9 已部署）
+### 当前状态（2026-11-02 更新，v1.5.0 已发布：Steam 多账号绑定 + 已拥有/愿望单）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
-- **服务器已部署 v1.4.9**（控制台右上角显示 `v1.4.9`）。TCR/Docker Hub 均有 `1.4.9` / `latest`。
+- **v1.5.0 已发布**（tag `v1.5.0`，docker-hub + docker-tcr 双绿，镜像已推送）。功能：Steam 多账号绑定
+  （每用户上限 5、OpenID + state 防 CSRF）、「已拥有」按用户推导（手动 ∪ 绑定账号库，`owned_by` 徽标）、
+  愿望单标签页与自动价提醒（`source='steam_wishlist'`）、库/愿望单差集删除（修掉只增不删的旧 bug）、
+  调度器每日 `steam-accounts` 任务与可选 `steam-claim` 认领任务。规格与验收见 [STEAM-ACCOUNTS.md](STEAM-ACCOUNTS.md)。
+  **服务器部署待执行**（按本文第 4 节：sed 改 compose 镜像 tag → `docker compose pull app && up -d app`；
+  compose 真实文件名仍待确认，先 `ls compose*.*`）。升级后无需手工数据命令：
+  `steam-accounts` 每日自动同步；存量 FF 账号认领走后台按钮或 compose 配 `STEAM_CLAIM_USERNAME`/`STEAM_CLAIM_STEAM_ID`。
+- 服务器当前部署 **v1.4.9**（控制台右上角显示 `v1.4.9`）。TCR/Docker Hub 均有 `1.4.9` / `latest`（v1.5.0 已就绪）。
 - v1.4.9（`d2d3109`）：修复 OpenID 校验把 fetchText 对象当字符串的 bug（`snippet="[object Object]"`）。
 - v1.4.8（`fe86d35`）：支持 https 代理（自签放行），解决 community 的 DPI 重置。
   Steam 专用代理已配置为 `https://steambot1:***@43.129.196.229:8531`（香港 VM-0-7 上 tinyproxy + stunnel）。
-  **Steam 登录是否最终成功待确认**（v1.4.9 部署后未回执）。
-- v1.4.7（`4295ee9`）：游戏目录指标卡即筛选。v1.4.6（`ffb3a7b`）：「同步与回填」页精简 + 时区设置化 + 侧栏版本徽标修复。
-- 工作区：干净；HEAD `3e0a59b`，已同步 origin main。
-- **待开发**：Steam 多账号绑定 + 已拥有/愿望单同步 —— 需求已确认，规格见 [STEAM-ACCOUNTS.md](STEAM-ACCOUNTS.md)（[TODO.md G](TODO.md)）。
+- 工作区：见 git status；HEAD 已同步 origin main。
 - 待探测（需服务器）：线上 heat 逐 appid 返回全 `success:false`（[TODO.md C1](TODO.md#c-线上问题--需要探测)）、
   服务器 compose 真实文件名（C2）。
+- 已知事项：`web/*.html` 旧回退页（无 Vue 构建产物时才使用）的 Steam 区块未同步新接口，生产走 Vue 构建不受影响。

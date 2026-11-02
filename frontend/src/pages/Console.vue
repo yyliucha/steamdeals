@@ -46,7 +46,7 @@ const nativeSections=['games','visitors','announcements','settings','stats'];
 const groups=[
   {name:'内容运营',items:[{id:'games',label:'游戏管理',glyph:'▦',description:'维护游戏目录、采集计划与数据回填'},{id:'recycle',label:'回收站',glyph:'▤',description:'查看并恢复已删除的游戏'},{id:'announcements',label:'站点通知',glyph:'▱',description:'发布和管理网站公告'}]},
   {name:'访问与安全',items:[{id:'visitors',label:'访问记录',glyph:'◉',description:'流量、异常请求和访问控制'}]},
-  {name:'账号与服务',items:[{id:'users',label:'用户管理',glyph:'♙',description:'管理账号、角色与登录权限'},{id:'steam',label:'Steam 账号',glyph:'◈',description:'查看已连接的 Steam 账号与游戏库'},{id:'mail',label:'邮件服务',glyph:'✉',description:'配置 SMTP、测试邮件和发送记录'}]},
+  {name:'账号与服务',items:[{id:'users',label:'用户管理',glyph:'♙',description:'管理账号、角色与登录权限'},{id:'steam',label:'Steam 账号',glyph:'◈',description:'绑定多个 Steam 账号，同步游戏库与愿望单'},{id:'mail',label:'邮件服务',glyph:'✉',description:'配置 SMTP、测试邮件和发送记录'}]},
   {name:'系统',items:[{id:'settings',label:'系统设置',glyph:'⚙',description:'数据源、网络代理与提醒配置'},{id:'stats',label:'数据统计',glyph:'▥',description:'价格变化、缓存、备份与访问排行'},{id:'sync',label:'运行日志',glyph:'≋',description:'查看服务实时输出和同步记录'}]},
 ];
 const selected=ref(String(route.query.section||'games'));

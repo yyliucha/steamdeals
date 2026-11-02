@@ -2,6 +2,41 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.5.0] - 2026-11-02
+
+### 新增
+
+- **Steam 多账号绑定**：每个站点用户可绑定最多 5 个 Steam 账号，一个 Steam 账号只属一人。
+  绑定走 OpenID + 一次性 state（防 CSRF，5 分钟过期），必须已登录站点账号；回调校验 state 后
+  检查唯一性/上限（占用与超限返回 409），成功后自动同步该账号的游戏库与愿望单。
+  后台「Steam 账号」页改为账号列表：同步游戏库/愿望单、改别名（前台徽标优先显示别名）、
+  解绑（级联清理数据与愿望单自动提醒）、认领历史未归属账号；存量账号也可用 CLI `steam-claim`
+  或 compose 配置 `STEAM_CLAIM_USERNAME`/`STEAM_CLAIM_STEAM_ID` 由调度器幂等认领
+- **「已拥有」按用户推导**：前台「已拥有」= 手动标记 ∪ 该用户所有绑定账号游戏库的并集；
+  `user_game_flags.owned=false` 永久排除（再同步不恢复，可点「恢复已拥有」回到跟随推导）；
+  列表/详情返回 `owned_by[{steamId,name}]`，卡片显示「已拥有 · FF、XX」（>2 个 `+N`，详情列全）。
+  全局 `games.owned` 废弃（前台不再读取）；已拥有/谁拥有仅当前登录用户可见
+- **愿望单同步 + 独立标签页**：新增 `steam_wishlist` 表，前台新增「愿望单」标签页；
+  愿望单游戏自动加入价提醒（`watchlist.source='steam_wishlist'`，目标价为空 = 史低提醒，
+  手动设过的目标价不被覆盖）；移出愿望单/解绑只清理自动提醒
+- **调度器每日 `steam-accounts` 任务**：所有已绑定账号逐个串行同步库与愿望单（间隔 ≥1s，
+  单账号失败只记日志继续下一个），需要 `STEAM_API_KEY`；
+  `STEAM_ACCOUNTS_INTERVAL_MIN` / `STEAM_ACCOUNTS_SLEEP_MS` 可调
+
+### 修复
+
+- **库/愿望单同步只增不删**：同步改为差集删除（`appid <> all(本次集合)`），账号移出库/愿望单的
+  游戏不再残留——旧逻辑会让「已拥有」在退库后永远不消失
+- **绑定回调对非浏览器客户端**：成功绑定一律 302；错误按请求方返回 302（浏览器回控制台展示）或
+  JSON 状态码（API 客户端拿到 400/409 与错误码）
+
+### 变更
+
+- `steam_sessions` 停用（表保留不再写入）：Steam 身份改由站点会话决定，旧 `steam_session` cookie 直接失效
+- 前台游客不再显示「已拥有」标签页与已拥有标记（本地已拥有标记一并移除，愿望单/已拥有是登录用户专属维度）
+- 规格与实现记录见 [docs/STEAM-ACCOUNTS.md](docs/STEAM-ACCOUNTS.md)，验收标准 §14 全数覆盖
+  （`test/steam-accounts.test.js` + `test/scheduler.test.js` 断言）
+
 ## [1.4.9] - 2026-11-02
 
 ### 修复

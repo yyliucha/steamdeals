@@ -59,6 +59,55 @@ test('目录同步任务：有 STEAM_API_KEY 才出现，参数可覆盖，STEAM
   assert.equal(custom.initialDelaySec, 30);
 });
 
+test('Steam 账号同步任务：有 STEAM_API_KEY 才出现，间隔/首轮延迟/账号间隔可覆盖', () => {
+  const key = '0123456789ABCDEF';
+  const job = jobsFromEnv({ STEAM_API_KEY: key }).find((j) => j.name === 'steam-accounts');
+  assert.ok(job, '配了 key 应有账号同步任务');
+  assert.deepEqual(job.args, ['steam-accounts', '--sleep', '1000']);
+  assert.equal(job.intervalMin, 1440, '默认每天同步一次绑定账号');
+  assert.equal(job.initialDelaySec, 1500);
+
+  assert.ok(!jobsFromEnv({}).some((j) => j.name === 'steam-accounts'), '没有 key 不该出现账号同步任务');
+  assert.ok(
+    !jobsFromEnv({ STEAM_API_KEY: key, STEAM_ENABLED: '0' }).some((j) => j.name === 'steam-accounts'),
+    'STEAM_ENABLED=0 时关闭',
+  );
+
+  const custom = jobsFromEnv({
+    STEAM_API_KEY: key,
+    STEAM_ACCOUNTS_INTERVAL_MIN: '60',
+    STEAM_ACCOUNTS_INITIAL_DELAY_SEC: '30',
+    STEAM_ACCOUNTS_SLEEP_MS: '2000',
+  }).find((j) => j.name === 'steam-accounts');
+  assert.deepEqual(custom.args, ['steam-accounts', '--sleep', '2000']);
+  assert.equal(custom.intervalMin, 60);
+  assert.equal(custom.initialDelaySec, 30);
+});
+
+test('steam-claim 迁移任务：只在配置了用户名与 SteamID 时出现，认领幂等', () => {
+  assert.ok(!jobsFromEnv({}).some((j) => j.name === 'steam-claim'), '未配置不出现');
+  assert.ok(!jobsFromEnv({ STEAM_CLAIM_USERNAME: 'admin' }).some((j) => j.name === 'steam-claim'), '缺 SteamID 不出现');
+  assert.ok(
+    !jobsFromEnv({ STEAM_CLAIM_STEAM_ID: '76561198000000000' }).some((j) => j.name === 'steam-claim'),
+    '缺用户名不出现',
+  );
+  const job = jobsFromEnv({
+    STEAM_CLAIM_USERNAME: 'admin',
+    STEAM_CLAIM_STEAM_ID: '76561198000000000',
+  }).find((j) => j.name === 'steam-claim');
+  assert.ok(job, '两者都配了才出现');
+  assert.deepEqual(job.args, ['steam-claim', 'admin', '76561198000000000']);
+  assert.equal(job.intervalMin, 1440);
+  assert.equal(job.initialDelaySec, 60);
+
+  const off = jobsFromEnv({
+    STEAM_CLAIM_USERNAME: 'admin',
+    STEAM_CLAIM_STEAM_ID: '76561198000000000',
+    STEAM_CLAIM_ENABLED: '0',
+  });
+  assert.ok(!off.some((j) => j.name === 'steam-claim'), 'STEAM_CLAIM_ENABLED=0 可关闭');
+});
+
 test('重写名字任务：参数与间隔可用环境变量覆盖，STEAM_ENABLED=0 一并关闭', () => {
   const custom = jobsFromEnv({
     STEAM_RENAME_LIMIT: '5000',

@@ -1,12 +1,13 @@
-// Steam OpenID 登录 + 游戏库同步（独立于站点用户体系）。
-// 登录不需要 API Key；游戏库需要 STEAM_API_KEY，且账号的"游戏详情"必须公开。
+// Steam OpenID 绑定 + 账号数据 schema。
+// 身份由站点会话决定：Steam 账号归属站点用户（steam_accounts.user_id），steam_sessions 已停用。
+// 绑定（OpenID）不需要 API Key；游戏库/愿望单同步需要 STEAM_API_KEY，且账号资料必须公开。
 import { fetchText, fetchJson } from './http.js';
 import { randomBytes } from 'node:crypto';
 import { isPrivateAddress, matchesIpEntry } from './visitors.js';
 
 const OPENID_ENDPOINT = 'https://steamcommunity.com/openid/login';
 
-/** 建表（幂等）。 */
+/** 建表（幂等）。steam_accounts 归属站点用户（user_id），一账号只属一人；steam_sessions 已停用（保留表不再写入）。 */
 export async function ensureSteamSchema(store) {
   const exec = (sql) => (store.exec ? store.exec(sql) : store.query(sql));
   await exec('alter table users add column if not exists steam_id text');
@@ -16,9 +17,15 @@ export async function ensureSteamSchema(store) {
     '  steam_id text primary key,',
     '  persona_name text,',
     '  avatar text,',
+    '  alias text,',
+    '  user_id integer references users(id) on delete cascade,',
     '  last_login_at timestamptz not null default now()',
     ');',
   ].join('\n'));
+  // 老库补列（幂等；user_id 先允许为空，未归属账号走「认领」）
+  await exec('alter table steam_accounts add column if not exists user_id integer references users(id) on delete cascade');
+  await exec('alter table steam_accounts add column if not exists alias text');
+  await exec('create index if not exists steam_accounts_user on steam_accounts (user_id)');
   await exec([
     'create table if not exists steam_sessions (',
     '  token text primary key,',
@@ -37,14 +44,27 @@ export async function ensureSteamSchema(store) {
     '  primary key (steam_id, appid)',
     ');',
   ].join('\n'));
+  await exec('create index if not exists steam_games_appid on steam_games (appid)');
+  await exec([
+    'create table if not exists steam_wishlist (',
+    '  steam_id text not null,',
+    '  appid integer not null,',
+    '  name text,',
+    '  synced_at timestamptz not null default now(),',
+    '  primary key (steam_id, appid)',
+    ');',
+  ].join('\n'));
+  await exec('create index if not exists steam_wishlist_appid on steam_wishlist (appid)');
 }
 
-let schemaEnsured = false;
-/** 请求内懒建表：第一次调用执行 DDL，之后直接返回。 */
+// 按「查询函数」维度懒建表：同一进程里可能有多个 store（测试每个用例新建 PGlite），
+// 进程级 flag 会让第二个 store 跳过 DDL。用 WeakMap 缓存 Promise，同一 q 并发请求也不会重复建表。
+const ensuredQueries = new WeakMap();
 export async function ensureSteamSchemaOnce(q) {
-  if (schemaEnsured) return;
-  await ensureSteamSchema({ exec: (sql) => q(sql), query: (sql) => q(sql) });
-  schemaEnsured = true;
+  if (ensuredQueries.has(q)) return ensuredQueries.get(q);
+  const pending = ensureSteamSchema({ exec: (sql) => q(sql), query: (sql) => q(sql) });
+  ensuredQueries.set(q, pending);
+  await pending;
 }
 
 export function baseUrl(req) {
@@ -68,12 +88,13 @@ export function baseUrl(req) {
   return proto + '://' + host;
 }
 
-/** 生成跳转到 Steam 的授权地址。 */
-export function buildLoginUrl(base) {
+/** 生成跳转到 Steam 的授权地址。state 用于防 CSRF（绑定到当前站点用户会话，5 分钟过期）。 */
+export function buildLoginUrl(base, state = null) {
+  const returnTo = state ? `${base}/api/auth/steam/callback?state=${encodeURIComponent(state)}` : `${base}/api/auth/steam/callback`;
   const params = new URLSearchParams({
     'openid.ns': 'http://specs.openid.net/auth/2.0',
     'openid.mode': 'checkid_setup',
-    'openid.return_to': base + '/api/auth/steam/callback',
+    'openid.return_to': returnTo,
     'openid.realm': base,
     'openid.identity': 'http://specs.openid.net/auth/2.0/identifier_select',
     'openid.claimed_id': 'http://specs.openid.net/auth/2.0/identifier_select',
@@ -127,17 +148,28 @@ export async function verifyCallback(url, { logger = null, fetchImpl = null } = 
   return m[1];
 }
 
-/** Steam 独立会话（与站点用户体系解耦）。 */
-export async function createSteamSession(q, steamId) {
-  const token = randomBytes(24).toString('base64url');
-  await q('insert into steam_sessions (token, steam_id) values ($1, $2)', [token, steamId]);
-  return token;
+// ---- 绑定 state（防 CSRF / 防串号）----
+// 进程内存即可：单进程服务，5 分钟过期；重启后未完成的绑定重试一次即可。
+const BIND_STATE_TTL_MS = 5 * 60 * 1000;
+
+/** 签发一次性绑定 state：随机串 + 归属站点用户 + 过期时间。 */
+export function issueBindState(map, userId, { nowMs = Date.now(), ttlMs = BIND_STATE_TTL_MS } = {}) {
+  // 顺手清掉过期项，避免长期运行后无限增长
+  for (const [state, entry] of map) {
+    if (entry.expiresAt <= nowMs) map.delete(state);
+  }
+  const state = randomBytes(24).toString('base64url');
+  map.set(state, { userId, expiresAt: nowMs + ttlMs });
+  return state;
 }
 
-export async function steamIdBySession(q, token) {
-  if (!token) return null;
-  const r = await q('select steam_id from steam_sessions where token = $1', [token]);
-  return r.rows[0]?.steam_id ?? null;
+/** 校验并消费一次性 state：合法返回 userId（取后即焚），非法/过期返回 null。 */
+export function consumeBindState(map, state, { nowMs = Date.now() } = {}) {
+  if (!state) return null;
+  const entry = map.get(state);
+  map.delete(state);
+  if (!entry || entry.expiresAt <= nowMs) return null;
+  return entry.userId;
 }
 
 /** 拉取昵称头像（需要 API Key；没有 key 就用 steamid）。 */
@@ -175,4 +207,29 @@ export async function fetchOwnedGames({ apiKey, steamId, logger = null }) {
       lastPlayedAt: g.rtime_last_played ? new Date(g.rtime_last_played * 1000) : null,
     }))
     .filter((g) => Number.isFinite(g.appid) && g.appid > 0);
+}
+
+/** 拉取账号愿望单（需要 API Key；账号「游戏详情/愿望单」必须公开）。 */
+export async function fetchWishlist({ apiKey, steamId, logger = null }) {
+  const url =
+    'https://api.steampowered.com/IWishlistService/GetWishlist/v1/' +
+    '?key=' + encodeURIComponent(apiKey) +
+    '&steamid=' + encodeURIComponent(steamId) + '&format=json';
+  const res = await fetchJson(url, { logger, timeoutMs: 30000, retries: 1 });
+  const data = res?.json ?? {};
+  // 响应形状随接口版本略有差异：兼容 items / wishlist 两种常见键。
+  const items = data?.response?.items ?? data?.response?.wishlist ?? data?.items ?? [];
+  const parsed = [];
+  for (const it of Array.isArray(items) ? items : []) {
+    const appid = Number(it?.appid ?? it?.app_id);
+    if (!Number.isFinite(appid) || appid <= 0) continue;
+    parsed.push({ appid, name: String(it?.name ?? '').trim() });
+  }
+  if (!parsed.length) {
+    logger?.warn('steam.wishlist_empty_or_shape', {
+      steamId,
+      snippet: String(res?.body ?? '').slice(0, 200),
+    });
+  }
+  return parsed;
 }
