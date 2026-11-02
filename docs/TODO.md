@@ -89,13 +89,13 @@
 
 ## H. 待开发：DLC 统计问题（已定位，2026-11-02）
 
-**状态：已定位、需求文档已写、待开发**（见 [docs/STEAM-DLC.md](STEAM-DLC.md)）。
+**状态：方案已确认（A，2026-11-02），待开发**（见 [docs/STEAM-DLC.md](STEAM-DLC.md)）。
 
 - 现象：后台「Steam 账号」页 DLC 恒为 0；某行显示 `0*`。
 - 根因：`IPlayerService/GetOwnedGames` **只返回游戏、不含 DLC 拥有记录**（Steam 公开 API 无此数据），
   当前 DLC 数依赖 `steam_games` 中出现 `app_type='dlc'` 的行 → 天然 0。`*` = 前端 `type_unknown>0`
   的标记（拥有条目在 CN 商店取不到类型，锁区/下架，`backfillOwnedAppTypes` 也补不上）。
-- 推荐方案 A：DLC 列改显 `—` + 说明 tooltip（或删除该列），同步提示去掉"其中 DLC N 款"，
-  `*` 的文案改为"锁区/下架条目无法自动补全"。若要真 DLC 拥有数据，只能走 Steam 登录态
-  cookie（dynamicstore），安全代价高，需所有者拍板（详见文档 §3/§6）。
+- **方案 A（已确认）**：删除「DLC」列与 `*` 标记，账号列表上方加说明「Steam API 不返回 DLC 拥有数据」；
+  同步提示去掉"其中 DLC N 款"；`type_unknown` 只留日志；STEAM-ACCOUNTS/README 已知限制补一行。
+  不采用方案 B（可购买 DLC 总和，误导）与方案 C（Steam 登录态 cookie，安全代价高）。
 - 验收：见 [docs/STEAM-DLC.md](STEAM-DLC.md) §5。

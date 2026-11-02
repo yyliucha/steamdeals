@@ -593,6 +593,8 @@ node test/secrets.test.js    # 5 项：凭据扫描器自身的正确性 + 当�
 8. **Humble 命中率有限**：只能用"按英文名猜 slug → 抓商品页 → 校验名称"的方式，没命中的会静默跳过（日志记 `adapter.humble.no_match`）。
 9. **邮件客户端是自实现的**，只覆盖 STARTTLS + AUTH PLAIN/LOGIN，不支持 OAuth2 与附件；协议对话已在本地假 SMTP 服务器上验证，但**未对真实邮件服务商做过端到端测试**。
 10. **`web/` 旧页面只作回退**：镜像内有 `frontend/dist` 时全部页面走 Vue 应用；旧零构建页面仅在开发环境（无构建产物）时使用，其中的管理功能不再单独维护。
+11. **DLC 拥有数不可得**：Steam 公开 API（`IPlayerService/GetOwnedGames`）只返回游戏、不返回 DLC 拥有记录，
+    后台「Steam 账号」不展示 DLC 数（详见 [docs/STEAM-DLC.md](docs/STEAM-DLC.md)）。
 
 ## 路线图
 

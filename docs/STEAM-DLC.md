@@ -1,6 +1,6 @@
 # DLC 同步与统计：问题定位 + 需求（待开发）
 
-> 状态：**已定位，需求待确认**（2026-11-02）。本文给下一步开发用。
+> 状态：**已定位，方案已确认 = A（2026-11-02）**，本文给下一步开发用。
 > 现象来源：后台「Steam 账号」页（v1.7.0 截图）：`游戏库 606 / DLC 0*`、`游戏库 54 / DLC 0`。
 
 ---
@@ -40,68 +40,70 @@
 - 另注：`type_unknown` 只统计"目录里存在且类型为空"的条目；**目录里没有的拥有条目完全不计入**
   （`join games`），所以 `*` 也不能完整反映"统计不可靠"。
 
-## 3. 需求决策（需先定方案）
+## 3. 需求决策（**已确认 2026-11-02：采用方案 A**）
 
 Steam 公开 API 拿不到 DLC 拥有数据。可选方案：
 
-| 方案 | 做法 | 优点 | 缺点 |
-|---|---|---|---|
-| **A（推荐）** | DLC 列改为 **"不支持"**（显示 `—` + tooltip 说明"Steam Web API 不返回 DLC 拥有数据"）；或直接移除该列 | 诚实、零维护 | 用户看不到 DLC 数 |
-| B | 改统计口径为 **"这些游戏共有多少个可购买 DLC"**（appdetails 的 `dlc[]` 求和） | 有数字看 | **不是"已拥有"**，极易误解，且要按游戏逐个请求（几百次/账号） |
-| C | 用 Steam **登录态 cookie** 请求 `store.steampowered.com/dynamicstore/userdata/`（返回 `rgOwnedApps`，含 DLC） | 能拿到真 DLC | 需要用户 Steam 密码/会话 cookie，安全风险大；OpenID 拿不到登录态 → **不建议** |
-| D | 只保留"类型未知"提示，去掉 DLC 数字列 | 简单 | 同 A |
+| 方案 | 做法 | 结论 |
+|---|---|---|
+| **A ✅ 已采用** | **移除「DLC」列与 `*` 标记**；账号列表上方加一行说明「Steam API 不返回 DLC 拥有数据，故不展示 DLC 数」；同步成功提示去掉 DLC 部分 | **确认采用**：诚实、零维护、无误导 |
+| B ❌ | 改统计口径为"这些游戏共有多少个可购买 DLC"（appdetails 的 `dlc[]` 求和） | 否——不是"已拥有"，且按游戏逐个请求，成本高、易误解 |
+| C ❌ | 用 Steam 登录态 cookie 请求 `store.steampowered.com/dynamicstore/userdata/`（含 DLC） | 否——需要用户交出 Steam 会话，安全风险高 |
+| D ❌ | 只保留"类型未知"提示、去掉 DLC 数字 | 与 A 重复，A 已包含 |
 
-**建议：A**。若一定要"已拥有 DLC"，只能走 C，需要所有者明确接受安全代价。
+### 方案 A 的落地细节（含两处"误导点"修正）
 
-### 无论选哪个方案，都要修的两个"误导点"
+1. **前端**：删除「DLC」列；删除 `*` 标记逻辑；账号表上方说明文案加一句
+   「Steam API 不返回 DLC 拥有数据，故不展示 DLC 数」。
+2. **同步提示**：`syncSteam` 成功消息去掉「其中 DLC N 款」。
+3. **类型未知**：`type_unknown` 保留在后端（日志/诊断用），前端不再渲染 `*`；
+   若后续要提示，改成独立小徽标「类型未知 N」，tooltip 写
+   「有 N 款拥有游戏在国区商店取不到类型（锁区/下架），无法自动补全」——本期不做。
+4. **文档**：[STEAM-ACCOUNTS.md](STEAM-ACCOUNTS.md) 与 README 的「已知限制」各补一行
+   「DLC 拥有数不可得（Steam 公开 API 限制）」。
 
-1. 同步成功提示"其中 DLC N 款"（[AdminExtras.vue](../frontend/src/pages/AdminExtras.vue)
-   `syncSteam` 的 ElMessage）——DLC 永远 0，应删掉或改为"（DLC 不支持统计）"。
-2. DLC 列 tooltip「同步游戏库会自动补全」——不准确。应改为
-   「有 N 款拥有游戏在国区商店取不到类型（锁区/下架），无法自动补全」。
-
-## 4. 改动清单（按方案 A）
+## 4. 改动清单（方案 A，已定稿）
 
 **后端**
 
 - `src/steam-accounts.js`
-  - `listUserAccounts`：去掉 `dlc` 子查询（或保留但改名为 `dlcKnown` 并在接口层不暴露）；
-    建议改为返回 `dlcUnsupported: true`，让前端显式渲染"—"。
-  - `ownedTypeStats`：`dlc` 字段可删除（或保留给调试日志），`typeUnknown` 保留。
-  - 同步完成日志 `steam.library_synced` 可保留 `diffDeleted`，不需要 dlc。
-- `src/server.js`（库同步接口）：返回体里的 `dlc` 删除，或改为 `dlcUnsupported: true`。
+  - `listUserAccounts`：删除 `dlc` 子查询与返回字段；保留 `type_unknown`（仅日志/诊断用，接口可不返回）。
+  - `ownedTypeStats`：删除 `dlc` 字段（保留 `typeUnknown`），同步日志把 DLC 相关计数去掉。
+- `src/server.js`（库同步接口）：返回体删除 `dlc`（保留 `typeUnknown` 或一并去掉）。
 
 **前端**
 
 - `frontend/src/pages/AdminExtras.vue`
-  - DLC 列：显示 `—`，tooltip「Steam Web API 不返回 DLC 拥有数据（只统计游戏）」；`*` 逻辑删除。
-  - 同步成功提示：去掉"其中 DLC N 款"。
-  - 类型未知：若要保留提示，改成独立小徽标（如「类型未知 3」），tooltip 文案按 §3 修正。
+  - 删除「DLC」列（含 `*` 与 tooltip）。
+  - 账号列表上方说明加一句：「Steam API 不返回 DLC 拥有数据，故不展示 DLC 数」。
+  - `syncSteam` 成功提示去掉「其中 DLC N 款」，保留「差集清理 N 条」。
 
 **文档**
 
-- [STEAM-ACCOUNTS.md](STEAM-ACCOUNTS.md) 增补"已知限制：DLC 拥有数不可得"。
+- [STEAM-ACCOUNTS.md](STEAM-ACCOUNTS.md) 增补「已知限制：DLC 拥有数不可得」。
 - README「已知限制」补一行。
 
 **测试**
 
-- `test/steam-accounts*.test.js`：`listUserAccounts` 不再断言 `dlc`；若有断言 `type_unknown` 保留。
+- `test/steam-accounts*.test.js`：`listUserAccounts` 不再断言 `dlc`；`type_unknown` 断言保留。
 - 前端无单测，靠 `npm run frontend:build` + 后台页面目视。
 
 ## 5. 验收标准
 
-1. 后台「Steam 账号」页 DLC 列不再显示误导性数字（按方案 A 显示 `—` + 说明 tooltip）。
-2. 同步成功提示不再出现"其中 DLC 0 款"。
-3. `*` 不再出现；若保留"类型未知"提示，其 tooltip 明确说明"锁区/下架条目无法自动补全"。
+1. 后台「Steam 账号」页不再出现「DLC」列与 `*` 标记，说明区出现「Steam API 不返回 DLC 拥有数据」。
+2. 同步成功提示不再出现"其中 DLC N 款"。
+3. `type_unknown` 仍能写入日志（排障用），但页面不渲染。
 4. `npm test` 全绿、`npm run frontend:build` 通过；不自行构建（硬规则 5）。
 
-## 6. 若所有者坚持要"已拥有 DLC"（方案 C 的前置条件）
+## 6. 存档：若以后重新考虑"已拥有 DLC"（当前已否决）
 
-需要额外确认：
+若将来一定要 DLC 拥有数据，前置条件是：
 
-- 是否接受"用户提供 Steam 登录态（cookie）"来换取 DLC 数据？这等于要求用户把 Steam 会话交给站点，
-  **安全风险高**，建议不做；或只做"本地自用"模式（单用户部署）并明确写风险。
-- 若不接受，则 DLC 拥有数据在本项目的数据源下**不可实现**，只能按方案 A 诚实标注。
+- 接受"用户提供 Steam 登录态（cookie）"来换取 DLC 数据——这等于要求用户把 Steam 会话交给站点，
+  **安全风险高**，不建议；或只做"本地自用"模式（单用户部署）并明确写风险。
+- 若不接受，则 DLC 拥有数据在本项目的数据源下**不可实现**，只能保持方案 A 的诚实标注。
+
+当前决策（2026-11-02）：**采用方案 A，不做方案 C**。
 
 ---
 

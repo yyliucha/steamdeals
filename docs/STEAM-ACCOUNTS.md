@@ -240,6 +240,8 @@ delete from steam_wishlist where steam_id = $1 and appid <> all($2::int[]);
 - 愿望单→提醒不做"用户级静默开关"（本期）；不想收到提醒可标记「不感兴趣」（现有机制）。
 - 不做"好友/家庭共享库"（Steam Families）识别。
 - 不展示其它用户的绑定信息（管理员也没有跨用户查看入口，本期）。
+- **DLC 拥有数不可得**：Steam 公开 API（`IPlayerService/GetOwnedGames`）只返回游戏、不含 DLC 拥有记录，
+  后台不展示 DLC 数（方案 A，详见 [STEAM-DLC.md](STEAM-DLC.md)）。
 
 ## 16. 手动愿望单与 Steam 推送（需求 2026-11-02，已实现并发布 v1.6.0）
 
