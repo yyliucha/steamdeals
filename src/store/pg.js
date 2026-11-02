@@ -865,9 +865,11 @@ const OWNED_BY_SQL = (uidRef) =>
       join steam_accounts sa on sa.steam_id = sg.steam_id
      where sa.user_id = ${uidRef} and sg.appid = g.steam_appid)`;
 const WISHLISTED_SQL = (uidRef) =>
-  `exists (select 1 from steam_wishlist sw
+  `(exists (select 1 from steam_wishlist sw
       join steam_accounts sa on sa.steam_id = sw.steam_id
-     where sa.user_id = ${uidRef} and sw.appid = g.steam_appid)`;
+     where sa.user_id = ${uidRef} and sw.appid = g.steam_appid)
+    or exists (select 1 from user_wishlist uw
+     where uw.user_id = ${uidRef} and uw.game_id = g.id))`;
 
 /**
  * 单款游戏（按 steam_appid 或内部 id）。与列表不同，不受 limit / 排序影响，

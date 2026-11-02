@@ -1,6 +1,6 @@
 # Steam 多账号绑定与「已拥有 / 愿望单」同步（规格，已实现）
 
-> 状态：**已实现并发布（v1.5.0，2026-11-02）**。本文档是实现的唯一依据，改动前先读完全文。
+> 状态：**v1.5.0 已发布（2026-11-02）；§16「手动愿望单 + Steam 推送」为后续增强，已实现待发版**。本文档是实现的唯一依据，改动前先读完全文。
 > 实现落点：`src/steam-accounts.js`（同步/对账/认领/解绑）、`src/steam-login.js`（schema、OpenID state、
 > `fetchWishlist`）、`src/store/pg.js`（推导 SQL）、`src/server.js`（API 路由）、`src/cli.js`
 > （`steam-accounts` / `steam-claim`）、`src/scheduler.js`（`steam-accounts` 每日任务 + `steam-claim`
@@ -235,3 +235,31 @@ delete from steam_wishlist where steam_id = $1 and appid <> all($2::int[]);
 - 愿望单→提醒不做"用户级静默开关"（本期）；不想收到提醒可标记「不感兴趣」（现有机制）。
 - 不做"好友/家庭共享库"（Steam Families）识别。
 - 不展示其它用户的绑定信息（管理员也没有跨用户查看入口，本期）。
+
+## 16. 手动愿望单与 Steam 推送（需求 2026-11-02，已实现待发版）
+
+**需求**：前台点「愿望单」除加入本站外，一并写进所选 Steam 账号的愿望单；多账号时弹窗让用户选择。
+
+**约束（已查证）**：Steam 写愿望单只有两条路——
+① 官方 `IWishlistService/AddToWishlist`（未文档化，[xPaw](https://steamapi.xpaw.me/IWishlistService#AddToWishlist)），
+写操作需要**该账号自己注册的 Web API Key**；② `store.steampowered.com/api/addtowishlist` 需要账号登录后的
+`sessionid` cookie，OpenID 绑定拿不到。因此采用方案①：每个绑定账号在后台「Steam 账号 → API Key」配置自己的 key。
+
+**实现**：
+
+- `steam_accounts.api_key_enc`（AES-256-GCM 加密，明文只进不出）；后台账号页可配/清 Key，列表显示状态。
+- 新表 `user_wishlist(user_id, game_id, steam_ids[], created_at)`：手动愿望单落库，
+  `steam_ids` 记用户选择推送的账号（移除时按此回推删除）。
+- 前台推导：愿望单 = 手动（user_wishlist）∪ Steam 同步（steam_wishlist）；手动添加同样自动加入价提醒
+  （`watchlist.source='user_wishlist'`，目标价空=史低；手动设过目标价的不随移除清理）。
+- API：`POST /api/wishlist`（body: appid|gameId + steamIds[]，只接受本人账号）→ 站点落库 + 逐账号推送，
+  成功乐观写 `steam_wishlist`（Steam 若实际未接受，每日同步差集删除兜底）；`DELETE /api/wishlist/:appid`
+  （或 `/id/:gameId`）→ 清站点行 + 回推 `RemoveFromWishlist`（添加时选过的账号 ∪ 持有该条目的账号，
+  只处理配了 key 的）+ 对账自动提醒。
+- 前端：游戏卡/详情「愿望单」按钮；多账号弹窗多选（无 Key 的账号禁用并提示，可「仅加入本站」）；
+  单账号直接推送；无绑定账号只落本站。
+- 推送解析防御式：HTTP 2xx 且响应无显式 `success:false` 即成功；失败带原因记
+  `adapter.steam.wishlist_add_failed / wishlist_remove_failed`。
+
+**已知限制**：AddToWishlist 属未文档化接口，真实行为需**服务器上线后验证**（本机无 Steam 出口）；
+未配 Key 的账号只能同步不能推送/回推，靠每日同步对账收敛。

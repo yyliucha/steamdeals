@@ -182,10 +182,15 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 
 ---
 
-### 当前状态（2026-11-02 更新，v1.5.0 已发布：Steam 多账号绑定 + 已拥有/愿望单）
+### 当前状态（2026-11-02 更新，v1.5.0 已发布；另有「手动愿望单+Steam 推送」已提交待发版）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
+- **待发版（已推 main，等"构建 vX.Y.Z"指令）**：手动愿望单 + 推送到 Steam——前台「愿望单」按钮加入本站并写进所选
+  Steam 账号（多账号弹窗多选/仅本站），写操作需账号自配 API Key（`steam_accounts.api_key_enc` 密文），
+  移除时回推 `RemoveFromWishlist`；新表 `user_wishlist`，推导 = 手动 ∪ Steam 同步。规格见
+  [STEAM-ACCOUNTS.md §16](STEAM-ACCOUNTS.md#16-手动愿望单与-steam-推送需求-2026-11-02已实现待发版)。
+  测试 `test/wishlist-push.test.js`；AddToWishlist 为未文档化接口，上线后需服务器实测验证。
 - **v1.5.0 已发布**（tag `v1.5.0`，docker-hub + docker-tcr 双绿，镜像已推送）。功能：Steam 多账号绑定
   （每用户上限 5、OpenID + state 防 CSRF）、「已拥有」按用户推导（手动 ∪ 绑定账号库，`owned_by` 徽标）、
   愿望单标签页与自动价提醒（`source='steam_wishlist'`）、库/愿望单差集删除（修掉只增不删的旧 bug）、

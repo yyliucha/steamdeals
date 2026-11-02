@@ -19,12 +19,15 @@ export async function ensureSteamSchema(store) {
     '  avatar text,',
     '  alias text,',
     '  user_id integer references users(id) on delete cascade,',
+    '  api_key_enc text,',
     '  last_login_at timestamptz not null default now()',
     ');',
   ].join('\n'));
   // 老库补列（幂等；user_id 先允许为空，未归属账号走「认领」）
   await exec('alter table steam_accounts add column if not exists user_id integer references users(id) on delete cascade');
   await exec('alter table steam_accounts add column if not exists alias text');
+  // 账号自配的 Steam Web API Key（写愿望单等写操作必须用账号自己的 key），AES-256-GCM 加密
+  await exec('alter table steam_accounts add column if not exists api_key_enc text');
   await exec('create index if not exists steam_accounts_user on steam_accounts (user_id)');
   await exec([
     'create table if not exists steam_sessions (',
@@ -55,6 +58,17 @@ export async function ensureSteamSchema(store) {
     ');',
   ].join('\n'));
   await exec('create index if not exists steam_wishlist_appid on steam_wishlist (appid)');
+  // 站点内手动愿望单：与 Steam 同步推导取并集；steam_ids 记用户选择推送的账号（移除时回推删除）
+  await exec([
+    'create table if not exists user_wishlist (',
+    '  user_id    integer not null references users(id) on delete cascade,',
+    '  game_id    bigint not null references games(id) on delete cascade,',
+    '  steam_ids  text[] not null default \'{}\',',
+    '  created_at timestamptz not null default now(),',
+    '  primary key (user_id, game_id)',
+    ');',
+  ].join('\n'));
+  await exec('create index if not exists user_wishlist_user on user_wishlist (user_id)');
 }
 
 // 按「查询函数」维度懒建表：同一进程里可能有多个 store（测试每个用例新建 PGlite），

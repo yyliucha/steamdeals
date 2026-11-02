@@ -133,10 +133,11 @@ export async function claimAccount(q, { username, steamId, logger = null }) {
   return { claimed: true, steamId, userId: target.id, personaName: row.persona_name };
 }
 
-/** 当前用户绑定的账号列表（含游戏数/愿望单数/最近同步）。 */
+/** 当前用户绑定的账号列表（含游戏数/愿望单数/最近同步/是否已配 API Key）。 */
 export async function listUserAccounts(q, userId) {
   const r = await q(
     `select a.steam_id, a.persona_name, a.alias, a.avatar, a.last_login_at,
+            (a.api_key_enc is not null) as api_key_set,
             (select count(*)::int from steam_games g where g.steam_id = a.steam_id) as games,
             (select max(g.synced_at) from steam_games g where g.steam_id = a.steam_id) as library_synced_at,
             (select count(*)::int from steam_wishlist w where w.steam_id = a.steam_id) as wishlist,
@@ -167,4 +168,92 @@ export async function listAllBoundAccounts(q) {
     'select a.steam_id, a.user_id, a.persona_name from steam_accounts a where a.user_id is not null order by a.steam_id',
   );
   return r.rows;
+}
+
+/**
+ * 推送愿望单增删到 Steam（写操作，必须用该账号自己注册的 Web API Key）。
+ * 接口是官方未文档化的 IWishlistService/{Add,Remove}ToWishlist：
+ * 以 key + steamid + appid 表单提交，防御式解析——HTTP 2xx 且响应里没有
+ * 显式 success:false / response.success:false 就算成功；上线后由每日同步对账兜底。
+ */
+export async function pushWishlistItem({ steamId, apiKey, appid, action = 'add', fetchImpl = null, logger = null }) {
+  const isAdd = action !== 'remove';
+  const name = isAdd ? 'AddToWishlist' : 'RemoveFromWishlist';
+  const url = `https://api.steampowered.com/IWishlistService/${name}/v1/`;
+  const params = new URLSearchParams({ key: String(apiKey ?? ''), steamid: String(steamId), appid: String(appid) });
+  const eventOk = `adapter.steam.wishlist_${isAdd ? 'add' : 'remove'}_ok`;
+  const eventFail = `adapter.steam.wishlist_${isAdd ? 'add' : 'remove'}_failed`;
+  const send = fetchImpl ?? (async () => {
+    const { fetchJson } = await import('./http.js');
+    return fetchJson(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+      timeoutMs: 20000,
+      retries: 1,
+      logger,
+    });
+  });
+  try {
+    const res = await send();
+    const data = res?.json ?? res ?? {};
+    const explicitFail = data?.success === false || data?.response?.success === false;
+    const status = Number(res?.status ?? 200);
+    if (status < 400 && !explicitFail) {
+      logger?.info(eventOk, { steamId, appid, status });
+      return { ok: true };
+    }
+    const reason = explicitFail ? 'Steam 返回 success:false' : `HTTP ${status}`;
+    logger?.warn(eventFail, { steamId, appid, status, reason, snippet: String(res?.body ?? '').slice(0, 160) });
+    return { ok: false, reason };
+  } catch (err) {
+    const reason = String(err.message).slice(0, 160);
+    logger?.warn(eventFail, { steamId, appid, reason });
+    return { ok: false, reason };
+  }
+}
+
+/** 站点内手动愿望单：写入 user_wishlist（含选择推送的账号），并建「愿望单」自动到价提醒（目标价空=史低）。 */
+export async function addUserWishlist(q, { userId, gameId, steamIds = [] }) {
+  const ids = [...new Set((steamIds ?? []).map((s) => String(s)).filter((s) => /^\d{17}$/.test(s)))];
+  await q(
+    'insert into user_wishlist (user_id, game_id, steam_ids) values ($1, $2, $3) ' +
+      'on conflict (user_id, game_id) do update set steam_ids = excluded.steam_ids',
+    [userId, gameId, ids],
+  );
+  await q(
+    "insert into watchlist (game_id, region, target_cents, note, source) values ($1, 'cn', null, '愿望单', 'user_wishlist') " +
+      'on conflict (game_id, region) do nothing',
+    [gameId],
+  );
+}
+
+/**
+ * 移除站点手动愿望单：删 user_wishlist 行（返回当时选择推送的账号）并清理自动提醒；
+ * 用户手动设过目标价的提醒（source 已翻转为 manual）保留。
+ */
+export async function removeUserWishlist(q, { userId, gameId }) {
+  const r = await q('delete from user_wishlist where user_id = $1 and game_id = $2 returning steam_ids', [userId, gameId]);
+  const steamIds = r.rows[0]?.steam_ids ?? [];
+  const watch = await q(
+    "delete from watchlist where game_id = $1 and region = 'cn' and source = 'user_wishlist' and target_cents is null",
+    [gameId],
+  );
+  return { removed: r.rowCount ?? 0, steamIds, watchesCleaned: watch.rowCount ?? 0 };
+}
+
+/** 该用户所有账号里愿望单含此 appid 的账号（移除时回推删除用）。 */
+export async function accountsWithWishlistAppid(q, { userId, appid }) {
+  const r = await q(
+    `select a.steam_id from steam_accounts a
+      where a.user_id = $1
+        and exists (select 1 from steam_wishlist sw where sw.steam_id = a.steam_id and sw.appid = $2)`,
+    [userId, appid],
+  );
+  return r.rows.map((row) => row.steam_id);
+}
+
+/** 写入/清空账号自配 API Key（密文由调用方加密；null 清空）。 */
+export async function setAccountApiKey(q, { steamId, apiKeyEnc }) {
+  await q('update steam_accounts set api_key_enc = $1 where steam_id = $2', [apiKeyEnc ?? null, steamId]);
 }

@@ -189,6 +189,7 @@ export function createApiServer({
   getSetupState = null,
   imageFetch = null, // 测试注入：() => { body, bytes, contentType }；默认用 http.js 的 fetchBuffer
   steamVerify = null, // 测试注入：verifyCallback 的替身 (url, opts) => Promise<steamId|null>；默认走 Steam OpenID 校验
+  steamWishlistPush = null, // 测试注入：({steamId, apiKey, appid, action}) => Promise<{ok, reason}>；默认走 IWishlistService 推送
 }) {
   const q = query;
   // 手动同步的进程内状态：同一时刻只允许一个同步任务
@@ -1106,8 +1107,20 @@ export function createApiServer({
         const raw = String(body.alias ?? '').trim().slice(0, 64);
         const alias = raw || null;
         await q('update steam_accounts set alias = $1 where steam_id = $2', [alias, steamId]);
-        logger?.info('steam.alias_set', { steamId, alias, userId: user.id });
-        return json(res, 200, { ok: true, alias });
+        // 账号自配 API Key（写愿望单用）：明文只进不出，AES-256-GCM 加密落库；clearApiKey=true 清除
+        let apiKeyChanged = null;
+        if (typeof body.apiKey === 'string' && body.apiKey.trim()) {
+          const auth = await import('./email-auth.js');
+          const enc = auth.encryptSecret(body.apiKey.trim(), auth.loadSecretKey());
+          await steamAccountsMod.setAccountApiKey(q, { steamId, apiKeyEnc: enc });
+          apiKeyChanged = true;
+        } else if (body.clearApiKey === true) {
+          await steamAccountsMod.setAccountApiKey(q, { steamId, apiKeyEnc: null });
+          apiKeyChanged = false;
+        }
+        const after = await q('select (api_key_enc is not null) as api_key_set from steam_accounts where steam_id = $1', [steamId]);
+        logger?.info('steam.alias_set', { steamId, alias, userId: user.id, apiKeyChanged });
+        return json(res, 200, { ok: true, alias, apiKeySet: after.rows[0]?.api_key_set ?? false });
       }
 
       if (accountMatch && req.method === 'DELETE') {
@@ -1117,6 +1130,119 @@ export function createApiServer({
         if (!row) return;
         const result = await steamAccountsMod.unbindAccount(q, { steamId, userId: user.id, logger });
         return json(res, 200, result);
+      }
+
+      // ---- 手动愿望单：站点落库 + 按所选账号推 Steam（写操作需账号自配 API Key）----
+      const pushWishlist = steamWishlistPush ?? ((args) => steamAccountsMod.pushWishlistItem({ ...args, logger }));
+
+      if (path === '/api/wishlist' && req.method === 'POST') {
+        if (!requireUser()) return;
+        const body = await readBody(req);
+        const game = await db.gameDetail(q, { steamAppid: Number(body.appid) || null, gameId: Number(body.gameId) || null, userId: user.id });
+        if (!game) return json(res, 404, { error: '没有该游戏' });
+        // 只接受当前用户自己的账号，其余静默丢弃
+        const accounts = await steamAccountsMod.listUserAccounts(q, user.id);
+        const mine = new Set(accounts.map((a) => a.steam_id));
+        const chosen = [...new Set((Array.isArray(body.steamIds) ? body.steamIds : []).map(String).filter((s) => /^\d{17}$/.test(s)))];
+        const steamIds = chosen.filter((s) => mine.has(s));
+        await steamAccountsMod.addUserWishlist(q, { userId: user.id, gameId: game.id, steamIds });
+
+        const added = [];
+        const failed = [];
+        if (game.steam_appid != null) {
+          const byId = new Map(accounts.map((a) => [a.steam_id, a]));
+          for (const steamId of steamIds) {
+            if (!byId.get(steamId)?.api_key_set) {
+              failed.push({ steamId, reason: '该账号未配置 API Key' });
+              continue;
+            }
+            const encRow = await q('select api_key_enc from steam_accounts where steam_id = $1', [steamId]);
+            let apiKey = null;
+            try {
+              const auth = await import('./email-auth.js');
+              apiKey = auth.decryptSecret(encRow.rows[0]?.api_key_enc, auth.loadSecretKey());
+            } catch {
+              apiKey = null;
+            }
+            if (!apiKey) {
+              failed.push({ steamId, reason: 'API Key 解密失败' });
+              continue;
+            }
+            const result = await pushWishlist({ steamId, apiKey, appid: game.steam_appid, action: 'add' });
+            if (result.ok) {
+              // 乐观写 steam_wishlist：Steam 若实际未接受，每日同步会差集删除兜底
+              await q(
+                'insert into steam_wishlist (steam_id, appid, name, synced_at) values ($1, $2, $3, now()) ' +
+                  'on conflict (steam_id, appid) do update set synced_at = now()',
+                [steamId, game.steam_appid, game.name ?? null],
+              );
+              added.push(steamId);
+            } else {
+              failed.push({ steamId, reason: result.reason ?? 'Steam 推送失败' });
+            }
+          }
+        }
+        logger?.info('steam.wishlist_manual_add', {
+          userId: user.id,
+          gameId: game.id,
+          appid: game.steam_appid ?? null,
+          steamIds,
+          added,
+          failed: failed.map((f) => f.steamId),
+        });
+        return json(res, 200, { ok: true, appid: game.steam_appid ?? null, added, failed });
+      }
+
+      const wishDel = path.match(/^\/api\/wishlist\/(\d+)$/);
+      const wishDelById = path.match(/^\/api\/wishlist\/id\/(\d+)$/);
+      if ((wishDel || wishDelById) && req.method === 'DELETE') {
+        if (!requireUser()) return;
+        const game = wishDel
+          ? await db.gameDetail(q, { steamAppid: Number(wishDel[1]) })
+          : await db.gameDetail(q, { gameId: Number(wishDelById[1]) });
+        if (!game) return json(res, 404, { error: '没有该游戏' });
+        const appid = game.steam_appid;
+        const removed = await steamAccountsMod.removeUserWishlist(q, { userId: user.id, gameId: game.id });
+        // 回推删除：用户添加时选过的账号 ∪ 愿望单里实际有它的账号（只处理配了 key 的）
+        const targets = [
+          ...new Set([
+            ...(removed.steamIds ?? []),
+            ...(appid != null ? await steamAccountsMod.accountsWithWishlistAppid(q, { userId: user.id, appid }) : []),
+          ]),
+        ];
+        const accounts = await steamAccountsMod.listUserAccounts(q, user.id);
+        const byId = new Map(accounts.map((a) => [a.steam_id, a]));
+        const removedFromSteam = [];
+        const failed = [];
+        for (const steamId of targets) {
+          if (!byId.get(steamId)?.api_key_set) continue; // 没配 key 推不了删除，留给同步对账
+          const encRow = await q('select api_key_enc from steam_accounts where steam_id = $1', [steamId]);
+          let apiKey = null;
+          try {
+            const auth = await import('./email-auth.js');
+            apiKey = auth.decryptSecret(encRow.rows[0]?.api_key_enc, auth.loadSecretKey());
+          } catch {
+            apiKey = null;
+          }
+          if (!apiKey) continue;
+          const result = await pushWishlist({ steamId, apiKey, appid, action: 'remove' });
+          if (result.ok) {
+            await q('delete from steam_wishlist where steam_id = $1 and appid = $2', [steamId, appid]);
+            removedFromSteam.push(steamId);
+          } else {
+            failed.push({ steamId, reason: result.reason ?? 'Steam 推送失败' });
+          }
+        }
+        await steamAccountsMod.cleanupAutoWatches(q, user.id);
+        logger?.info('steam.wishlist_manual_remove', {
+          userId: user.id,
+          gameId: game.id,
+          appid,
+          targets,
+          removedFromSteam,
+          failed: failed.map((f) => f.steamId),
+        });
+        return json(res, 200, { ok: true, removed: removed.removed, removedFromSteam, failed });
       }
 
       // ---- 管理员：游戏同步概览（待同步数量统计）----
@@ -2306,8 +2432,9 @@ export function startApiServer({
   getSetupState = null,
   imageFetch = null,
   steamVerify = null,
+  steamWishlistPush = null,
 }) {
-  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify });
+  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, steamWishlistPush });
   // 黑名单定时刷新（管理端增删后也会即时刷新；unref 不阻止进程退出）
   const blockTimer = setInterval(() => {
     visitors.refreshBlocklist(query).catch(() => {});
