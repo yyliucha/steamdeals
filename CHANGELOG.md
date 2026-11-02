@@ -2,6 +2,30 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.6.0] - 2026-11-02
+
+### 新增
+
+- **手动愿望单 + 推送到 Steam 账号**：前台游戏卡/详情新增「愿望单」按钮——加入本站的同时
+  写进所选 Steam 账号的愿望单；绑定 1 个账号直接推送，多个账号弹窗多选（可「仅加入本站」）。
+  新表 `user_wishlist` 存手动愿望单（`steam_ids` 记录推送账号），前台「愿望单」推导 =
+  手动 ∪ Steam 同步；手动项同样自动加入价提醒（`watchlist.source='user_wishlist'`，史低提醒）
+- **每账号自配 API Key**：Steam 写愿望单必须用该账号自己注册的 Web API Key
+  （`IWishlistService/AddToWishlist` 未文档化接口，见 [STEAM-ACCOUNTS.md §16](docs/STEAM-ACCOUNTS.md)）。
+  后台「Steam 账号 → API Key」配置，AES-256-GCM 密文存储、不回显；未配 Key 的账号同步不受影响，
+  只是不能推送/回推
+- **移除同步回推**：`DELETE /api/wishlist/:appid` 清站点行与自动提醒，并向「添加时选过的账号 ∪
+  愿望单里持有该条目的账号」推 `RemoveFromWishlist`；推送失败只记日志，由每日同步对账收敛
+
+### 变更
+
+- 愿望单推送采用防御式解析：HTTP 2xx 且响应无显式 `success:false` 即成功；成功乐观写
+  `steam_wishlist`，Steam 若实际未接受，每日 `steam-accounts` 同步差集删除兜底
+- 新增日志事件：`adapter.steam.wishlist_add_ok/_failed`、`adapter.steam.wishlist_remove_ok/_failed`、
+  `steam.wishlist_manual_add/remove`（带 steamId / appid / 原因）
+
+> **已知限制**：AddToWishlist 属未文档化接口，真实行为需服务器上线后实测验证（本机无 Steam 出口）。
+
 ## [1.5.0] - 2026-11-02
 
 ### 新增

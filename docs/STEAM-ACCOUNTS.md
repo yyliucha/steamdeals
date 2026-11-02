@@ -1,6 +1,6 @@
 # Steam 多账号绑定与「已拥有 / 愿望单」同步（规格，已实现）
 
-> 状态：**v1.5.0 已发布（2026-11-02）；§16「手动愿望单 + Steam 推送」为后续增强，已实现待发版**。本文档是实现的唯一依据，改动前先读完全文。
+> 状态：**v1.5.0 已发布；§16「手动愿望单 + Steam 推送」已实现并发布（v1.6.0，2026-11-02）**。本文档是实现的唯一依据，改动前先读完全文。
 > 实现落点：`src/steam-accounts.js`（同步/对账/认领/解绑）、`src/steam-login.js`（schema、OpenID state、
 > `fetchWishlist`）、`src/store/pg.js`（推导 SQL）、`src/server.js`（API 路由）、`src/cli.js`
 > （`steam-accounts` / `steam-claim`）、`src/scheduler.js`（`steam-accounts` 每日任务 + `steam-claim`
@@ -236,7 +236,7 @@ delete from steam_wishlist where steam_id = $1 and appid <> all($2::int[]);
 - 不做"好友/家庭共享库"（Steam Families）识别。
 - 不展示其它用户的绑定信息（管理员也没有跨用户查看入口，本期）。
 
-## 16. 手动愿望单与 Steam 推送（需求 2026-11-02，已实现待发版）
+## 16. 手动愿望单与 Steam 推送（需求 2026-11-02，已实现并发布 v1.6.0）
 
 **需求**：前台点「愿望单」除加入本站外，一并写进所选 Steam 账号的愿望单；多账号时弹窗让用户选择。
 
