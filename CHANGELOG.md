@@ -2,6 +2,15 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.4.9] - 2026-11-02
+
+### 修复
+
+- **Steam 登录校验永远失败（`snippet="[object Object]"`）**：`verifyCallback` 把 `fetchText`
+  返回的 `{ body, status, … }` 对象直接当字符串匹配，`/is_valid/` 永远匹配不上——
+  连接再正常也会判"Steam 校验失败"。改为读取 `body` 文本，并补回归测试
+  （`is_valid:true` 通过、`is_valid:false`/HTML 拒绝）。此 bug 自首次实现 OpenID 登录就存在
+
 ## [1.4.8] - 2026-11-02
 
 ### 修复

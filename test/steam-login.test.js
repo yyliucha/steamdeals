@@ -1,7 +1,27 @@
 // Steam 登录 baseUrl：只有可信反代才采纳 X-Forwarded-*，防 Host/协议伪造。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { baseUrl } from '../src/steam-login.js';
+import { baseUrl, verifyCallback } from '../src/steam-login.js';
+
+const okResponse = (body) => async () => ({
+  ok: true,
+  status: 200,
+  url: 'https://steamcommunity.com/openid/login',
+  headers: new Headers({ 'content-type': 'text/plain' }),
+  text: async () => body,
+});
+
+test('verifyCallback：正确读取 fetchText 的 body 文本（is_valid:true 才通过）', async () => {
+  const callback = new URL(
+    'https://sd.example/api/auth/steam/callback?openid.claimed_id=' +
+      encodeURIComponent('https://steamcommunity.com/openid/id/76561198123456789') +
+      '&openid.sig=x',
+  );
+  // 历史 bug：把 fetchText 返回的对象当字符串 → snippet 打印 [object Object]，这里回归住
+  assert.equal(await verifyCallback(callback, { fetchImpl: okResponse('ns:http://specs.openid.net/auth/2.0\nis_valid:true\n') }), '76561198123456789');
+  assert.equal(await verifyCallback(callback, { fetchImpl: okResponse('ns:http://specs.openid.net/auth/2.0\nis_valid:false\n') }), null, 'is_valid:false 必须拒绝');
+  assert.equal(await verifyCallback(callback, { fetchImpl: okResponse('<html>blocked</html>') }), null, '非 OpenID 响应必须拒绝');
+});
 
 const req = (headers = {}, remote = '1.2.3.4', encrypted = false) => ({
   headers,

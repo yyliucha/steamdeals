@@ -82,10 +82,9 @@ export function buildLoginUrl(base) {
 }
 
 /** 用 Steam 校验回传参数，成功返回 steamid（17 位），失败返回 null。 */
-export async function verifyCallback(url, { logger = null } = {}) {
+export async function verifyCallback(url, { logger = null, fetchImpl = null } = {}) {
   const params = new URLSearchParams(url.search);
   params.set('openid.mode', 'check_authentication');
-  let text = '';
   const post = (extra) =>
     fetchText(OPENID_ENDPOINT, {
       method: 'POST',
@@ -94,15 +93,21 @@ export async function verifyCallback(url, { logger = null } = {}) {
       timeoutMs: 20000,
       retries: 1,
       logger,
+      ...(fetchImpl ? { fetchImpl } : {}),
       ...extra,
     });
+  // fetchText 返回 { body, status, … } 对象，这里要的是 body 文本。
+  // 历史 bug：直接把整个对象当字符串匹配，`/is_valid/` 永远匹配不上，
+  // 日志里 snippet 打印 "[object Object]"（连接通了也会判失败）。
+  const read = (resp) => resp?.body ?? String(resp ?? '');
+  let text = '';
   try {
-    text = await post({});
+    text = read(await post({}));
   } catch (err) {
     // 代理可能把 steamcommunity 的连接重置：再直连试一次（国内直连有时反而通）
     logger?.warn('steam.openid_retry_direct', { message: String(err.message).slice(0, 120) });
     try {
-      text = await post({ forceDirect: true, retries: 0 });
+      text = read(await post({ forceDirect: true, retries: 0 }));
     } catch (err2) {
       logger?.warn('steam.openid_failed', { message: String(err2.message).slice(0, 160) });
       return null;
