@@ -86,3 +86,16 @@
    调度器认领任务（`STEAM_CLAIM_USERNAME`/`STEAM_CLAIM_STEAM_ID`）供存量 FF 账号迁移。
 
 上线后部署人员无需手工跑任何命令：升级后 `steam-accounts` 每日任务自动同步；认领走后台按钮或调度器配置。
+
+## H. 待开发：DLC 统计问题（已定位，2026-11-02）
+
+**状态：已定位、需求文档已写、待开发**（见 [docs/STEAM-DLC.md](STEAM-DLC.md)）。
+
+- 现象：后台「Steam 账号」页 DLC 恒为 0；某行显示 `0*`。
+- 根因：`IPlayerService/GetOwnedGames` **只返回游戏、不含 DLC 拥有记录**（Steam 公开 API 无此数据），
+  当前 DLC 数依赖 `steam_games` 中出现 `app_type='dlc'` 的行 → 天然 0。`*` = 前端 `type_unknown>0`
+  的标记（拥有条目在 CN 商店取不到类型，锁区/下架，`backfillOwnedAppTypes` 也补不上）。
+- 推荐方案 A：DLC 列改显 `—` + 说明 tooltip（或删除该列），同步提示去掉"其中 DLC N 款"，
+  `*` 的文案改为"锁区/下架条目无法自动补全"。若要真 DLC 拥有数据，只能走 Steam 登录态
+  cookie（dynamicstore），安全代价高，需所有者拍板（详见文档 §3/§6）。
+- 验收：见 [docs/STEAM-DLC.md](STEAM-DLC.md) §5。
