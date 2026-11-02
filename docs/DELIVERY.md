@@ -180,18 +180,17 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 
 ---
 
-### 当前状态（2026-11-02 更新，v1.4.9 已构建）
+### 当前状态（2026-11-02 更新，v1.4.9 已部署）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
-- **v1.4.9 已构建**（tag `v1.4.9` → 提交 `d2d3109`；`docker-hub` 与 `docker-tcr` 双绿，2026-11-02 10:58 确认）：
-  修复 OpenID 校验把 fetchText 对象当字符串的 bug（`snippet="[object Object]"`）——连接通了也判失败。
-  TCR 有 `1.4.9` / `latest` / `sha-d2d3109…`；Docker Hub 有 `1.4.9` / `1.4` / `latest`。
-- **v1.4.8 已构建**（`fe86d35`）：支持 https 代理（自签放行），解决 community 的 DPI 重置。
-- **v1.4.7 已构建**（`4295ee9`）：游戏目录指标卡即筛选。v1.4.6（`ffb3a7b`）：「同步与回填」页精简 + 时区设置化 + 侧栏版本徽标修复。
-- **服务器现状：已部署 v1.4.5**；升级由部署人员按第 4 节执行（**建议直接升到 `1.4.9`**，一步带全）。
-  升级后 Steam 登录三要素：① 系统设置 Steam 专用代理 = `https://steambot1:123456@43.129.196.229:8531`
-  （已保存确认）；② 点 Steam 登录；③ VM-0-7 `sudo systemctl enable stunnel4`。
-- 工作区：干净；HEAD 以最新提交为准，已同步 origin main。
+- **服务器已部署 v1.4.9**（控制台右上角显示 `v1.4.9`）。TCR/Docker Hub 均有 `1.4.9` / `latest`。
+- v1.4.9（`d2d3109`）：修复 OpenID 校验把 fetchText 对象当字符串的 bug（`snippet="[object Object]"`）。
+- v1.4.8（`fe86d35`）：支持 https 代理（自签放行），解决 community 的 DPI 重置。
+  Steam 专用代理已配置为 `https://steambot1:***@43.129.196.229:8531`（香港 VM-0-7 上 tinyproxy + stunnel）。
+  **Steam 登录是否最终成功待确认**（v1.4.9 部署后未回执）。
+- v1.4.7（`4295ee9`）：游戏目录指标卡即筛选。v1.4.6（`ffb3a7b`）：「同步与回填」页精简 + 时区设置化 + 侧栏版本徽标修复。
+- 工作区：干净；HEAD `3e0a59b`，已同步 origin main。
+- **待开发**：Steam 多账号绑定 + 已拥有/愿望单同步 —— 需求已确认，规格见 [STEAM-ACCOUNTS.md](STEAM-ACCOUNTS.md)（[TODO.md G](TODO.md)）。
 - 待探测（需服务器）：线上 heat 逐 appid 返回全 `success:false`（[TODO.md C1](TODO.md#c-线上问题--需要探测)）、
   服务器 compose 真实文件名（C2）。
