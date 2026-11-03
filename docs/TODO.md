@@ -215,3 +215,15 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   加载 /api/admin/settings、保存 POST 只提交邮件 key、secret 留空保持/勾选清空传 null、emit saved）。
 - 邮件服务页插入「邮件配置」卡；说明改「配置保存在此页，保存后立即生效」。
 - 系统设置过滤邮件 key；alerts 分组改「通知与提醒」；保存不再提交邮件 key。
+
+## O. 待开发：申诉系统改造——服务端受理 + 后台申诉管理
+
+**状态：需求与方案已确认（2026-11-03），待开发**（见 [docs/APPEAL-SYSTEM.md](APPEAL-SYSTEM.md)）。
+
+- 现状：申诉页用 `mailto:` 依赖用户本地邮件客户端；邮件只能人工处理；封禁页邮箱是页面快照（旧页面会发到旧地址）。
+- 目标：`POST /api/appeal` 入库（编号/IP/设备/原因/联系邮箱/说明）+ 通知管理员邮件；
+  后台「访问与安全 → 申诉管理」列表 + 详情 + 处理（解封 IP/设备/两者/拒绝+理由/仅备注）；
+  处理结果回邮件通知申请人；联系邮箱必填；每 IP 每小时 3 条 + 图形验证码。
+- 关键点：`/api/appeal` 要在封禁拦截里放行；邮件 `From` 用 SMTP 账号、`Reply-To` 用申请人邮箱；
+  SMTP 未配置不影响入库；处理动作联动现有解封逻辑（ip_blacklist / ip_abuse / device_bans）。
+- 依赖：先修封禁页跳转（FRONTEND-RENDER-FIX §2）。验收见文档 §8。
