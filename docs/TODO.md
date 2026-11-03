@@ -119,9 +119,9 @@ chart 后续任务串行执行。
 
 验收：见文档各节；通用验证 `npm test` + `frontend:build` + `scan`。
 
-## J. ~~待开发：PC 筛选修复 + 移动端独立设计 + 封禁标记~~ → **已实现（2026-11-03，待发版）**
+## J. ~~待开发：PC 筛选修复 + 移动端独立设计 + 封禁标记~~ → **已实现并发布（v1.9.0，2026-11-03）**
 
-**状态：代码完成并推 main，等"构建 vX.Y.Z"指令**。规格见 [docs/UX-REDESIGN-2026-11-03.md](UX-REDESIGN-2026-11-03.md)，
+**状态：已发布 v1.9.0**。规格见 [docs/UX-REDESIGN-2026-11-03.md](UX-REDESIGN-2026-11-03.md)，
 效果图见 [docs/design/](design/)（pc-home / mobile-home / mobile-filter / mobile-detail，含 HTML 源文件）。
 
 1. **PC 修复（阻断）**：筛选区恢复一行工具栏（搜索 + 4 个 132px 下拉 + 刷新）；`el-drawer` 只在移动端渲染；
