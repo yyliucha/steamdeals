@@ -182,10 +182,14 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 
 ---
 
-### 当前状态（2026-11-03 更新，v1.10.0 已发布：移动端强制 viewport 真机适配）
+### 当前状态（2026-11-03 更新，v1.11.0 已发布：前端渲染修复——抽屉/角标/复选框 + 封禁页跳转）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
+- **v1.11.0 已发布**（tag `v1.11.0`，docker-hub + docker-tcr 双绿，镜像已推送）。功能：补注册
+  ElDrawer/ElBadge/ElCheckbox/ElCheckboxGroup（修复手机筛选/我的/通知抽屉、未读角标、愿望单勾选——
+  推送到 Steam 账号首次真正可用）+ 封禁页跳转（`__BAN_PAGE__` → `/banned`）。规格见
+  [FRONTEND-RENDER-FIX.md](FRONTEND-RENDER-FIX.md)。**服务器部署待执行**（按本文第 4 节升级到 `1.11.0`）。
 - **v1.10.0 已发布**（tag `v1.10.0`，docker-hub + docker-tcr 双绿，镜像已推送）。功能：移动端真机适配——
   「桌面版网站」模式下强制 viewport（`width=390` + 禁缩放 + sessionStorage 防循环 reload）、zoom 兜底、
   `-webkit-text-size-adjust:100%`、字号/触摸基线校准、`?debug=1` 调试浮层。规格见
