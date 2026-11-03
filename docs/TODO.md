@@ -176,3 +176,14 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - v1.11.0 的 main.js router.replace 实测无效（ES module 提升），改为 serveBanPage 注入内联脚本
   history.replaceState('/banned')，无头 Edge 实测通过（pathname=/banned、.ban-card 存在、/appeal 放行）。
 - loadCaptcha 失败 ElMessage.warning + 可点击重试占位块。
+
+## M. 待开发：申诉邮箱回退链缺陷 + 新增「申诉邮箱」设置
+
+**状态：已定位，待开发**（见 [docs/APPEAL-EMAIL.md](APPEAL-EMAIL.md)）。
+
+- 现象：SMTP 已配置，但封禁/申诉页提示「站点尚未配置申诉邮箱」。
+- 根因：`server.js` 的 `appealEmail()` 用 `??` 链，`hydrateSettings` 把 `ALERT_EMAIL_TO` 写成**空字符串**
+  后 `??` 不再回退，导致 `SMTP_FROM`/`SMTP_USER` 有值也用不上。
+- 修复：回退链改 `||` 并补 `SMTP_USER`（抽成 `src/appeal.js` 便于单测）；新增设置
+  `alerts.appealEmail`（`APPEAL_EMAIL`，「邮件与提醒」分组，留空回退）；测试 51→52 + 新增 appeal 用例。
+- 线上立即恢复：compose 加 `APPEAL_EMAIL=yyliucha@163.com` 并重启（发版前唯一可靠方式）。
