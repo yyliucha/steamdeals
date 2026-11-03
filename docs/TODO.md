@@ -227,3 +227,17 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - 关键点：`/api/appeal` 要在封禁拦截里放行；邮件 `From` 用 SMTP 账号、`Reply-To` 用申请人邮箱；
   SMTP 未配置不影响入库；处理动作联动现有解封逻辑（ip_blacklist / ip_abuse / device_bans）。
 - 依赖：先修封禁页跳转（FRONTEND-RENDER-FIX §2）。验收见文档 §8。
+
+## P. 待开发：后台功能对齐（设备 tab + 合并重复游戏 + 同步历史 + 回填进度）
+
+**状态：已排查，待开发**（见 [docs/ADMIN-PARITY.md](ADMIN-PARITY.md)）。排查方法：后端 40 个 admin 路由 vs 前端调用 36 个做差集 + 旧 `web/console.html` 逐项对照。
+
+1. **设备指纹 + 设备封禁**（用户已确认方案 B）：访问记录下新增第 4 个 tab「设备」——
+   最近设备（`GET /api/admin/devices`）+ 封禁（`POST /api/admin/devices/ban`）+
+   已封设备列表（`GET /api/admin/device-bans`）+ 解封（`DELETE /api/admin/device-bans/:fingerprint`）。
+2. **合并重复游戏**：游戏目录工具栏「高级」→ 弹窗调 `POST /api/admin/games/merge`（源 AppID → 目标 AppID）。
+3. **同步运行历史**：运行日志页加「同步记录」表（`GET /api/admin/sync/runs`，时间/模式/状态/条数/耗时/备注）。
+4. **回填实时进度**（可选）：任务运行中轮询 `GET /api/admin/backfill/status` 显示百分比。
+   另：`heat/status`、`rename/status` 新旧前端都没用，属冗余接口。
+
+验收与改动点见文档 §2/§3；后端接口均已存在（除 2.4 可能需补字段）。
