@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><style>
+:root{--bg:#0f1524;--panel:#161f33;--panel2:#1a2440;--border:#26334c;--fg:#e6eaf2;--muted:#94a0b5;--brand:#8b82f5;--soft:#242347;--success:#34c39b;--warn:#f0a34c;--danger:#f0717e}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0b1020;font-family:"Microsoft YaHei","Segoe UI",sans-serif}
+.phone{width:390px;height:844px;overflow:hidden;position:relative;background:var(--bg);color:var(--fg)}
+.cover{position:relative;aspect-ratio:16/9;background:linear-gradient(120deg,#241a2e,#4a3358);display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:800;color:#ffffffd9;text-shadow:0 2px 14px #0007}
+.close{position:absolute;left:12px;top:12px;width:34px;height:34px;border-radius:50%;background:#00000066;display:grid;place-items:center;font-size:16px;color:#fff;backdrop-filter:blur(6px)}
+.dis{position:absolute;left:12px;bottom:12px;background:linear-gradient(135deg,#ff4d6d,#e8384f);color:#fff;font-size:14px;font-weight:800;padding:5px 11px;border-radius:8px}
+.body{padding:14px 16px 96px;height:calc(844px - 220px);overflow:hidden}
+.title{font-size:20px;font-weight:800;letter-spacing:-.3px}
+.sub{font-size:12px;color:#6d7a90;margin-top:4px}
+.metrics{display:flex;gap:8px;margin:14px 0}
+.metrics div{flex:1;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:9px 10px}
+.metrics span{display:block;font-size:10px;color:#6d7a90}
+.metrics b{display:block;font-size:17px;color:var(--brand);margin-top:3px}
+.metrics b.g{color:var(--success)}
+.pills{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:13px}
+.pill{font-size:11px;padding:5px 9px;border-radius:7px;border:1px solid var(--border);background:var(--panel2);color:var(--muted)}
+.pill.o{border-color:#f0a34c55;color:var(--warn);background:#f0a34c14}
+.pill.w{border-color:#8b82f555;color:#b3adff;background:#8b82f514}
+.desc{font-size:13px;line-height:1.7;color:var(--muted);display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+h4{font-size:14px;margin:16px 0 9px}
+.offer{display:flex;align-items:center;justify-content:space-between;background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:11px 12px;margin-bottom:8px;font-size:13px}
+.offer small{color:#6d7a90;font-size:11px;display:block;margin-top:2px}
+.offer b{font-size:15px}
+.actionbar{position:absolute;left:0;right:0;bottom:0;display:flex;gap:9px;padding:12px 14px 22px;background:#121a2c;border-top:1px solid var(--border)}
+.btn{flex:1;height:46px;border-radius:12px;display:grid;place-items:center;font-size:14px;font-weight:700;border:1px solid var(--border);background:var(--panel2);color:var(--fg)}
+.btn.primary{background:#4a90e2;border-color:#4a90e2;color:#fff}
+.btn.wide{flex:1.4}
+</style></head><body><div class="phone">
+<div class="cover">ASLEEP · ATO 1<div class="close">✕</div><div class="dis">-100%</div></div>
+<div class="body">
+  <div class="title">Asleep 沉睡：Ato 1</div>
+  <div class="sub">Asleep: Act 1 · Steam 国区</div>
+  <div class="metrics"><div><span>当前最低</span><b>¥42.00</b></div><div><span>历史最低</span><b class="g">¥42.00</b></div><div><span>折扣</span><b>100%</b></div></div>
+  <div class="pills"><span class="pill o">🎮 已拥有 · FF</span><span class="pill w">💜 愿望单 · FF</span><span class="pill">新史低</span></div>
+  <p class="desc">你在一间公寓里醒来，房门被反锁，屋里只有一台电脑和一封没有署名的信。随着夜晚加深，屏幕上的字开始变化——它知道你在做什么。（示例简介，实际内容以库中数据为准）</p>
+  <h4>各平台报价</h4>
+  <div class="offer"><div><b>Steam 国区</b><small>官方商店 · 库存正常</small></div><div style="text-align:right"><b style="color:var(--brand)">¥42.00</b><small>原价 ¥84.00</small></div></div>
+  <div class="offer"><div><b>杉果</b><small>激活码 · 需手动领取</small></div><div style="text-align:right"><b style="color:var(--brand)">¥45.00</b><small>历史最低 ¥42.00</small></div></div>
+</div>
+<div class="actionbar"><div class="btn">感兴趣</div><div class="btn">不感兴趣</div><div class="btn wide primary">去 Steam 购买</div></div>
+</div></body></html>

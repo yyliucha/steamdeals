@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><style>
+:root{--bg:#0f1524;--panel:#161f33;--panel2:#1a2440;--border:#26334c;--fg:#e6eaf2;--muted:#94a0b5;--brand:#8b82f5;--brand2:#38d9f0;--soft:#242347;--success:#34c39b;--warn:#f0a34c;--danger:#f0717e}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0b1020;color:var(--fg);font-family:"Microsoft YaHei","Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{width:1440px;min-height:900px;background:radial-gradient(ellipse at 50% -20%,#1b2340 0%,transparent 45%),var(--bg)}
+.topbar{height:76px;display:flex;align-items:center;justify-content:space-between;padding:0 100px;border-bottom:1px solid var(--border);background:rgba(22,31,51,.86);backdrop-filter:blur(14px)}
+.brand{display:flex;align-items:center;gap:11px;font-size:17px;font-weight:800;letter-spacing:-.3px}
+.mark{display:grid;place-items:center;width:37px;height:37px;border-radius:12px;background:linear-gradient(145deg,#8b82f5,#6d63e8);font-weight:800;font-size:18px}
+.brand small{display:block;color:var(--muted);font-size:10px;font-weight:500;letter-spacing:1px;margin-top:1px}
+.actions{display:flex;align-items:center;gap:10px}
+.ghost{border:1px solid var(--border);background:var(--panel);color:var(--fg);border-radius:9px;padding:8px 14px;font-size:12px}
+.primary{border:0;background:#4a90e2;color:#fff;border-radius:9px;padding:8px 16px;font-size:12px;font-weight:600}
+.bell{position:relative;font-size:17px;color:var(--muted);padding:0 8px}
+.bell i{position:absolute;top:-2px;right:2px;width:8px;height:8px;border-radius:50%;background:var(--danger)}
+main{max-width:1240px;margin:0 auto;padding:0 0 40px}
+.hero{display:flex;justify-content:space-between;align-items:flex-end;padding:46px 0 26px}
+.eyebrow{font-size:11px;letter-spacing:3px;color:var(--brand);font-weight:700;margin-bottom:14px}
+h1{font-size:44px;letter-spacing:-1.6px;line-height:1.15}
+.hero p{color:var(--muted);font-size:14px;margin-top:12px}
+.stat{text-align:right;font-size:12px;color:var(--muted)}
+.stat b{display:block;font-size:34px;color:var(--brand);letter-spacing:-1px;font-weight:800}
+.stat small{display:block;font-size:11px;margin-top:4px;color:#6d7a90}
+.stat .priced{display:block;margin-top:6px;font-size:11px;color:var(--muted)}
+.tabs{display:flex;gap:7px;margin-bottom:14px}
+.tabs button{border:1px solid var(--border);background:var(--panel);color:var(--muted);border-radius:9px;padding:8px 14px;font-size:12px}
+.tabs button.on{background:var(--soft);border-color:var(--soft);color:var(--brand);font-weight:700}
+.toolbar{display:flex;align-items:center;gap:10px;padding:13px 14px;background:var(--panel);border:1px solid var(--border);border-radius:15px}
+.search{flex:1;display:flex;align-items:center;gap:9px;height:38px;padding:0 13px;border:1px solid var(--border);border-radius:10px;background:var(--panel2);color:#6d7a90;font-size:13px}
+.sel{width:132px;height:38px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border:1px solid var(--border);border-radius:10px;background:var(--panel2);font-size:12px;color:var(--fg)}
+.sel span{color:#8f9ab0}
+.sel b{color:#6d7a90;font-weight:400}
+.refresh{height:38px;padding:0 18px;border:1px solid var(--border);border-radius:10px;background:var(--panel2);color:var(--fg);font-size:12px}
+.result{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin:16px 2px 13px}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:17px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;box-shadow:0 6px 22px #00000014}
+.cover{position:relative;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;letter-spacing:1px;color:#ffffffd9;text-shadow:0 2px 12px #0006}
+.cover .dis{position:absolute;left:9px;top:9px;background:linear-gradient(135deg,#ff4d6d,#e8384f);color:#fff;font-size:12px;font-weight:800;padding:3px 8px;border-radius:7px}
+.info{padding:12px 13px 13px}
+.title{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{font-size:10px;color:#6d7a90;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.price{display:flex;align-items:center;gap:8px;margin-top:9px}
+.price strong{font-size:17px;color:var(--brand);font-weight:800}
+.price del{font-size:11px;color:#6d7a90}
+.tag{font-size:10px;padding:2px 6px;border-radius:5px;border:1px solid #34c39b55;color:var(--success);background:#34c39b14}
+.foot{display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:#6d7a90}
+.buy{display:flex;gap:6px;align-items:center}
+.buy .b1{background:#4a90e2;color:#fff;border-radius:7px;padding:5px 11px;font-size:11px;font-weight:600}
+.flags{display:flex;gap:6px;margin-top:9px}
+.flags div{flex:1;text-align:center;font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:6px 0;background:var(--panel2)}
+</style></head><body><div class="wrap">
+<header class="topbar">
+  <div class="brand"><span class="mark">S</span><span>SteamDeals<small>游戏价格情报</small></span></div>
+  <div class="actions"><span class="bell">🔔<i></i></span><span style="font-size:17px">🌞</span><span style="font-size:12px;color:var(--muted)">sunboxiang</span><button class="ghost">退出</button><button class="primary">管理后台</button></div>
+</header>
+<main>
+  <section class="hero">
+    <div><div class="eyebrow">DISCOVER YOUR NEXT GAME</div><h1>好游戏，等个好价格。</h1><p>聚合 Steam 与授权平台报价，快速找到值得入手的折扣。</p></div>
+    <div class="stat"><b>198,085</b><span>款收录条目</span><small>（含 DLC/软件）</small><span class="priced">其中 106,414 款有报价</span></div>
+  </section>
+  <div class="tabs"><button class="on">全部</button><button>感兴趣</button><button>不感兴趣</button><button>已拥有</button><button>愿望单</button></div>
+  <div class="toolbar">
+    <div class="search">🔍 搜索中文名、英文名或 AppID</div>
+    <div class="sel"><span>中国大陆</span><b>▾</b></div>
+    <div class="sel"><span>全部类型</span><b>▾</b></div>
+    <div class="sel"><span>全部发行</span><b>▾</b></div>
+    <div class="sel"><span>折扣优先</span><b>▾</b></div>
+    <button class="refresh">刷新</button>
+  </div>
+  <div class="result"><span>找到 106,414 款游戏</span><span>价格与地区货币以商店显示为准</span></div>
+  <section class="grid">
+    <article class="card"><div class="cover" style="background:linear-gradient(120deg,#2b1d4a,#6b2d4f)">IMPULSON<span class="dis">-95%</span></div><div class="info"><div class="title">Impulson</div><div class="sub">Impulson</div><div class="price"><strong>¥3.00</strong><del>¥60.00</del><span class="tag">新史低</span></div><div class="foot"><span>Steam 国区</span><div class="buy"><span class="b1">购买</span><span>商店 ↗</span></div></div><div class="flags"><div>感兴趣</div><div>不感兴趣</div></div></div></article>
+    <article class="card"><div class="cover" style="background:linear-gradient(120deg,#0f3d2e,#2f7d5b)">NEON<span class="dis">-95%</span></div><div class="info"><div class="title">Neon</div><div class="sub">Neon</div><div class="price"><strong>¥3.35</strong><del>¥67.00</del></div><div class="foot"><span>Steam 国区</span><div class="buy"><span class="b1">购买</span><span>商店 ↗</span></div></div><div class="flags"><div>感兴趣</div><div>不感兴趣</div></div></div></article>
+    <article class="card"><div class="cover" style="background:linear-gradient(120deg,#3a2a10,#7a5a1e)">PARTICLE<span class="dis">-95%</span></div><div class="info"><div class="title">Particle Wars</div><div class="sub">Particle Wars</div><div class="price"><strong>¥3.35</strong><del>¥67.00</del></div><div class="foot"><span>Steam 国区</span><div class="buy"><span class="b1">购买</span><span>商店 ↗</span></div></div><div class="flags"><div>感兴趣</div><div>不感兴趣</div></div></div></article>
+    <article class="card"><div class="cover" style="background:linear-gradient(120deg,#241a2e,#4a3358)">ASLEEP<span class="dis">-100%</span></div><div class="info"><div class="title">Asleep 沉睡：Ato 1</div><div class="sub">Asleep: Act 1</div><div class="price"><strong>¥42.00</strong><span class="tag" style="border-color:#f0a34c55;color:#f0a34c;background:#f0a34c14">已拥有 · FF</span></div><div class="foot"><span>Steam 国区</span><div class="buy"><span class="b1">购买</span><span>商店 ↗</span></div></div><div class="flags"><div>感兴趣</div><div>不感兴趣</div></div></div></article>
+    <article class="card"><div class="cover" style="background:linear-gradient(120deg,#1b2b3a,#37536b)">WITCHER 3<span class="dis">-50%</span></div><div class="info"><div class="title">巫师 3：狂猎</div><div class="sub">The Witcher 3: Wild Hunt</div><div class="price"><strong>¥199.00</strong><del>¥398.00</del></div><div class="foot"><span>Steam 国区</span><div class="buy"><span class="b1">购买</span><span>商店 ↗</span></div></div><div class="flags"><div>感兴趣</div><div>不感兴趣</div></div></div></article>
+    <article class="card"><div class="cover" style="background:linear-gradient(120deg,#2c1b16,#5c2f24)">STATE OF DECAY<span class="dis">-50%</span></div><div class="info"><div class="title">State of Decay 2</div><div class="sub">Juggernaut Edition</div><div class="price"><strong>¥99.00</strong><del>¥198.00</del><span class="tag">已拥有 · Happy</span></div><div class="foot"><span>Steam 国区</span><div class="buy"><span class="b1">购买</span><span>商店 ↗</span></div></div><div class="flags"><div>感兴趣</div><div>不感兴趣</div></div></div></article>
+    <article class="card"><div class="cover" style="background:linear-gradient(120deg,#2c2f16,#5c5e24)">L4D2<span class="dis">-70%</span></div><div class="info"><div class="title">求生之路 2</div><div class="sub">Left 4 Dead 2</div><div class="price"><strong>¥35.00</strong><del>¥88.00</del></div><div class="foot"><span>Steam 国区</span><div class="buy"><span class="b1">购买</span><span>商店 ↗</span></div></div><div class="flags"><div>感兴趣</div><div>不感兴趣</div></div></div></article>
+    <article class="card"><div class="cover" style="background:linear-gradient(120deg,#1a2a2e,#2f5a66)">DEEP ROCK<span class="dis">-60%</span></div><div class="info"><div class="title">深岩银河</div><div class="sub">Deep Rock Galactic</div><div class="price"><strong>¥32.40</strong><del>¥81.00</del><span class="tag">愿望单 · FF、Happy</span></div><div class="foot"><span>Steam 国区</span><div class="buy"><span class="b1">购买</span><span>商店 ↗</span></div></div><div class="flags"><div>感兴趣</div><div>不感兴趣</div></div></div></article>
+  </section>
+</main></div></body></html>

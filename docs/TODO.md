@@ -118,3 +118,20 @@
 chart 后续任务串行执行。
 
 验收：见文档各节；通用验证 `npm test` + `frontend:build` + `scan`。
+
+## J. 待开发：PC 筛选修复 + 移动端独立设计 + 封禁标记（方案已确认 2026-11-03）
+
+**状态：需求与设计已确认，待开发**。规格见 [docs/UX-REDESIGN-2026-11-03.md](UX-REDESIGN-2026-11-03.md)，
+效果图见 [docs/design/](design/)（pc-home / mobile-home / mobile-filter / mobile-detail，含 HTML 源文件）。
+
+1. **PC 修复（阻断）**：筛选区恢复一行工具栏（搜索 + 4 个 132px 下拉 + 刷新）；`el-drawer` 只在移动端渲染；
+   窄断点覆盖规则限定作用域，PC 三档无回归。
+2. **移动端独立设计**：设备判定（matchMedia 或 screen.width<=640 && innerWidth>700）后渲染独立结构——
+   顶栏 + 搜索行 + chips + 分段 tab + 单列大卡（标题 16px/价格 21px/按钮 ≥44px）+ 底部 4 入口
+   （首页/心愿单/已拥有/我的）+ 筛选底部弹层 + 全屏详情 + 加载更多。
+3. **封禁标记**：封禁动作（自动 rate/path、手动黑名单、审核封 IP）把该 IP 的 pending 审核标记为 `auto_banned`
+   （旧记录永久退出待审，解封不恢复；之后新异常仍会生成新记录）；保留 `NOT_ACTIVE_BAN` 双保险；
+   审核列表 `status=all` 可看历史。
+4. 已发布部分（v1.8.0）不动：愿望单归属、通知中心、审核过滤（本次改为标记）。
+
+验收：见文档各节；通用验证 `npm test` + `frontend:build` + `scan`。

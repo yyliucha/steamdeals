@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><style>
+:root{--bg:#0f1524;--panel:#161f33;--panel2:#1a2440;--border:#26334c;--fg:#e6eaf2;--muted:#94a0b5;--brand:#8b82f5;--soft:#242347}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0b1020;font-family:"Microsoft YaHei","Segoe UI",sans-serif}
+.phone{width:390px;height:844px;overflow:hidden;position:relative;background:radial-gradient(ellipse at 50% -15%,#1b2340 0%,transparent 42%),var(--bg);color:var(--fg)}
+.topbar{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid var(--border);background:rgba(22,31,51,.92)}
+.brand{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:800}
+.mark{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:linear-gradient(145deg,#8b82f5,#6d63e8);font-size:15px}
+.bell{position:relative;font-size:18px;padding:0 6px}.bell i{position:absolute;top:-1px;right:1px;width:7px;height:7px;border-radius:50%;background:#f0717e}
+.menu{font-size:18px;color:var(--muted);padding:0 4px}
+.pad{padding:12px 14px}
+.searchrow{display:flex;gap:8px}
+.search{flex:1;height:40px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:11px;background:var(--panel2);border:1px solid var(--border);color:#6d7a90;font-size:13px}
+.filterbtn{height:40px;padding:0 12px;display:flex;align-items:center;gap:5px;border-radius:11px;background:var(--soft);border:1px solid #3b3a6b;font-size:13px;color:var(--brand);font-weight:700}
+.chips{display:flex;gap:7px;margin-top:10px}
+.chip{flex:none;font-size:12px;padding:6px 11px;border-radius:17px;background:var(--panel);border:1px solid var(--border);color:var(--muted)}
+.chip.on{background:var(--soft);border-color:#3b3a6b;color:var(--brand);font-weight:700}
+.segs{display:flex;gap:6px;margin:11px 14px 10px}
+.segs div{flex:1;text-align:center;font-size:13px;padding:8px 0;border-radius:9px;background:var(--panel);border:1px solid var(--border);color:var(--muted)}
+.segs div.on{background:var(--soft);border-color:#3b3a6b;color:var(--brand);font-weight:700}
+.meta{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin:0 16px 10px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin:0 14px 12px}
+.cover{position:relative;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;color:#ffffffd9;text-shadow:0 2px 14px #0007}
+.dis{position:absolute;left:10px;top:10px;background:linear-gradient(135deg,#ff4d6d,#e8384f);color:#fff;font-size:13px;font-weight:800;padding:4px 9px;border-radius:8px}
+.info{padding:13px 14px 14px}
+.title{font-size:16px;font-weight:800}
+.sub{font-size:11px;color:#6d7a90;margin-top:4px}
+.price{display:flex;align-items:center;gap:9px;margin-top:11px}
+.price strong{font-size:21px;color:var(--brand);font-weight:800}
+.price del{font-size:12px;color:#6d7a90}
+.row{display:flex;align-items:center;justify-content:space-between;margin-top:11px;padding-top:11px;border-top:1px solid var(--border);font-size:12px;color:#6d7a90}
+.buy{display:flex;align-items:center;gap:8px}
+.b1{background:#4a90e2;color:#fff;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:700}
+.flags{display:flex;gap:8px;margin-top:10px}
+.flags div{flex:1;text-align:center;font-size:13px;border:1px solid var(--border);border-radius:9px;padding:9px 0;background:var(--panel2)}
+.mask{position:absolute;inset:0;background:#00000099}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:#121a2c;border-radius:20px 20px 0 0;border-top:1px solid #2c3a56;box-shadow:0 -18px 50px #00000066;padding:8px 16px 74px}
+.grab{width:38px;height:4px;border-radius:3px;background:#3a4a6b;margin:0 auto 12px}
+.sheet h3{font-size:16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+.sheet h3 span{font-size:12px;color:var(--muted);font-weight:400}
+.sec{font-size:12px;color:var(--muted);margin:10px 0 7px}
+.opt{display:flex;flex-wrap:wrap;gap:7px}
+.opt div{font-size:13px;padding:8px 13px;border-radius:10px;background:var(--panel2);border:1px solid var(--border);color:var(--fg)}
+.opt div.on{background:#4a90e214;border-color:#4a90e2;color:#7db8ff;font-weight:700}
+.apply{width:100%;height:44px;border-radius:12px;background:#4a90e2;color:#fff;font-size:14px;font-weight:700;display:grid;place-items:center;margin-top:14px}
+.bottomnav{position:absolute;left:0;right:0;bottom:0;height:56px;display:flex;border-top:1px solid var(--border);background:#121a2c;padding-bottom:6px}
+.bottomnav div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:10px;color:#6d7a90}
+.bottomnav div.on{color:var(--brand);font-weight:700}
+.bottomnav em{font-size:17px;font-style:normal}
+</style></head><body><div class="phone">
+<header class="topbar"><div class="brand"><span class="mark">S</span><span>SteamDeals</span></div><div style="display:flex;align-items:center"><span class="bell">🔔<i></i></span><span class="menu">☰</span></div></header>
+<div class="pad"><div class="searchrow"><div class="search">🔍 搜索游戏 / AppID</div><div class="filterbtn">☰ 筛选</div></div>
+<div class="chips"><div class="chip on">中国大陆 ▾</div><div class="chip">全部类型 ▾</div><div class="chip">折扣优先 ▾</div></div></div>
+<div class="segs"><div class="on">全部</div><div>感兴趣</div><div>不感兴趣</div></div>
+<div class="meta"><span>找到 106,414 款</span><span>价格以商店为准</span></div>
+<article class="card"><div class="cover" style="background:linear-gradient(120deg,#2b1d4a,#6b2d4f)">IMPULSON<div class="dis">-95%</div></div><div class="info"><div class="title">Impulson</div><div class="sub">Impulson · Steam 国区</div><div class="price"><strong>¥3.00</strong><del>¥60.00</del></div><div class="row"><span>Steam 国区</span><div class="buy"><span class="b1">购买</span><span>商店 ↗</span></div></div></div></article>
+<article class="card" style="margin-bottom:0"><div class="cover" style="background:linear-gradient(120deg,#241a2e,#4a3358)">ASLEEP<div class="dis">-100%</div></div><div class="info"><div class="title">Asleep 沉睡：Ato 1</div><div class="sub">Asleep: Act 1 · Steam 国区</div><div class="price"><strong>¥42.00</strong></div></div></article>
+<div class="mask"></div>
+<div class="sheet">
+  <div class="grab"></div>
+  <h3>筛选与排序 <span>重置</span></h3>
+  <div class="sec">地区</div>
+  <div class="opt"><div class="on">中国大陆</div><div>中国香港</div><div>中国台湾</div><div>美国</div></div>
+  <div class="sec">游戏类型</div>
+  <div class="opt"><div class="on">全部</div><div>游戏</div><div>DLC</div></div>
+  <div class="sec">排序</div>
+  <div class="opt"><div class="on">折扣优先</div><div>价格优先</div><div>名称排序</div></div>
+  <div class="apply">应用筛选</div>
+</div>
+<nav class="bottomnav"><div class="on"><em>🏠</em>首页</div><div><em>💜</em>心愿单</div><div><em>🎮</em>已拥有</div><div><em>👤</em>我的</div></nav>
+</div></body></html>
