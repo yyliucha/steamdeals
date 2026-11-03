@@ -2,6 +2,21 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布] - 2026-11-03
+
+### 新增
+
+- **后台功能对齐（docs/ADMIN-PARITY.md）**：
+  - 「访问与安全」新增第 4 个 tab「设备」：最近设备表（`GET /api/admin/devices`）+ 按时长封禁
+    （10 分钟/1 小时/1 天/永久，`POST /api/admin/devices/ban`）+ 已封设备表（`GET /api/admin/device-bans`）
+    + 解封（`DELETE /api/admin/device-bans/:fingerprint`，二次确认）
+  - 游戏目录工具栏「高级」→「合并重复游戏」弹窗（源/目标 AppID → `POST /api/admin/games/merge`，
+    成功提示迁移/去重条数并刷新列表）
+  - 运行日志页新增「同步记录」表（`GET /api/admin/sync/runs`，列：开始时间/模式/状态/请求数/总量/
+    成功/跳过/失败/耗时/备注，失败行标红）；后端 `listSyncRuns` 附带同一轮 fetch_runs 汇总
+  - 任务实时进度：任务运行中轮询 `GET /api/admin/backfill/status`，显示
+    `已完成 X / 总 Y（Z%）· 速度 N 款/分钟 · 预计剩余 M 分钟`
+
 ## [1.12.1] - 2026-11-03
 
 ### 修复

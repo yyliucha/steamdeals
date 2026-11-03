@@ -241,3 +241,10 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
    另：`heat/status`、`rename/status` 新旧前端都没用，属冗余接口。
 
 验收与改动点见文档 §2/§3；后端接口均已存在（除 2.4 可能需补字段）。
+
+## P. ~~待开发：后台功能对齐（ADMIN-PARITY）~~ → **已实现（2026-11-03，待发版）**
+
+**状态：代码完成并推 main，等构建指令**。规格见 [docs/ADMIN-PARITY.md](ADMIN-PARITY.md)。
+
+- 设备 tab（最近设备/时长封禁/已封设备/解封）；游戏目录「高级」合并重复游戏；
+  运行日志页「同步记录」表（后端 listSyncRuns 附带 fetch_runs 汇总）；任务实时进度轮询。

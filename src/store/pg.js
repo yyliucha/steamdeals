@@ -1769,9 +1769,21 @@ export async function finishSyncRun(q, id, { status = 'ok', exitCode = null, out
 }
 
 export async function listSyncRuns(q, { limit = 20 } = {}) {
+  // 附带同一轮任务在 fetch_runs 里的汇总（按 mode + 时间窗口就近匹配，取不到为 null）
   const r = await q(
-    'select id, mode, args, status, exit_code, output, started_at, finished_at ' +
-    'from sync_runs order by id desc limit $1',
+    `select sr.id, sr.mode, sr.args, sr.status, sr.exit_code, sr.output, sr.started_at, sr.finished_at,
+            fr.requests, fr.total, fr.ok, fr.skipped, fr.failed, fr.note as fetch_note
+       from sync_runs sr
+       left join lateral (
+         select requests, total, ok, skipped, failed, note
+           from fetch_runs
+          where platform_code = sr.mode
+            and started_at between sr.started_at - interval '3 minutes'
+                              and coalesce(sr.finished_at, now()) + interval '3 minutes'
+          order by abs(extract(epoch from (started_at - sr.started_at)))
+          limit 1
+       ) fr on true
+      order by sr.id desc limit $1`,
     [Math.min(Math.max(Number(limit) || 20, 1), 100)],
   );
   return r.rows;
