@@ -99,9 +99,13 @@ assert.equal(appealEmailFrom({}), '');
 
 ## 5. 线上临时缓解（无需发版）
 
-在「系统设置 → 邮件与提醒 → 发件人」填 `yyliucha@163.com` 并保存——保存后 `SMTP_FROM` 有值，
-但**注意**：由于 §2 的 `??` 缺陷，只要 `ALERT_EMAIL_TO` 被水合为 `''`，当前版本仍会返回空。
-因此线上要立即恢复申诉邮箱，只有两条路：
+当前版本的 `appealEmail()` 只认链上**第一个非空**值，顺序：`APPEAL_EMAIL → ALERT_EMAIL_TO → SMTP_FROM`。
+因此线上立即恢复只有三个有效做法（按省事程度）：
 
-- 在 **compose 环境变量**里设 `APPEAL_EMAIL=yyliucha@163.com` 并重启（`process.env.APPEAL_EMAIL` 非空，`??` 直接取它）；
-- 或等本修复发版后，在设置页填「申诉邮箱」或直接依赖 SMTP 账号回退。
+1. **填「邮件收件人」**（`ALERT_EMAIL_TO`，系统设置 → 邮件与提醒）：它是链上第二位，填了就能被取到，
+   保存后热加载即生效，**不用重启**（推荐，最快）；
+2. **compose 加 `APPEAL_EMAIL=yyliucha@163.com` 并重启**：`process.env.APPEAL_EMAIL` 非空，`??` 直接取它；
+3. 等本修复发版后，在设置页填「申诉邮箱」，或依赖 `SMTP_FROM → SMTP_USER` 回退。
+
+> 注意：**只填「发件人」在当前版本不生效**——`SMTP_FROM` 是链上第三位，会被第二位的水合空串
+> `ALERT_EMAIL_TO=''` 截断（§2 的缺陷）。这点容易踩坑，文档特意写明。
