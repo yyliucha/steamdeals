@@ -108,6 +108,9 @@ export const SETTINGS = [
   def('alerts.smtp.user', 'SMTP_USER', 'alerts', 'SMTP 账号', 'string', '', { store: 'smtp', column: 'username' }),
   def('alerts.smtp.pass', 'SMTP_PASS', 'alerts', 'SMTP 授权码', 'secret', '', { store: 'smtp', column: 'password_enc', help: 'QQ/163 使用授权码，不是登录密码。' }),
   def('alerts.smtp.from', 'SMTP_FROM', 'alerts', '发件人', 'string', '', { store: 'smtp', column: 'from_addr', help: '留空则使用 SMTP 账号。' }),
+  def('alerts.appealEmail', 'APPEAL_EMAIL', 'alerts', '申诉邮箱', 'string', '', {
+    help: '封禁页/申诉页展示的邮箱。留空则依次回退到：邮件收件人 → 发件人 → SMTP 账号。',
+  }),
 
   // ---- 网络 ----
   def('network.steamProxy', 'STEAM_PROXY', 'network', 'Steam 专用代理', 'secret', '', {

@@ -198,3 +198,11 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - 实现：`utils/settings.js` 的 `MAIL_SETTING_KEYS` + 新增 `MailSettingsForm.vue`（加载/渲染/保存，
   secret 留空保持原值、清空传 null）；AdminModules 的 `fieldsByGroup` 过滤邮件 key。后端零改动。
 - 依赖：先做 M（申诉邮箱设置项 + 回退链修复）；验收见文档 §5。
+
+## N. ~~待开发：申诉邮箱回退链缺陷~~ → **已实现（2026-11-03，待发版）**
+
+**状态：代码完成并推 main，等构建指令（建议版本 1.12.1）**。规格见 [docs/APPEAL-EMAIL.md](APPEAL-EMAIL.md)。
+
+- 根因：appealEmail() 用 ?? 链，水合空串截断回退 → SMTP_FROM/SMTP_USER 有值也取不到。
+- 修复：新增 src/appeal.js appealEmailFrom（|| 链 + trim，四级回退）；server.js 改用；
+  设置新增「申诉邮箱」（alerts.appealEmail，string，留空回退）；测试 52 项 + test/appeal.test.js。

@@ -2,6 +2,15 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布] - 2026-11-03
+
+### 修复
+
+- **申诉邮箱回退链被空串截断**：`appealEmail()` 原来用 `??` 链，而设置水合会把未填的
+  `ALERT_EMAIL_TO` 写成空字符串（非 null），导致「发件人/SMTP 账号」明明有值也取不到——
+  新增 `src/appeal.js` 的 `appealEmailFrom`（`||` 链 + trim：申诉邮箱 → 邮件收件人 → 发件人 → SMTP 账号）；
+  新增系统设置「申诉邮箱」（`alerts.appealEmail`，留空按上述顺序回退，保存即热加载）
+
 ## [1.12.0] - 2026-11-03
 
 ### 修复

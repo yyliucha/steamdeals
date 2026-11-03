@@ -25,6 +25,7 @@ import * as settings from './settings.js';
 import { handleSetupRoutes } from './setup-routes.js';
 import { sessionCookie } from './session-cookie.js';
 import { handleSettingsRoutes } from './settings-routes.js';
+import { appealEmailFrom } from './appeal.js';
 import { ensureSteamSchemaOnce } from './steam-login.js';
 
 const TYPES = {
@@ -297,8 +298,8 @@ export function createApiServer({
   };
 
   const siteName = () => String(process.env.SITE_NAME ?? 'SteamDeals').trim() || 'SteamDeals';
-  const appealEmail = () =>
-    String(process.env.APPEAL_EMAIL ?? process.env.ALERT_EMAIL_TO ?? process.env.SMTP_FROM ?? '').trim();
+  // 申诉邮箱回退链（|| 链 + trim，见 src/appeal.js）：水合的空串不再截断回退
+  const appealEmail = () => appealEmailFrom(process.env);
 
   /** 统一的封禁响应：浏览器给提示页，API/脚本给纯文本。 */
   const denyBanned = (req, res, { status = 403, until = null, reason = '访问被拒绝', ip = null } = {}) => {
