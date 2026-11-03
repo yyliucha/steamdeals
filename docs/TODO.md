@@ -87,16 +87,16 @@
 
 上线后部署人员无需手工跑任何命令：升级后 `steam-accounts` 每日任务自动同步；认领走后台按钮或调度器配置。
 
-## H. 待开发：DLC 统计问题（已定位，2026-11-02）
+## H. ~~待开发：DLC 统计问题~~ → **已实现（方案 A，2026-11-02，提交 `09fe7dd`，待发版）**
 
-**状态：方案已确认（A，2026-11-02），待开发**（见 [docs/STEAM-DLC.md](STEAM-DLC.md)）。
+**状态：方案 A 已实现并推 main**（见 [docs/STEAM-DLC.md](STEAM-DLC.md)）。
 
 - 现象：后台「Steam 账号」页 DLC 恒为 0；某行显示 `0*`。
 - 根因：`IPlayerService/GetOwnedGames` **只返回游戏、不含 DLC 拥有记录**（Steam 公开 API 无此数据），
   当前 DLC 数依赖 `steam_games` 中出现 `app_type='dlc'` 的行 → 天然 0。`*` = 前端 `type_unknown>0`
   的标记（拥有条目在 CN 商店取不到类型，锁区/下架，`backfillOwnedAppTypes` 也补不上）。
-- **方案 A（已确认）**：删除「DLC」列与 `*` 标记，账号列表上方加说明「Steam API 不返回 DLC 拥有数据」；
-  同步提示去掉"其中 DLC N 款"；`type_unknown` 只留日志；STEAM-ACCOUNTS/README 已知限制补一行。
+- **方案 A（已实现）**：删除「DLC」列与 `*` 标记，账号列表上方加说明「Steam API 不返回 DLC 拥有数据」；
+  同步提示去掉"其中 DLC N 款"；`type_unknown` 只留日志；STEAM-ACCOUNTS/README 已知限制已补。
   不采用方案 B（可购买 DLC 总和，误导）与方案 C（Steam 登录态 cookie，安全代价高）。
 - 验收：见 [docs/STEAM-DLC.md](STEAM-DLC.md) §5。
 

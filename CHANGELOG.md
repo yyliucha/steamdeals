@@ -29,6 +29,13 @@
 - **自动封禁的 IP 不再出现在「异常审核」待审列表与计数**（`listAbuseReviews`/`countPendingReviews`
   排除 `ip_abuse.banned_until > now()`；只过滤显示不改状态，解封后自动恢复）
 
+### 变更
+
+- **移除账号库「DLC」列与 `*` 标记**：`IPlayerService/GetOwnedGames` 只返回游戏、不含 DLC 拥有记录
+  （Steam 公开 API 限制），DLC 数天然恒为 0 且易误导——账号列表上方改为诚实说明
+  「Steam API 不返回 DLC 拥有数据」，同步提示去掉「其中 DLC N 款」；`type_unknown` 仅留日志/诊断
+  （方案 A，见 [docs/STEAM-DLC.md](docs/STEAM-DLC.md)）
+
 ## [1.7.0] - 2026-11-02
 
 ### 新增
