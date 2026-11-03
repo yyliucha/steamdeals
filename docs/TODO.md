@@ -171,3 +171,11 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 验收：手机 390×844 点筛选/我的/铃铛均正常打开；未读角标显示；愿望单可勾选账号并推送；
 模拟封禁后刷新进入封禁页、可进 /appeal；管理员/白名单不受影响；`npm test` + `frontend:build` + `scan` 通过。
+
+## L. ~~待开发：前端渲染修复（抽屉/角标/复选框未注册 + 封禁页跳转）~~ → **已实现（2026-11-03，待发版）**
+
+**状态：代码完成并推 main，等构建指令**。规格见 [docs/FRONTEND-RENDER-FIX.md](FRONTEND-RENDER-FIX.md)。
+
+- main.js 补注册 ElDrawer/ElBadge/ElCheckbox/ElCheckboxGroup（修复移动筛选/我的/通知抽屉/角标/愿望单勾选，
+  推送到 Steam 账号自 v1.6.0 起首次可用）；mount 前读取 __BAN_PAGE__ 跳 /banned（/appeal 除外）。
+- 新增 test/frontend-registration.test.js 静态防回归；验收见文档 §1/§2。

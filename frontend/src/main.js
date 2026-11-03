@@ -1,9 +1,12 @@
 import { createApp } from 'vue';
-import { ElAlert, ElButton, ElConfigProvider, ElDialog, ElEmpty, ElForm, ElFormItem, ElIcon, ElInput, ElOption, ElPagination, ElSelect, ElSkeleton, ElSwitch, ElTag } from 'element-plus';
+import { ElAlert, ElBadge, ElButton, ElCheckbox, ElCheckboxGroup, ElConfigProvider, ElDialog, ElDrawer, ElEmpty, ElForm, ElFormItem, ElIcon, ElInput, ElOption, ElPagination, ElSelect, ElSkeleton, ElSwitch, ElTag } from 'element-plus';
 import 'element-plus/es/components/alert/style/css';
+import 'element-plus/es/components/badge/style/css';
 import 'element-plus/es/components/button/style/css';
+import 'element-plus/es/components/checkbox/style/css';
 import 'element-plus/es/components/config-provider/style/css';
 import 'element-plus/es/components/dialog/style/css';
+import 'element-plus/es/components/drawer/style/css';
 import 'element-plus/es/components/empty/style/css';
 import 'element-plus/es/components/form/style/css';
 import 'element-plus/es/components/icon/style/css';
@@ -40,8 +43,7 @@ window.addEventListener('resize', function () {
 });
 
 const app = createApp(App);
-for (const component of [ElAlert, ElButton, ElConfigProvider, ElDialog, ElEmpty, ElForm, ElFormItem, ElIcon, ElInput, ElOption, ElPagination, ElSelect, ElSkeleton, ElTag]) app.use(component);
-app.use(ElSwitch);
+for (const component of [ElAlert, ElBadge, ElButton, ElCheckbox, ElCheckboxGroup, ElConfigProvider, ElDialog, ElDrawer, ElEmpty, ElForm, ElFormItem, ElIcon, ElInput, ElOption, ElPagination, ElSelect, ElSkeleton, ElSwitch, ElTag]) app.use(component);
 let adminUiReady = false;
 router.beforeEach(async (to) => {
   if (to.path === '/console' && !adminUiReady) {
@@ -50,4 +52,9 @@ router.beforeEach(async (to) => {
     adminUiReady = true;
   }
 });
+// 封禁页（docs/FRONTEND-RENDER-FIX.md §2）：服务端已把 __BAN_PAGE__ 注入 index.html，
+// 这里负责渲染它——被封用户刷新任意路径直接看到封禁卡片；/banned 与 /appeal 不跳（避免申诉死循环）。
+if (window.__BAN_PAGE__ && location.pathname !== '/banned' && location.pathname !== '/appeal') {
+  router.replace('/banned');
+}
 app.use(router).mount('#app');

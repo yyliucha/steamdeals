@@ -2,6 +2,19 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布] - 2026-11-03
+
+### 修复
+
+- **抽屉/角标/复选框未注册（v1.6.0 起的隐性 bug）**：main.js 补注册 `ElDrawer`/`ElBadge`/
+  `ElCheckbox`/`ElCheckboxGroup`（含样式）——此前 `<el-drawer>` 等被当普通标签渲染，导致手机
+  筛选/我的菜单/通知抽屉点不开、内容铺在页面流里、未读角标不显示、愿望单弹窗无法勾选账号
+  （**推送到 Steam 账号从未真正可用**）
+- **封禁页入口**：main.js 在 mount 前读取服务端注入的 `window.__BAN_PAGE__` 并
+  `router.replace('/banned')`（`/banned`、`/appeal` 除外防死循环）——被封用户刷新任意路径
+  直接看到封禁卡片与「申请解封」入口
+- 新增 `test/frontend-registration.test.js` 静态防回归断言（组件注册 + __BAN_PAGE__ 跳转）
+
 ## [1.10.0] - 2026-11-03
 
 ### 修复
