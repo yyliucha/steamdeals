@@ -147,3 +147,12 @@ chart 后续任务串行执行。
   `?debug=1` 显示 innerWidth/screen.width/DPR/isMobile 浮层。
 - 自检：文档 §4 的 14 项真机清单（搜索/筛选/排序/加载更多/卡片操作/详情/登录/绑定/通知/我的/底部导航/桌面版模式）。
 - 验收：红米真机 14 项全过；PC 无回归；`frontend:build` + `npm test` 通过。
+
+## K. ~~待开发：移动端真机适配（强制 viewport）~~ → **已实现（2026-11-03，待发版）**
+
+**状态：代码完成并推 main，等构建指令**。规格见 [docs/MOBILE-VIEWPORT.md](MOBILE-VIEWPORT.md)。
+
+红米 K100 Pro Max 实测「桌面版网站」模式下字体小/按钮点不中：根因是布局视口 ~980px 缩放。
+修复：index.html 内联改写 viewport（width=390 + 禁缩放 + sessionStorage 防循环 reload）、
+main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 调试浮层。
+真机 14 项自检清单待部署后在红米 K100 Pro Max 上逐项验证（部署由所有者执行）。

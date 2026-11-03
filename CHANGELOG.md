@@ -2,6 +2,19 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布] - 2026-11-03
+
+### 修复
+
+- **移动端真机适配（强制 viewport）**：红米 K100 Pro Max 实测「桌面版网站」模式下字体小、按钮点不中——
+  根因是布局视口仍按 ~980px 缩放。修复：`frontend/index.html` 内联脚本在
+  `screen.width<=640 && innerWidth>700` 时改写 viewport 为 `width=390, initial-scale=1,
+  maximum-scale=1, user-scalable=no`（sessionStorage 防循环 reload 一次）；main.js 提供 zoom
+  兜底（meta 无效内核）；`-webkit-text-size-adjust:100%` 防系统二次缩放；移动端字号基线校准
+  （正文 ≥14px、tab 15px、底部导航 56px + 安全区、抽屉内容 `max-height:70vh` 滚动）；
+  新增 `?debug=1` 调试浮层（innerWidth/screen.width/DPR/isMobile/desktopMode/UA）供真机截图自检。
+  真机 14 项清单见 [docs/MOBILE-VIEWPORT.md §4](docs/MOBILE-VIEWPORT.md)
+
 ## [1.9.0] - 2026-11-03
 
 ### 新增

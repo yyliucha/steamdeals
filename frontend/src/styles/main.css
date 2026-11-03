@@ -6,6 +6,8 @@
 
 /* ===== 2026-11-03 二批：PC 筛选修复（工具栏下拉固定宽度，窄断点规则不碰 PC） ===== */
 .toolbar .el-select{flex:0 0 132px;width:132px}
+/* 移动端真机基线：防系统二次缩放（docs/MOBILE-VIEWPORT.md §3.3） */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 /* PC 网格断点：>1024 4 列（现状）；≤1024 3 列；≤768 2 列（移动端走 Home.vue 的 v-if 独立结构，与此无关） */
 @media(max-width:1024px){.game-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:768px){.game-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

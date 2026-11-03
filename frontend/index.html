@@ -17,6 +17,29 @@
         } catch (e) { /* 忽略 */ }
       })();
     </script>
+    <script>
+      // 移动端真机适配（docs/MOBILE-VIEWPORT.md §3.1）：
+      // 「桌面版网站」模式 / WebView 忽略 viewport 时，布局视口仍是 ~980px——单列模板已生效，
+      // 但字号与点击区域按 980px 比例缩小。改写 viewport 固定设计宽度 390px；
+      // 部分内核改写 meta 不重排，用 sessionStorage 防循环后 reload 一次。
+      (function () {
+        try {
+          var desktopMode = window.screen.width <= 640 && window.innerWidth > 700;
+          if (desktopMode) {
+            var meta = document.querySelector('meta[name="viewport"]');
+            if (meta) {
+              meta.setAttribute('content', 'width=390, initial-scale=1, maximum-scale=1, user-scalable=no');
+            }
+            if (!sessionStorage.getItem('vp-fixed')) {
+              sessionStorage.setItem('vp-fixed', '1');
+              location.reload();
+            }
+          } else {
+            sessionStorage.removeItem('vp-fixed');
+          }
+        } catch (e) { /* 忽略 */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>
