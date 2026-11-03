@@ -1,6 +1,15 @@
 <script setup>
 import { computed, ref } from 'vue';
 
+// 守卫（docs/BAN-PAGE-GUARD.md §3.3）：服务端现在对 /banned 一律 302，只有真正被封禁的
+// 请求才会由 serveBanPage 注入 window.__BAN_PAGE__。没有它说明是 SPA 内部误入（或解封后
+// 残留导航），直接回首页，避免渲染「解封时间：暂未设定」的假封禁页。
+// 用 location.replace 而不是 router.replace：不加 history 记录，也绕开
+// 「ES module 提升导致 createWebHistory 已按旧地址初始化」的已知坑。
+if (!window.__BAN_PAGE__) {
+  window.location.replace('/');
+}
+
 const info = window.__BAN_PAGE__ || {};
 const language = ref(/^zh/i.test(navigator.language || '') ? 'zh-CN' : 'en');
 const copied = ref(false);

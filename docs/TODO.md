@@ -261,3 +261,16 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - 不做：Steam 账号同步/认领、投放任务、只读列表、用户批量重置密码。
 - 验证：`test/admin-bulk.test.js` 12 项（真 PGlite + 真 HTTP）已接入主链；`npm test` / `frontend:build` / `scan` 全绿。
 - 实现偏差与落点见规格 §11。
+
+## R. ~~待开发：封禁页守卫（未封禁访问 `/banned` 回首页）~~ → **已实现并发布（v1.14.1，2026-11-03）**
+
+**状态：已发布 v1.14.1**（tag 已推送，CI 见 DELIVERY）。规格见 [BAN-PAGE-GUARD.md](BAN-PAGE-GUARD.md)。
+
+- 现状（开发前）：`/banned` 无条件返回 403 封禁页（`src/server.js:522-527`），没被封的人也会看到「解封时间：暂未设定」的假页面。
+- 根因：真正的封禁请求已被设备封禁 / 频率封禁 / IP 黑名单三道闸提前拦下，**到达该分支 ⇔ 未被封禁**。
+- 方案：该分支改为 **302 → `/`**（`cache-control: no-store`，日志 `ban.redirect_home`），不在页面路由里二次判定
+  （避免第二份口径、误伤管理员与白名单）；前端 `BanPage.vue` 加 `__BAN_PAGE__` 缺失守卫兜底。
+- 决策：三类封禁都算（IP 黑名单 / 设备 / 频率）；管理员也跳首页；过期封禁视为未封禁；不做"解封自动跳回"。
+- 验证：`node test/reviews.test.js` 19 项全绿（302 / IP 403 / 设备 403 换 IP / 频率 429+Retry-After / 管理员 bypass / 过期 302 /
+  日志与前端守卫）；版本号与 CHANGELOG 等收到「构建」指令后一起改。
+

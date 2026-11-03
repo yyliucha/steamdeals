@@ -519,10 +519,16 @@ export function createApiServer({
         if (handled) return;
       }
 
-      // ---- 封禁提示页（直接打开也返回同样的页面）----
+      // ---- 封禁提示页入口：只做重定向（docs/BAN-PAGE-GUARD.md）----
+      // 能走到这里 ⇔ 设备 / 频率 / IP 黑名单三道拦截闸都没拦下：未封禁、白名单、
+      // 管理员 bypass、封禁已过期的请求都会到这里 → 302 回首页。
+      // 真正被封禁的请求在拦截链里已经由 denyBanned 返回了封禁页（403/429），
+      // 这里**不能再判一次**——二次判定会误伤已被放行的管理员与白名单，
+      // 且 ratelimit.hit() 有计数副作用，不能在页面路由里重复调用。
       if (path === '/banned' || path === '/banned/') {
-        const code = serveBanPage(res, outDir, { status: 403, siteName: siteName(), appealEmail: appealEmail(), reason: '访问受限' }, frontendDir);
-        logger?.info('ban.page_direct', { ip, code });
+        logger?.info('ban.redirect_home', { ip, path });
+        res.writeHead(302, { location: '/', 'cache-control': 'no-store', 'content-length': '0' });
+        res.end();
         return;
       }
 

@@ -2,6 +2,9 @@
 // 新规则：**不自动封禁**，异常只记录，管理员审批后才封 IP / 设备。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
@@ -29,7 +32,7 @@ const ENV_DEFAULTS = {
   PATH_REVIEW_UNKNOWN_WINDOW_SEC: '600',
 };
 
-async function boot(env = {}, { admin = false } = {}) {
+async function boot(env = {}, { admin = false, logger = null, frontendDir = null } = {}) {
   Object.assign(process.env, ENV_DEFAULTS, env);
   ratelimit.resetState();
   guard.resetState();
@@ -45,6 +48,8 @@ async function boot(env = {}, { admin = false } = {}) {
     host: '127.0.0.1',
     getSetupState: async () => ({ completed: true }),
     imageFetch: async () => ({ body: PNG, bytes: PNG.length, contentType: 'image/png' }),
+    logger,
+    frontendDir,
   });
   return {
     store,
@@ -59,6 +64,8 @@ async function boot(env = {}, { admin = false } = {}) {
 
 const asIp = (ip, extra = {}) => ({ headers: { 'x-forwarded-for': ip, ...extra } });
 const get = (base, ip, path, extra = {}) => fetch(base + path, asIp(ip, extra));
+// 不跟随重定向的版本：断言 302 时用（fetch 默认会跟到 / 再返回 200，302 就看不到了）
+const getNoFollow = (base, ip, path, extra = {}) => fetch(base + path, { ...asIp(ip, extra), redirect: 'manual' });
 
 async function waitFor(fn, { timeoutMs = 3000, stepMs = 40 } = {}) {
   const deadline = Date.now() + timeoutMs;
@@ -425,6 +432,163 @@ test('封禁标记：封禁时已有 pending → auto_banned（解封不恢复�
     const all = await db.listAbuseReviews(q, { status: 'all' });
     const mineAll = all.filter((r) => r.ip === ip).map((r) => r.status).sort();
     assert.deepEqual(mineAll, ['auto_banned', 'pending'], '审计视图两条都在，旧记录保持 auto_banned');
+  } finally {
+    await close();
+  }
+});
+
+// ---------------------------------------------------------------- 封禁页守卫
+// docs/BAN-PAGE-GUARD.md：未封禁访问 /banned → 302 回首页；真正被封禁的请求在拦截链里
+// 由 denyBanned 返回封禁页（403/429）。页面路由只做重定向，不做二次判定。
+
+/** 伪造一个前端构建产物目录，让 serveBanPage 走 Vue 注入路径（__BAN_PAGE__）。 */
+function banFrontDir() {
+  const dir = mkdtempSync(join(tmpdir(), 'gp-ban-front-'));
+  writeFileSync(join(dir, 'index.html'), '<!doctype html><html><head></head><body>ban-placeholder</body></html>');
+  return dir;
+}
+
+test('未封禁访问 /banned 与 /banned/ → 302 回首页（no-store）', async () => {
+  const { base, close } = await boot();
+  try {
+    for (const p of ['/banned', '/banned/']) {
+      const res = await getNoFollow(base, '198.51.100.40', p);
+      assert.equal(res.status, 302, p);
+      assert.equal(res.headers.get('location'), '/');
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+    }
+  } finally {
+    await close();
+  }
+});
+
+test('IP 黑名单命中：/banned 仍是 403 封禁页（注入 __BAN_PAGE__），不是 302', async () => {
+  const { base, close } = await boot({}, { admin: true, frontendDir: banFrontDir() });
+  try {
+    const cookie = await loginAdmin(base);
+    const ban = await fetch(base + '/api/admin/blacklist', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie, 'x-forwarded-for': '203.0.113.77' },
+      body: JSON.stringify({ ip: '198.51.100.41', note: 'ban page guard' }),
+    });
+    assert.equal(ban.status, 200);
+    const res = await get(base, '198.51.100.41', '/banned', { accept: 'text/html' });
+    assert.equal(res.status, 403, '黑名单命中应仍是封禁页而不是 302');
+    const html = await res.text();
+    assert.match(html, /window\.__BAN_PAGE__=\{/, '应注入 __BAN_PAGE__ 载荷');
+  } finally {
+    await close();
+  }
+});
+
+test('管理员 bypass：IP 在黑名单里，带会话访问 /banned → 302', async () => {
+  const { base, close } = await boot({}, { admin: true });
+  try {
+    const cookie = await loginAdmin(base);
+    // 把自己的出口 IP 拉黑：管理员仍应能访问一切，包括 /banned（bypass 在拦截链生效）
+    const ban = await fetch(base + '/api/admin/blacklist', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie, 'x-forwarded-for': '203.0.113.77' },
+      body: JSON.stringify({ ip: '203.0.113.77', note: 'ban own exit ip' }),
+    });
+    assert.equal(ban.status, 200);
+    const res = await fetch(base + '/banned', { headers: { 'x-forwarded-for': '203.0.113.77', cookie }, redirect: 'manual' });
+    assert.equal(res.status, 302, '管理员有 bypass，应回首页而不是封禁页');
+    assert.equal(res.headers.get('location'), '/');
+  } finally {
+    await close();
+  }
+});
+
+test('设备封禁命中：/banned 403，换 IP 也一样', async () => {
+  const { q, base, close } = await boot({}, { admin: true });
+  try {
+    const details = { platform: 'Win32', vendor: 'Google Inc.', language: 'zh-CN', timezone: 'Asia/Shanghai', webglVendor: 'v', webglRenderer: 'r', canvasHash: 'ban-guard' };
+    const did = 'device-banguard-01';
+    const first = await fetch(base + '/api/device', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.50' },
+      body: JSON.stringify({ deviceId: did, details }),
+    });
+    assert.equal(first.status, 200);
+    const deviceCookie = (first.headers.get('set-cookie') ?? '').split(';')[0];
+    const row = (await q("select fingerprint from device_logs where device_id = 'device-banguard-01'")).rows[0];
+    assert.ok(row?.fingerprint);
+    const adminCookie = await loginAdmin(base);
+    const ban = await fetch(base + '/api/admin/devices/ban', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie, 'x-forwarded-for': '203.0.113.77' },
+      body: JSON.stringify({ fingerprint: row.fingerprint, deviceId: did, permanent: true }),
+    });
+    assert.equal(ban.status, 200);
+    for (const ip of ['198.51.100.50', '198.51.100.51']) {
+      const res = await fetch(base + '/banned', { headers: { 'x-forwarded-for': ip, accept: 'text/html', cookie: deviceCookie } });
+      assert.equal(res.status, 403, `带被封设备 cookie 的 ${ip} 访问 /banned 应 403`);
+    }
+  } finally {
+    await close();
+  }
+});
+
+test('频率封禁命中：/banned 429 + Retry-After', async () => {
+  const { base, close } = await boot({ RATE_LIMIT_MAX: '1' });
+  try {
+    assert.equal((await get(base, '198.51.100.60', '/')).status, 200);
+    assert.equal((await get(base, '198.51.100.60', '/')).status, 429);
+    const res = await get(base, '198.51.100.60', '/banned', { accept: 'text/html' });
+    assert.equal(res.status, 429, '频率封禁期内 /banned 应沿用 429');
+    assert.ok(Number(res.headers.get('retry-after')) > 0, '应带 Retry-After');
+  } finally {
+    await close();
+  }
+});
+
+test('封禁过期后 /banned → 302（过期即视为未封禁）', async () => {
+  const { base, close } = await boot({ RATE_LIMIT_MAX: '1' });
+  try {
+    const ip = '198.51.100.61';
+    assert.equal((await get(base, ip, '/')).status, 200);
+    assert.equal((await get(base, ip, '/')).status, 429);
+    assert.equal((await get(base, ip, '/banned', { accept: 'text/html' })).status, 429);
+    // 把内存态封禁改成过去时间：下一次 hit() 会清掉过期条目、正常放行
+    ratelimit.applyExternalBan(ip, Date.now() - 1000, { source: 'rate' });
+    const res = await getNoFollow(base, ip, '/banned');
+    assert.equal(res.status, 302, '封禁过期后应回首页');
+    assert.equal(res.headers.get('location'), '/');
+  } finally {
+    await close();
+  }
+});
+
+test('日志：302 记 ban.redirect_home；被封禁仍是 ban.page；BanPage 有前端兜底守卫', async () => {
+  // BanPage 守卫是静态断言（无浏览器环境）：无 __BAN_PAGE__ 必须 location.replace('/')
+  const banPage = readFileSync(fileURLToPath(new URL('../frontend/src/pages/BanPage.vue', import.meta.url)), 'utf8');
+  assert.match(banPage, /!window\.__BAN_PAGE__/, '守卫条件应是 __BAN_PAGE__ 缺失');
+  assert.match(banPage, /window\.location\.replace\('\/'\)/, '守卫动作应是回首页');
+
+  const events = [];
+  const logger = {
+    info: (event, fields) => events.push([event, fields]),
+    warn: (event, fields) => events.push([event, fields]),
+    error: (event, fields) => events.push([event, fields]),
+  };
+  const { base, close } = await boot({}, { admin: true, logger });
+  try {
+    const cookie = await loginAdmin(base);
+    const ban = await fetch(base + '/api/admin/blacklist', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie, 'x-forwarded-for': '203.0.113.77' },
+      body: JSON.stringify({ ip: '198.51.100.70', note: 'log test' }),
+    });
+    assert.equal(ban.status, 200);
+    await get(base, '198.51.100.70', '/banned', { accept: 'text/html' }); // 被封禁 → 403 封禁页
+    await get(base, '198.51.100.71', '/banned'); // 未封禁 → 302
+
+    assert.ok(events.some(([e]) => e === 'ban.redirect_home'), '未封禁的 /banned 应记 ban.redirect_home');
+    assert.ok(events.some(([e]) => e === 'ban.page'), '被封禁的请求应仍记 ban.page');
+    const redirect = events.find(([e]) => e === 'ban.redirect_home');
+    assert.equal(redirect[1].path, '/banned');
+    assert.equal(redirect[1].ip, '198.51.100.71');
   } finally {
     await close();
   }

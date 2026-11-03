@@ -2,6 +2,23 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.14.1] - 2026-11-03
+
+### 修复
+
+- **封禁页守卫（docs/BAN-PAGE-GUARD.md）**：`/banned` 不再无条件返回 403 封禁页——未封禁的人
+  （手动输入网址、收藏夹、封禁到期后刷新、管理员）此前会看到「解封时间：暂未设定」的假封禁页。
+  现在 `/banned` 一律 302 回首页（`location: /`、`cache-control: no-store`、日志 `ban.redirect_home`）：
+  判定只在拦截链（设备封禁 / 频率封禁 / IP 黑名单三道闸）完成，真正被封禁的请求仍由 `denyBanned`
+  返回封禁页（403/429）；页面路由不做二次判定（避免第二份口径、误伤管理员与白名单）。
+  前端 `BanPage.vue` 加 `__BAN_PAGE__` 缺失守卫（`location.replace('/')`），SPA 内部误入不再渲染假封禁页。
+
+### 测试
+
+- `test/reviews.test.js` 新增 7 条封禁页守卫断言（19 项）：未封禁 302（含 `/banned/`）、IP 黑名单命中 403
+  （注入 `__BAN_PAGE__`）、设备封禁 403（换 IP 同样）、频率封禁 429 + `Retry-After`、管理员 bypass 302、
+  封禁过期 302、日志事件（`ban.redirect_home` / `ban.page`）与 BanPage 守卫静态断言
+
 ## [1.14.0] - 2026-11-03
 
 ### 新增
