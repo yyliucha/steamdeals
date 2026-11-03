@@ -199,17 +199,17 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   secret 留空保持原值、清空传 null）；AdminModules 的 `fieldsByGroup` 过滤邮件 key。后端零改动。
 - 依赖：先做 M（申诉邮箱设置项 + 回退链修复）；验收见文档 §5。
 
-## N. ~~待开发：申诉邮箱回退链缺陷~~ → **已实现（2026-11-03，待发版）**
+## N. ~~待开发：申诉邮箱回退链缺陷~~ → **已实现并发布（v1.12.1，2026-11-03）**
 
-**状态：代码完成并推 main，等构建指令（建议版本 1.12.1）**。规格见 [docs/APPEAL-EMAIL.md](APPEAL-EMAIL.md)。
+**状态：已发布 v1.12.1**。规格见 [docs/APPEAL-EMAIL.md](APPEAL-EMAIL.md)。
 
 - 根因：appealEmail() 用 ?? 链，水合空串截断回退 → SMTP_FROM/SMTP_USER 有值也取不到。
 - 修复：新增 src/appeal.js appealEmailFrom（|| 链 + trim，四级回退）；server.js 改用；
   设置新增「申诉邮箱」（alerts.appealEmail，string，留空回退）；测试 52 项 + test/appeal.test.js。
 
-## O. ~~待开发：邮件配置合并到邮件服务页（方案 A）~~ → **已实现（2026-11-03，待发版）**
+## O. ~~待开发：邮件配置合并到邮件服务页（方案 A）~~ → **已实现并发布（v1.12.1，2026-11-03）**
 
-**状态：代码完成并推 main，等构建指令**。规格见 [docs/MAIL-CONFIG-PAGE.md](MAIL-CONFIG-PAGE.md)。
+**状态：已发布 v1.12.1**。规格见 [docs/MAIL-CONFIG-PAGE.md](MAIL-CONFIG-PAGE.md)。
 
 - utils/settings.js（MAIL_SETTING_KEYS/isMailSettingKey）+ MailSettingsForm.vue（8 个邮件字段，
   加载 /api/admin/settings、保存 POST 只提交邮件 key、secret 留空保持/勾选清空传 null、emit saved）。
