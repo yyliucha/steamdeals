@@ -149,10 +149,32 @@ test('添加愿望单：站点落库 + 所选账号推送（无 key 的账号失
     const mine = await (await search(base, params, alice)).json();
     assert.deepEqual(mine.games.map((g) => g.steam_appid), [730]);
     assert.equal(mine.games[0].wishlisted, true);
+    assert.deepEqual(mine.games[0].wishlisted_by, [{ steamId: SID_A, name: '主号' }], '列表返回归属账号');
+    assert.equal(mine.games[0].site_wishlisted, true, '本站手动项标记');
     const bobList = await (await search(base, params, bob)).json();
     assert.equal(bobList.games.length, 0, 'bob 看不到 alice 的愿望单');
     const guest = await (await search(base, params)).json();
     assert.equal(guest.games.length, 2, '游客 wishlist=true 无效，返回全量');
+    assert.equal(guest.games[0].site_wishlisted, false, '游客不返回归属信息');
+    assert.deepEqual(guest.games[0].wishlisted_by, []);
+
+    // 详情同样带归属
+    const detail730 = await (await fetch(`${base}/api/games/730?region=cn`, { headers: { cookie: alice } })).json();
+    assert.deepEqual(detail730.game.wishlisted_by, [{ steamId: SID_A, name: '主号' }]);
+    assert.equal(detail730.game.site_wishlisted, true);
+
+    // alreadyIn：再次添加已在愿望单的账号 → 不重复推送
+    calls.length = 0;
+    const again = await fetch(`${base}/api/wishlist`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: alice },
+      body: JSON.stringify({ appid: 730, steamIds: [SID_A] }),
+    });
+    assert.equal(again.status, 200);
+    const againBody = await again.json();
+    assert.deepEqual(againBody.added, []);
+    assert.deepEqual(againBody.alreadyIn, [SID_A], '该账号已在愿望单');
+    assert.equal(calls.length, 0, '已在愿望单不重复推送');
 
     // 非本人账号被过滤
     const filtered = await fetch(`${base}/api/wishlist`, {
@@ -195,7 +217,7 @@ test('移除愿望单：清站点行与自动提醒、回推删除所选/持有�
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.deepEqual(body.removedFromSteam, [SID_A]);
-    assert.equal(body.removed, 1);
+    assert.equal(body.siteRemoved, 1);
     assert.deepEqual(calls, [{ steamId: SID_A, apiKey: 'KEY-A', appid: 550, action: 'remove' }]);
     assert.equal((await q('select count(*)::int as n from user_wishlist where game_id = $1', [g550])).rows[0].n, 0);
     assert.equal((await q('select count(*)::int as n from steam_wishlist where steam_id = $1 and appid = 550', [SID_A])).rows[0].n, 0, 'steam_wishlist 行删除');
@@ -206,6 +228,60 @@ test('移除愿望单：清站点行与自动提醒、回推删除所选/持有�
     const res2 = await fetch(`${base}/api/wishlist/730`, { method: 'DELETE', headers: { cookie: alice } });
     assert.equal(res2.status, 200);
     assert.deepEqual((await res2.json()).removedFromSteam, []);
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('移除选择：body 传 {siteWishlist, steamIds} 可选移除；缺省 body 保持旧行为', async () => {
+  const { store, q, srv, base, calls } = await apiSetup();
+  try {
+    const alice = await login(base, 'alice', 'alice123456');
+    await fetch(`${base}/api/wishlist`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: alice },
+      body: JSON.stringify({ appid: 730, steamIds: [SID_A] }),
+    });
+
+    // 取消勾选「本站」：siteWishlist=false → 本站行保留、Steam 行删除
+    calls.length = 0;
+    const res = await fetch(`${base}/api/wishlist/730`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json', cookie: alice },
+      body: JSON.stringify({ siteWishlist: false, steamIds: [SID_A] }),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.siteRemoved, 0, '本站行保留');
+    assert.deepEqual(body.removedFromSteam, [SID_A]);
+    assert.deepEqual(calls, [{ steamId: SID_A, apiKey: 'KEY-A', appid: 730, action: 'remove' }]);
+    assert.equal((await q('select count(*)::int as n from user_wishlist where game_id = (select id from games where steam_appid = 730)')).rows[0].n, 1, 'user_wishlist 保留');
+    assert.equal((await q('select count(*)::int as n from steam_wishlist where steam_id = $1 and appid = 730', [SID_A])).rows[0].n, 0, 'steam_wishlist 删除');
+
+    // 只移除本站：siteWishlist=true、steamIds=[] → 不推任何账号
+    await q('insert into steam_wishlist (steam_id, appid) values ($1, 730)', [SID_A]);
+    calls.length = 0;
+    const res2 = await fetch(`${base}/api/wishlist/730`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json', cookie: alice },
+      body: JSON.stringify({ siteWishlist: true, steamIds: [] }),
+    });
+    const body2 = await res2.json();
+    assert.equal(body2.siteRemoved, 1);
+    assert.deepEqual(body2.removedFromSteam, []);
+    assert.equal(calls.length, 0, '未勾选账号不推送');
+    assert.equal((await q('select count(*)::int as n from steam_wishlist where steam_id = $1 and appid = 730', [SID_A])).rows[0].n, 1, 'Steam 行保留');
+
+    // 缺省 body（旧调用方）：删本站 + 回推全部持有账号
+    calls.length = 0;
+    const res3 = await fetch(`${base}/api/wishlist/730`, { method: 'DELETE', headers: { cookie: alice } });
+    assert.equal(res3.status, 200);
+    const body3 = await res3.json();
+    assert.equal(body3.siteRemoved, 0, '本站行已在上一轮删除');
+    assert.deepEqual(body3.removedFromSteam, [SID_A]);
+    assert.deepEqual(calls, [{ steamId: SID_A, apiKey: 'KEY-A', appid: 730, action: 'remove' }]);
+    assert.equal((await q('select count(*)::int as n from steam_wishlist where steam_id = $1 and appid = 730', [SID_A])).rows[0].n, 0, '旧行为回推全部持有账号');
   } finally {
     await srv.close();
     await store.close();

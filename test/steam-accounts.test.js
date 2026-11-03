@@ -482,6 +482,8 @@ test('已拥有推导：绑定账号库并集 + 谁拥有（owned_by）+ 愿望�
     const wish = await (await search(base, { ...params, wishlist: true }, alice.cookie)).json();
     assert.deepEqual(wish.games.map((g) => g.steam_appid), [620]);
     assert.equal(wish.games[0].wishlisted, true);
+    assert.deepEqual(wish.games[0].wishlisted_by, [{ steamId: SID_A, name: '主号' }], '愿望单归属账号');
+    assert.equal(wish.games[0].site_wishlisted, false, '纯 Steam 同步项非本站手动');
 
     // bob / 游客看不到 alice 的任何推导
     const bobList = await (await search(base, params, bob.cookie)).json();
@@ -499,6 +501,9 @@ test('已拥有推导：绑定账号库并集 + 谁拥有（owned_by）+ 愿望�
     assert.equal(detail.game.owned, true);
     assert.equal(detail.game.wishlisted, false);
     assert.deepEqual(detail.game.owned_by, [{ steamId: SID_A, name: '主号' }]);
+    const detailWish = await (await fetch(`${base}/api/games/620?region=cn`, { headers: { cookie: alice.cookie } })).json();
+    assert.deepEqual(detailWish.game.wishlisted_by, [{ steamId: SID_A, name: '主号' }]);
+    assert.equal(detailWish.game.site_wishlisted, false);
     const guestDetail = await (await fetch(`${base}/api/games/730?region=cn`)).json();
     assert.equal(guestDetail.game.owned, false);
     assert.deepEqual(guestDetail.game.owned_by, []);

@@ -2,6 +2,33 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布] - 2026-11-03
+
+### 新增
+
+- **愿望单归属**：列表/详情返回 `wishlisted_by[{steamId,name}]` 与 `site_wishlisted`（本站手动项）；
+  卡片徽标「愿望单 · FF、Happy」（>2 个 `+N`），详情列全并悬停显示 SteamID；
+  添加弹窗标注「已在愿望单」且默认不勾选，`POST /api/wishlist` 返回 `alreadyIn` 不重复推送
+- **愿望单选择性移除**：`DELETE /api/wishlist/*` 接受 `{ steamIds, siteWishlist }`——移除弹窗列出
+  「本站 + 各账号」默认全选、可取消勾选；缺省 body 保持旧行为（删本站 + 回推全部持有账号）
+- **站点通知中心**：顶栏铃铛 + 未读角标 + 抽屉（未读高亮、已读淡色、全部标为已读）；
+  登录用户已读状态存服务端（新表 `announcement_reads`，`GET /api/announcements` 附 `readIds`，
+  `POST /api/announcements/read` 写入，跨设备跟随账号）；游客仍存本地（兼容旧 max-id 格式）；
+  进站未读弹窗保留
+- **移动端响应式重做**：断点 1024/768/480；「桌面版网站」兜底判定
+  （`screen.width<=640 && innerWidth>700`）给 `<html>` 加 `mobile-layout` 类强制移动布局——
+  单列卡、筛选进抽屉、顶栏精简（菜单收主题/登录）、详情全屏、已拥有/愿望单按钮收进详情、
+  触摸目标 ≥44px、字号 ≥13px；PC 布局无回归
+- **调度器轻任务并行**：sonkwo/itad/gog/humble/discover/steam-accounts/backup/logs/alerts/images
+  可在 Steam 重任务（heat/steam-prices 等，仍严格串行且与手动同步互斥）运行时并行执行，
+  并发上限 `SCHEDULER_LIGHT_CONCURRENCY`（默认 3，1–8）——解决 heat 首轮播种期其它源被饿数小时的问题；
+  chart 后续任务串行执行避免并发写静态页
+
+### 修复
+
+- **自动封禁的 IP 不再出现在「异常审核」待审列表与计数**（`listAbuseReviews`/`countPendingReviews`
+  排除 `ip_abuse.banned_until > now()`；只过滤显示不改状态，解封后自动恢复）
+
 ## [1.7.0] - 2026-11-02
 
 ### 新增

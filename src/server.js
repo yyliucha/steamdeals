@@ -533,6 +533,13 @@ export function createApiServer({
       }
       if (path === '/api/announcements' && req.method === 'GET') {
         const rows = await db.listAnnouncements(q, { activeOnly: true, limit: 200 });
+        // 登录用户附带服务端已读 id（跨设备跟随账号）；游客本地记录，接口只给空数组
+        const sessUser = token ? await db.userBySession(q, token) : null;
+        let readIds = [];
+        if (sessUser) {
+          const reads = await q('select announcement_id from announcement_reads where user_id = $1', [sessUser.id]);
+          readIds = reads.rows.map((r) => Number(r.announcement_id));
+        }
         return json(
           res,
           200,
@@ -545,6 +552,7 @@ export function createApiServer({
               startsAt: r.starts_at,
               endsAt: r.ends_at,
             })),
+            readIds,
           },
           { 'cache-control': 'no-store' },
         );
@@ -669,6 +677,23 @@ export function createApiServer({
         const priced = await q('select count(*)::int as n from (select distinct game_id from daily_prices) x');
         const catalog = await q('select count(*)::int as n from games where not deleted and not blocked');
         return json(res, 200, { priced: priced.rows[0]?.n ?? 0, catalog: catalog.rows[0]?.n ?? 0 });
+      }
+
+      // ---- 公告已读（登录用户写表；游客只存浏览器本地，不调用）----
+      if (path === '/api/announcements/read' && req.method === 'POST') {
+        if (!requireUser()) return;
+        const body = await readBody(req);
+        const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+        // 只写真实存在的公告 id（客户端可能带已删除的旧 id，FK 会拒绝）
+        const valid = ids.length ? (await q('select id from announcements where id = any($1::bigint[])', [ids])).rows.map((r) => Number(r.id)) : [];
+        if (valid.length) {
+          await q(
+            'insert into announcement_reads (user_id, announcement_id) select $1, x.id from unnest($2::bigint[]) as x(id) on conflict (user_id, announcement_id) do nothing',
+            [user.id, valid],
+          );
+        }
+        logger?.info('announcement.read', { userId: user.id, count: valid.length });
+        return json(res, 200, { ok: true, readIds: valid });
       }
 
       // ---- 数据指纹（匿名可读）：前台轮询这个，变了才重新拉列表 ----
@@ -1156,10 +1181,17 @@ export function createApiServer({
         await steamAccountsMod.addUserWishlist(q, { userId: user.id, gameId: game.id, steamIds });
 
         const added = [];
+        const alreadyIn = [];
         const failed = [];
         if (game.steam_appid != null) {
           const byId = new Map(accounts.map((a) => [a.steam_id, a]));
           for (const steamId of steamIds) {
+            // 账号本来就含有该游戏 → 不重复推送，返回 alreadyIn
+            const existing = await q('select 1 from steam_wishlist where steam_id = $1 and appid = $2', [steamId, game.steam_appid]);
+            if (existing.rows.length) {
+              alreadyIn.push(steamId);
+              continue;
+            }
             if (!byId.get(steamId)?.api_key_set) {
               failed.push({ steamId, reason: '该账号未配置 API Key' });
               continue;
@@ -1196,9 +1228,10 @@ export function createApiServer({
           appid: game.steam_appid ?? null,
           steamIds,
           added,
+          alreadyIn,
           failed: failed.map((f) => f.steamId),
         });
-        return json(res, 200, { ok: true, appid: game.steam_appid ?? null, added, failed });
+        return json(res, 200, { ok: true, appid: game.steam_appid ?? null, added, alreadyIn, failed });
       }
 
       const wishDel = path.match(/^\/api\/wishlist\/(\d+)$/);
@@ -1210,15 +1243,26 @@ export function createApiServer({
           : await db.gameDetail(q, { gameId: Number(wishDelById[1]) });
         if (!game) return json(res, 404, { error: '没有该游戏' });
         const appid = game.steam_appid;
-        const removed = await steamAccountsMod.removeUserWishlist(q, { userId: user.id, gameId: game.id });
-        // 回推删除：用户添加时选过的账号 ∪ 愿望单里实际有它的账号（只处理配了 key 的）
-        const targets = [
-          ...new Set([
-            ...(removed.steamIds ?? []),
-            ...(appid != null ? await steamAccountsMod.accountsWithWishlistAppid(q, { userId: user.id, appid }) : []),
-          ]),
-        ];
+        // 新语义：body { steamIds: string[], siteWishlist: boolean }；缺省保持旧行为（删本站 + 回推全部含它的账号）
+        const body = await readBody(req);
+        const bodyGiven = Array.isArray(body.steamIds) || body.siteWishlist != null;
+        const doSite = bodyGiven ? body.siteWishlist !== false : true;
+        let removed = { removed: 0, steamIds: [], watchesCleaned: 0 };
+        if (doSite) removed = await steamAccountsMod.removeUserWishlist(q, { userId: user.id, gameId: game.id });
         const accounts = await steamAccountsMod.listUserAccounts(q, user.id);
+        const mine = new Set(accounts.map((a) => a.steam_id));
+        let targets;
+        if (Array.isArray(body.steamIds)) {
+          targets = [...new Set(body.steamIds.map(String).filter((s) => /^\d{17}$/.test(s)).filter((s) => mine.has(s)))];
+        } else {
+          // 旧行为：添加时选过的账号 ∪ 愿望单里实际有它的账号
+          targets = [
+            ...new Set([
+              ...(removed.steamIds ?? []),
+              ...(appid != null ? await steamAccountsMod.accountsWithWishlistAppid(q, { userId: user.id, appid }) : []),
+            ]),
+          ];
+        }
         const byId = new Map(accounts.map((a) => [a.steam_id, a]));
         const removedFromSteam = [];
         const failed = [];
@@ -1246,11 +1290,12 @@ export function createApiServer({
           userId: user.id,
           gameId: game.id,
           appid,
+          siteRemoved: removed.removed,
           targets,
           removedFromSteam,
           failed: failed.map((f) => f.steamId),
         });
-        return json(res, 200, { ok: true, removed: removed.removed, removedFromSteam, failed });
+        return json(res, 200, { ok: true, siteRemoved: removed.removed, removedFromSteam, failed });
       }
 
       // ---- 管理员：游戏同步概览（待同步数量统计）----

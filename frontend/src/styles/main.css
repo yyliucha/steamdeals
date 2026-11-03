@@ -3,3 +3,43 @@
 .captcha-row{display:flex;gap:10px;align-items:center;width:100%;margin:0 0 14px}.captcha-row img{width:132px;height:44px;border-radius:8px;cursor:pointer;background:#0f172a}
 
 @media(max-width:420px){.game-grid{grid-template-columns:1fr}.hero{flex-wrap:wrap}.catalog-stat{justify-items:start}.store-tabs button{flex:1 1 30%}.toolbar .el-select{flex-basis:100%}.card-flags .el-button{min-height:34px}.store-main{padding-top:20px}.top-actions .user-label{display:none}.notice-dialog .el-dialog__body{padding:10px 14px}}
+
+/* ===== 2026-11-03 响应式批次：断点重做 + 强制移动布局兜底 ===== */
+/* 断点：>1024 4 列（现状）；≤1024 3 列；≤768 2 列；≤480 或 .mobile-layout 单列 */
+@media(max-width:1024px){.game-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:768px){.game-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* 移动布局：≤640 断点，或「桌面版网站」模式兜底（screen.width<=640 且 innerWidth>700，WebView 忽略 viewport） */
+html.mobile-layout{font-size:14px}
+html.mobile-layout .topbar{height:60px;padding:0 14px}
+html.mobile-layout .topbar .brand{font-size:15px}
+html.mobile-layout .topbar .brand-mark{width:32px;height:32px;border-radius:10px}
+html.mobile-layout .topbar .brand small{display:none}
+html.mobile-layout .desktop-only{display:none!important}
+html.mobile-layout .mobile-only{display:inline-flex}
+html.mobile-layout .top-actions{gap:6px}
+html.mobile-layout .store-main{padding:12px 12px 28px}
+html.mobile-layout .hero{padding:14px;gap:10px}
+html.mobile-layout .hero h1{font-size:21px;line-height:1.35}
+html.mobile-layout .hero p{font-size:13px}
+html.mobile-layout .store-tabs{gap:6px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
+html.mobile-layout .store-tabs button{flex:0 0 auto;min-height:40px;font-size:13px;padding:8px 12px}
+html.mobile-layout .flag-hint{font-size:12px}
+html.mobile-layout .toolbar{gap:8px}
+html.mobile-layout .toolbar .search{flex:1}
+html.mobile-layout .game-grid{grid-template-columns:1fr;gap:12px}
+html.mobile-layout .game-card{contain-intrinsic-size:0 300px}
+html.mobile-layout .game-title{font-size:15px;line-height:1.5}
+html.mobile-layout .game-subtitle{font-size:12px}
+html.mobile-layout .price-row strong{font-size:17px}
+html.mobile-layout .price-row{font-size:12px}
+html.mobile-layout .card-flags{gap:6px}
+html.mobile-layout .card-flags .el-button{min-height:44px;font-size:13px}
+html.mobile-layout .card-flags-sec{display:none!important}
+html.mobile-layout .card-foot{font-size:12px}
+html.mobile-layout .pagination{padding:10px 0}
+html.mobile-layout .pagination .el-pagination__sizes{display:none}
+html.mobile-layout .pagination .el-pagination button{min-width:36px;height:36px}
+html.mobile-layout .store-footer{font-size:12px}
+html.mobile-layout .detail-metrics{font-size:12px}
+html.mobile-layout .detail-actions .el-button{min-height:40px}
+html.mobile-layout .detail-actions .el-input{max-width:100%}

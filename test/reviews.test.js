@@ -348,3 +348,31 @@ test('限流分桶：静态资源不占用页面/API 的阈值', async () => {
     await close();
   }
 });
+
+test('异常审核联动：封禁期内的 IP 不出现在待审列表与计数，解封后恢复显示', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    await q(
+      "insert into abuse_reviews (ip, rule, status) values ('198.51.100.1', 'rate-limit', 'pending'), ('198.51.100.2', 'secret-file', 'pending'), (null, 'unknown-paths', 'pending')",
+    );
+    await q("insert into ip_abuse (ip, strikes, banned_until) values ('198.51.100.1', 3, now() + interval '30 minutes')");
+
+    const list = await db.listAbuseReviews(q, { status: 'pending', limit: 10 });
+    const ips = list.map((r) => r.ip);
+    assert.deepEqual(ips.filter(Boolean), ['198.51.100.2'], '自动封禁中的 IP 不出现');
+    assert.equal(ips.filter((ip) => ip === null).length, 1, 'ip 为 null 的记录保留');
+    assert.equal(await db.countPendingReviews(q), 2, '计数与列表一致');
+
+    // 解封（封禁过期）→ 记录自动恢复显示，原始审核数据不写状态
+    await q("update ip_abuse set banned_until = now() - interval '1 second' where ip = '198.51.100.1'");
+    const after = await db.listAbuseReviews(q, { status: 'pending', limit: 10 });
+    assert.equal(after.length, 3, '解封后恢复显示');
+    assert.equal(await db.countPendingReviews(q), 3);
+    const row = await q("select status from abuse_reviews where ip = '198.51.100.1'");
+    assert.equal(row.rows[0].status, 'pending', '只过滤显示，不改原始状态');
+  } finally {
+    await store.close();
+  }
+});
