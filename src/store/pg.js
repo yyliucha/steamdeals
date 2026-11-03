@@ -1704,16 +1704,33 @@ const NOT_ACTIVE_BAN = `not exists (
      and a.banned_until is not null and a.banned_until > now())`;
 
 export async function listAbuseReviews(q, { status = 'pending', limit = 100 } = {}) {
+  // pending：只看待审；all：审计视图（含 auto_banned）。NOT_ACTIVE_BAN 作为双保险保留。
+  const statusCond = status === 'all' ? '' : "and status = 'pending'";
   const r = await q(
     `select id, ip, device_id, fingerprint, rule, detail, path, hits, status, note, reviewed_at, created_at, last_seen
        from abuse_reviews
-      where ($1 = '' or status = $1)
+      where true
+        ${statusCond}
         and ${NOT_ACTIVE_BAN}
       order by last_seen desc
-      limit $2`,
-    [status || '', Math.min(Math.max(Number(limit) || 100, 1), 300)],
+      limit $1`,
+    [Math.min(Math.max(Number(limit) || 100, 1), 300)],
   );
   return r.rows;
+}
+
+/**
+ * 封禁动作发生时的清理：把该 IP 的 pending 审核标记为 auto_banned（旧记录永久退出待审）。
+ * 该 IP 之后的新异常仍会生成新 pending（不永久屏蔽）。note 区分自动/手动封禁来源。
+ */
+export async function markReviewsAutoBanned(q, { ip, note = '自动封禁' }) {
+  const r = await q(
+    `update abuse_reviews
+        set status = 'auto_banned', reviewed_at = now(), note = coalesce(note, $2)
+      where ip = $1 and status = 'pending'`,
+    [ip, String(note).slice(0, 300)],
+  );
+  return r.rowCount ?? 0;
 }
 
 export async function getAbuseReview(q, id) {

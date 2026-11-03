@@ -2187,6 +2187,8 @@ export function createApiServer({
         const ip = visitors.normalizeBanInput(body.ip);
         if (!ip) return json(res, 400, { error: 'IP 格式不正确（支持 1.2.3.4 单个 IP 或 1.2.3.0/24 网段）' });
         const row = await db.addBlockedIp(q, { ip, note: String(body.note ?? '').trim().slice(0, 200) || null });
+        // 手动封禁同样把该 IP 的待审记录标记为 auto_banned（旧记录永久退出待审）
+        await db.markReviewsAutoBanned(q, { ip, note: '手动封禁' }).catch(() => {});
         await visitors.refreshBlocklist(q).catch(() => {});
         logger?.info('api.ip_blocked', { ip, by: user.username });
         return json(res, 200, { ip: row });
@@ -2337,7 +2339,7 @@ export function createApiServer({
       // ---- 管理员：异常请求审核（不自动封，审批后才封 IP / 设备）----
       if (path === '/api/admin/reviews' && req.method === 'GET') {
         if (!requireAdmin()) return;
-        const status = String(url.searchParams.get('status') ?? 'pending');
+        const status = String(url.searchParams.get('status') ?? '') === 'all' ? 'all' : 'pending';
         const reviews = await db.listAbuseReviews(q, { status, limit: Number(url.searchParams.get('limit') ?? 300) });
         return json(res, 200, { reviews, pending: await db.countPendingReviews(q) });
       }
@@ -2351,6 +2353,8 @@ export function createApiServer({
         let bannedDevice = false;
         if ((mode === 'ip' || mode === 'both') && review.ip) {
           await db.addBlockedIp(q, { ip: review.ip, note: `审核通过（${review.rule}）by ${user.username}` });
+          // 审核封 IP 同样把该 IP 的其它待审记录标记为 auto_banned
+          await db.markReviewsAutoBanned(q, { ip: review.ip, note: '手动封禁' }).catch(() => {});
           await visitors.refreshBlocklist(q).catch(() => {});
           bannedIp = true;
         }

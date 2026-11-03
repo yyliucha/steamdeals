@@ -203,6 +203,18 @@ async function applyBan(q, key, strikes, { bucket }) {
   } catch {
     /* 忽略 */
   }
+  // 封禁生效：把该 IP 的 pending 审核标记为 auto_banned（旧记录永久退出待审），
+  // 之后该 IP 的新异常仍会生成新的 pending（不永久屏蔽）。
+  try {
+    await q(
+      `update abuse_reviews
+          set status = 'auto_banned', reviewed_at = now(), note = coalesce(note, '自动封禁')
+        where ip = $1 and status = 'pending'`,
+      [key],
+    );
+  } catch {
+    /* 忽略 */
+  }
   return { permanent: false, until, reason, needsReview: true, strikes };
 }
 

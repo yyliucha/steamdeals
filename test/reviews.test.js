@@ -376,3 +376,56 @@ test('异常审核联动：封禁期内的 IP 不出现在待审列表与计数�
     await store.close();
   }
 });
+
+test('封禁标记：封禁时已有 pending → auto_banned（解封不恢复），新异常重新生成 pending', async () => {
+  const { q, base, close } = await boot({ RATE_LIMIT_MAX: '2' });
+  try {
+    const ip = '198.51.100.40';
+    // 第一轮超频：封禁 10 分钟；本轮新生成的待审 R1 在封禁之后产生（属"新异常"，保持 pending，
+    // 封禁期内由 NOT_ACTIVE_BAN 双保险隐藏）。
+    await get(base, ip, '/');
+    await get(base, ip, '/');
+    assert.equal((await get(base, ip, '/')).status, 429);
+    await waitFor(async () => {
+      const n = (await q("select count(*)::int as n from abuse_reviews where ip = $1", [ip])).rows[0].n;
+      return n >= 1 ? n : 0;
+    });
+    assert.equal((await q("select status from abuse_reviews where ip = $1", [ip])).rows[0].status, 'pending');
+
+    // 解封（模拟到期）
+    await q("update ip_abuse set banned_until = now() - interval '1 second' where ip = $1", [ip]);
+    ratelimit.resetState();
+    await ratelimit.loadState(q);
+    ratelimit.configure({ max: 2, windowSec: 60, blockedEscalate: 3 });
+
+    // 第二轮超频：升级封禁。此时 R1 已存在且 pending → 被标记 auto_banned；
+    // 本轮新生成的 R2 在封禁之后产生，保持 pending。
+    await get(base, ip, '/');
+    await get(base, ip, '/');
+    assert.equal((await get(base, ip, '/')).status, 429);
+    await waitFor(async () => {
+      const n = (await q("select count(*)::int as n from abuse_reviews where ip = $1", [ip])).rows[0].n;
+      return n >= 2 ? n : 0;
+    });
+    const rows = await q("select status, note from abuse_reviews where ip = $1 order by id", [ip]);
+    assert.deepEqual(rows.rows.map((r) => r.status), ['auto_banned', 'pending'], '旧记录被标记、新记录保持待审');
+    assert.equal(rows.rows[0].note, '自动封禁');
+    // 封禁期内双保险：待审列表与计数都不含（R2 也被 NOT_ACTIVE_BAN 隐藏）
+    assert.equal((await db.listAbuseReviews(q, { status: 'pending' })).filter((r) => r.ip === ip).length, 0);
+
+    // 解封 → R1 不恢复 pending（永久退出）；R2 回到待审（新异常可审核）
+    await q("update ip_abuse set banned_until = now() - interval '1 second' where ip = $1", [ip]);
+    ratelimit.resetState();
+    await ratelimit.loadState(q);
+    ratelimit.configure({ max: 2, windowSec: 60, blockedEscalate: 3 });
+    const pending = await db.listAbuseReviews(q, { status: 'pending' });
+    const mine = pending.filter((r) => r.ip === ip);
+    assert.equal(mine.length, 1, '只有新异常回到待审');
+    assert.equal(mine[0].status, 'pending');
+    const all = await db.listAbuseReviews(q, { status: 'all' });
+    const mineAll = all.filter((r) => r.ip === ip).map((r) => r.status).sort();
+    assert.deepEqual(mineAll, ['auto_banned', 'pending'], '审计视图两条都在，旧记录保持 auto_banned');
+  } finally {
+    await close();
+  }
+});

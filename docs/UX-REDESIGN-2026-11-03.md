@@ -1,6 +1,6 @@
 # 2026-11-03（二批）：PC 筛选修复 + 移动端独立设计 + 封禁标记
 
-> 状态：**需求与设计已确认（2026-11-03），待开发**。
+> 状态：**已实现（2026-11-03，待发版）**。需求与设计已确认（2026-11-03）。
 > 效果图（所有者已确认）：[design/pc-home.png](design/pc-home.png)、
 > [design/mobile-home.png](design/mobile-home.png)、[design/mobile-filter.png](design/mobile-filter.png)、
 > [design/mobile-detail.png](design/mobile-detail.png)；同目录含 HTML 源文件，可直接改后重渲染。
