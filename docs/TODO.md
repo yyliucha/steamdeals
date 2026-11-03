@@ -159,10 +159,11 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## L. ~~待开发：前端渲染修复（抽屉/角标/复选框未注册 + 封禁页跳转）~~ → **已实现并发布（v1.11.0，2026-11-03）**
 
-**状态：问题一/问题二已发布 v1.11.0；问题三（验证码体验）待开发**。规格见 [docs/FRONTEND-RENDER-FIX.md](FRONTEND-RENDER-FIX.md)。
+**状态：问题一已发布 v1.11.0；问题二（封禁页）v1.11.0 的实现实测无效，需改为 index.html 内联跳转；问题三（验证码体验）待开发**。规格见 [docs/FRONTEND-RENDER-FIX.md](FRONTEND-RENDER-FIX.md)。
 
 - main.js 补注册 ElDrawer/ElBadge/ElCheckbox/ElCheckboxGroup（修复移动筛选/我的/通知抽屉/角标/愿望单勾选，
   推送到 Steam 账号自 v1.6.0 起首次可用）；mount 前读取 __BAN_PAGE__ 跳 /banned（/appeal 除外）。
 - 新增 test/frontend-registration.test.js 静态防回归；验收见文档 §1/§2。
 - **待开发（问题三，§2.5）**：`loadCaptcha` 失败静默 → 验证码只剩破图。修复：catch 里提示
   「验证码加载失败，点击重试」+ 空态显示可点击占位块。注意：被封禁时 API 全 403，这是验证码失败最常见原因。
+

@@ -1,6 +1,6 @@
 # 前端渲染修复：抽屉/角标/复选框未注册 + 封禁页跳转
 
-> 状态：**问题一/问题二已实现并发布（v1.11.0，2026-11-03）；问题三（§2.5 验证码体验）待开发**。
+> 状态：**问题一已发布（v1.11.0）；问题二（封禁页）在 v1.11.0 的实现经实测无效，需按 §2「最终方案」改为 index.html 内联脚本；问题三（§2.5 验证码体验）待开发**。
 > 两个主要 bug 都是"组件/入口没接上"，不是业务逻辑错误；修复约 20 行，无数据/接口改动。
 
 ## 1. 问题一：抽屉、未读角标、愿望单复选框全部失效
@@ -73,15 +73,28 @@ import 'element-plus/es/components/drawer/style/css';
 - 被禁用户刷新 `/` → SPA 在 `/` 启动 → 渲染的是 Home（接口 403/429 报错），
   **封禁卡片和「申请解封」入口都不会出现** → 用户认为"申诉页面找不到"。
 
-### 修复
+### 修复（最终方案，已验证；v1.11.0 的写法见下方"无效"说明）
 
-`frontend/src/main.js`（创建 router 之后、mount 之前）：
+必须在**模块脚本加载前**改地址，因此放在 `index.html` 内联脚本（由 `serveBanPage` 注入），
+而不是 `main.js`：
+
+```html
+<!-- frontend/index.html </head> 前，服务端注入 -->
+<script>
+  window.__BAN_PAGE__ = /* payload */;
+  if (location.pathname !== '/banned' && location.pathname !== '/appeal') {
+    history.replaceState(null, '', '/banned');
+  }
+</script>
+```
+
+服务端 `serveBanPage` 的注入脚本改为同一段（payload 后追加跳转逻辑）：
 
 ```js
-// 封禁页：服务端已把 __BAN_PAGE__ 注入 index.html；这里负责把它渲染出来
-if (window.__BAN_PAGE__ && location.pathname !== '/banned' && location.pathname !== '/appeal') {
-  router.replace('/banned');
-}
+// server.js serveBanPage
+const script = `window.__BAN_PAGE__=${payload};` +
+  `if(location.pathname!=='/banned'&&location.pathname!=='/appeal'){history.replaceState(null,'','/banned');}`;
+html = readFileSync(distIndex, 'utf8').replace('</head>', `<script>${script}</script></head>`);
 ```
 
 说明：
@@ -91,25 +104,58 @@ if (window.__BAN_PAGE__ && location.pathname !== '/banned' && location.pathname 
 - 管理员（`adminBypass`）与白名单不受影响；
 - 不要在 `/appeal` 页面再跳 `/banned`，否则申诉入口死循环。
 
-### 真机实证（2026-11-03 14:58）
+### v1.11.0 的修法无效（2026-11-03 实测）
 
-把手机 IP 加入黑名单后用手机 5G 访问：页面渲染出**移动端首页**（顶栏 + 底部导航），
-并弹出「请求失败 (403)」提示，**没有封禁卡片、没有申诉入口** —— 与上面的定位完全一致。
-根因链：服务端 403 + 注入 `__BAN_PAGE__` → SPA 在 `/` 启动 Home → 首页接口全部 403 → 只有报错提示。
-
-### 修复实现细节（比 `router.replace` 更稳，推荐）
-
-在 `main.js` **创建 router 之前**直接改地址，避免 `mount` 前导航告警、也避免 Home 的 `onMounted`
-先发一轮请求（那正是 403 toast 的来源）：
+v1.11.0 在 `main.js` 里写成：
 
 ```js
-// main.js，app.use(router) / mount 之前
+const app = createApp(App);
+/* ...注册组件... */
 if (window.__BAN_PAGE__ && location.pathname !== '/banned' && location.pathname !== '/appeal') {
-  window.history.replaceState(null, '', '/banned');
+  router.replace('/banned');     // ❌ 无效
 }
+app.use(router).mount('#app');
 ```
 
-这样 router 创建时读到的就是 `/banned`，直接渲染 BanPage，Home 根本不会挂载，也不会出现 403 toast。
+**无头浏览器实测**（本地起 dist，首页注入 `window.__BAN_PAGE__`，390×844）：
+
+```
+PAYLOAD=true  PATH=/  BAN_CARD=0  STOREFRONT=1   ← 渲染的是首页
+```
+
+原因：ES module 的 `import` 会被**提升**，`router/index.js` 里的 `createWebHistory()` 在 `main.js` 函数体执行前
+就已经创建并读取了当前地址 `/`；此时调用 `router.replace()` 还没安装路由、也无法改变已确定的初始导航，
+所以 SPA 依然渲染首页（接口 403 → 空白 + 报错）。这就是"加了黑名单仍看不到封禁页"的直接原因。
+
+### 正确修法（已验证有效）：放在 `index.html` 内联脚本
+
+必须在**模块脚本加载前**改地址。实测（同样环境，改成下面的内联脚本后）：
+
+```
+PATH=/banned  BAN_CARD=2  STOREFRONT=0   ← 封禁卡片正常渲染，首页不挂载
+```
+
+```html
+<!-- frontend/index.html，放在 </head> 前、模块脚本之前 -->
+<script>
+  window.__BAN_PAGE__ = __BAN_PAGE_PAYLOAD__;   /* 服务端注入 */
+  if (location.pathname !== '/banned' && location.pathname !== '/appeal') {
+    history.replaceState(null, '', '/banned');
+  }
+</script>
+```
+
+服务端 `serveBanPage` 已经把 payload 注入到 `</head>` 前，这里只需在它后面追加跳转逻辑（同一段脚本里）：
+
+```js
+// server.js serveBanPage 注入的脚本改为：
+const script = `window.__BAN_PAGE__=${payload};` +
+  `if(location.pathname!=='/banned'&&location.pathname!=='/appeal'){history.replaceState(null,'','/banned');}`;
+html = readFileSync(distIndex, 'utf8').replace('</head>', `<script>${script}</script></head>`);
+```
+
+这样 Vue 启动时地址已经是 `/banned`，BanPage 直接渲染，Home 不会挂载，也不会出现 403 toast。
+`main.js` 里的 `router.replace` 可以删掉（保留也无害，但不要依赖它）。
 
 ### 验收
 
@@ -120,6 +166,8 @@ if (window.__BAN_PAGE__ && location.pathname !== '/banned' && location.pathname 
 2. 被封状态下直接打开 `/appeal` → 正常显示申诉页。
 3. 管理员/白名单访问 → 不受影响（正常首页）。
 4. 封禁解除后刷新 → 正常首页（无残留跳转）。
+5. 自动化：用无头浏览器起 dist + 注入 `__BAN_PAGE__`，断言 `location.pathname === '/banned'` 且
+   `.ban-card` 存在、`.storefront` 不存在（本次已用该方法验证过）。
 
 ## 2.5 问题三：验证码加载失败时只剩破图（体验缺陷）
 
@@ -185,3 +233,4 @@ assert.match(mainJs, /__BAN_PAGE__/);
   被封用户能看到封禁页并申诉；
 - 风险：被封用户不再"看似能浏览网站"（预期）；注册组件会略增打包体积（四个组件样式，几十 KB 内）；
 - 与 v1.10.0 的 viewport 补丁互不冲突（都在 `main.js`，注意合并顺序）。
+
