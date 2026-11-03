@@ -156,3 +156,18 @@ chart 后续任务串行执行。
 修复：index.html 内联改写 viewport（width=390 + 禁缩放 + sessionStorage 防循环 reload）、
 main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 调试浮层。
 真机 14 项自检清单待部署后在红米 K100 Pro Max 上逐项验证（部署由所有者执行）。
+
+## L. 待开发：前端渲染修复——抽屉/角标/复选框未注册 + 封禁页跳转
+
+**状态：已定位（无头浏览器实测），待开发**（见 [docs/FRONTEND-RENDER-FIX.md](FRONTEND-RENDER-FIX.md)）。
+
+1. **组件未注册**：`frontend/src/main.js` 缺 `ElDrawer`/`ElBadge`/`ElCheckbox`/`ElCheckboxGroup`
+   → 手机「筛选」「我的」与 PC/手机「通知」抽屉内容直接铺在页面里（点了没反应）、未读角标不显示、
+   前台愿望单弹窗账号复选框点不动（推送到 Steam 从未真正可用，自 v1.6.0）。
+   修复：补注册 + 引入 `badge/checkbox/drawer` 样式；建议加 `test/frontend-registration.test.js` 静态断言防回归。
+2. **封禁页不显示**：服务端把 `window.__BAN_PAGE__` 注入 index.html，但前端没有读取跳转
+   → 被封用户刷新后看到报错首页，找不到申诉入口。修复：`main.js` 启动时
+   `if (window.__BAN_PAGE__ && path 不是 /banned、/appeal) router.replace('/banned')`。
+
+验收：手机 390×844 点筛选/我的/铃铛均正常打开；未读角标显示；愿望单可勾选账号并推送；
+模拟封禁后刷新进入封禁页、可进 /appeal；管理员/白名单不受影响；`npm test` + `frontend:build` + `scan` 通过。
