@@ -91,10 +91,32 @@ if (window.__BAN_PAGE__ && location.pathname !== '/banned' && location.pathname 
 - 管理员（`adminBypass`）与白名单不受影响；
 - 不要在 `/appeal` 页面再跳 `/banned`，否则申诉入口死循环。
 
+### 真机实证（2026-11-03 14:58）
+
+把手机 IP 加入黑名单后用手机 5G 访问：页面渲染出**移动端首页**（顶栏 + 底部导航），
+并弹出「请求失败 (403)」提示，**没有封禁卡片、没有申诉入口** —— 与上面的定位完全一致。
+根因链：服务端 403 + 注入 `__BAN_PAGE__` → SPA 在 `/` 启动 Home → 首页接口全部 403 → 只有报错提示。
+
+### 修复实现细节（比 `router.replace` 更稳，推荐）
+
+在 `main.js` **创建 router 之前**直接改地址，避免 `mount` 前导航告警、也避免 Home 的 `onMounted`
+先发一轮请求（那正是 403 toast 的来源）：
+
+```js
+// main.js，app.use(router) / mount 之前
+if (window.__BAN_PAGE__ && location.pathname !== '/banned' && location.pathname !== '/appeal') {
+  window.history.replaceState(null, '', '/banned');
+}
+```
+
+这样 router 创建时读到的就是 `/banned`，直接渲染 BanPage，Home 根本不会挂载，也不会出现 403 toast。
+
 ### 验收
 
-1. 模拟被封（把本机 IP 加入黑名单或等自动封禁）：刷新 `/` → 直接显示封禁卡片（原因/时间/申诉编号），
-   点「申请解封」→ 进入 `/appeal` 申诉页。
+1. **手机真机 / 模拟封禁**（把手机 IP 加入黑名单，等 10 秒生效后刷新）：
+   - 页面直接显示封禁卡片（原因 / 解除时间 / 申诉编号）；
+   - **不再出现「请求失败 (403)」提示**；
+   - 点「申请解封」→ 进入 `/appeal` 申诉页。
 2. 被封状态下直接打开 `/appeal` → 正常显示申诉页。
 3. 管理员/白名单访问 → 不受影响（正常首页）。
 4. 封禁解除后刷新 → 正常首页（无残留跳转）。
