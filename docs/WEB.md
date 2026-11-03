@@ -36,7 +36,7 @@ node src/cli.js serve --port 8090
 |---|---|
 | `/setup` | 首次初始化：创建管理员、数据源/代理/提醒；完成前其他页面一律 302 到这里 |
 | `/` | Vue 单页前端：列表、筛选（全部/感兴趣/不感兴趣/已拥有）、排序（折扣/价格/名称，热度作主序）、发行时间筛选、搜索边打边查、亮暗色切换、登录 |
-| `/console` | Vue 控制台（仅管理员）：游戏管理、回收站、站点通知、访问记录、用户管理、**Steam 账号**、邮件服务、**系统设置**、数据统计、运行日志；`?section=` 可直链到某个模块 |
+| `/console` | Vue 控制台（仅管理员）：游戏管理、回收站、站点通知、访问记录、用户管理、**Steam 账号**、邮件服务、**系统设置**、数据统计、**批量操作记录**、运行日志；`?section=` 可直链到某个模块 |
 | `/banned` | Vue 封禁提示页（403）：服务端注入 `window.__BAN_PAGE__`（站点名/申诉邮箱/到期时间/申诉编号），封禁期间只放行该页需要的 `/assets/*.js|css` |
 | `/appeal` | Vue 申诉页：接收 `/banned` 带过来的 `code`/`reason`/`until`/`email` 生成申诉邮件；**被封禁的 IP/设备也能打开**（服务端对 `/appeal` 跳过封禁与限流判定，但仍只放行构建产物） |
 | 点游戏名 | 详情弹窗：各平台报价、折扣、简介；管理员可直接改标记、设到价提醒；报价与价格历史分页显示 |
@@ -171,6 +171,13 @@ POST /api/setup/complete
 - `GET /api/admin/emails` → 验证码邮件记录（含 `subject`/`body`：用户收不到邮件时直接看验证码）
 - `GET /api/admin/blacklist` → 黑名单列表；`POST /api/admin/blacklist` → `{ ip, note }` 拉黑（支持 CIDR）；
   `DELETE /api/admin/blacklist/:ip` → 移出。增删后内存黑名单即时刷新
+- `POST /api/admin/bulk` → **统一批量入口**：`{ target, action, keys, options?, confirmCount? }`。
+  合法组合、单次上限与风险等级由 `src/server.js` 的 `BULK_ACTIONS` 派发表决定（未登记的组合 400）；
+  高危动作（封禁/删除/禁用）必须带 `confirmCount` 且等于**去重后**的条数（不能只靠前端弹窗）。
+  返回 `{ opId, total, ok, failed, skipped, results[] }`，`results` 只列跳过/失败明细；
+  单条失败不影响其它条；库变更后同步刷新内存态（黑名单/白名单/设备封禁）。
+  支持的目标与动作见 [ADMIN-BULK-ACTIONS.md](ADMIN-BULK-ACTIONS.md) §2（11 个列表）
+- `GET /api/admin/bulk-ops?limit&target` → 批量操作审计列表；`GET /api/admin/bulk-ops/:id` → 单条详情（含键样本）
 - `GET /api/admin/version` → 当前版本 + 最新 release 检查（`?force=1` 绕过 6 小时缓存）
 
 **「同步与回填」页（v1.4.6 起精简为一表 + 状态卡）**：不再暴露任务参数输入，五个任务各一行

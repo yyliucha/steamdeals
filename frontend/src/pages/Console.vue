@@ -17,7 +17,7 @@
     <main class="admin-content">
       <header class="admin-header"><div><div class="admin-crumb">管理中心 <span>/</span> {{ selectedItem?.group }}</div><h1>{{ selectedItem?.label }}</h1><p>{{ selectedItem?.description }}</p></div><div class="header-actions"><span class="header-version" :title="versionTitle" @click="loadVersion(true)">v{{ verInfo.current || '—' }}<em v-if="verInfo.updateAvailable && verInfo.latest"> ↑ 新版 v{{ String(verInfo.latest).replace(/^v/i, '') }} 可用</em></span><el-button text class="theme-btn" :title="themeMode === 'dark' ? '切换亮色' : '切换暗色'" @click="toggleTheme">{{ themeMode === 'dark' ? '🌞' : '🌙' }}</el-button></div></header>
       <AdminModules v-if="nativeSections.includes(selected)" :section="selected" />
-      <AdminExtras v-else :section="selected" />
+      <AdminExtras v-else :section="selected" :me="user" />
     </main>
   </div>
 </template>
@@ -42,12 +42,12 @@ function toggleTheme(){
     fetch('/api/prefs', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ theme: m }) }).catch(() => {});
   }
 }
-const nativeSections=['games','visitors','announcements','settings','stats'];
+const nativeSections=['games','visitors','announcements','settings','stats','bulk-ops'];
 const groups=[
   {name:'内容运营',items:[{id:'games',label:'游戏管理',glyph:'▦',description:'维护游戏目录、采集计划与数据回填'},{id:'recycle',label:'回收站',glyph:'▤',description:'查看并恢复已删除的游戏'},{id:'announcements',label:'站点通知',glyph:'▱',description:'发布和管理网站公告'}]},
   {name:'访问与安全',items:[{id:'visitors',label:'访问记录',glyph:'◉',description:'流量、异常请求和访问控制'}]},
   {name:'账号与服务',items:[{id:'users',label:'用户管理',glyph:'♙',description:'管理账号、角色与登录权限'},{id:'steam',label:'Steam 账号',glyph:'◈',description:'绑定多个 Steam 账号，同步游戏库与愿望单'},{id:'mail',label:'邮件服务',glyph:'✉',description:'配置 SMTP、测试邮件和发送记录'}]},
-  {name:'系统',items:[{id:'settings',label:'系统设置',glyph:'⚙',description:'数据源、网络代理与提醒配置'},{id:'stats',label:'数据统计',glyph:'▥',description:'价格变化、缓存、备份与访问排行'},{id:'sync',label:'运行日志',glyph:'≋',description:'查看服务实时输出和同步记录'}]},
+  {name:'系统',items:[{id:'settings',label:'系统设置',glyph:'⚙',description:'数据源、网络代理与提醒配置'},{id:'stats',label:'数据统计',glyph:'▥',description:'价格变化、缓存、备份与访问排行'},{id:'bulk-ops',label:'批量操作记录',glyph:'☰',description:'后台批量操作的审计：谁、何时、对哪个列表、成功/失败多少'},{id:'sync',label:'运行日志',glyph:'≋',description:'查看服务实时输出和同步记录'}]},
 ];
 const selected=ref(String(route.query.section||'games'));
 // URL 里的 section 变化（如指标卡「已删除」跳转回收站）时同步选中态

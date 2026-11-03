@@ -304,6 +304,28 @@ create table if not exists abuse_reviews (
 );
 create index if not exists idx_abuse_reviews_status on abuse_reviews (status, last_seen desc);
 create unique index if not exists uniq_abuse_reviews_pending on abuse_reviews (ip, rule) where status = 'pending';
+
+-- 后台批量操作审计：一次 POST /api/admin/bulk 落一条，供「系统 → 批量操作记录」页查看。
+-- keys_sample 只留最多 50 个键（IP/指纹/内部 id），避免一次把 1000 条 IP 写进 jsonb；
+-- actor 冗余存用户名，用户被删除后记录仍可读。
+create table if not exists admin_bulk_ops (
+  id          bigserial primary key,
+  created_at  timestamptz not null default now(),
+  actor_id    integer references users(id) on delete set null,
+  actor       text,
+  target      text not null,
+  action      text not null,
+  total       int not null,
+  ok          int not null default 0,
+  failed      int not null default 0,
+  skipped     int not null default 0,
+  keys_sample jsonb,
+  options     jsonb,
+  ip          text,
+  duration_ms int
+);
+create index if not exists idx_admin_bulk_ops_time on admin_bulk_ops (created_at desc);
+create index if not exists idx_admin_bulk_ops_target on admin_bulk_ops (target, created_at desc);
 `;
 
 const ALTERS = [
@@ -2105,4 +2127,238 @@ export async function mergeGames(q, { fromGameId, toGameId, logger = null }) {
   const result = { merged: true, moved, dropped, fromGameId: Number(fromGameId), toGameId: Number(toGameId) };
   logger?.info('db.merge_games', result);
   return result;
+}
+
+// ---------------------------------------------------------------- 后台批量操作
+//
+// 统一约定（docs/ADMIN-BULK-ACTIONS.md）：
+// - 键已由调用方按 target 校验并去重，这里只做类型收敛；
+// - 返回「真正改动」的键，没命中的由调用方记 skipped —— 这样重复执行同一批
+//   是幂等的（已解封/已恢复/已忽略不会再算一次成功），也能如实反映 done 数量；
+// - SQL 仍然只写在本文件（server.js 不拼 SQL）。
+// 注意：games.id / announcements.id / abuse_reviews.id 是 bigint，pg 驱动会返回字符串，
+// 全部转成 Number 再和请求里的键比较，否则会永远对不上。
+
+function asIdList(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((v) => Number(v))
+    .filter((n) => Number.isInteger(n) && n > 0);
+}
+
+function asTextList(list) {
+  return (Array.isArray(list) ? list : []).map((v) => String(v)).filter(Boolean);
+}
+
+/** 批量禁用 / 启用游戏：返回真正改动的 id。 */
+export async function bulkSetGamesBlocked(q, { ids = [], blocked }) {
+  const list = asIdList(ids);
+  if (!list.length) return [];
+  const r = await q(
+    `update games set blocked = $1, updated_at = now()
+      where id = any($2::bigint[]) and blocked is distinct from $1
+      returning id`,
+    [Boolean(blocked), list],
+  );
+  return r.rows.map((row) => Number(row.id));
+}
+
+/** 批量移入回收站 / 恢复：返回真正改动的 id。 */
+export async function bulkSetGamesDeleted(q, { ids = [], deleted }) {
+  const list = asIdList(ids);
+  if (!list.length) return [];
+  const r = await q(
+    `update games set deleted = $1,
+                      deleted_at = case when $1 then now() else null end,
+                      updated_at = now()
+      where id = any($2::bigint[]) and deleted is distinct from $1
+      returning id`,
+    [Boolean(deleted), list],
+  );
+  return r.rows.map((row) => Number(row.id));
+}
+
+/** 批量删除公告：返回真正删掉的 id。 */
+export async function bulkDeleteAnnouncements(q, ids = []) {
+  const list = asIdList(ids);
+  if (!list.length) return [];
+  const r = await q('delete from announcements where id = any($1::bigint[]) returning id', [list]);
+  return r.rows.map((row) => Number(row.id));
+}
+
+/** 批量启用 / 停用公告：返回真正改动的 id。 */
+export async function bulkSetAnnouncementsActive(q, { ids = [], active }) {
+  const list = asIdList(ids);
+  if (!list.length) return [];
+  const r = await q(
+    `update announcements set active = $1, updated_at = now()
+      where id = any($2::bigint[]) and active is distinct from $1
+      returning id`,
+    [Boolean(active), list],
+  );
+  return r.rows.map((row) => Number(row.id));
+}
+
+/** 审批封 IP / 封设备要逐条拿 ip 与指纹，所以先整批查出来再逐条执行。 */
+export async function bulkGetAbuseReviews(q, ids = []) {
+  const list = asIdList(ids);
+  if (!list.length) return [];
+  const r = await q(
+    `select id, ip, device_id, fingerprint, rule, status
+       from abuse_reviews where id = any($1::bigint[])`,
+    [list],
+  );
+  return r.rows.map((row) => ({ ...row, id: Number(row.id) }));
+}
+
+/** 批量忽略待审：只处理 pending，已处理过的返回 skipped。 */
+export async function bulkRejectAbuseReviews(q, { ids = [], reviewedBy = null, note = null }) {
+  const list = asIdList(ids);
+  if (!list.length) return [];
+  const r = await q(
+    `update abuse_reviews
+        set status = 'rejected', reviewed_by = $2, reviewed_at = now(), note = coalesce($3, note)
+      where id = any($1::bigint[]) and status = 'pending'
+      returning id`,
+    [list, reviewedBy, note ? String(note).slice(0, 300) : null],
+  );
+  return r.rows.map((row) => Number(row.id));
+}
+
+/** 批量解封 IP（黑名单）。 */
+export async function bulkRemoveBlockedIps(q, ips = []) {
+  const list = asTextList(ips);
+  if (!list.length) return [];
+  const r = await q('delete from ip_blacklist where ip = any($1::text[]) returning ip', [list]);
+  return r.rows.map((row) => String(row.ip));
+}
+
+/** 批量移出白名单。 */
+export async function bulkRemoveWhitelistIps(q, ips = []) {
+  const list = asTextList(ips);
+  if (!list.length) return [];
+  const r = await q('delete from ip_whitelist where ip = any($1::text[]) returning ip', [list]);
+  return r.rows.map((row) => String(row.ip));
+}
+
+/** 批量解封设备。 */
+export async function bulkRemoveDeviceBans(q, fingerprints = []) {
+  const list = asTextList(fingerprints).map((f) => f.toLowerCase());
+  if (!list.length) return [];
+  const r = await q('delete from device_bans where fingerprint = any($1::text[]) returning fingerprint', [list]);
+  return r.rows.map((row) => String(row.fingerprint));
+}
+
+/** 批量禁用用户需要的守卫数据（自己 / 最后一个可用管理员）。 */
+export async function usersForBulk(q, ids = []) {
+  const list = asIdList(ids);
+  if (!list.length) return [];
+  const r = await q('select id, username, role, disabled from users where id = any($1::integer[])', [list]);
+  return r.rows.map((row) => ({ ...row, id: Number(row.id) }));
+}
+
+/** 排除 excludeIds 之后还剩几个可用管理员（禁用前的守卫计算）。 */
+export async function countActiveAdmins(q, { excludeIds = [] } = {}) {
+  const list = asIdList(excludeIds);
+  const r = await q(
+    `select count(*)::int as n from users
+      where role = 'admin' and not disabled and not (id = any($1::integer[]))`,
+    [list],
+  );
+  return Number(r.rows[0]?.n ?? 0);
+}
+
+/** 批量禁用 / 启用用户：返回真正改动的行。 */
+export async function bulkSetUsersDisabled(q, { ids = [], disabled }) {
+  const list = asIdList(ids);
+  if (!list.length) return [];
+  const r = await q(
+    `update users set disabled = $1
+      where id = any($2::integer[]) and disabled is distinct from $1
+      returning id, username`,
+    [Boolean(disabled), list],
+  );
+  return r.rows.map((row) => ({ id: Number(row.id), username: row.username }));
+}
+
+/** 禁用后立即踢掉该用户的会话：禁用必须马上生效，不能等 cookie 自己过期。 */
+export async function deleteSessionsOfUsers(q, ids = []) {
+  const list = asIdList(ids);
+  if (!list.length) return 0;
+  const r = await q('delete from sessions where user_id = any($1::integer[])', [list]);
+  return r.rowCount ?? 0;
+}
+
+/** 写一条批量操作审计；keys_sample 最多留 50 个键。 */
+export async function createBulkOp(q, {
+  actorId = null,
+  actor = null,
+  target,
+  action,
+  total = 0,
+  ok = 0,
+  failed = 0,
+  skipped = 0,
+  keysSample = [],
+  options = null,
+  ip = null,
+  durationMs = null,
+}) {
+  const r = await q(
+    `insert into admin_bulk_ops (actor_id, actor, target, action, total, ok, failed, skipped, keys_sample, options, ip, duration_ms)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12)
+     returning id, created_at`,
+    [
+      actorId,
+      actor,
+      String(target),
+      String(action),
+      Number(total) || 0,
+      Number(ok) || 0,
+      Number(failed) || 0,
+      Number(skipped) || 0,
+      JSON.stringify(asTextList(keysSample).slice(0, 50)),
+      options ? JSON.stringify(options) : null,
+      ip,
+      durationMs == null ? null : Math.round(Number(durationMs)),
+    ],
+  );
+  return { id: Number(r.rows[0].id), createdAt: r.rows[0].created_at };
+}
+
+export async function listBulkOps(q, { limit = 100, target = null } = {}) {
+  const params = [Math.min(Math.max(Number(limit) || 100, 1), 200)];
+  let where = '';
+  if (target) {
+    params.push(String(target));
+    where = 'where target = $2';
+  }
+  const r = await q(
+    `select id, created_at, actor, target, action, total, ok, failed, skipped, ip, duration_ms
+       from admin_bulk_ops ${where} order by id desc limit $1`,
+    params,
+  );
+  return r.rows.map((row) => ({
+    ...row,
+    id: Number(row.id),
+    total: Number(row.total),
+    ok: Number(row.ok),
+    failed: Number(row.failed),
+    skipped: Number(row.skipped),
+    duration_ms: row.duration_ms == null ? null : Number(row.duration_ms),
+  }));
+}
+
+/** 单条审计详情（含 keys_sample，用于「点开看这次动了哪些键」）。 */
+export async function getBulkOp(q, id) {
+  const r = await q('select * from admin_bulk_ops where id = $1', [Number(id)]);
+  const row = r.rows[0];
+  if (!row) return null;
+  return {
+    ...row,
+    id: Number(row.id),
+    total: Number(row.total),
+    ok: Number(row.ok),
+    failed: Number(row.failed),
+    skipped: Number(row.skipped),
+  };
 }

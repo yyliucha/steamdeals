@@ -2391,6 +2391,112 @@ export function createApiServer({
         return json(res, 200, { ok: true });
       }
 
+      // ---- 管理员：批量操作（统一入口 + 白名单派发表，见 docs/ADMIN-BULK-ACTIONS.md）----
+      if (path === '/api/admin/bulk' && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const startedAt = Date.now();
+        let body;
+        try {
+          body = await readBody(req, 256 * 1024);
+        } catch {
+          return json(res, 400, { error: '请求格式错误' });
+        }
+        if (!body || typeof body !== 'object') return json(res, 400, { error: '请求格式错误' });
+        const target = String(body.target ?? '').trim();
+        const action = String(body.action ?? '').trim();
+        const reject = async (status, reason) => {
+          logger?.warn('admin.bulk_rejected', {
+            target,
+            action,
+            reason,
+            count: Array.isArray(body.keys) ? body.keys.length : 0,
+            by: user.username,
+          });
+          return json(res, status, { error: reason });
+        };
+        const def = BULK_ACTIONS[`${target}/${action}`];
+        if (!def) return reject(400, '不支持的批量操作');
+        if (!Array.isArray(body.keys)) return reject(400, 'keys 必须是数组');
+        if (!body.keys.length) return reject(400, '请先选择要操作的条目');
+        // 逐条校验 → 规范化 → 去重：IP 的大小写/CIDR 写法、指纹大小写、id 写成字符串都算同一个键
+        const keys = [];
+        const seen = new Set();
+        for (const raw of body.keys) {
+          const key = normalizeBulkKey(def.keyType, raw);
+          if (key == null) return reject(400, BULK_KEY_ERROR[def.keyType]);
+          const sig = String(key);
+          if (seen.has(sig)) continue;
+          seen.add(sig);
+          keys.push(key);
+        }
+        if (!keys.length) return reject(400, '请先选择要操作的条目');
+        if (keys.length > def.max) return reject(400, `单次最多 ${def.max} 条`);
+        // 高危动作必须在服务端二次确认，不能只靠前端弹窗
+        if (def.risk === 'high') {
+          const confirmCount = Number(body.confirmCount);
+          if (!Number.isInteger(confirmCount) || confirmCount !== keys.length) {
+            return reject(400, `高危操作需要确认条数（本次 ${keys.length} 条）`);
+          }
+        }
+        if (def.guard) {
+          const blockedReason = await def.guard({ q, keys, user });
+          if (blockedReason) return reject(409, blockedReason);
+        }
+        let outcome;
+        try {
+          outcome = await def.run({ q, keys, options: body.options, user, logger });
+        } catch (err) {
+          logger?.error('admin.bulk_failed', { target, action, message: String(err.message).slice(0, 200), by: user.username });
+          return json(res, 500, { error: '批量执行失败，请稍后重试' });
+        }
+        const results = (outcome.results || []).slice(0, 200);
+        const ok = Number(outcome.ok) || 0;
+        const failed = results.filter((item) => item.status === 'failed').length;
+        const skipped = results.filter((item) => item.status === 'skipped').length;
+        const durationMs = Date.now() - startedAt;
+        let opId = null;
+        try {
+          const op = await db.createBulkOp(q, {
+            actorId: user.id,
+            actor: user.username,
+            target,
+            action,
+            total: keys.length,
+            ok,
+            failed,
+            skipped,
+            keysSample: keys.map((k) => String(k)),
+            options: body.options ?? null,
+            ip,
+            durationMs,
+          });
+          opId = op.id;
+        } catch (err) {
+          // 审计写失败不影响已执行的结果，但必须留下证据
+          logger?.error('admin.bulk_audit_failed', { target, action, message: String(err.message).slice(0, 200) });
+        }
+        logger?.info('admin.bulk', { opId, target, action, total: keys.length, ok, failed, skipped, by: user.username });
+        for (const item of results.filter((r) => r.status === 'failed').slice(0, 20)) {
+          logger?.warn('admin.bulk_item_failed', { target, action, key: String(item.key).slice(0, 64), message: item.reason });
+        }
+        return json(res, 200, { opId, total: keys.length, ok, failed, skipped, results });
+      }
+
+      // ---- 管理员：批量操作记录（审计：谁、何时、对哪个列表、做了什么、成败多少）----
+      if (path === '/api/admin/bulk-ops' && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const limit = Number(url.searchParams.get('limit') ?? 100);
+        const target = url.searchParams.get('target') || null;
+        return json(res, 200, { ops: await db.listBulkOps(q, { limit, target }) });
+      }
+      const bulkOpMatch = path.match(/^\/api\/admin\/bulk-ops\/(\d+)$/);
+      if (bulkOpMatch && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const op = await db.getBulkOp(q, Number(bulkOpMatch[1]));
+        if (!op) return json(res, 404, { error: '记录不存在' });
+        return json(res, 200, { op });
+      }
+
       return json(res, 404, { error: 'not found' });
     } catch (err) {
       logger?.error('api.error', { path, message: String(err.message).slice(0, 200) });
@@ -2411,6 +2517,247 @@ function isLoggablePath(path) {
   if (/\.(png|jpe?g|gif|webp|svg|ico|css|js|map|woff2?|ttf|otf|eot|json|xml|txt|md)$/i.test(path)) return false;
   if (path.startsWith('/img/')) return false;
   return true;
+}
+
+// ---------------------------------------------------------------- 后台批量操作
+//
+// 设计见 docs/ADMIN-BULK-ACTIONS.md：所有列表共用一个 POST /api/admin/bulk，
+// 靠这张白名单派发表决定「哪些 target/action 合法、单次上限多少、是不是高危」。
+// 未登记的组合一律 400 —— 新增一个列表必须显式改这张表，不允许隐式放行。
+//
+// 两种执行形态：
+//   · 纯 SQL 批量（解封/恢复/启停/忽略/删除/禁用）：一次 update/delete ... = any(数组)，
+//     returning 出来的就是成功集，没返回的记 skipped；
+//   · 逐条复用单条逻辑（封 IP / 封设备 / 信任 / 设备封禁）：上限只有 50，串行执行，
+//     单条异常记 failed 不影响其它条（与 ingest 的失败模型一致）。
+
+const BULK_KEY_ERROR = {
+  id: '条目 id 不合法',
+  ip: 'IP 格式不正确（支持 1.2.3.4 单个 IP 或 1.2.3.0/24 网段）',
+  fingerprint: '设备指纹不合法',
+};
+
+const BULK_ACTIONS = {
+  'reviews/approve-ip': { max: 50, risk: 'high', keyType: 'id', run: bulkReviewApproveIp },
+  'reviews/approve-device': { max: 50, risk: 'high', keyType: 'id', run: bulkReviewApproveDevice },
+  'reviews/reject': { max: 200, risk: 'low', keyType: 'id', run: bulkReviewReject },
+  'visitors/ban-ip': { max: 50, risk: 'high', keyType: 'ip', run: bulkVisitorBanIp },
+  'visitors/trust': { max: 200, risk: 'low', keyType: 'ip', run: bulkVisitorTrust },
+  'games/restore': { max: 1000, risk: 'low', keyType: 'id', run: bulkGameRestore },
+  'games/block': { max: 50, risk: 'high', keyType: 'id', run: bulkGameBlock },
+  'games/unblock': { max: 200, risk: 'low', keyType: 'id', run: bulkGameUnblock },
+  'games/delete': { max: 50, risk: 'high', keyType: 'id', run: bulkGameDelete },
+  'announcements/delete': { max: 50, risk: 'high', keyType: 'id', run: bulkAnnouncementDelete },
+  'announcements/activate': { max: 200, risk: 'low', keyType: 'id', run: bulkAnnouncementActivate },
+  'announcements/deactivate': { max: 200, risk: 'low', keyType: 'id', run: bulkAnnouncementDeactivate },
+  'blacklist/unban': { max: 200, risk: 'low', keyType: 'ip', run: bulkBlacklistUnban },
+  'whitelist/remove': { max: 200, risk: 'low', keyType: 'ip', run: bulkWhitelistRemove },
+  'device-bans/unban': { max: 200, risk: 'low', keyType: 'fingerprint', run: bulkDeviceBanRemove },
+  'abuse/unban': { max: 200, risk: 'low', keyType: 'ip', run: bulkAbuseUnban },
+  'devices/ban': { max: 50, risk: 'high', keyType: 'fingerprint', run: bulkDeviceBan },
+  'users/disable': { max: 50, risk: 'high', keyType: 'id', guard: bulkGuardUserDisable, run: bulkUserDisable },
+  'users/enable': { max: 200, risk: 'low', keyType: 'id', run: bulkUserEnable },
+};
+
+/** 键规范化：IP 走 visitors.normalizeBanInput（与单条接口同一口径），非法返回 null。 */
+function normalizeBulkKey(keyType, raw) {
+  if (keyType === 'ip') return visitors.normalizeBanInput(raw);
+  if (keyType === 'fingerprint') {
+    const fp = String(raw ?? '').trim().toLowerCase();
+    return /^[a-f0-9]{32,64}$/.test(fp) ? fp : null;
+  }
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/** 纯 SQL 批量的收尾：返回真正改动的键，其余记为 skipped（幂等重放不虚报成功）。 */
+function bulkMissing(keys, doneKeys, reason) {
+  const done = new Set(doneKeys.map((k) => String(k)));
+  return keys.filter((k) => !done.has(String(k))).map((k) => ({ key: String(k), status: 'skipped', reason }));
+}
+
+/** 逐条执行的小工具：把单条异常收敛成 failed，不影响其它条。 */
+async function bulkEach(keys, handler) {
+  const results = [];
+  let ok = 0;
+  let touched = false;
+  for (const key of keys) {
+    try {
+      const outcome = await handler(key);
+      if (outcome === 'done') {
+        ok += 1;
+        touched = true;
+      } else {
+        results.push({ key: String(key), status: 'skipped', reason: outcome || '状态已一致' });
+      }
+    } catch (err) {
+      results.push({ key: String(key), status: 'failed', reason: String(err?.message ?? err).slice(0, 120) });
+    }
+  }
+  return { ok, results, touched };
+}
+
+async function bulkReviewApproveIp({ q, keys, user }) {
+  const rows = await db.bulkGetAbuseReviews(q, keys);
+  const byId = new Map(rows.map((row) => [String(row.id), row]));
+  const { ok, results, touched } = await bulkEach(keys, async (key) => {
+    const review = byId.get(String(key));
+    if (!review) return '审核记录不存在';
+    if (review.status !== 'pending') return '已处理过';
+    if (!review.ip) return '该记录没有 IP';
+    await db.addBlockedIp(q, { ip: review.ip, note: `批量审核通过（${review.rule}）by ${user.username}` });
+    // 与单条审批一致：封禁动作把该 IP 的其它待审记录标记为 auto_banned
+    await db.markReviewsAutoBanned(q, { ip: review.ip, note: '手动封禁' });
+    await db.finishAbuseReview(q, review.id, { status: 'approved', reviewedBy: user.id, note: '批量封 IP' });
+    return 'done';
+  });
+  if (touched) await visitors.refreshBlocklist(q).catch(() => {});
+  return { ok, results };
+}
+
+async function bulkReviewApproveDevice({ q, keys, user }) {
+  const rows = await db.bulkGetAbuseReviews(q, keys);
+  const byId = new Map(rows.map((row) => [String(row.id), row]));
+  const { ok, results, touched } = await bulkEach(keys, async (key) => {
+    const review = byId.get(String(key));
+    if (!review) return '审核记录不存在';
+    if (review.status !== 'pending') return '已处理过';
+    if (!review.fingerprint) return '该记录没有设备指纹';
+    await db.upsertDeviceBan(q, {
+      fingerprint: review.fingerprint,
+      deviceId: review.device_id,
+      note: `批量审核通过（${review.rule}）by ${user.username}`,
+    });
+    await db.finishAbuseReview(q, review.id, { status: 'approved', reviewedBy: user.id, note: '批量封设备' });
+    return 'done';
+  });
+  if (touched) await devices.loadBans(q).catch(() => {});
+  return { ok, results };
+}
+
+async function bulkReviewReject({ q, keys, user }) {
+  const done = await db.bulkRejectAbuseReviews(q, { ids: keys, reviewedBy: user.id, note: '批量忽略' });
+  return { ok: done.length, results: bulkMissing(keys, done, '审核记录不存在或已处理') };
+}
+
+async function bulkVisitorBanIp({ q, keys, user }) {
+  const { ok, results, touched } = await bulkEach(keys, async (ip) => {
+    await db.addBlockedIp(q, { ip, note: `批量封禁 by ${user.username}` });
+    await db.markReviewsAutoBanned(q, { ip, note: '手动封禁' });
+    return 'done';
+  });
+  if (touched) await visitors.refreshBlocklist(q).catch(() => {});
+  return { ok, results };
+}
+
+async function bulkVisitorTrust({ q, keys, user }) {
+  const { ok, results } = await bulkEach(keys, async (ip) => {
+    await db.addWhitelistIp(q, { ip, note: `批量信任 by ${user.username}` });
+    ratelimit.addWhitelist(ip);
+    return 'done';
+  });
+  return { ok, results };
+}
+
+async function bulkGameRestore({ q, keys }) {
+  const done = await db.bulkSetGamesDeleted(q, { ids: keys, deleted: false });
+  return { ok: done.length, results: bulkMissing(keys, done, '游戏不存在或未删除') };
+}
+
+async function bulkGameBlock({ q, keys }) {
+  const done = await db.bulkSetGamesBlocked(q, { ids: keys, blocked: true });
+  return { ok: done.length, results: bulkMissing(keys, done, '游戏不存在或已禁用') };
+}
+
+async function bulkGameUnblock({ q, keys }) {
+  const done = await db.bulkSetGamesBlocked(q, { ids: keys, blocked: false });
+  return { ok: done.length, results: bulkMissing(keys, done, '游戏不存在或已是启用状态') };
+}
+
+async function bulkGameDelete({ q, keys }) {
+  const done = await db.bulkSetGamesDeleted(q, { ids: keys, deleted: true });
+  return { ok: done.length, results: bulkMissing(keys, done, '游戏不存在或已在回收站') };
+}
+
+async function bulkAnnouncementDelete({ q, keys }) {
+  const done = await db.bulkDeleteAnnouncements(q, keys);
+  return { ok: done.length, results: bulkMissing(keys, done, '公告不存在或已删除') };
+}
+
+async function bulkAnnouncementActivate({ q, keys }) {
+  const done = await db.bulkSetAnnouncementsActive(q, { ids: keys, active: true });
+  return { ok: done.length, results: bulkMissing(keys, done, '公告不存在或已是启用状态') };
+}
+
+async function bulkAnnouncementDeactivate({ q, keys }) {
+  const done = await db.bulkSetAnnouncementsActive(q, { ids: keys, active: false });
+  return { ok: done.length, results: bulkMissing(keys, done, '公告不存在或已是停用状态') };
+}
+
+async function bulkBlacklistUnban({ q, keys }) {
+  const done = await db.bulkRemoveBlockedIps(q, keys);
+  // 内存黑名单必须同步刷新，否则这批 IP 仍会被 403（验收 §8.3 专门盯这条）
+  if (done.length) await visitors.refreshBlocklist(q).catch(() => {});
+  return { ok: done.length, results: bulkMissing(keys, done, '不在黑名单中') };
+}
+
+async function bulkWhitelistRemove({ q, keys }) {
+  const done = await db.bulkRemoveWhitelistIps(q, keys);
+  for (const ip of done) ratelimit.removeWhitelist(ip);
+  return { ok: done.length, results: bulkMissing(keys, done, '不在白名单中') };
+}
+
+async function bulkDeviceBanRemove({ q, keys }) {
+  const done = await db.bulkRemoveDeviceBans(q, keys);
+  if (done.length) await devices.loadBans(q).catch(() => {});
+  return { ok: done.length, results: bulkMissing(keys, done, '不在设备封禁列表中') };
+}
+
+async function bulkAbuseUnban({ q, keys }) {
+  const { ok, results, touched } = await bulkEach(keys, async (ip) => {
+    const removed = await ratelimit.unban(q, ip);
+    return removed ? 'done' : '没有临时封禁记录';
+  });
+  if (touched) await visitors.refreshBlocklist(q).catch(() => {});
+  return { ok, results };
+}
+
+async function bulkDeviceBan({ q, keys, options, user }) {
+  const minutes = Number(options?.minutes);
+  const permanent = options?.permanent === true || !Number.isFinite(minutes) || minutes <= 0;
+  const until = permanent ? null : new Date(Date.now() + minutes * 60_000).toISOString();
+  const note = String(options?.note ?? '').trim().slice(0, 200) || `批量封禁 by ${user.username}`;
+  const { ok, results } = await bulkEach(keys, async (fingerprint) => {
+    await db.upsertDeviceBan(q, { fingerprint, deviceId: null, note, until });
+    return 'done';
+  });
+  if (ok) await devices.loadBans(q).catch(() => {});
+  return { ok, results };
+}
+
+/** 用户批量禁用的守卫：不能把最后一个可用管理员禁掉，也不能禁用自己。 */
+async function bulkGuardUserDisable({ q, keys, user }) {
+  const rows = await db.usersForBulk(q, keys);
+  const disablingAdmins = rows.filter((row) => row.role === 'admin' && !row.disabled).length;
+  if (disablingAdmins > 0) {
+    const remaining = await db.countActiveAdmins(q, { excludeIds: keys });
+    if (remaining <= 0) return '不能禁用最后一个可用管理员';
+  }
+  if (rows.some((row) => row.id === user.id)) return '不能禁用自己的账号';
+  return null;
+}
+
+async function bulkUserDisable({ q, keys }) {
+  const done = await db.bulkSetUsersDisabled(q, { ids: keys, disabled: true });
+  // 禁用要立即生效：删掉这些用户的会话，否则旧 cookie 还能继续用
+  if (done.length) await db.deleteSessionsOfUsers(q, done.map((row) => row.id));
+  const doneIds = done.map((row) => row.id);
+  return { ok: done.length, results: bulkMissing(keys, doneIds, '用户不存在或已是禁用状态') };
+}
+
+async function bulkUserEnable({ q, keys }) {
+  const done = await db.bulkSetUsersDisabled(q, { ids: keys, disabled: false });
+  return { ok: done.length, results: bulkMissing(keys, done.map((row) => row.id), '用户不存在或已是启用状态') };
 }
 
 /** 基础安全响应头：防嗅探、防点击劫持、限制 referrer 与权限。 */

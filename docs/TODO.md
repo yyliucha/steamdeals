@@ -248,3 +248,16 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 - 设备 tab（最近设备/时长封禁/已封设备/解封）；游戏目录「高级」合并重复游戏；
   运行日志页「同步记录」表（后端 listSyncRuns 附带 fetch_runs 汇总）；任务实时进度轮询。
+
+## Q. ~~待开发：后台列表批量操作（多选 + 批量执行）~~ → **已实现并发布（v1.14.0，2026-11-03）**
+
+**状态：已发布 v1.14.0**（tag 已推送，`docker-hub` / `docker-tcr` 构建见 CI）。规格见 [ADMIN-BULK-ACTIONS.md](ADMIN-BULK-ACTIONS.md)。
+
+- 现状（开发前）：后台 15 个列表 **0 个多选、0 个批量接口**，处置只能逐行点。
+- 已实现（A+B 共 11 个）：待审列表、访问明细、回收站、站点通知、IP 黑名单、IP 白名单、已封设备、自动封禁记录
+  （A）；游戏目录、最近设备、用户列表（只禁用/启用）（B）。
+- 方案：统一 `POST /api/admin/bulk`（白名单派发表 + 单次上限 + 高危 `confirmCount` + 逐条回执）；
+  审计表 `admin_bulk_ops` +「系统 → 批量操作记录」页；常规列表本页勾选，回收站支持「全选筛选结果」（≤1000）。
+- 不做：Steam 账号同步/认领、投放任务、只读列表、用户批量重置密码。
+- 验证：`test/admin-bulk.test.js` 12 项（真 PGlite + 真 HTTP）已接入主链；`npm test` / `frontend:build` / `scan` 全绿。
+- 实现偏差与落点见规格 §11。

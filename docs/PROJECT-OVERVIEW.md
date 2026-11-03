@@ -85,6 +85,7 @@ Node.js 服务 src/server.js
 | Web/API、安装和账户 | `src/server.js`, `src/*-routes.js`, `frontend/` | Vue 前端覆盖前台、初始化、封禁页与控制台十个模块；`web/` 旧页面仅作无构建产物时的回退；具体入口见 [WEB.md](WEB.md) |
 | 封禁与申诉 | `src/devices.js`, `src/ratelimit.js`, `src/server.js`, `frontend/src/pages/BanPage.vue`, `AppealPage.vue` | 封禁页与服务端注入的 `__BAN_PAGE__`、Vue 申诉页；`/appeal` 对封禁 IP/设备放行（申诉走邮件，不落库） |
 | 关注、降价提醒、通知 | `src/alerts.js`, `src/notify.js` | 目标价/史低触发；Webhook、企业微信机器人、SMTP |
+| **后台列表批量操作** | `src/server.js`（`BULK_ACTIONS` 派发表 + `/api/admin/bulk`）、`src/store/pg.js`（`bulk*` SQL + `admin_bulk_ops`）、`frontend/src/composables/useBulkSelection.js`、`components/BulkBar.vue`、`components/BulkResultDialog.vue`、`pages/AdminModules.vue`、`pages/AdminExtras.vue`、`pages/Console.vue` | 已实现并发布 v1.14.0（2026-11-03 验证：`npm test` 46 个测试文件全绿 / `frontend:build` / `scan` 干净）：11 个列表可多选批量执行（待审/访问明细/回收站/站点通知/IP 黑名单/IP 白名单/已封设备/自动封禁/游戏目录/最近设备/用户）；单次上限与高危确认由服务端派发表决定，成功/跳过/失败逐条回执，审计落 `admin_bulk_ops`。规格见 [ADMIN-BULK-ACTIONS.md](ADMIN-BULK-ACTIONS.md) |
 | 定时采集与熔断 | `src/scheduler.js` | 任务隔离子进程运行；连续失败会在冷却期内暂停调度任务 |
 | 日志、自检、备份、回填 | `src/log.js`, `src/probe.js`, `src/backup.js`, `src/backfill.js` | JSONL 结构化日志、脱敏、健康检查及运维命令 |
 | Docker 部署 | `Dockerfile`, `compose*.yaml`, `scripts/docker-entrypoint.sh` | Compose 文件和镜像流程已配置；执行部署前按目标 Compose 与镜像仓库确认 |
@@ -97,6 +98,8 @@ Node.js 服务 src/server.js
 - `price_snapshots`：价格变化历史；相同价格状态不重复写入。
 - `daily_prices`：按天聚合，用于趋势与史低；面向官方主榜的查询必须保留渠道类型过滤。
 - `fetch_runs`：每次采集的健康度和结果；关注/提醒、用户权限、运行配置等其他表结构集中在 `src/store/pg.js` 的迁移 SQL。
+- `admin_bulk_ops`：后台批量操作的审计（操作者、目标列表、动作、总数/成功/失败/跳过、键样本、耗时），
+  后台「系统 → 批量操作记录」页读取；键样本最多存 50 个，避免一次写入上千条 IP。
 
 金额使用整数分存储，区服和币种是显式维度，不对不同币种擅自换算。日期应保留为 `YYYY-MM-DD` 字符串语义，避免时区偏移。
 

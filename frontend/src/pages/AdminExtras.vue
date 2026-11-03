@@ -2,11 +2,11 @@
   <div class="extra-wrap">
     <template v-if="section==='users'">
       <div class="module-card"><div class="card-heading"><div><h3>新建用户</h3><p>管理员可进入控制台；普通用户只能个性化浏览。</p></div><el-button @click="loadUsers">刷新列表</el-button></div><el-form :model="newUser" class="user-create" @submit.prevent="createUser"><el-input v-model="newUser.username" placeholder="用户名" autocomplete="username" @keyup.enter.prevent="createUser"/><el-input v-model="newUser.password" type="password" show-password placeholder="初始密码（8–200 位）" autocomplete="new-password" @keyup.enter.prevent="createUser"/><el-input v-model="newUser.email" placeholder="登录邮箱（可选）" @keyup.enter.prevent="createUser"/><el-select v-model="newUser.role"><el-option label="普通用户" value="user"/><el-option label="管理员" value="admin"/></el-select><el-button type="primary" :loading="saving" @click="createUser">创建账号</el-button></el-form></div>
-      <div class="module-card table-card"><el-table :data="pagedUsers" v-loading="loading" stripe><el-table-column prop="username" label="用户名" min-width="125"/><el-table-column prop="display_name" label="显示名" min-width="120"><template #default="{row}">{{ row.display_name||'—' }}</template></el-table-column><el-table-column label="邮箱" min-width="200"><template #default="{row}"><span>{{ row.email||'未绑定' }}</span><el-tag v-if="row.email" :type="row.email_verified?'success':'warning'" size="small" class="tag-gap">{{ row.email_verified?'已验证':'未验证' }}</el-tag></template></el-table-column><el-table-column label="角色" width="95"><template #default="{row}"><el-tag :type="row.role==='admin'?'danger':'info'" size="small">{{ row.role==='admin'?'管理员':'普通用户' }}</el-tag></template></el-table-column><el-table-column label="状态" width="95"><template #default="{row}"><el-tag :type="row.disabled?'info':'success'" size="small">{{ row.disabled?'已禁用':'正常' }}</el-tag></template></el-table-column><el-table-column label="最近登录" min-width="155"><template #default="{row}">{{ dateTime(row.last_login_at) }}</template></el-table-column><el-table-column label="管理操作" min-width="255" fixed="right"><template #default="{row}"><el-button link @click="editName(row)">改名</el-button><el-button link @click="editEmail(row)">邮箱</el-button><el-button v-if="row.email&&!row.email_verified" link @click="verifyEmail(row)">验证</el-button><el-button link @click="resetPassword(row)">重置密码</el-button><el-button link :type="row.disabled?'success':'danger'" @click="toggleUser(row)">{{ row.disabled?'启用':'禁用' }}</el-button></template></el-table-column></el-table><PaginationBar v-model:page="usersPage" v-model:page-size="usersPageSize" :total="users.length"/></div>
+      <div class="module-card table-card"><BulkBar :count="sel.users.count" :actions="usersBulkActions" :running="bulkRunning" :hint="usersBulkHint" @run="(a)=>runBulk(a,sel.users,{refresh:loadUsers})" @clear="sel.users.clear()"/><el-table ref="usersTable" row-key="id" :data="pagedUsers" v-loading="loading" stripe @selection-change="sel.users.onSelectionChange"><el-table-column type="selection" width="44"/><el-table-column prop="username" label="用户名" min-width="125"/><el-table-column prop="display_name" label="显示名" min-width="120"><template #default="{row}">{{ row.display_name||'—' }}</template></el-table-column><el-table-column label="邮箱" min-width="200"><template #default="{row}"><span>{{ row.email||'未绑定' }}</span><el-tag v-if="row.email" :type="row.email_verified?'success':'warning'" size="small" class="tag-gap">{{ row.email_verified?'已验证':'未验证' }}</el-tag></template></el-table-column><el-table-column label="角色" width="95"><template #default="{row}"><el-tag :type="row.role==='admin'?'danger':'info'" size="small">{{ row.role==='admin'?'管理员':'普通用户' }}</el-tag></template></el-table-column><el-table-column label="状态" width="95"><template #default="{row}"><el-tag :type="row.disabled?'info':'success'" size="small">{{ row.disabled?'已禁用':'正常' }}</el-tag></template></el-table-column><el-table-column label="最近登录" min-width="155"><template #default="{row}">{{ dateTime(row.last_login_at) }}</template></el-table-column><el-table-column label="管理操作" min-width="255" fixed="right"><template #default="{row}"><el-button link @click="editName(row)">改名</el-button><el-button link @click="editEmail(row)">邮箱</el-button><el-button v-if="row.email&&!row.email_verified" link @click="verifyEmail(row)">验证</el-button><el-button link @click="resetPassword(row)">重置密码</el-button><el-button link :type="row.disabled?'success':'danger'" @click="toggleUser(row)">{{ row.disabled?'启用':'禁用' }}</el-button></template></el-table-column></el-table><PaginationBar v-model:page="usersPage" v-model:page-size="usersPageSize" :total="users.length"/></div>
     </template>
     <template v-else-if="section==='recycle'">
-      <div class="module-card recycle-summary"><div><span class="muted">回收站</span><strong>{{ recycleGames.length }}</strong><small>款游戏</small></div><p>这里只做逻辑删除。恢复后会重新出现在前台目录，价格与历史数据会保留。</p><el-button @click="loadRecycle">刷新</el-button></div>
-      <div class="module-card table-card"><el-table :data="pagedRecycleGames" v-loading="loading" stripe><el-table-column prop="steam_appid" label="AppID" width="110"><template #default="{row}">{{ row.steam_appid||'—' }}</template></el-table-column><el-table-column label="游戏" min-width="220"><template #default="{row}"><strong>{{ row.name }}</strong><small>{{ row.name_en||' ' }}</small></template></el-table-column><el-table-column prop="app_type" label="类型" width="90"/><el-table-column label="平台" min-width="150"><template #default="{row}"><el-tag v-for="p in row.platform_names||[]" :key="p" size="small" class="tag-gap">{{ p }}</el-tag><span v-if="!row.platform_names?.length">—</span></template></el-table-column><el-table-column prop="offer_count" label="报价数" width="90" align="right"/><el-table-column label="删除时间" min-width="155"><template #default="{row}">{{ dateTime(row.deleted_at) }}</template></el-table-column><el-table-column label="操作" width="100" fixed="right"><template #default="{row}"><el-button link type="primary" @click="restoreGame(row)">恢复</el-button></template></el-table-column></el-table><PaginationBar v-model:page="recyclePage" v-model:page-size="recyclePageSize" :total="recycleGames.length"/></div>
+      <div class="module-card recycle-summary"><div><span class="muted">回收站</span><strong>{{ recycleGames.length }}</strong><small>款游戏</small></div><p>这里只做逻辑删除。恢复后会重新出现在前台目录，价格与历史数据会保留。</p><el-button :disabled="!recycleGames.length" @click="selectAllRecycle">全选当前筛选（{{ recycleGames.length }} 条）</el-button><el-button @click="loadRecycle">刷新</el-button></div>
+      <div class="module-card table-card"><BulkBar :count="sel.recycle.count" :actions="recycleBulkActions" :running="bulkRunning" hint="最多一次 1000 条" @run="(a)=>runBulk(a,sel.recycle,{refresh:loadRecycle})" @clear="sel.recycle.clear()"/><el-table ref="recycleTable" row-key="id" :data="pagedRecycleGames" v-loading="loading" stripe @selection-change="sel.recycle.onSelectionChange"><el-table-column type="selection" width="44"/><el-table-column prop="steam_appid" label="AppID" width="110"><template #default="{row}">{{ row.steam_appid||'—' }}</template></el-table-column><el-table-column label="游戏" min-width="220"><template #default="{row}"><strong>{{ row.name }}</strong><small>{{ row.name_en||' ' }}</small></template></el-table-column><el-table-column prop="app_type" label="类型" width="90"/><el-table-column label="平台" min-width="150"><template #default="{row}"><el-tag v-for="p in row.platform_names||[]" :key="p" size="small" class="tag-gap">{{ p }}</el-tag><span v-if="!row.platform_names?.length">—</span></template></el-table-column><el-table-column prop="offer_count" label="报价数" width="90" align="right"/><el-table-column label="删除时间" min-width="155"><template #default="{row}">{{ dateTime(row.deleted_at) }}</template></el-table-column><el-table-column label="操作" width="100" fixed="right"><template #default="{row}"><el-button link type="primary" @click="restoreGame(row)">恢复</el-button></template></el-table-column></el-table><PaginationBar v-model:page="recyclePage" v-model:page-size="recyclePageSize" :total="recycleGames.length"/></div>
     </template>
     <template v-else-if="section==='steam'">
       <div class="module-card steam-account">
@@ -45,17 +45,21 @@
       <div class="module-card log-filters"><el-select v-model="logScope" @change="loadLogs"><el-option label="所有模块" value=""/><el-option label="应用" value="app"/><el-option label="Steam 与同步" value="steam"/><el-option label="用户与登录" value="user"/><el-option label="错误" value="error"/></el-select><el-select v-model="logMinutes" @change="loadLogs"><el-option label="全部时间" value="0"/><el-option label="近 15 分钟" value="15"/><el-option label="近 1 小时" value="60"/><el-option label="近 24 小时" value="1440"/></el-select><el-input v-model="logQuery" clearable placeholder="搜索日志内容" @keyup.enter="loadLogs"/><el-button type="primary" @click="loadLogs">刷新日志</el-button><el-checkbox v-model="autoLogs">每 10 秒自动刷新</el-checkbox></div>
       <div class="module-card log-summary"><span>{{ logFiles.join('、')||'日志文件读取中' }}</span><strong>{{ logEntries.length }} 条</strong><el-button text @click="logEntries=[]">清空当前显示</el-button></div><div class="log-list"><article v-for="(entry,index) in pagedLogEntries" :key="entry.ts+'-'+index" class="log-entry" :class="String(entry.level||'info').toLowerCase()"><time>{{ dateTime(entry.ts||entry.time) }}</time><el-tag :type="logTag(entry.level)" size="small">{{ String(entry.level||'info').toUpperCase() }}</el-tag><strong>{{ entry.event||entry.msg||'日志事件' }}</strong><pre>{{ logDetails(entry) }}</pre></article><el-empty v-if="!logEntries.length" description="没有匹配的日志"/><PaginationBar v-model:page="logsPage" v-model:page-size="logsPageSize" :total="logEntries.length"/></div>
     </template>
+      <BulkResultDialog v-model="bulkResult.visible" :result="bulkResult.result"/>
   </div>
 </template>
 
 <script setup>
-import { onBeforeUnmount,onMounted,ref,watch } from 'vue';
+import { computed,onBeforeUnmount,onMounted,reactive,ref,watch } from 'vue';
 import PaginationBar from '../components/PaginationBar.vue';
 import MailSettingsForm from '../components/MailSettingsForm.vue';
+import BulkBar from '../components/BulkBar.vue';
+import BulkResultDialog from '../components/BulkResultDialog.vue';
+import { useBulkSelection,promptBulkConfirm } from '../composables/useBulkSelection.js';
 import { useListPagination } from '../composables/useListPagination.js';
 import { ElMessage,ElMessageBox } from 'element-plus';
 import { fmtDateTime as dateTime } from '../utils/siteTime.js';
-const props=defineProps({section:{type:String,required:true}});
+const props=defineProps({section:{type:String,required:true},me:{type:Object,default:null}});
 const loading=ref(false),saving=ref(false),users=ref([]),recycleGames=ref([]),steamAccounts=ref([]),unownedAccounts=ref([]),steamLimit=ref(5),steamError=ref(''),activeAccount=ref(null),libraryGames=ref([]),apiKeyDialog=ref({visible:false,row:null,value:''}),smtp=ref({}),mailRecords=ref([]),mailMessage=ref(''),mailOk=ref(false),smtpTrace=ref(''),testEmail=ref(''),mailDialog=ref(false),activeMail=ref(null),mailCode=ref(null),logEntries=ref([]),logFiles=ref([]),logQuery=ref(''),logScope=ref(''),logMinutes=ref('0'),autoLogs=ref(false),syncRuns=ref([]);
 const newUser=ref({username:'',password:'',email:'',role:'user'});
 const usersPager=useListPagination(users), recyclePager=useListPagination(recycleGames), steamPager=useListPagination(libraryGames), mailPager=useListPagination(mailRecords), logsPager=useListPagination(logEntries);
@@ -64,19 +68,61 @@ const pagedRecycleGames=recyclePager.items, recyclePage=recyclePager.page, recyc
 const pagedSteamGames=steamPager.items, steamPage=steamPager.page, steamPageSize=steamPager.pageSize;
 const pagedMailRecords=mailPager.items, mailPage=mailPager.page, mailPageSize=mailPager.pageSize;
 const pagedLogEntries=logsPager.items, logsPage=logsPager.page, logsPageSize=logsPager.pageSize;
+// ---- 批量操作（docs/ADMIN-BULK-ACTIONS.md）：回收站 + 用户列表 ----
+const recycleTable=ref(null),usersTable=ref(null);
+const sel={
+  recycle:reactive(useBulkSelection((r)=>r.id,recycleTable)),
+  users:reactive(useBulkSelection((r)=>r.id,usersTable)),
+};
+const bulkResult=reactive({visible:false,result:null}),bulkRunning=ref('');
+const recycleBulkActions=[{key:'restore',label:'恢复',target:'games',action:'restore'}];
+// 「禁用」要拦住两件事：勾到自己、勾掉全部可用管理员（服务端另有 409 兜底）
+const activeAdminIds=computed(()=>users.value.filter((u)=>u.role==='admin'&&!u.disabled).map((u)=>u.id));
+const disableBlocked=computed(()=>{
+  const keys=sel.users.selectedKeys;
+  if(!keys.length)return false;
+  if(props.me?.id&&keys.includes(props.me.id))return true;
+  const admins=activeAdminIds.value;
+  return admins.length>0&&admins.every((id)=>keys.includes(id));
+});
+const usersBulkHint=computed(()=>sel.users.selectedKeys.includes(props.me?.id)?'不能禁用自己的账号':(disableBlocked.value?'不能禁用全部可用管理员':''));
+const usersBulkActions=computed(()=>[{key:'disable',label:'禁用',target:'users',action:'disable',risk:'high',disabled:disableBlocked.value},{key:'enable',label:'启用',target:'users',action:'enable'}]);
 function api(path,opts={}){return fetch(path,{credentials:'same-origin',...opts,headers:{'content-type':'application/json',...(opts.headers||{})}}).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{}if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);return d;});}
 function body(method,data){return {method,body:JSON.stringify(data)};}
 function notify(e){ElMessage.error(e?.message||String(e));}
 function price(v){return v==null?'—':`¥${(Number(v)/100).toFixed(2)}`;}
 async function act(fn){saving.value=true;try{await fn();}catch(e){notify(e);}finally{saving.value=false;}}
-async function loadUsers(){loading.value=true;try{const d=await api('/api/admin/users');users.value=d.users||[];}catch(e){notify(e);}finally{loading.value=false;}}
+// 批量执行：高危动作先手输条数（服务端还要校验 confirmCount），成功后弹结果并刷新列表。
+async function runBulk(action,selection,{options,refresh}={}){
+  const keys=selection.selectedKeys.slice();
+  if(!keys.length)return ElMessage.warning('请先勾选要操作的条目');
+  let confirmCount;
+  if(action.risk==='high'){
+    confirmCount=await promptBulkConfirm(keys.length,action.label);
+    if(confirmCount==null)return;
+  }
+  bulkRunning.value=action.key;
+  try{
+    const payload={target:action.target,action:action.action,keys};
+    if(options)payload.options=options;
+    if(confirmCount!=null)payload.confirmCount=confirmCount;
+    const d=await api('/api/admin/bulk',body('POST',payload));
+    bulkResult.result=d;bulkResult.visible=true;
+    selection.clear();
+    if(refresh)await refresh();
+  }catch(e){notify(e);}
+  finally{bulkRunning.value='';}
+}
+// 回收站「全选当前筛选」：列表一次最多拉 1000 条，与后端单次上限一致
+function selectAllRecycle(){if(!recycleGames.value.length)return;sel.recycle.selectRows(recycleGames.value);}
+async function loadUsers(){sel.users.clear();loading.value=true;try{const d=await api('/api/admin/users');users.value=d.users||[];}catch(e){notify(e);}finally{loading.value=false;}}
 async function createUser(){if(!newUser.value.username.trim()||newUser.value.password.length<8)return ElMessage.warning('用户名必填，密码至少 8 位');await act(async()=>{const u={...newUser.value,username:newUser.value.username.trim()};await api('/api/admin/users',body('POST',{username:u.username,password:u.password,role:u.role}));if(u.email.trim())await api(`/api/admin/users/${encodeURIComponent(u.username)}/email`,body('POST',{email:u.email.trim()}));newUser.value={username:'',password:'',email:'',role:'user'};ElMessage.success('账号已创建');await loadUsers();});}
 async function editName(row){try{const {value}=await ElMessageBox.prompt(`修改 ${row.username} 的显示名；留空清除`,'修改显示名',{inputValue:row.display_name||''});await api(`/api/admin/users/${encodeURIComponent(row.username)}`,body('PATCH',{display_name:value}));await loadUsers();}catch(e){if(e!=='cancel'&&e!=='close')notify(e);}}
 async function editEmail(row){try{const {value}=await ElMessageBox.prompt('输入登录邮箱；留空解绑','绑定邮箱',{inputValue:row.email||'',inputType:'email'});await api(`/api/admin/users/${encodeURIComponent(row.username)}/email`,body('POST',{email:value.trim()}));ElMessage.success(value.trim()?'邮箱已绑定，需重新验证':'邮箱已解绑');await loadUsers();}catch(e){if(e!=='cancel'&&e!=='close')notify(e);}}
 async function verifyEmail(row){await act(async()=>{const d=await api(`/api/admin/users/${encodeURIComponent(row.username)}/email/code`,body('POST',{}));const {value}=await ElMessageBox.prompt(`${d.hint||'验证码已发送'}，输入邮件中的 6 位验证码`,'验证邮箱',{inputPattern:/^\d{6}$/,inputErrorMessage:'请输入 6 位验证码'});await api(`/api/admin/users/${encodeURIComponent(row.username)}/email/verify`,body('POST',{code:value.trim()}));ElMessage.success('邮箱已验证');await loadUsers();});}
 async function resetPassword(row){try{const {value}=await ElMessageBox.prompt('新密码需要 8–200 位，用户的其他会话会退出','重置密码',{inputType:'password',inputPattern:/^.{8,200}$/,inputErrorMessage:'密码长度需要 8–200 位'});await api(`/api/admin/users/${encodeURIComponent(row.username)}/password`,body('POST',{password:value}));ElMessage.success('密码已重置');}catch(e){if(e!=='cancel'&&e!=='close')notify(e);}}
 async function toggleUser(row){try{await ElMessageBox.confirm(`${row.disabled?'启用':'禁用'}账号 ${row.username}？`,'确认操作',{type:'warning'});await api(`/api/admin/users/${encodeURIComponent(row.username)}`,body('PATCH',{disabled:!row.disabled}));await loadUsers();}catch(e){if(e!=='cancel'&&e!=='close')notify(e);}}
-async function loadRecycle(){loading.value=true;try{const d=await api('/api/admin/games/deleted?limit=1000');recycleGames.value=d.games||[];}catch(e){notify(e);}finally{loading.value=false;}}
+async function loadRecycle(){sel.recycle.clear();loading.value=true;try{const d=await api('/api/admin/games/deleted?limit=1000');recycleGames.value=d.games||[];}catch(e){notify(e);}finally{loading.value=false;}}
 async function restoreGame(row){await act(async()=>{const path=row.steam_appid?`/api/games/${row.steam_appid}/deleted`:`/api/games/id/${row.id}/deleted`;await api(path,body('POST',{deleted:false}));ElMessage.success('游戏已恢复');await loadRecycle();});}
 async function loadSteam(){loading.value=true;try{const d=await api('/api/steam/accounts');steamAccounts.value=d.accounts||[];unownedAccounts.value=d.unowned||[];steamLimit.value=Number(d.limit)||5;if(activeAccount.value){const cur=steamAccounts.value.find((a)=>a.steam_id===activeAccount.value.steam_id);if(!cur){activeAccount.value=null;libraryGames.value=[];}}}catch(e){notify(e);}finally{loading.value=false;}}
 function bindSteam(){if(steamAccounts.value.length>=steamLimit.value)return;window.location.href='/api/auth/steam/start';}
@@ -100,6 +146,8 @@ function syncRunRowClass({row}){return row.status==='failed'?'sync-run-failed':'
 function logTag(level){const v=String(level||'').toLowerCase();return v==='error'||v==='fatal'?'danger':v==='warn'||v==='warning'?'warning':'info';}
 function logDetails(entry){return Object.entries(entry).filter(([k])=>!['ts','time','level','event','msg'].includes(k)).map(([k,v])=>`${k}=${typeof v==='object'?JSON.stringify(v):v}`).join('  ');}
 watch(()=>props.section,s=>{if(s==='users')loadUsers();else if(s==='recycle')loadRecycle();else if(s==='steam'){consumeSteamQuery();loadSteam();}else if(s==='mail')loadMail();else if(s==='sync'){loadLogs();loadSyncRuns();}});
+// 翻页清空选择（常规列表只支持本页勾选）；回收站例外：可用「全选当前筛选」一次性选满
+watch(recyclePage,()=>sel.recycle.clear());watch(usersPage,()=>sel.users.clear());
 onMounted(()=>{if(props.section==='users')loadUsers();else if(props.section==='recycle')loadRecycle();else if(props.section==='steam'){consumeSteamQuery();loadSteam();}else if(props.section==='mail')loadMail();else if(props.section==='sync'){loadLogs();loadSyncRuns();}});
 const timer=setInterval(()=>{if(props.section==='sync'&&autoLogs.value&&!document.hidden)loadLogs();},10000);onBeforeUnmount(()=>clearInterval(timer));
 </script>
