@@ -188,6 +188,8 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 
 - **v1.14.1 已发布**（tag `v1.14.1`）：封禁页守卫——`/banned` 未封禁一律 302 回首页（判定只在拦截链，
   不做二次判定），`BanPage.vue` 加 `__BAN_PAGE__` 缺失守卫；`test/reviews.test.js` 19 项全绿。
+  CI：`docker-hub` run 41664570516（test/smoke/publish 全绿）、`docker-tcr` run 41664570658
+  （`build-push-action` 与 `Verify manifests` 均 success），两个镜像源均已推送。
   规格见 [BAN-PAGE-GUARD.md](BAN-PAGE-GUARD.md)。**服务器部署待执行**（按本文第 4 节升级到 `1.14.1`；
   compose 真实文件名仍未确认，先 `ls compose*.*`）。
 
