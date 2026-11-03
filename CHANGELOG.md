@@ -11,6 +11,13 @@
   新增 `src/appeal.js` 的 `appealEmailFrom`（`||` 链 + trim：申诉邮箱 → 邮件收件人 → 发件人 → SMTP 账号）；
   新增系统设置「申诉邮箱」（`alerts.appealEmail`，留空按上述顺序回退，保存即热加载）
 
+### 变更
+
+- **邮件配置合并到「邮件服务」页**：新增「邮件配置」卡片（`MailSettingsForm.vue`，自包含加载/渲染/保存，
+  8 个邮件字段按 schema 顺序、secret 留空保持原值/勾选清空传 null、保存后 emit 刷新状态卡）；
+  系统设置页过滤邮件 key，「降价提醒」分组改为「通知与提醒」（提醒开关与间隔、Webhook/企业微信，
+  邮件配置在邮件服务页）；系统设置保存不再提交邮件 key（docs/MAIL-CONFIG-PAGE.md 方案 A）
+
 ## [1.12.0] - 2026-11-03
 
 ### 修复

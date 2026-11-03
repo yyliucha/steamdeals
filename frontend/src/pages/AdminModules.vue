@@ -69,6 +69,7 @@ import PaginationBar from '../components/PaginationBar.vue';
 import { useListPagination } from '../composables/useListPagination.js';
 import { useTheme } from '../composables/useTheme.js';
 import { fmtDateTime as dateTime } from '../utils/siteTime.js';
+import { isMailSettingKey } from '../utils/settings.js';
 
 const props=defineProps({section:{type:String,required:true}});
 const router=useRouter();
@@ -145,7 +146,7 @@ function levelLabel(level){return ({critical:'重要',warning:'提醒',info:'通
 async function saveAnnouncement(){if(!announcement.title.trim()||!announcement.body.trim())return ElMessage.warning('标题和正文都要填写');await run(async()=>{const payload={title:announcement.title.trim(),body:announcement.body.trim(),level:announcement.level,active:announcement.active,startsAt:announcement.startsAt?new Date(announcement.startsAt).toISOString():null,endsAt:announcement.endsAt?new Date(announcement.endsAt).toISOString():null};await api(announcement.id?`/api/admin/announcements/${announcement.id}`:'/api/admin/announcements',json(announcement.id?'PATCH':'POST',payload));ElMessage.success(announcement.id?'通知已更新':'通知已发布');resetAnnouncement();await loadAnnouncements();});}
 async function removeAnnouncement(id){try{await ElMessageBox.confirm('删除后无法恢复，确定继续？','删除通知',{type:'warning'});await api(`/api/admin/announcements/${id}`,{method:'DELETE'});ElMessage.success('已删除');await loadAnnouncements();}catch(e){if(e!=='cancel'&&e!=='close')notifyError(e);}}
 
-function fieldsByGroup(groupId){const q=settingQuery.value.trim().toLocaleLowerCase();return (settingsSchema.value?.fields||[]).filter(f=>f.group===groupId&&(!q||`${f.label} ${f.key} ${f.help||''}`.toLocaleLowerCase().includes(q)));}
+function fieldsByGroup(groupId){const q=settingQuery.value.trim().toLocaleLowerCase();return (settingsSchema.value?.fields||[]).filter(f=>f.group===groupId&&!isMailSettingKey(f.key)&&(!q||`${f.label} ${f.key} ${f.help||''}`.toLocaleLowerCase().includes(q)));}
 // 设置搜索按 Enter：有未保存修改时先提醒；没有匹配项给出提示；然后重新加载设置定义
 function onSettingsEnter(){if(settingsDirty.value){ElMessage.warning('有未保存的修改，先保存再重新加载');return;}const q=settingQuery.value.trim().toLocaleLowerCase();if(q&&!(settingsSchema.value?.fields||[]).some(f=>`${f.label} ${f.key} ${f.help||''}`.toLocaleLowerCase().includes(q)))ElMessage.warning('没有匹配的设置项');loadSettings();}
 const filteredGroups=computed(()=>{const groups=settingsSchema.value?.groups||[];return groups.filter(g=>fieldsByGroup(g.id).length);});
@@ -155,7 +156,7 @@ function settingId(key){return `setting-${String(key).replace(/[^a-zA-Z0-9_-]/g,
 function secretPlaceholder(key){return settingsSchema.value?.secrets?.[key]?.hasValue?'已设置，留空保持原值':'尚未设置';}
 async function loadSettings(){loading.value=true;try{const d=await api('/api/admin/settings');settingsSchema.value=d;for(const key of Object.keys(settingValues))delete settingValues[key];for(const field of d.fields||[]){settingValues[field.key]=field.type==='secret'?'':d.values?.[field.key]??field.default??(field.type==='bool'?false:'');}for(const key of Object.keys(clearSecrets))delete clearSecrets[key];expandedSettings.value=(d.groups||[]).slice(0,1).map(g=>g.id);settingsDirty.value=false;}catch(e){notifyError(e);}finally{loading.value=false;}}
 async function revealSecret(key){try{const d=await api(`/api/admin/settings/value?key=${encodeURIComponent(key)}`);settingValues[key]=d.value??'';ElMessage.info('密钥已载入输入框；保存会保留该值');}catch(e){notifyError(e);}}
-async function saveSettings(){const values={};for(const f of settingsSchema.value?.fields||[]){const v=settingValues[f.key];if(f.type==='secret'){if(clearSecrets[f.key])values[f.key]=null;else if(String(v??'').trim()!=='')values[f.key]=v;}else if(f.type==='int'){values[f.key]=v===''||v==null?null:Number(v);}else if(f.type==='bool')values[f.key]=Boolean(v);else values[f.key]=v;}await run(async()=>{const d=await api('/api/admin/settings',json('POST',{values}));settingsSchema.value=d;for(const f of d.fields||[]){if(f.type==='secret')settingValues[f.key]='';else settingValues[f.key]=d.values?.[f.key]??f.default??'';}settingsDirty.value=false;ElMessage.success(`已保存 ${d.keys?.length||0} 项设置`);});}
+async function saveSettings(){const values={};for(const f of settingsSchema.value?.fields||[]){if(isMailSettingKey(f.key))continue;const v=settingValues[f.key];if(f.type==='secret'){if(clearSecrets[f.key])values[f.key]=null;else if(String(v??'').trim()!=='')values[f.key]=v;}else if(f.type==='int'){values[f.key]=v===''||v==null?null:Number(v);}else if(f.type==='bool')values[f.key]=Boolean(v);else values[f.key]=v;}await run(async()=>{const d=await api('/api/admin/settings',json('POST',{values}));settingsSchema.value=d;for(const f of d.fields||[]){if(f.type==='secret')settingValues[f.key]='';else settingValues[f.key]=d.values?.[f.key]??f.default??'';}settingsDirty.value=false;ElMessage.success(`已保存 ${d.keys?.length||0} 项设置`);});}
 watch(settingQuery,()=>{if(settingQuery.value.trim())expandedSettings.value=(settingsSchema.value?.groups||[]).map(g=>g.id);});
 watch(gameView,(view)=>{if(view==='tasks')loadSyncStatus();else loadGames(1);});
 

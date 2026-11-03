@@ -151,7 +151,7 @@ export const SETTING_MAP = new Map(SETTINGS.map((d) => [d.key, d]));
 
 export const GROUPS = [
   { id: 'sources', title: '数据源与采集', description: '开关、间隔、API Key 与区服。' },
-  { id: 'alerts', title: '降价提醒', description: 'Webhook / 企业微信 / 邮件。邮件授权码加密存库。' },
+  { id: 'alerts', title: '通知与提醒', description: '提醒开关与间隔、Webhook / 企业微信；邮件配置在「邮件服务」页。' },
   { id: 'network', title: '网络与代理', description: '国内服务器访问 Steam 通常需要代理；只支持 http/https。' },
   { id: 'advanced', title: '高级', description: '一般保持默认即可。' },
 ];

@@ -206,3 +206,12 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - 根因：appealEmail() 用 ?? 链，水合空串截断回退 → SMTP_FROM/SMTP_USER 有值也取不到。
 - 修复：新增 src/appeal.js appealEmailFrom（|| 链 + trim，四级回退）；server.js 改用；
   设置新增「申诉邮箱」（alerts.appealEmail，string，留空回退）；测试 52 项 + test/appeal.test.js。
+
+## O. ~~待开发：邮件配置合并到邮件服务页（方案 A）~~ → **已实现（2026-11-03，待发版）**
+
+**状态：代码完成并推 main，等构建指令**。规格见 [docs/MAIL-CONFIG-PAGE.md](MAIL-CONFIG-PAGE.md)。
+
+- utils/settings.js（MAIL_SETTING_KEYS/isMailSettingKey）+ MailSettingsForm.vue（8 个邮件字段，
+  加载 /api/admin/settings、保存 POST 只提交邮件 key、secret 留空保持/勾选清空传 null、emit saved）。
+- 邮件服务页插入「邮件配置」卡；说明改「配置保存在此页，保存后立即生效」。
+- 系统设置过滤邮件 key；alerts 分组改「通知与提醒」；保存不再提交邮件 key。
