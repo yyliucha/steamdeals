@@ -99,3 +99,18 @@
   同步提示去掉"其中 DLC N 款"；`type_unknown` 只留日志；STEAM-ACCOUNTS/README 已知限制补一行。
   不采用方案 B（可购买 DLC 总和，误导）与方案 C（Steam 登录态 cookie，安全代价高）。
 - 验收：见 [docs/STEAM-DLC.md](STEAM-DLC.md) §5。
+
+## I. 待开发：2026-11-03 需求批次（需求已确认）
+
+**状态：需求已确认，规格已写，开发未开始**（见 [docs/UX-BATCH-2026-11-03.md](UX-BATCH-2026-11-03.md)）。
+
+1. **愿望单归属**：列表/详情显示「愿望单 · 账号名」（>2 显示 +N）；移除弹窗列出「本站 + 账号」默认全选，
+   取消勾选即保留；`DELETE /api/wishlist/*` 接受 `{steamIds, siteWishlist}`（缺省保持旧行为）。
+2. **自动封禁与异常审核联动**（bug）：`listAbuseReviews` / `countPendingReviews` 排除
+   `ip_abuse.banned_until > now()` 的 IP；解封后自动恢复显示。
+3. **站点通知中心**（设计缺陷）：顶栏铃铛 + 未读角标 + 抽屉；新增 `announcement_reads` 表与
+   `POST /api/announcements/read`（登录用户服务端已读，游客本地）；保留未读弹窗。
+4. **移动端响应式**：`≤480`/强制 mobile 时单列卡片、筛选进抽屉、顶栏精简、详情全屏；
+   检测「桌面版模式」（`screen.width<=640 && innerWidth>700`）加 `mobile-layout` 类兜底。
+
+验收：见文档各节；通用验证 `npm test` + `frontend:build` + `scan`。
