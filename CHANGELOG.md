@@ -2,6 +2,18 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布] - 2026-11-03
+
+### 修复
+
+- **封禁页跳转（最终方案）**：v1.11.0 在 main.js 里 `router.replace('/banned')` 实测无效
+  （ES module 提升导致 `createWebHistory` 已按旧地址初始化）——改为 `serveBanPage` 注入的内联脚本
+  在模块加载前 `history.replaceState(null,'','/banned')`（`/banned`、`/appeal` 除外）；
+  main.js 移除无效跳转。无头 Edge 实测：注入后 `pathname==='/banned'`、`.ban-card` 存在、
+  `.storefront` 不挂载、`/appeal` 正常放行
+- **验证码加载失败提示**：`loadCaptcha` 失败时 `ElMessage.warning('验证码加载失败，点击验证码重试')`，
+  空态显示可点击的「点击重试」占位块（封禁/断网时不再只剩破图）
+
 ## [1.11.0] - 2026-11-03
 
 ### 修复

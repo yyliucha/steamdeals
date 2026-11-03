@@ -52,9 +52,6 @@ router.beforeEach(async (to) => {
     adminUiReady = true;
   }
 });
-// 封禁页（docs/FRONTEND-RENDER-FIX.md §2）：服务端已把 __BAN_PAGE__ 注入 index.html，
-// 这里负责渲染它——被封用户刷新任意路径直接看到封禁卡片；/banned 与 /appeal 不跳（避免申诉死循环）。
-if (window.__BAN_PAGE__ && location.pathname !== '/banned' && location.pathname !== '/appeal') {
-  router.replace('/banned');
-}
+// 封禁页跳转不在这里做：ES module 提升让 createWebHistory 已按旧地址初始化，router.replace 无效。
+// 服务端 serveBanPage 在 index.html 内联脚本里 history.replaceState('/banned')（见 FRONTEND-RENDER-FIX §2）。
 app.use(router).mount('#app');

@@ -72,7 +72,12 @@ function serveBanPage(res, outDir, { status = 403, until = null, reason = '', si
   let html;
   if (distIndex && existsSync(distIndex)) {
     const payload = JSON.stringify({ status, until: untilIso, reason, site: siteName, email: appealEmail, code }).replace(/</g, '\\u003c');
-    html = readFileSync(distIndex, 'utf8').replace('</head>', `<script>window.__BAN_PAGE__=${payload}</script></head>`);
+    // 最终方案（docs/FRONTEND-RENDER-FIX.md §2）：必须在模块脚本加载前改地址——
+    // main.js 里 router.replace 无效（ES module 提升导致 createWebHistory 已按旧地址初始化）。
+    const script =
+      `window.__BAN_PAGE__=${payload};` +
+      `if(location.pathname!=='/banned'&&location.pathname!=='/appeal'){history.replaceState(null,'','/banned');}`;
+    html = readFileSync(distIndex, 'utf8').replace('</head>', `<script>${script}</script></head>`);
   } else {
     html = bannedTemplate(outDir)
       .replaceAll('__SITE_NAME__', escapeHtml(siteName))

@@ -1,11 +1,12 @@
 // 前端注册防回归：抽屉/角标/复选框若漏注册，移动端筛选、通知、愿望单会静默失效；
-// 封禁页跳转依赖 main.js 读取 __BAN_PAGE__。静态断言成本低，防止组件列表被精简时再次漏掉。
+// 封禁页跳转必须在 serveBanPage 注入的内联脚本里完成（main.js 的 router.replace 已被证实无效）。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const mainJs = readFileSync(fileURLToPath(new URL('../frontend/src/main.js', import.meta.url)), 'utf8');
+const serverJs = readFileSync(fileURLToPath(new URL('../src/server.js', import.meta.url)), 'utf8');
 
 test('main.js 注册了抽屉/角标/复选框（移动端筛选、通知抽屉、愿望单勾选依赖）', () => {
   for (const token of ['ElDrawer', 'ElBadge', 'ElCheckboxGroup', 'ElCheckbox']) {
@@ -16,9 +17,9 @@ test('main.js 注册了抽屉/角标/复选框（移动端筛选、通知抽屉�
   }
 });
 
-test('main.js 读取 __BAN_PAGE__ 并跳转封禁页（/banned、/appeal 除外，避免申诉死循环）', () => {
-  assert.match(mainJs, /__BAN_PAGE__/);
-  assert.match(mainJs, /router\.replace\('\/banned'\)/);
-  assert.match(mainJs, /location\.pathname !== '\/banned'/);
-  assert.match(mainJs, /location\.pathname !== '\/appeal'/);
+test('封禁页跳转：serveBanPage 注入的内联脚本在模块加载前改地址（/banned、/appeal 除外）', () => {
+  assert.match(serverJs, /window\.__BAN_PAGE__=\$\{payload\}/, '服务端应注入 __BAN_PAGE__ payload');
+  assert.match(serverJs, /history\.replaceState\(null,''/i, '内联脚本应改地址到 /banned');
+  assert.match(serverJs, /location\.pathname!=='\/banned'/, '应排除 /banned 防循环');
+  assert.match(serverJs, /location\.pathname!=='\/appeal'/, '应排除 /appeal 保住申诉入口');
 });

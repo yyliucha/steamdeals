@@ -168,3 +168,11 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   封禁页修复后不会再进入登录页。体验改进（失败提示 + 占位重试）列为低优先级可选。
 
 
+
+## M. ~~待开发：封禁页跳转最终方案 + 验证码失败提示~~ → **已实现（2026-11-03，待发版）**
+
+**状态：代码完成并推 main，等构建指令**。见 [docs/FRONTEND-RENDER-FIX.md](FRONTEND-RENDER-FIX.md) §2/§2.5。
+
+- v1.11.0 的 main.js router.replace 实测无效（ES module 提升），改为 serveBanPage 注入内联脚本
+  history.replaceState('/banned')，无头 Edge 实测通过（pathname=/banned、.ban-card 存在、/appeal 放行）。
+- loadCaptcha 失败 ElMessage.warning + 可点击重试占位块。
