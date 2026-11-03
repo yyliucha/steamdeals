@@ -188,7 +188,9 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 
 - **v1.14.0 已发布**（tag `v1.14.0`）：后台 11 个列表批量操作（多选 + 统一 `POST /api/admin/bulk` + 审计
   「系统 → 批量操作记录」）。`npm test`（46 个测试文件，含新增 `test/admin-bulk.test.js` 12 项）/
-  `npm run frontend:build` / `npm run scan` 全绿。规格与实现偏差见 [ADMIN-BULK-ACTIONS.md](ADMIN-BULK-ACTIONS.md)（§11）。
+  `npm run frontend:build` / `npm run scan` 全绿。CI：`docker-hub` run 41653223118（test/smoke/publish 全绿）、
+  `docker-tcr` run 41653223106（`build-push-action` 与 `Verify manifests` 均 success），两个镜像源均已推送。
+  规格与实现偏差见 [ADMIN-BULK-ACTIONS.md](ADMIN-BULK-ACTIONS.md)（§11）。
   **服务器部署待执行**（按本文第 4 节升级到 `1.14.0`；compose 真实文件名仍未确认，先 `ls compose*.*`）。
 
 - **v1.11.0 已发布**（tag `v1.11.0`，docker-hub + docker-tcr 双绿，镜像已推送）。功能：补注册
