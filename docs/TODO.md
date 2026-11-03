@@ -135,3 +135,15 @@ chart 后续任务串行执行。
 4. 已发布部分（v1.8.0）不动：愿望单归属、通知中心、审核过滤（本次改为标记）。
 
 验收：见文档各节；通用验证 `npm test` + `frontend:build` + `scan`。
+
+## K. 待开发：移动端真机适配补丁（强制 viewport）
+
+**状态：已定位、规格已写、待开发**（见 [docs/MOBILE-VIEWPORT.md](MOBILE-VIEWPORT.md)）。
+
+- 现象：红米 K100 Pro Max 上字体仍小、按钮点不中、部分功能不可用（v1.9.0 已有移动端结构）。
+- 根因：浏览器处于「桌面版网站」模式，按 ~980px 布局后缩放；v1.8.0/v1.9.0 只切换了布局，**未改写 viewport**。
+- 修复：`index.html` 内联脚本检测 `screen.width<=640 && innerWidth>700` → 改写 meta viewport 为
+  `width=390, initial-scale=1`（sessionStorage 防刷新循环）；`zoom = innerWidth/screen.width` 作最后兜底；
+  `?debug=1` 显示 innerWidth/screen.width/DPR/isMobile 浮层。
+- 自检：文档 §4 的 14 项真机清单（搜索/筛选/排序/加载更多/卡片操作/详情/登录/绑定/通知/我的/底部导航/桌面版模式）。
+- 验收：红米真机 14 项全过；PC 无回归；`frontend:build` + `npm test` 通过。
