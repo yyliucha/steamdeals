@@ -3,7 +3,15 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile } from '../src/scheduler.js';
+import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency } from '../src/scheduler.js';
+
+test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），默认 3，非法回落默认', () => {
+  assert.equal(lightConcurrency({}), 3);
+  assert.equal(lightConcurrency({ SCHEDULER_LIGHT_CONCURRENCY: '5' }), 5);
+  assert.equal(lightConcurrency({ SCHEDULER_LIGHT_CONCURRENCY: '0' }), 1, '下限 1');
+  assert.equal(lightConcurrency({ SCHEDULER_LIGHT_CONCURRENCY: '99' }), 8, '上限 8');
+  assert.equal(lightConcurrency({ SCHEDULER_LIGHT_CONCURRENCY: 'abc' }), 3, '非法值回落默认');
+});
 
 test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清理、gog / humble / discover / backup / alerts / images），各自间隔', () => {
   const jobs = jobsFromEnv({});

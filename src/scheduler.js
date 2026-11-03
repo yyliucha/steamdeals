@@ -208,8 +208,19 @@ export function isCircuited(state, nowMs) {
 // 采集类任务成功后需要刷新静态页的，列在这里（backfill 会写新报价，也要重建）
 const SYNC_LIKE = new Set(['steam', 'sonkwo', 'itad', 'gog', 'humble', 'discover', 'rename', 'backfill']);
 
-// Steam 重任务：与后台手动同步/回填/热度共用配额与槽位，有手动任务在跑时让路
+// Steam 重任务：与后台手动同步/回填/热度共用配额与槽位，有手动任务在跑时让路。
+// 它们都打 store.steampowered.com/appdetails（200 次/5 分钟配额），必须串行互斥。
 const STEAM_HEAVY = new Set(['steam-prices', 'rename', 'backfill', 'heat', 'catalog']);
+
+// 轻任务：目标站与配额都和重任务独立（杉果国内源、GOG/Humble catalog、备份/日志/提醒/图片），
+// 允许在 heat/steam-prices 等长任务运行时并行执行——否则 heat 首轮播种 9 小时会饿死所有其它源。
+const LIGHT_JOBS = new Set(['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'backup', 'logs', 'alerts', 'images']);
+
+/** 轻任务并行上限（环境变量 SCHEDULER_LIGHT_CONCURRENCY 可调，默认 3，范围 1–8）。 */
+export function lightConcurrency(env = process.env) {
+  const n = Number(env.SCHEDULER_LIGHT_CONCURRENCY ?? 3);
+  return Number.isFinite(n) ? Math.min(Math.max(Math.trunc(n), 1), 8) : 3;
+}
 
 /**
  * 任务成功后的后续动作。
@@ -304,16 +315,22 @@ export async function main() {
   const q = (sql, p) => store.query(sql, p);
 
   let stopping = false;
-  let currentChild = null;
+  const children = new Map(); // 并发子进程：job.name -> child（轻任务并行，重任务同一时刻最多一个）
   let wake = null;
 
   const stop = (signal) => {
     if (stopping) return;
     stopping = true;
-    logger.info('scheduler.stop', { signal, child: currentChild ? 'terminating' : 'idle' });
-    if (currentChild) {
-      currentChild.kill('SIGTERM');
-      setTimeout(() => currentChild?.kill('SIGKILL'), 5000).unref();
+    logger.info('scheduler.stop', { signal, children: children.size });
+    for (const child of children.values()) {
+      child.kill('SIGTERM');
+      setTimeout(() => {
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          /* 已退出 */
+        }
+      }, 5000).unref();
     }
     wake?.();
   };
@@ -343,14 +360,14 @@ export async function main() {
         },
         stdio: 'inherit',
       });
-      currentChild = child;
+      children.set(job.name, child);
       child.on('error', (err) => {
+        children.delete(job.name);
         logger.error('scheduler.job_spawn_failed', { job: job.name, err: serializeError(err) });
-        currentChild = null;
         resolve({ code: -1 });
       });
       child.on('exit', (code, signal) => {
-        currentChild = null;
+        children.delete(job.name);
         const elapsedMs = Date.now() - startedAt;
         if (code === 0) logger.info('scheduler.job_done', { job: job.name, code, elapsedMs });
         else logger.error('scheduler.job_failed', { job: job.name, code, signal, elapsedMs });
@@ -385,6 +402,64 @@ export async function main() {
     const lastRunMs = new Map();
     const health = new Map(); // job.name -> { failures, openUntil }
     const running = new Set();
+    const lightMax = lightConcurrency(process.env);
+    // chart 后续任务串行链：避免多个 chart 子进程并发写 out/
+    let followUpChain = Promise.resolve();
+
+    // 任务收尾（并行任务各自完成时调用）：记录时间/健康度、状态文件、串行触发后续 chart
+    const completeJob = (job, code) => {
+      running.delete(job.name);
+      lastRunMs.set(job.name, Date.now());
+      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS });
+      const followUp = followUpArgs(job.name, code, process.env);
+      if (followUp && !stopping) {
+        followUpChain = followUpChain
+          .then(async () => {
+            if (stopping) return;
+            logger.info('scheduler.followup', { job: job.name, args: followUp.join(' ') });
+            await runJob({ name: `${job.name}:chart`, args: followUp });
+          })
+          .catch(() => {});
+      }
+      const state = health.get(job.name) ?? { failures: 0, openUntil: null };
+      const next = recordJobResult(state, {
+        code,
+        nowMs: Date.now(),
+        threshold: circuitThreshold,
+        cooldownMs: circuitCooldownMs,
+      });
+      health.set(job.name, next);
+      if (next.opened) {
+        logger.error('scheduler.circuit_tripped', {
+          job: job.name,
+          failures: next.failures,
+          openUntil: new Date(next.openUntil).toISOString(),
+        });
+      } else if (code === 0 && (state.failures ?? 0) > 0) {
+        logger.info('scheduler.circuit_reset', { job: job.name, afterFailures: state.failures });
+      }
+    };
+
+    /** 非阻塞发射一个任务（熔断检查在发射前做）。 */
+    const launch = (job, now) => {
+      const state = health.get(job.name) ?? { failures: 0, openUntil: null };
+      if (isCircuited(state, now)) {
+        logger.warn('scheduler.circuit_skip', {
+          job: job.name,
+          failures: state.failures,
+          openUntil: new Date(state.openUntil).toISOString(),
+        });
+        lastRunMs.set(job.name, now);
+        return;
+      }
+      running.add(job.name);
+      runJob(job)
+        .then(({ code }) => completeJob(job, code))
+        .catch((err) => {
+          logger.error('scheduler.job_unexpected', { job: job.name, err: serializeError(err) });
+          completeJob(job, -1);
+        });
+    };
 
     if (!jobs.length) logger.warn('scheduler.no_jobs', { hint: '所有任务均被禁用或间隔为 0' });
     logger.info('scheduler.start', {
@@ -393,6 +468,7 @@ export async function main() {
       node: process.version,
       tickMs: TICK_MS,
       setupCompleted: initialized.completed,
+      lightConcurrency: lightMax,
     });
     writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS });
 
@@ -411,17 +487,27 @@ export async function main() {
 
       const now = Date.now();
       const due = dueJobs(jobs, { nowMs: now, startedMs, lastRunMs });
+      const lightRunningCount = () => [...running].filter((name) => LIGHT_JOBS.has(name)).length;
+
+      // 1) 轻任务：非阻塞并行发射（上限 lightMax）。heat/steam-prices 等长任务运行时它们照常跑，
+      //    不会出现"heat 首轮播种 9 小时饿死杉果/GOG"这类排队。
       for (const job of due) {
         if (stopping) break;
-        if (running.has(job.name)) continue;
+        if (STEAM_HEAVY.has(job.name) || running.has(job.name)) continue;
+        if (lightRunningCount() >= lightMax) break;
+        launch(job, now);
+      }
+
+      // 2) Steam 重任务：严格串行，且与后台手动同步/回填互斥（appdetails 200 次/5 分钟配额）。
+      for (const job of due) {
+        if (stopping) break;
+        if (!STEAM_HEAVY.has(job.name) || running.has(job.name)) continue;
 
         // 后台手动回填/同步也写 sync_runs；让 Steam 重任务等它结束再执行，避免并行冲击 Steam。
-        if (STEAM_HEAVY.has(job.name)) {
-          const activeSync = await db.runningSyncRun(q).catch(() => null);
-          if (activeSync) {
-            logger.info('scheduler.job_deferred_busy', { job: job.name, runId: activeSync.id, mode: activeSync.mode });
-            continue;
-          }
+        const activeSync = await db.runningSyncRun(q).catch(() => null);
+        if (activeSync) {
+          logger.info('scheduler.job_deferred_busy', { job: job.name, runId: activeSync.id, mode: activeSync.mode });
+          continue;
         }
 
         const state = health.get(job.name) ?? { failures: 0, openUntil: null };
@@ -438,34 +524,7 @@ export async function main() {
 
         running.add(job.name);
         const { code } = await runJob(job);
-        running.delete(job.name);
-        lastRunMs.set(job.name, Date.now());
-        writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS });
-
-        // 采集成功后顺手重建静态页（失败不影响主任务状态）
-        const followUp = followUpArgs(job.name, code, process.env);
-        if (followUp) {
-          logger.info('scheduler.followup', { job: job.name, args: followUp.join(' ') });
-          await runJob({ name: `${job.name}:chart`, args: followUp });
-        }
-
-        const next = recordJobResult(state, {
-          code,
-          nowMs: Date.now(),
-          threshold: circuitThreshold,
-          cooldownMs: circuitCooldownMs,
-        });
-        health.set(job.name, next);
-        if (next.opened) {
-          logger.error('scheduler.circuit_tripped', {
-            job: job.name,
-            failures: next.failures,
-            openUntil: new Date(next.openUntil).toISOString(),
-          });
-        } else if (code === 0 && (state.failures ?? 0) > 0) {
-          logger.info('scheduler.circuit_reset', { job: job.name, afterFailures: state.failures });
-        }
-        if (stopping) break;
+        completeJob(job, code);
       }
       if (stopping) break;
       await sleepInterruptible(TICK_MS);
