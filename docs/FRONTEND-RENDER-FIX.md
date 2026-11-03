@@ -121,12 +121,49 @@ if (window.__BAN_PAGE__ && location.pathname !== '/banned' && location.pathname 
 3. 管理员/白名单访问 → 不受影响（正常首页）。
 4. 封禁解除后刷新 → 正常首页（无残留跳转）。
 
+## 2.5 问题三：验证码加载失败时只剩破图（体验缺陷）
+
+### 现象
+
+手机端登录弹窗里，验证码位置只显示 `<img>` 的 alt 文本（「登录验证码，点击刷新」）和一个破图标。
+
+### 定位
+
+[Home.vue](../frontend/src/pages/Home.vue) 的 `loadCaptcha()`：
+
+```js
+async function loadCaptcha(){try{const data=await request('/api/captcha');captchaImage.value=data.svg?`data:image/svg+xml;charset=utf-8,${encodeURIComponent(data.svg)}`:'';}catch{captchaToken.value='';captchaImage.value='';}}
+```
+
+- 请求失败（**被封禁时 API 全部 403**、断网、服务端 5xx）时 **catch 静默清空**，`<img>` 没有 src → 只剩 alt 文本；
+- 用户看不出是"封禁/网络问题"，也拿不到重试提示。
+
+### 先确认是否只是封禁
+
+手机浏览器直接打开 `https://<站点>/api/captcha`：
+
+- 返回 JSON（`{"token":"…","svg":"<svg …"}`）→ 接口正常，问题在客户端；
+- 返回「访问被拒绝」/403 → **手机 IP 还在黑名单**（IP 黑名单是持久的，不会自己到期），后台解封即可。
+
+### 修复（体验）
+
+1. `loadCaptcha` 的 catch 里给出提示：`ElMessage.warning('验证码加载失败，点击验证码重试')`；
+2. `captchaImage` 为空时，验证码区域显示一个可点击的占位块（「点击加载验证码」），而不是空 `<img>`；
+3. 登录页在被封禁时本就不应出现（随 §2 的封禁页修复一起解决）。
+
+### 验收
+
+1. 断网/接口 403 时打开登录弹窗 → 显示「验证码加载失败，点击重试」，点击后能重新请求；
+2. 网络恢复后点击 → 验证码正常显示、可登录；
+3. 解封后手机端验证码正常加载。
+
 ## 3. 实施顺序与验证
 
 1. `main.js` 补注册（问题一）→ `npm run frontend:build`，用手机/无头浏览器验证抽屉、角标、复选框；
 2. `main.js` 加 `__BAN_PAGE__` 跳转（问题二）→ 本地模拟封禁验证申诉链路；
-3. `npm test` 全绿、`npm run scan` 干净；
-4. **不自行构建**（硬规则 5），修完推 main 等所有者指令。
+3. `loadCaptcha` 失败提示 + 占位重试（问题三，可与问题二一起验证：封禁状态下 API 403）；
+4. `npm test` 全绿、`npm run scan` 干净；
+5. **不自行构建**（硬规则 5），修完推 main 等所有者指令。
 
 ### 建议补一个防回归测试
 
