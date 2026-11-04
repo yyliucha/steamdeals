@@ -2,6 +2,29 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.15.1] - 2026-11-04
+
+### 新增
+
+- **后台内容分级筛选（docs/STEAM-SYNC-STATUS-AND-RATING.md §13）**：
+  `GET /api/admin/games` 加 `rating=adult|mature|none`（可与搜索/平台/同步状态叠加）；
+  `adminGameStats` 加 `adult` / `mature` 计数（成人+成熟+未标注 = 未删除总数）；
+  后台筛选栏加「内容分级」下拉与「成人/成熟」两张指标卡（点击即筛选）；
+  「全部同步状态」下拉从旧两项改为与六态指标卡一一对应
+- **backfill 顺带写 Steam 状态与分级（同规格 §14.3）**：新增 `src/steam-status.js` 的 `applySteamDetails`
+  共用函数（状态 `classifySteamStatus` + 分级 `classifyContentRating` + 落库 `setSteamStatus`）；
+  `cmdBackfill` 的 appdetails 回退路径逐条调用（省约 6.9 万次重复请求），`cmdSteamStatus` 改调同一函数，口径唯一
+
+### 变更
+
+- `db.setSteamStatus` 写入语义收紧：`status=null` 不写 `steam_checked_at` 游标（留给 steam-status 判定）；
+  分级字段传 `null` 用 `coalesce` 不覆盖已有值；`adultFlag`/`matureFlag` 传 `null` 不覆盖
+
+### 测试
+
+- `test/steam-status.test.js` 6 → 10 项：`entryFromMeta` 分支、全写/不写游标/不覆盖已有分级、重复跑幂等
+- `test/api.test.js` 新增筛选用例：成人/成熟/未标注筛出正确、与状态叠加、三者之和=未删除总数
+
 ## [1.15.0] - 2026-11-04
 
 ### 新增

@@ -332,9 +332,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **决策已全部确认（2026-11-04）**：成人内容前台隐藏（配置可切 `badge`/`show`）、18+ 以 descriptors 3/4 + ESRB AO
   为主口径、锁国区不隐藏只标注。规格 §11 已改为「已确认的决策」，无遗留待确认项。
 
-## V. ~~待开发：后台内容分级筛选（单独查看 18+）+ backfill 合并写分级~~ → **已实现（待发版，2026-11-04）**
+## V. ~~待开发：后台内容分级筛选（单独查看 18+）+ backfill 合并写分级~~ → **已实现并发布（v1.15.1，2026-11-04）**
 
-**状态：代码与测试已完成，未打 tag（硬规则 5）**。规格见 [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §13/§14.3。
+**状态：已发布 v1.15.1**（tag 已推送，CI 见 DELIVERY）。规格见 [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §13/§14.3。
 
 - 现状：v1.15.0 已有「分级」列（成人红标 / 成熟黄标 / 其余「—」），但**没有任何筛选入口**，
   指标卡也没有成人/成熟计数——想单独看 18+ 只能翻页找。

@@ -231,7 +231,7 @@ docker exec steamdeals node src/cli.js steam-status --limit 2000
 
 ## 13. V 批：后台分级筛选 + backfill 合并写分级
 
-> 状态：**已实现（2026-11-04），待发版**。对应 [TODO.md](TODO.md) 的 V 条目，建议随 v1.15.x 热修发布。
+> 状态：**已实现并发布（v1.15.1，2026-11-04）**。对应 [TODO.md](TODO.md) 的 V 条目。
 >
 > **本批包含两部分**：
 > 1. **分级筛选**（§13.1–13.4）：后台能单独筛「成人（18+）」；

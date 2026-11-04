@@ -182,16 +182,18 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 
 ---
 
-### 当前状态（2026-11-04 更新，v1.15.0 已发布：Steam 同步状态 + 锁国区 + 内容分级标注）
+### 当前状态（2026-11-04 更新，v1.15.1 已发布：后台内容分级筛选 + backfill 合并写分级）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
-- **待发版（2026-11-04，建议 v1.15.1 热修）**：V 批——后台内容分级筛选（`rating=adult|mature|none` +
+- **v1.15.1 已发布**（tag `v1.15.1`）：V 批——后台内容分级筛选（`rating=adult|mature|none` +
   指标卡「成人/成熟」计数 + 筛选下拉与六态卡片对齐）+ backfill 合并写状态与分级（`src/steam-status.js`
   的 `applySteamDetails` 共用函数，appdetails 回退路径顺带落库，拿不到状态不推游标、分级 null 不覆盖，
   省约 6.9 万次重复请求）。测试：`test/steam-status.test.js` 6 → 10 项、`api.test.js` 新增筛选用例，
-  `npm test` / `frontend:build` / `scan` 全绿。**未打 tag、未触发 CI**——收到所有者「构建 vX.Y.Z」指令后执行。
-  规格见 [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §13/§14.3。
+  `npm test` / `frontend:build` / `scan` 全绿。规格见
+  [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §13/§14.3。
+  **服务器部署待执行**（按本文第 4 节升级到 `1.15.1`；compose 真实文件名仍未确认，先 `ls compose*.*`）。
+  **上线时建议把 `STEAM_STATUS_LIMIT` 调到 8000**（单轮约 3.3 小时/天，三周补完）。
 
 - **v1.15.0 已发布**（tag `v1.15.0`）：Steam 同步状态可解释 + 锁国区标注 + 内容分级标注
   （[STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md)）：六态状态机 + 7 列迁移（免费一次 SQL 置位）、
