@@ -312,9 +312,10 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `/appeal` 加 `no-store`、日志不落 query（现状已满足）、未来"按 code 查上下文"接口必须限流。
 - 与 [S 批次](BAN-AND-SECURITY-FIXES.md) 的 `/appeal` 守卫是同一处服务端改动，建议合并实施。
 
-## U. 待开发：Steam 同步状态 + 锁国区 + 内容分级标注
+## U. ~~待开发：Steam 同步状态 + 锁国区 + 内容分级标注~~ → **已实现（待发版，2026-11-04）**
 
-**状态：需求与方案已确认（2026-11-04），待开发**（见 [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md)）。
+**状态：代码与测试已完成（`test/steam-status.test.js` 6 项入主链），未打 tag（硬规则 5）**。
+规格见 [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md)。
 
 - **起因**：后台「游戏目录」显示 92,580 条待同步。实测（2026-11-04 生产库只读 + 20 条 cc=cn/hk 探针）：
   从未回填仅 242 条（0.26%），**免费游戏 23,185（25%）**，缺 Steam 报价 92,152（99.5%），缺简介 11,878；

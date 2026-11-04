@@ -16,12 +16,13 @@ test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），�
 test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清理、gog / humble / discover / backup / alerts / images），各自间隔', () => {
   const jobs = jobsFromEnv({});
   assert.deepEqual(jobs.map((j) => j.name), [
-    'steam-prices', 'heat', 'rename', 'backfill', 'prune', 'sonkwo', 'itad', 'gog', 'humble',
+    'steam-prices', 'heat', 'steam-status', 'rename', 'backfill', 'prune', 'sonkwo', 'itad', 'gog', 'humble',
     'discover', 'backup', 'logs', 'alerts', 'images',
   ]);
   const interval = (name) => jobs.find((j) => j.name === name).intervalMin;
   assert.equal(interval('steam-prices'), 1440, 'Steam 价格默认每天刷新');
   assert.equal(interval('heat'), 1440, '热度默认每天刷新（首轮自动播种，之后刷过期条目）');
+  assert.equal(interval('steam-status'), 10080, 'Steam 状态判定默认每周一次');
   assert.equal(interval('rename'), 10080, '重写名字默认每周一次');
   assert.equal(interval('backfill'), 10080, '增量回填默认每周一次');
   assert.equal(interval('prune'), 10080, '清理默认每周一次');
@@ -39,6 +40,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.deepEqual(args('images'), ['images', 'pull', '--limit', '200', '--sleep', '300']);
   assert.deepEqual(args('steam-prices'), ['sync', 'steam-prices', '--limit', '200000']);
   assert.deepEqual(args('heat'), ['heat', '--limit', '20000', '--sleep', '1700']);
+  assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '200000', '--rate', '1500']);
   assert.deepEqual(args('rename'), ['rename', '--limit', '200000', '--batch', '100', '--sleep', '1500']);
   assert.deepEqual(args('backfill'), ['backfill', '--limit', '20000', '--batch', '100', '--sleep', '3000']);
   assert.deepEqual(args('prune'), ['prune']);
@@ -169,6 +171,7 @@ test('显式禁用或间隔为 0 的任务会被剔除', () => {
   const jobs = jobsFromEnv({
     ITAD_ENABLED: '0',
     STEAM_PRICE_INTERVAL_MIN: '0',
+    STEAM_STATUS_INTERVAL_MIN: '0',
     GOG_ENABLED: '0',
     HUMBLE_ENABLED: '0',
     DISCOVER_ENABLED: '0',

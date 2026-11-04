@@ -359,6 +359,17 @@ const ALTERS = [
   'alter table price_snapshots add column if not exists prev_price_cents integer',
   // 到价提醒来源：steam_wishlist 自动项可随愿望单/解绑清理
   "alter table watchlist add column if not exists source text not null default 'manual'",
+  // Steam 同步状态与内容分级（docs/STEAM-SYNC-STATUS-AND-RATING.md §3）：
+  // steam_status = ok / free / coming_soon / region_locked / no_price / not_found / pending（null=未探测）
+  // 分级字段是"平台标签"，站点策略（前台隐藏/角标）由 site.adultDisplay 决定，不做法律定性
+  'alter table games add column if not exists steam_status text',
+  'alter table games add column if not exists steam_checked_at timestamptz',
+  'alter table games add column if not exists required_age integer',
+  'alter table games add column if not exists content_descriptors integer[]',
+  'alter table games add column if not exists age_ratings jsonb',
+  'alter table games add column if not exists adult_flag boolean not null default false',
+  'alter table games add column if not exists mature_flag boolean not null default false',
+  'create index if not exists idx_games_steam_status on games (steam_status) where steam_status is not null',
 ];
 
 export async function migrate(store) {
@@ -389,6 +400,9 @@ export async function migrate(store) {
        from ip_whitelist w
       where a.ip = w.ip and a.banned_until is not null`,
   );
+  // 免费游戏一次性置位（docs/STEAM-SYNC-STATUS-AND-RATING.md §3/§6）：is_free 已已知，
+  // 免费永远无价，不需要再发请求；置位后 9.2 万「待同步」立刻拆出 2.3 万免费。
+  await store.query(`update games set steam_status = 'free' where is_free and steam_status is null`);
 }
 
 export async function upsertPlatform(q, { code, name, kind }) {
@@ -838,6 +852,11 @@ const GAME_SELECT = `select g.id,
             g.publishers,
             g.genres,
             g.tags,
+            g.steam_status,
+            g.required_age,
+            g.adult_flag,
+            g.mature_flag,
+            g.steam_checked_at,
             (select min(o.price_cents) from offers o
                join platforms p on p.code = o.platform_code
               where o.game_id = g.id and o.region = $1 and o.in_stock
@@ -929,7 +948,7 @@ const SITE_WISHLISTED_SQL = (uidRef) =>
  * userId 传入时，interested / owned 返回该用户的生效值：owned = 手动 ∪ 绑定账号库推导；
  * owned_by / wishlisted 只对当前用户可见，游客恒为 false / []（games.owned 全局值已废弃）。
  */
-export async function gameDetail(q, { steamAppid = null, gameId = null, region = 'cn', userId = null }) {
+export async function gameDetail(q, { steamAppid = null, gameId = null, region = 'cn', userId = null, adult = 'show' }) {
   const cond = steamAppid != null ? 'g.steam_appid = $2' : 'g.id = $2';
   const join = userId ? 'left join user_game_flags uf on uf.game_id = g.id and uf.user_id = $3' : '';
   const extra = userId
@@ -943,6 +962,8 @@ export async function gameDetail(q, { steamAppid = null, gameId = null, region =
   const r = await q(`${GAME_SELECT}${extra} from games g ${join} where ${cond} and not g.deleted`, params);
   const row = r.rows[0];
   if (!row) return null;
+  // 前台 hide 策略同样作用于详情：直接 URL 访问也不可见（后台/内部调用默认 show）
+  if (adult === 'hide' && row.adult_flag) return null;
   if (userId) {
     row.interested = row.eff_interested;
     row.owned = row.eff_owned;
@@ -983,7 +1004,7 @@ export async function gameOverview(q, { region = 'cn', limit = 200 } = {}) {
  */
 export async function gameSearch(
   q,
-  { region = 'cn', page = 1, pageSize = 20, keyword = '', sort = 'discount', interest = 'all', owned = 'exclude', blocked = 'exclude', userId = null, typeFilter = 'all', released = 'all', marks = 'any', compact = false, guestFlags = null, wishlist = false } = {},
+  { region = 'cn', page = 1, pageSize = 20, keyword = '', sort = 'discount', interest = 'all', owned = 'exclude', blocked = 'exclude', userId = null, typeFilter = 'all', released = 'all', marks = 'any', compact = false, guestFlags = null, wishlist = false, adult = 'hide' } = {},
 ) {
   const kw = String(keyword ?? '').trim();
   const size = Math.min(Math.max(Number(pageSize) || 20, 5), 100);
@@ -1011,8 +1032,10 @@ export async function gameSearch(
       : "($2 = '' or lower(coalesce(g.name, '')) like lower('%' || $2 || '%') " +
         "or lower(coalesce(g.name_en, '')) like lower('%' || $2 || '%'))",
   ];
-  if (guestFlags && !userId) {
-    // 游客：感兴趣/不感兴趣沿用浏览器本地标记；已拥有与愿望单是登录用户专属维度，
+  // 成人内容展示策略（docs/STEAM-SYNC-STATUS-AND-RATING.md §5.2）：
+  // hide=前台不展示（默认），badge/show 不过滤（展示方式由前端角标决定）。只做平台标签映射，不做法律定性。
+  if (adult === 'hide') conds.push('not g.adult_flag');
+  if (guestFlags && !userId) {    // 游客：感兴趣/不感兴趣沿用浏览器本地标记；已拥有与愿望单是登录用户专属维度，
     // owned=only/exclude 与 wishlist=true 对游客一律无效（规格 §6：未登录返回全量）。
     const interestIds = interest === 'on' ? guestFlags.interestedIds : interest === 'off' ? guestFlags.uninterestedIds : null;
     if (interestIds) conds.push(interestIds.length ? `g.id = any(${bindFilter(interestIds)}::bigint[])` : 'false');
@@ -2018,33 +2041,97 @@ export async function setUserGameFlag(q, { userId, gameId, interested = null, ow
   return r.rows[0] ?? null;
 }
 
-/** 后台游戏同步概览：库内总数 / 有 appid / 待同步信息 / 已删除 / 有报价。 */
+/** 后台游戏同步概览：总数 / 有 appid / 六态分项 / 已删除 / 有报价。
+ *  待同步口径（docs/STEAM-SYNC-STATUS-AND-RATING.md §4）：steam_status 为 null（从未探测）
+ *  或 ok 但缺简介；free/coming_soon/region_locked/no_price/not_found 都不再计入。 */
 export async function adminGameStats(q) {
   const r = await q(`
     select count(*)::int as total,
            count(*) filter (where g.steam_appid is not null)::int as with_appid,
            count(*) filter (where g.deleted)::int as deleted,
-           count(*) filter (
-             where g.steam_appid is not null and not g.deleted
-               and (g.description is null or g.description = ''
-                    or not exists (select 1 from offers o where o.game_id = g.id and o.platform_code = 'steam'))
-           )::int as pending,
-           count(*) filter (where exists (select 1 from offers o2 where o2.game_id = g.id))::int as with_offers
+           count(*) filter (where exists (select 1 from offers o2 where o2.game_id = g.id))::int as with_offers,
+           -- 已同步：ok 且有简介（真正"该做的都做了"）
+           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'ok' and g.description is not null and g.description <> '')::int as synced,
+           -- 待同步：从未探测，或 ok 但缺简介
+           count(*) filter (where g.steam_appid is not null and not g.deleted and (g.steam_status is null or (g.steam_status = 'ok' and (g.description is null or g.description = ''))))::int as pending,
+           -- 六态分项（指标卡）
+           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status is null)::int as pending_probe,
+           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'free')::int as free,
+           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'coming_soon')::int as coming_soon,
+           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'region_locked')::int as region_locked,
+           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'no_price')::int as no_price,
+           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'not_found')::int as not_found,
+           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status is not null and g.steam_status not in ('ok','free','coming_soon','region_locked','no_price','not_found'))::int as other
       from games g`);
   const row = r.rows[0] ?? {};
-  const total = Number(row.total ?? 0);
-  const withAppid = Number(row.with_appid ?? 0);
-  const deleted = Number(row.deleted ?? 0);
-  const pending = Number(row.pending ?? 0);
+  const num = (k) => Number(row[k] ?? 0);
   return {
-    total,
-    withAppid,
-    pending,
-    deleted,
-    withOffers: Number(row.with_offers ?? 0),
-    // 已同步 = 有 appid 且不在待同步里（目录里没有 appid 的行不计入进度）
-    synced: Math.max(0, withAppid - deleted - pending),
+    total: num('total'),
+    withAppid: num('with_appid'),
+    pending: num('pending'),
+    synced: num('synced'),
+    deleted: num('deleted'),
+    withOffers: num('with_offers'),
+    // 六态分项（前端指标卡按状态筛选）
+    pendingProbe: num('pending_probe'),
+    free: num('free'),
+    comingSoon: num('coming_soon'),
+    regionLocked: num('region_locked'),
+    noPrice: num('no_price'),
+    notFound: num('not_found'),
+    other: num('other'),
   };
+}
+
+// ---------------------------------------------------------------- Steam 同步状态与内容分级
+// docs/STEAM-SYNC-STATUS-AND-RATING.md：状态判定与分级采集共用同一次 appdetails 请求。
+
+/** 免费游戏批量置位（迁移已含；任务/手工也可幂等重跑）：返回本次置位条数。 */
+export async function bulkSetFreeStatus(q) {
+  const r = await q(`update games set steam_status = 'free' where is_free and steam_status is null`);
+  return r.rowCount ?? 0;
+}
+
+/** steam-status 任务选取：未探测（steam_status 为 null）或 30 天过期；免费永远不再选。 */
+export async function listSteamStatusCandidates(q, { limit = 30 } = {}) {
+  const r = await q(
+    `select id, steam_appid from games
+      where steam_appid is not null and not deleted
+        and steam_status is distinct from 'free'
+        and (steam_checked_at is null or steam_checked_at < now() - interval '30 days')
+      order by steam_checked_at asc nulls first, id
+      limit $1`,
+    [Math.min(Math.max(Number(limit) || 30, 1), 200)],
+  );
+  return r.rows.map((row) => ({ id: Number(row.id), steamAppid: Number(row.steam_appid) }));
+}
+
+/** 状态写回：一次请求判定完一个 appid 就落库（steam_checked_at 即续跑游标）。 */
+export async function setSteamStatus(q, {
+  steamAppid,
+  status,
+  requiredAge = null,
+  contentDescriptors = null,
+  ageRatings = null,
+  adultFlag = false,
+  matureFlag = false,
+}) {
+  const r = await q(
+    `update games set steam_status = $2, steam_checked_at = now(),
+                      required_age = $3, content_descriptors = $4, age_ratings = $5::jsonb,
+                      adult_flag = $6, mature_flag = $7, updated_at = now()
+      where steam_appid = $1 returning id, steam_status`,
+    [
+      steamAppid,
+      status,
+      requiredAge == null ? null : Number(requiredAge),
+      Array.isArray(contentDescriptors) ? contentDescriptors.map(Number) : null,
+      ageRatings ? JSON.stringify(ageRatings) : null,
+      Boolean(adultFlag),
+      Boolean(matureFlag),
+    ],
+  );
+  return r.rows[0] ?? null;
 }
 
 /** 已删除（回收站）的游戏列表，按删除时间倒序。 */

@@ -55,6 +55,17 @@ export function jobsFromEnv(env = process.env) {
       enabled: env.STEAM_ENABLED !== '0',
     },
     {
+      name: 'steam-status',
+      // 每周判定一次 Steam 同步状态 + 内容分级（docs/STEAM-SYNC-STATUS-AND-RATING.md）：
+      // 逐 appid 全量 appdetails（cc=cn 失败补 cc=hk），状态与分级共用同一次请求；
+      // 免费已由迁移一次性置位；steam_checked_at 作续跑游标，失败不写游标下轮重试；
+      // 首轮延迟避开热度播种期（热度把每日配额吃满），与其它 Steam 任务互斥串行。
+      args: ['steam-status', '--limit', String(num(env.STEAM_STATUS_LIMIT, 200000)), '--rate', String(num(env.STEAM_STATUS_RATE_MS, 1500))],
+      intervalMin: num(env.STEAM_STATUS_INTERVAL_MIN, 10080),
+      initialDelaySec: num(env.STEAM_STATUS_INITIAL_DELAY_SEC, 21600),
+      enabled: env.STEAM_ENABLED !== '0',
+    },
+    {
       name: 'rename',
       // 每周重写一次名字：目录导入留下的机器英文名补成中文（英文挪进 name_en），
       // 顺带覆盖"后来才补了简中"的游戏。选择条件自带收敛，没名字可改时秒退。

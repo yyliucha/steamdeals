@@ -1,6 +1,7 @@
-# Steam 同步状态与内容分级标注（待开发）
+# Steam 同步状态与内容分级标注
 
-> 状态：**需求与方案已确认（2026-11-04），待开发**。
+> 状态：**已实现（2026-11-04），待发版**——代码与测试已完成（新增 `test/steam-status.test.js` 6 项入主链），
+> 未打 tag、未触发构建（硬规则 5）。
 > 关联：[ROADMAP.md](ROADMAP.md)（原有的「地区限制与 18+ 内容」议题，本文件是它的落地方案）、
 > [DATA-SOURCES.md](DATA-SOURCES.md)（数据源可达性）、[WEB.md](WEB.md)（后台模块）、[TODO.md](TODO.md)。
 >

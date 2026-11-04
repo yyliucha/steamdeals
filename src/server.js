@@ -654,7 +654,13 @@ export function createApiServer({
 
       // ---- 公开接口：站点信息 / 公告 / 设备指纹上报 ----
       if (path === '/api/site' && req.method === 'GET') {
-        return json(res, 200, { name: siteName(), version: VERSION, appealEmail: appealEmail() });
+        return json(res, 200, {
+          name: siteName(),
+          version: VERSION,
+          appealEmail: appealEmail(),
+          // 前台成人内容展示策略（hide/badge/show），Home 卡片按它决定角标
+          adultDisplay: String(process.env.SITE_ADULT_DISPLAY ?? 'hide'),
+        });
       }
       if (path === '/api/announcements' && req.method === 'GET') {
         const rows = await db.listAnnouncements(q, { activeOnly: true, limit: 200 });
@@ -855,6 +861,9 @@ export function createApiServer({
         const sort = oneOf('sort', ['discount', 'price', 'name'], 'discount');
         const typeFilter = oneOf('type', ['all', 'game', 'dlc'], 'all');
         const released = oneOf('released', ['all', '30d', '1y', '3y'], 'all');
+        // 成人内容展示策略（docs/STEAM-SYNC-STATUS-AND-RATING.md §5.2）：
+        // hide=前台不展示（默认，由系统设置 site.adultDisplay 决定）；badge/show 不过滤
+        const adult = oneOf('adult', ['hide', 'badge', 'show'], String(process.env.SITE_ADULT_DISPLAY ?? 'hide'));
         // marks=unmarked：「全部」页签——排除用户已标 感兴趣/不感兴趣 的游戏（已拥有由 owned 参数排除）
         const marks = oneOf('marks', ['any', 'unmarked'], 'any');
         const compact = guestSearchPost || url.searchParams.get('compact') === '1';
@@ -889,6 +898,7 @@ export function createApiServer({
           marks,
           compact,
           guestFlags,
+          adult,
           // 愿望单是登录用户专属维度；游客传入的 wishlist=true 一律无效
           wishlist: Boolean(user && guestSearchPost && body?.wishlist === true),
         });
@@ -911,7 +921,7 @@ export function createApiServer({
       const byIdMatch = path.match(/^\/api\/games\/by-id\/(\d+)$/);
       if (byIdMatch && req.method === 'GET') {
         const id = Number(byIdMatch[1]);
-        const game = await db.gameDetail(q, { gameId: id, region: url.searchParams.get('region') ?? 'cn', userId: user?.id ?? null });
+        const game = await db.gameDetail(q, { gameId: id, region: url.searchParams.get('region') ?? 'cn', userId: user?.id ?? null, adult: String(process.env.SITE_ADULT_DISPLAY ?? 'hide') });
         if (!game) return json(res, 404, { error: '没有该游戏' });
         const offers = await db.offersOfGame(q, { gameId: game.id, region: 'cn' });
         const series = await db.dailyMinSeries(q, { gameId: game.id, region: 'cn' });
@@ -977,7 +987,7 @@ export function createApiServer({
       if (gameMatch && req.method === 'GET') {
         const appid = Number(gameMatch[1]);
         // 单款查询：不走"列表前 500 名"，否则排在后面的游戏会 404（后台编辑曾因此失败）
-        const game = await db.gameDetail(q, { steamAppid: appid, region: url.searchParams.get('region') ?? 'cn', userId: user?.id ?? null });
+        const game = await db.gameDetail(q, { steamAppid: appid, region: url.searchParams.get('region') ?? 'cn', userId: user?.id ?? null, adult: String(process.env.SITE_ADULT_DISPLAY ?? 'hide') });
         if (!game) return json(res, 404, { error: '没有该游戏' });
         const offers = await db.regionOffers(q, { steamAppid: appid });
         const series = await db.dailyMinSeries(q, { gameId: game.id, region: 'cn' });
@@ -1454,13 +1464,26 @@ export function createApiServer({
             : offersParam === 'none'
               ? ' and not exists (select 1 from offers of2 where of2.game_id = g.id)'
               : '';
-        // 同步状态：pending=缺说明或无 Steam 价格；done=两者都有
+        // 同步状态（docs/STEAM-SYNC-STATUS-AND-RATING.md §4）：
+        //   sync=pending（旧参数，兼容）= 从未探测或 ok 但缺简介；done=ok 且有简介
+        //   status=<steam_status|pending|synced|other>（新参数，指标卡点击用）
+        const statusParam = String(url.searchParams.get('status') ?? '').trim();
+        const statusWhere =
+          statusParam === 'pending'
+            ? ' and g.steam_appid is not null and g.steam_status is null'
+            : statusParam === 'synced'
+              ? " and g.steam_appid is not null and g.steam_status = 'ok' and g.description is not null and g.description <> ''"
+              : statusParam === 'other'
+                ? " and g.steam_appid is not null and g.steam_status is not null and g.steam_status not in ('ok','free','coming_soon','region_locked','no_price','not_found')"
+                : ['ok', 'free', 'coming_soon', 'region_locked', 'no_price', 'not_found'].includes(statusParam)
+                  ? ` and g.steam_appid is not null and g.steam_status = '${statusParam}'`
+                  : '';
         const syncWhere =
           sync === 'pending'
-            ? " and g.steam_appid is not null and (g.description is null or g.description = '' or not exists (select 1 from offers so where so.game_id = g.id and so.platform_code = 'steam'))"
+            ? " and g.steam_appid is not null and (g.steam_status is null or (g.steam_status = 'ok' and (g.description is null or g.description = '')))"
             : sync === 'done'
-              ? " and g.steam_appid is not null and g.description is not null and g.description <> '' and exists (select 1 from offers so2 where so2.game_id = g.id and so2.platform_code = 'steam')"
-              : '';
+              ? " and g.steam_appid is not null and g.steam_status = 'ok' and g.description is not null and g.description <> ''"
+              : statusWhere;
         // 平台筛选：按参数位置生成（计数查询与列表查询占位符不同）
         const platformCond = (index) =>
           platform
@@ -1477,6 +1500,7 @@ export function createApiServer({
         const rows = await q(
           'select g.id, g.steam_appid, coalesce(nullif(g.name, \'\'), nullif(g.name_en, \'\'), \'appid:\' || g.steam_appid) as name, g.name_en, g.app_type, g.blocked, g.deleted, g.deleted_at, g.updated_at, ' +
           '(g.description is not null and g.description <> \'\') as has_desc, ' +
+          'g.steam_status, g.steam_checked_at, g.required_age, g.adult_flag, g.mature_flag, ' +
           '(select count(*) from offers o where o.game_id = g.id) as offer_count, ' +
           '(select min(o.price_cents) from offers o where o.game_id = g.id and o.platform_code = \'steam\' and o.in_stock) as steam_price, ' +
           // 平台列：这款游戏当前有报价的渠道（多个用数组，前端渲染成多个标签）

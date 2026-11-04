@@ -13,7 +13,7 @@ import { missingPriceAppids, mergePriceOffers } from './backfill.js';
 import { buildSite } from './report.js';
 import { evaluateAlerts, renderDigest, toPayload } from './alerts.js';
 import { channelsFromEnv, deliver, hasNotifier } from './notify.js';
-import { descriptor as steam, syncPrices, syncMeta } from './adapters/steam.js';
+import { descriptor as steam, syncPrices, syncMeta, classifySteamStatus } from './adapters/steam.js';
 import { descriptor as sonkwo, fetchSku } from './adapters/sonkwo.js';
 import { descriptor as itad, searchGame, fetchPrices, normalizeDeals } from './adapters/itad.js';
 import { descriptor as gogDescriptor, searchOffer as gogSearch, resolveRegion as gogResolveRegion } from './adapters/gog.js';
@@ -26,7 +26,7 @@ import {
 } from './adapters/sonkwo-discover.js';
 import { bestMatch, confidenceLabel } from './match.js';
 import { renderCompare, groupOffersByRegion } from './compare.js';
-import { extractAppId, fetchMetadata } from './adapters/steam-meta.js';
+import { extractAppId, fetchMetadata, normalizeOfficial, classifyContentRating } from './adapters/steam-meta.js';
 import { describeProxy, decideProxy, parseProxy, redactProxy } from './proxy.js';
 import { startStaticServer } from './serve.js';
 import * as settings from './settings.js';
@@ -2139,6 +2139,92 @@ async function cmdHeat() {
   }
 }
 
+/**
+ * Steam 同步状态 + 内容分级（docs/STEAM-SYNC-STATUS-AND-RATING.md）：
+ * 逐 appid 请求全量 appdetails（cc=cn；success:false 时补一次 cc=hk 判定锁区），
+ * 状态判定与分级解析共用同一次响应；steam_checked_at 作续跑游标，失败不写游标下轮重试。
+ */
+async function cmdSteamStatus() {
+  const limit = Math.max(1, Math.min(Number(flag('limit', '200000')) || 200000, 200000));
+  const batch = Math.max(1, Math.min(Number(flag('batch', '30')) || 30, 100));
+  const rateMs = Math.max(0, Number(flag('rate', process.env.STEAM_STATUS_RATE_MS ?? '1500')) || 0);
+  const startedMs = Date.now();
+  let done = 0, failed = 0, requests = 0;
+  const counts = { ok: 0, free: 0, coming_soon: 0, region_locked: 0, no_price: 0, not_found: 0 };
+
+  console.log(`Steam 状态判定：逐 appid 请求全量 appdetails（间隔 ${rateMs}ms、上限 ${limit} 款，steam_checked_at 续跑游标）`);
+  while (done < limit) {
+    const size = Math.min(batch, limit - done);
+    const rows = await withStore((store) => db.listSteamStatusCandidates((sql, p) => store.query(sql, p), { limit: size }));
+    if (!rows.length) {
+      console.log('没有需要判定状态或已过期的游戏了');
+      break;
+    }
+    for (const row of rows) {
+      const appid = row.steamAppid;
+      try {
+        const cn = await fetchJson(
+          `https://store.steampowered.com/api/appdetails?appids=${appid}&cc=cn&l=schinese`,
+          { logger, label: 'steam.status', timeoutMs: 30000, retries: 1 },
+        );
+        requests += 1;
+        const cnEntry = cn?.[String(appid)];
+        let hkEntry = null;
+        let data = cnEntry?.success === true ? cnEntry.data : null;
+        if (!data) {
+          // 国区不可售/下架：补一次港区判定锁区（有价/免费=锁国区）
+          const hk = await fetchJson(
+            `https://store.steampowered.com/api/appdetails?appids=${appid}&cc=hk&l=schinese`,
+            { logger, label: 'steam.status.hk', timeoutMs: 30000, retries: 1 },
+          );
+          requests += 1;
+          hkEntry = hk?.[String(appid)];
+          data = hkEntry?.success === true ? hkEntry.data : null;
+        }
+        const status = classifySteamStatus(cnEntry, hkEntry);
+        // 分级字段与状态来自同一响应；锁区时用港区数据（内容分级与区服无关）
+        const meta = data ? normalizeOfficial(appid, data) : null;
+        const rating = classifyContentRating({
+          requiredAge: meta?.requiredAge ?? null,
+          descriptorIds: meta?.contentDescriptors ?? [],
+          ratings: meta?.ageRatings ?? {},
+        });
+        await withStore((store) =>
+          db.setSteamStatus((sql, p) => store.query(sql, p), {
+            steamAppid: appid,
+            status,
+            requiredAge: meta?.requiredAge ?? null,
+            contentDescriptors: meta?.contentDescriptors ?? null,
+            ageRatings: meta?.ageRatings ?? null,
+            adultFlag: rating.adultFlag,
+            matureFlag: rating.matureFlag,
+          }),
+        );
+        counts[status] = (counts[status] ?? 0) + 1;
+        done += 1;
+        if (done % 100 === 0) console.log(`  已判定 ${done} 款…（${JSON.stringify(counts)}）`);
+      } catch (err) {
+        // 网络/限流失败：不写 steam_checked_at，下轮会被重新选中（续跑）
+        failed += 1;
+        logger.warn('steam-status.failed', { appid, message: String(err.message ?? err).slice(0, 160) });
+        if (err.status && err.status >= 400 && err.status < 500) {
+          if (err.status === 429) {
+            console.log('命中 Steam 429：本轮停止（已判定过的会留下游标）');
+            break;
+          }
+          continue;
+        }
+      }
+      if (rateMs) await sleep(rateMs);
+    }
+  }
+  logger.info('steam-status.done', { done, failed, requests, ...counts, elapsedMs: Date.now() - startedMs });
+  console.log(`完成：判定 ${done} 款，失败 ${failed}，分布 ${JSON.stringify(counts)}`);
+  if (done === 0 && failed > 0) {
+    throw new Error(`Steam 状态判定全程失败（${failed} 个请求未拿到数据）：检查代理/限流后重跑`);
+  }
+}
+
 async function cmdReport() {
   const sub = String(args[1] ?? 'price');
   if (sub !== 'price') {
@@ -2248,6 +2334,7 @@ const commands = {
   backfill: cmdBackfill,
   rename: cmdRename,
   heat: cmdHeat,
+  'steam-status': cmdSteamStatus,
   prune: cmdPrune,
   'proxy-check': cmdProxyCheck,
   images: cmdImages,
@@ -2518,6 +2605,8 @@ async function main() {
                        --limit 200000 --batch 100 --sleep 1500 --fallback 10（无简中的行保持英文）
   heat                 热度回填：评测数 + 发行日期（逐 appid 请求，约 1.7s/款）
                        --limit 200000 --sleep 1700（按 heat_at 为 null 自动续跑；全量约 90 小时，可分多周跑）
+  steam-status         Steam 同步状态判定 + 内容分级（逐 appid 全量 appdetails，cc=cn 失败补 cc=hk）
+                       --limit 200000 --batch 30 --rate 1500（steam_checked_at 作续跑游标；免费已由迁移置位）
   prune                定期清理：访问记录/采集与任务记录/验证码
                        --visitor-days 180 --run-days 90 --email-days 7
   steam-accounts       同步所有已绑定 Steam 账号的游戏库与愿望单（差集删除 + 自动提醒）

@@ -66,6 +66,24 @@ export const SETTINGS = [
   def('sources.humble.intervalMin', 'HUMBLE_INTERVAL_MIN', 'sources', 'Humble 间隔（分钟）', 'int', 720, { min: 0, max: 10080 }),
   def('sources.discover.intervalMin', 'DISCOVER_INTERVAL_MIN', 'sources', 'SKU 发现间隔（分钟）', 'int', 720, { min: 0, max: 10080, advanced: true }),
 
+  // ---- 站点与内容分级（docs/STEAM-SYNC-STATUS-AND-RATING.md §5.2）----
+  def('site.adultDisplay', 'SITE_ADULT_DISPLAY', 'site', '成人内容展示策略', 'enum', 'hide', {
+    options: ['hide', 'badge', 'show'],
+    help: '按 Steam 平台标签派生的站点标记（非法律定性）：hide=前台不展示（默认，后台始终可见）/ badge=展示并带「成人内容」角标 / show=正常展示。',
+  }),
+  def('steamStatus.rateMs', 'STEAM_STATUS_RATE_MS', 'sources', 'Steam 状态判定限速（毫秒）', 'int', 1500, {
+    min: 0,
+    max: 30000,
+    advanced: true,
+    help: 'steam-status 任务逐 appid 请求的间隔；与热度/回填共用 Steam 200 次/5 分钟配额。',
+  }),
+  def('steamStatus.intervalMin', 'STEAM_STATUS_INTERVAL_MIN', 'sources', 'Steam 状态判定间隔（分钟）', 'int', 10080, {
+    min: 0,
+    max: 10080,
+    advanced: true,
+    help: '每周重判一次；0 可关闭定时任务（手工 node src/cli.js steam-status 仍可用）。',
+  }),
+
   def('sources.steam.initialDelaySec', 'STEAM_INITIAL_DELAY_SEC', 'sources', 'Steam 价格首轮延迟（秒）', 'int', 600, {
     min: 0,
     max: 86400,
@@ -151,6 +169,7 @@ export const SETTING_MAP = new Map(SETTINGS.map((d) => [d.key, d]));
 
 export const GROUPS = [
   { id: 'sources', title: '数据源与采集', description: '开关、间隔、API Key 与区服。' },
+  { id: 'site', title: '站点与内容', description: '前台展示策略。' },
   { id: 'alerts', title: '通知与提醒', description: '提醒开关与间隔、Webhook / 企业微信；邮件配置在「邮件服务」页。' },
   { id: 'network', title: '网络与代理', description: '国内服务器访问 Steam 通常需要代理；只支持 http/https。' },
   { id: 'advanced', title: '高级', description: '一般保持默认即可。' },

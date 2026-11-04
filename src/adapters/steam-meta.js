@@ -54,6 +54,22 @@ export function genreName(id) {
 }
 
 /**
+ * 内容分级派生（docs/STEAM-SYNC-STATUS-AND-RATING.md §5.1）：只做"平台标签 → 站点标记"映射，
+ * 不做法律定性。adult = descriptors 含 3/4 或 ESRB AO；mature = descriptors 含 2/5、
+ * PEGI ≥18 或 required_age ≥18（且未命中 adult）。
+ */
+export function classifyContentRating({ requiredAge = null, descriptorIds = [], ratings = {} } = {}) {
+  const ids = (Array.isArray(descriptorIds) ? descriptorIds : []).map(Number);
+  const esrb = String(ratings?.esrb?.rating ?? ratings?.esrb ?? '').toUpperCase();
+  const pegiRaw = ratings?.pegi?.rating ?? ratings?.pegi ?? null;
+  const pegi = Number(pegiRaw);
+  const age = Number(requiredAge) || 0;
+  const adultFlag = ids.includes(3) || ids.includes(4) || esrb === 'AO';
+  const matureFlag = !adultFlag && (ids.includes(2) || ids.includes(5) || pegi >= 18 || age >= 18);
+  return { adultFlag, matureFlag };
+}
+
+/**
  * Steam 类型归一化：官方接口用小写（game/dlc/demo），PICS 镜像用大写
  * （Game/DLC/Demo/…）。统一成小写入库，前端才好按类型显示徽标。
  */
@@ -95,6 +111,12 @@ export function normalizeOfficial(appid, data) {
     developers: data.developers ?? null,
     publishers: data.publishers ?? null,
     genres: Array.isArray(data.genres) ? data.genres.map((g) => g.description).filter(Boolean) : null,
+    // 内容分级原始字段（docs/STEAM-SYNC-STATUS-AND-RATING.md §3）：全量 appdetails 响应里就有，
+    // 与状态判定共用同一次请求，不额外消耗配额
+    requiredAge: data.required_age == null ? null : Number(data.required_age),
+    contentDescriptors: Array.isArray(data.content_descriptors?.ids) ? data.content_descriptors.ids.map(Number) : null,
+    ageRatings: data.ratings && typeof data.ratings === 'object' ? data.ratings : null,
+    comingSoon: Boolean(data.release_date?.coming_soon),
     // 商店简介：去标签后存纯文本（后台可编辑，Steam 同步只在为空时填）
     description: (function(raw){
       if(!raw) return null;

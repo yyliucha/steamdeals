@@ -186,6 +186,13 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
+- **待发版（2026-11-04，建议 v1.15.0）**：Steam 同步状态可解释 + 锁国区标注 + 内容分级标注
+  （[STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md)）：六态状态机 + 7 列迁移（免费一次 SQL 置位）、
+  `steam-status` 任务（每周、续跑游标、与热度共用配额）、后台指标卡 7 分项 + 状态/分级列、前台成人隐藏/角标与锁区/未发售标注、
+  设置 `site.adultDisplay`（hide/badge/show）与 `steamStatus.*`。测试：新增 `test/steam-status.test.js` 6 项入主链
+  （`npm test` 48 个文件全绿 / `frontend:build` / `scan` / `api.test.js` 22 项）。**未打 tag、未触发 CI**——
+  收到所有者「构建 vX.Y.Z」指令后按本文第 3 节执行。
+
 - **v1.14.2 已发布**（tag `v1.14.2`）：S 批（仅封禁可见页面统一守卫 `BAN_ONLY_PAGES` + `/api/ban/state`
   复查接口 + 黑白名单双向互斥 + 待审口径 A）与 T 批（申诉 URL 只带 `?code=`、服务端注入 `__APPEAL__`、
   robots/响应头/申诉编号 crypto 随机等 5 项加固）。测试：reviews 24 项 / visitors 8 项 / admin-bulk 13 项 /

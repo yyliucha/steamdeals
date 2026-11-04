@@ -1,0 +1,167 @@
+// Steam 同步状态与内容分级（docs/STEAM-SYNC-STATUS-AND-RATING.md）：
+// 状态判定纯函数、分级派生、迁移置位、任务选取/写回、统计口径、前台成人过滤。
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { openStore } from '../src/store/index.js';
+import * as db from '../src/store/pg.js';
+import { classifySteamStatus } from '../src/adapters/steam.js';
+import { classifyContentRating, normalizeOfficial } from '../src/adapters/steam-meta.js';
+
+const cn = (data) => ({ success: true, data });
+const fail = () => ({ success: false, data: null });
+const hk = (data) => ({ success: true, data });
+const hkComingSoon = () => ({ success: true, data: { release_date: { coming_soon: true } } });
+
+test('classifySteamStatus：六态判定与港区补查（docs §4）', () => {
+  // cn 有价 → ok
+  assert.equal(classifySteamStatus(cn({ name: 'X', price_overview: { final: 9900 } })), 'ok');
+  // cn 免费 → free
+  assert.equal(classifySteamStatus(cn({ is_free: true, price_overview: null })), 'free');
+  // cn 无价 + coming_soon → coming_soon
+  assert.equal(classifySteamStatus(cn({ price_overview: null, release_date: { coming_soon: true } })), 'coming_soon');
+  // cn 无价且非免费非未发售 → no_price
+  assert.equal(classifySteamStatus(cn({ price_overview: null })), 'no_price');
+  // cn success:false + hk 有价 → region_locked
+  assert.equal(classifySteamStatus(fail(), hk({ price_overview: { final: 3900 } })), 'region_locked');
+  // cn success:false + hk 免费 → region_locked
+  assert.equal(classifySteamStatus(fail(), hk({ is_free: true })), 'region_locked');
+  // cn success:false + hk coming_soon → not_found（国区下架/未上架）
+  assert.equal(classifySteamStatus(fail(), hkComingSoon()), 'not_found');
+  // cn success:false + hk 也不可售 → not_found
+  assert.equal(classifySteamStatus(fail(), fail()), 'not_found');
+});
+
+test('classifyContentRating：adult/mature 派生（docs §5.1）', () => {
+  // descriptors 3/4 或 ESRB AO → adult
+  assert.equal(classifyContentRating({ descriptorIds: [3], ratings: {} }).adultFlag, true);
+  assert.equal(classifyContentRating({ descriptorIds: [4], ratings: {} }).adultFlag, true);
+  assert.equal(classifyContentRating({ descriptorIds: [], ratings: { esrb: { rating: 'AO' } } }).adultFlag, true);
+  // mature：descriptors 2/5、PEGI 18、required_age 18（未命中 adult 时）
+  assert.deepEqual(classifyContentRating({ descriptorIds: [2], ratings: {} }), { adultFlag: false, matureFlag: true });
+  assert.deepEqual(classifyContentRating({ descriptorIds: [5], ratings: {} }), { adultFlag: false, matureFlag: true });
+  assert.deepEqual(classifyContentRating({ descriptorIds: [], ratings: { pegi: { rating: '18' } } }), { adultFlag: false, matureFlag: true });
+  assert.deepEqual(classifyContentRating({ requiredAge: 18, descriptorIds: [], ratings: {} }), { adultFlag: false, matureFlag: true });
+  // 正常内容
+  assert.deepEqual(classifyContentRating({ requiredAge: 12, descriptorIds: [1], ratings: { esrb: { rating: 'T' } } }), { adultFlag: false, matureFlag: false });
+});
+
+test('normalizeOfficial：解析分级字段（docs §3）', () => {
+  const meta = normalizeOfficial(123, {
+    name: 'X',
+    required_age: '18',
+    content_descriptors: { ids: [2, 5], notes: 'bad' },
+    ratings: { esrb: { rating: 'M' }, pegi: { rating: '18' } },
+    release_date: { coming_soon: false, date: '2020 年 1 月 1 日' },
+    is_free: false,
+  });
+  assert.equal(meta.requiredAge, 18);
+  assert.deepEqual(meta.contentDescriptors, [2, 5]);
+  assert.deepEqual(meta.ageRatings, { esrb: { rating: 'M' }, pegi: { rating: '18' } });
+  assert.equal(meta.comingSoon, false);
+  // 缺失时全部为 null/undefined 可空
+  const empty = normalizeOfficial(124, { name: 'Y' });
+  assert.equal(empty.requiredAge, null);
+  assert.equal(empty.contentDescriptors, null);
+  assert.equal(empty.ageRatings, null);
+});
+
+test('迁移：加列幂等 + 免费批量置位 + 统计新口径', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    // 列存在（migrate 二次执行也幂等）
+    await db.migrate(store);
+    const cols = (await q("select column_name from information_schema.columns where table_name = 'games' and column_name in ('steam_status','steam_checked_at','required_age','content_descriptors','age_ratings','adult_flag','mature_flag')")).rows;
+    assert.equal(cols.length, 7, '7 个新列都在');
+
+    // 免费置位：is_free 的行迁移后自动 steam_status='free'，不重复置位
+    await q("insert into games (steam_appid, name, is_free) values (1001, '免费A', true), (1002, '付费B', false), (1003, '免费C', true)");
+    await db.migrate(store);
+    const free = (await q("select count(*)::int as n from games where steam_status = 'free'")).rows[0].n;
+    assert.equal(free, 2, '免费游戏应自动置位');
+    const setAgain = await db.bulkSetFreeStatus(q);
+    assert.equal(setAgain, 0, '幂等：第二次置位 0 条');
+
+    // 免费不再被任务选取
+    const candidates = await db.listSteamStatusCandidates(q, { limit: 10 });
+    assert.deepEqual(candidates.map((c) => c.steamAppid).sort(), [1002], '免费不参与探测');
+    assert.equal(candidates[0].id > 0, true);
+
+    // 统计口径：待同步 = 未探测 或 ok 缺简介
+    await db.setSteamStatus(q, { steamAppid: 1002, status: 'ok', requiredAge: null, contentDescriptors: null, ageRatings: null });
+    const s1 = await db.adminGameStats(q);
+    assert.equal(s1.free, 2);
+    assert.equal(s1.pending, 1, 'ok 但缺简介 → 待同步');
+    assert.equal(s1.synced, 0);
+    await q("update games set description = '有简介' where steam_appid = 1002");
+    const s2 = await db.adminGameStats(q);
+    assert.equal(s2.pending, 0);
+    assert.equal(s2.synced, 1);
+    assert.equal(s2.pendingProbe, 0);
+    // 分项之和 = 有 appid 未删除总数
+    const sum = s2.synced + s2.pendingProbe + s2.free + s2.comingSoon + s2.regionLocked + s2.noPrice + s2.notFound + s2.other;
+    assert.equal(sum, s2.withAppid, '分项之和 = 有 appid 数');
+  } finally {
+    await store.close();
+  }
+});
+
+test('任务写回：状态 + 分级字段落库，steam_checked_at 作续跑游标', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    await q("insert into games (steam_appid, name, is_free) values (2001, '锁区X', false)");
+    await db.setSteamStatus(q, {
+      steamAppid: 2001,
+      status: 'region_locked',
+      requiredAge: 18,
+      contentDescriptors: [3],
+      ageRatings: { esrb: { rating: 'AO' } },
+      adultFlag: true,
+      matureFlag: false,
+    });
+    const row = (await q('select steam_status, required_age, content_descriptors, age_ratings, adult_flag, mature_flag, steam_checked_at from games where steam_appid = 2001')).rows[0];
+    assert.equal(row.steam_status, 'region_locked');
+    assert.equal(row.required_age, 18);
+    assert.deepEqual(row.content_descriptors, [3]);
+    assert.equal(row.age_ratings.esrb.rating, 'AO');
+    assert.equal(row.adult_flag, true);
+    assert.ok(row.steam_checked_at, '应写游标');
+
+    // 已判定且未过期的不会被重新选取；过期 30 天后重新可选
+    assert.equal((await db.listSteamStatusCandidates(q, { limit: 10 })).length, 0);
+    await q("update games set steam_checked_at = now() - interval '31 days' where steam_appid = 2001");
+    const again = await db.listSteamStatusCandidates(q, { limit: 10 });
+    assert.equal(again.length, 1, '过期 30 天后重新进入候选');
+  } finally {
+    await store.close();
+  }
+});
+
+test('前台成人过滤：adult=hide 时 adult_flag 的游戏不出现在列表与详情', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    // 列表查询要求有 daily_prices 记录，先造两款游戏 + 平台 + 日价
+    await q("insert into games (steam_appid, name, adult_flag, is_free) values (3001, '正常', false, false), (3002, '成人', true, false)");
+    await q("insert into platforms (code, name, kind) values ('steam','Steam 国区','official') on conflict do nothing");
+    for (const appid of [3001, 3002]) {
+      await q("insert into offers (game_id, platform_code, product_type, region, currency, price_cents) select id, 'steam', 'official_direct', 'cn', 'CNY', 1000 from games where steam_appid = $1", [appid]);
+      await q("insert into daily_prices (game_id, platform_code, region, day, min_price_cents, currency) select id, 'steam', 'cn', current_date, 1000, 'CNY' from games where steam_appid = $1", [appid]);
+    }
+    const hide = await db.gameSearch(q, { region: 'cn', adult: 'hide' });
+    assert.equal(hide.total, 1, 'hide 时成人不可见');
+    assert.equal(hide.rows[0].steam_appid, 3001);
+    const badge = await db.gameSearch(q, { region: 'cn', adult: 'badge' });
+    assert.equal(badge.total, 2, 'badge 时成人可见');
+    const detailHidden = await db.gameDetail(q, { steamAppid: 3002, region: 'cn', adult: 'hide' });
+    assert.equal(detailHidden, null, 'hide 时详情也 404');
+    const detailShown = await db.gameDetail(q, { steamAppid: 3002, region: 'cn', adult: 'show' });
+    assert.equal(detailShown.adult_flag, true);
+  } finally {
+    await store.close();
+  }
+});

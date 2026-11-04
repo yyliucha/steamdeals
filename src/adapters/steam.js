@@ -29,6 +29,29 @@ export function buildAppDetailsUrl(appids, opts = {}) {
 }
 
 /**
+ * Steam 同步状态判定（docs/STEAM-SYNC-STATUS-AND-RATING.md §4）。
+ * 纯函数：cnEntry 是 cc=cn 的 appdetails 条目，hkEntry 是 cc=hk 的（cn 为 success:false 时才补请求）。
+ * 返回 'ok' | 'free' | 'coming_soon' | 'region_locked' | 'no_price' | 'not_found'。
+ */
+export function classifySteamStatus(cnEntry, hkEntry = null) {
+  const cnOk = Boolean(cnEntry && cnEntry.success === true && cnEntry.data);
+  const cnData = cnOk ? cnEntry.data : null;
+  if (!cnOk) {
+    const hkOk = Boolean(hkEntry && hkEntry.success === true && hkEntry.data);
+    const hkData = hkOk ? hkEntry.data : null;
+    if (hkData && (hkData.is_free || hkData.price_overview)) return 'region_locked';
+    // hk=coming_soon 或 hk 也不可售 → 国区下架/未上架，统称国区不可售
+    return 'not_found';
+  }
+  if (cnData.is_free) return 'free';
+  if (!cnData.price_overview) {
+    if (cnData.release_date?.coming_soon) return 'coming_soon';
+    return 'no_price';
+  }
+  return 'ok';
+}
+
+/**
  * 解析 appdetails 响应。
  * 注意：用 filters=price_overview 时免费游戏和区域锁定游戏都不会有 price_overview，
  * 这两种都记为 skipped，不产生报价——免费游戏没有比价价值。
