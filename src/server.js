@@ -9,6 +9,7 @@
 //
 // 折扣数据永远只由调度器写入，这里没有任何改价的接口——这是硬约束。
 import { createServer } from 'node:http';
+import { randomBytes } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, extname, resolve, sep } from 'node:path';
 import * as db from './store/pg.js';
@@ -51,6 +52,48 @@ const escapeHtml = (value) =>
 const wantsHtml = (req) =>
   /text\/html/i.test(String(req.headers.accept ?? '')) && !String(req.url ?? '').startsWith('/api/');
 
+/** 手机 UA 粗判（日志用：下次"某个端不生效"时能直接区分 PC/移动端）。 */
+const isMobileUa = (req) => /mobile/i.test(String(req.headers['user-agent'] ?? ''));
+
+// 仅被封禁者可见的页面：未封禁访问一律 302 回首页（docs/BAN-AND-SECURITY-FIXES.md §3）。
+// 以后新增同类页面必须登记进这里——测试会遍历它，漏登记直接红。
+export const BAN_ONLY_PAGES = new Set(['/banned', '/banned/', '/banned.html', '/appeal', '/appeal/']);
+
+// 申诉编号：crypto 随机 + 去易混字符（0/O/1/I），保留 AP- 前缀（docs/URL-PARAM-PRIVACY.md §5/§6.1）。
+// 4 字节 32 bit → 取 30 bit 按 5 bit 一组映射到 32 字符表 → 恰好 6 位。
+const APPEAL_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export function newAppealCode() {
+  const buf = randomBytes(4);
+  let bits = (((buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3]) >>> 0);
+  let code = '';
+  for (let i = 0; i < 6; i += 1) {
+    code += APPEAL_CODE_ALPHABET[bits & 31];
+    bits >>>= 5;
+  }
+  return `AP-${code}`;
+}
+
+// /api/ban/state 的自带限流：每 IP 1 次/秒、30 次/分钟（防被当成探测接口；docs/BAN-AND-SECURITY-FIXES.md §3.3）。
+const banStateBuckets = new Map(); // ip -> { last, minute: number[] }
+function banStateLimited(ip) {
+  const key = String(ip || 'anon');
+  if (banStateBuckets.size > 10_000) banStateBuckets.clear();
+  const now = Date.now();
+  const bucket = banStateBuckets.get(key);
+  const minute = (bucket?.minute ?? []).filter((t) => now - t < 60_000);
+  if (minute.length >= 30) {
+    banStateBuckets.set(key, { last: now, minute });
+    return true;
+  }
+  if (bucket && now - bucket.last < 1000) {
+    banStateBuckets.set(key, { last: bucket.last, minute });
+    return true;
+  }
+  minute.push(now);
+  banStateBuckets.set(key, { last: now, minute });
+  return false;
+}
+
 const bannedTplCache = new Map();
 function bannedTemplate(outDir) {
   const file = resolve(outDir ?? 'web', 'banned.html');
@@ -67,7 +110,7 @@ function bannedTemplate(outDir) {
 
 /** 封禁提示页：多语言在前端按 navigator.language 选，这里只注入站点名/申诉邮箱/到期时间/申诉编号。 */
 function serveBanPage(res, outDir, { status = 403, until = null, reason = '', siteName = 'SteamDeals', appealEmail = '' } = {}, frontendDir = null) {
-  const code = 'AP-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+  const code = newAppealCode();
   const untilIso = until ? new Date(until).toISOString() : '';
   const distIndex = frontendDir && resolve(frontendDir, 'index.html');
   let html;
@@ -92,6 +135,21 @@ function serveBanPage(res, outDir, { status = 403, until = null, reason = '', si
   res.writeHead(status, headers);
   res.end(html);
   return code;
+}
+
+/**
+ * 申诉页：仅被封禁者可见，站点信息注入 `window.__APPEAL__`（URL 只带 code，见 URL-PARAM-PRIVACY.md §4.2）。
+ * 无 frontend/dist 时返回 false，调用方回落到原静态路径（保持无构建产物时的旧行为）。
+ */
+function serveAppealPage(res, outDir, frontendDir, { site, email, code }) {
+  const distIndex = frontendDir && resolve(frontendDir, 'index.html');
+  if (!distIndex || !existsSync(distIndex)) return false;
+  const payload = JSON.stringify({ site, email, code }).replace(/</g, '\\u003c');
+  const script = `window.__APPEAL__=${payload};`;
+  const html = readFileSync(distIndex, 'utf8').replace('</head>', `<script>${script}</script></head>`);
+  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+  res.end(html);
+  return true;
 }
 
 function deviceCookie(req, value, maxAgeSec) {
@@ -303,6 +361,15 @@ export function createApiServer({
 
   /** 统一的封禁响应：浏览器给提示页，API/脚本给纯文本。 */
   const denyBanned = (req, res, { status = 403, until = null, reason = '访问被拒绝', ip = null } = {}) => {
+    // 拦截链侧记一条观测日志：下次"某个端不生效"能直接定位（docs/BAN-AND-SECURITY-FIXES.md §3.5）
+    logger?.info('ban.page_view', {
+      ip,
+      path: String(req.url ?? '').split('?')[0],
+      mobile: isMobileUa(req),
+      at: 'gate',
+      reason,
+      status,
+    });
     if (wantsHtml(req)) {
       const code = serveBanPage(res, outDir, { status, until, reason, siteName: siteName(), appealEmail: appealEmail() }, frontendDir);
       // 记录申诉编号，管理员收到申诉邮件后能按编号在日志里定位这次封禁
@@ -365,6 +432,34 @@ export function createApiServer({
 
       // ---- 设备封禁（管理员在控制台审批后才会存在）----
       const deviceId = devices.normalizeDeviceId(cookies[DEVICE_COOKIE]);
+
+      // ---- robots.txt：敏感页一律 Disallow（docs/URL-PARAM-PRIVACY.md §5）----
+      if (path === '/robots.txt' && req.method === 'GET') {
+        res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=86400' });
+        res.end('User-agent: *\nDisallow: /console\nDisallow: /banned\nDisallow: /appeal\nDisallow: /api/\n');
+        return;
+      }
+
+      // ---- 只读封禁状态接口（客户端复核用，docs/BAN-AND-SECURITY-FIXES.md §3.3）----
+      // 必须在拦截链之前：被封禁者也要拿得到自己的状态。只用内存态（devices.isBanned /
+      // ratelimit.bannedUntil / visitors.blockedBy），不查库、不计数；自带限流 1 次/秒、30 次/分钟；
+      // 只回调用者自己的 {banned,type,until}，不含名单内容、不含他人 IP。
+      if (path === '/api/ban/state' && req.method === 'GET') {
+        if (banStateLimited(ip)) {
+          return json(res, 429, { error: '请求过于频繁' }, { 'cache-control': 'no-store', 'retry-after': '1' });
+        }
+        let state = { banned: false };
+        if (!whitelisted) {
+          const devBan = deviceId ? devices.isBanned({ deviceId }) : null;
+          const rateUntil = ip ? ratelimit.bannedUntil(ip) : null;
+          const ipBlocked = ip ? visitors.blockedBy(ip) : null;
+          if (devBan) state = { banned: true, type: 'device', until: devBan.until ? new Date(devBan.until).toISOString() : null };
+          else if (rateUntil) state = { banned: true, type: 'rate', until: new Date(rateUntil).toISOString() };
+          else if (ipBlocked) state = { banned: true, type: 'ip', until: null };
+        }
+        return json(res, 200, state, { 'cache-control': 'no-store' });
+      }
+
       const deviceBan = deviceId && !adminBypass && !whitelisted ? devices.isBanned({ deviceId }) : null;
       if (deviceBan && !appealPage) {
         if (req.method === 'GET' && isFrontendAsset(path)) return serveFrontendStatic(res, frontendDir, outDir, path);
@@ -519,17 +614,35 @@ export function createApiServer({
         if (handled) return;
       }
 
-      // ---- 封禁提示页入口：只做重定向（docs/BAN-PAGE-GUARD.md）----
-      // 能走到这里 ⇔ 设备 / 频率 / IP 黑名单三道拦截闸都没拦下：未封禁、白名单、
-      // 管理员 bypass、封禁已过期的请求都会到这里 → 302 回首页。
-      // 真正被封禁的请求在拦截链里已经由 denyBanned 返回了封禁页（403/429），
-      // 这里**不能再判一次**——二次判定会误伤已被放行的管理员与白名单，
-      // 且 ratelimit.hit() 有计数副作用，不能在页面路由里重复调用。
-      if (path === '/banned' || path === '/banned/') {
-        logger?.info('ban.redirect_home', { ip, path });
+      // ---- 仅封禁可见页面守卫（docs/BAN-AND-SECURITY-FIXES.md §3）----
+      // 只读判定：复用拦截链已经算好的 deviceBan / hit / whitelisted / adminBypass，
+      // 频率封禁只读 bannedUntil()——hit() 有计数与三振副作用，禁止在页面路由调用（§3.6）。
+      // 管理员与白名单视为未封禁；被封禁的用户到达不了 /banned（拦截链已 denyBanned），
+      // 但能到达 /appeal（故意豁免），所以这里对 /appeal 是第一次真正判定。
+      const banState = () => {
+        if (adminBypass || whitelisted) return null;
+        if (deviceBan) return { type: 'device', until: deviceBan.until };
+        const rateUntil = ip ? ratelimit.bannedUntil(ip) : null;
+        if (rateUntil) return { type: 'rate', until: rateUntil };
+        if (hit) return { type: 'ip', rule: hit };
+        return null;
+      };
+      if (BAN_ONLY_PAGES.has(path) && banState() === null) {
+        logger?.info('ban.page_view', { ip, path, mobile: isMobileUa(req), at: 'ban_only', reason: 'not_banned' });
+        logger?.info('ban.redirect_home', { ip, path, from: 'ban_only_page' });
         res.writeHead(302, { location: '/', 'cache-control': 'no-store', 'content-length': '0' });
         res.end();
         return;
+      }
+
+      // ---- 申诉页：守卫已保证仅被封禁者可见；注入站点信息（URL 只带 code，见 URL-PARAM-PRIVACY.md §4.2）----
+      if (appealPage) {
+        const rawCode = String(url.searchParams.get('code') ?? '');
+        // 白名单校验：整个 code 必须匹配 ^[A-Za-z0-9-]{1,16}$，非法（含 <、超长）按空处理，
+        // 不报错、不反射输入（docs/URL-PARAM-PRIVACY.md §5）
+        const code = /^[A-Za-z0-9-]{1,16}$/.test(rawCode) ? rawCode : '';
+        if (serveAppealPage(res, outDir, frontendDir, { site: siteName(), email: appealEmail(), code })) return;
+        // 无构建产物时回落到下方静态资源路径（保持旧行为）
       }
 
       // 静态资源（页面本身仍由 chart 生成，这里只发文件）
@@ -620,6 +733,10 @@ export function createApiServer({
         }
         return true;
       };
+
+      // 黑/白名单互斥（docs/BAN-AND-SECURITY-FIXES.md §4）：加黑移白、加白移黑，含内存态同步。
+      // 单条/审核/批量四个入口都走这里，保证口径一致、不会再出现"同一 IP 两边都在"。
+      const banIpExclusive = (ip, note, kind, opts) => banIpExclusiveSql(q, ip, note, kind, opts);
 
       // 系统设置（管理员）：读写 app_settings / smtp_settings
       if (path.startsWith('/api/admin/settings')) {
@@ -2198,12 +2315,10 @@ export function createApiServer({
         const body = await readBody(req);
         const ip = visitors.normalizeBanInput(body.ip);
         if (!ip) return json(res, 400, { error: 'IP 格式不正确（支持 1.2.3.4 单个 IP 或 1.2.3.0/24 网段）' });
-        const row = await db.addBlockedIp(q, { ip, note: String(body.note ?? '').trim().slice(0, 200) || null });
-        // 手动封禁同样把该 IP 的待审记录标记为 auto_banned（旧记录永久退出待审）
-        await db.markReviewsAutoBanned(q, { ip, note: '手动封禁' }).catch(() => {});
-        await visitors.refreshBlocklist(q).catch(() => {});
-        logger?.info('api.ip_blocked', { ip, by: user.username });
-        return json(res, 200, { ip: row });
+        // 互斥：加黑自动移白（含内存态），并把该 IP 的待审记录标记为 auto_banned
+        const result = await banIpExclusive(ip, String(body.note ?? '').trim().slice(0, 200) || null, 'ban');
+        logger?.info('api.ip_blocked', { ip, by: user.username, removedFromWhitelist: result.removedFromWhitelist });
+        return json(res, 200, { ip: result.ip, removedFromWhitelist: result.removedFromWhitelist });
       }
 
       const unbanMatch = path.match(/^\/api\/admin\/blacklist\/([^/]+)$/);
@@ -2227,10 +2342,10 @@ export function createApiServer({
         const body = await readBody(req);
         const ip = visitors.normalizeBanInput(body.ip);
         if (!ip) return json(res, 400, { error: 'IP 格式不正确（支持 1.2.3.4 或 1.2.3.0/24）' });
-        const row = await db.addWhitelistIp(q, { ip, note: String(body.note ?? '').trim().slice(0, 200) || null });
-        ratelimit.addWhitelist(ip);
-        logger?.info('api.ip_whitelisted', { ip, by: user.username });
-        return json(res, 200, { ip: row });
+        // 互斥：加白自动移黑（含内存态），黑名单不会"删白后复活"
+        const result = await banIpExclusive(ip, String(body.note ?? '').trim().slice(0, 200) || null, 'trust');
+        logger?.info('api.ip_whitelisted', { ip, by: user.username, removedFromBlacklist: result.removedFromBlacklist });
+        return json(res, 200, { ip: result.ip, removedFromBlacklist: result.removedFromBlacklist });
       }
 
       const wlMatch = path.match(/^\/api\/admin\/whitelist\/([^/]+)$/);
@@ -2364,10 +2479,8 @@ export function createApiServer({
         let bannedIp = false;
         let bannedDevice = false;
         if ((mode === 'ip' || mode === 'both') && review.ip) {
-          await db.addBlockedIp(q, { ip: review.ip, note: `审核通过（${review.rule}）by ${user.username}` });
-          // 审核封 IP 同样把该 IP 的其它待审记录标记为 auto_banned
-          await db.markReviewsAutoBanned(q, { ip: review.ip, note: '手动封禁' }).catch(() => {});
-          await visitors.refreshBlocklist(q).catch(() => {});
+          // 互斥 helper：加黑移白 + 内存态同步 + 把该 IP 的其它待审记录标记为 auto_banned
+          await banIpExclusive(review.ip, `审核通过（${review.rule}）by ${user.username}`, 'ban');
           bannedIp = true;
         }
         if ((mode === 'device' || mode === 'both') && review.fingerprint) {
@@ -2485,7 +2598,11 @@ export function createApiServer({
         for (const item of results.filter((r) => r.status === 'failed').slice(0, 20)) {
           logger?.warn('admin.bulk_item_failed', { target, action, key: String(item.key).slice(0, 64), message: item.reason });
         }
-        return json(res, 200, { opId, total: keys.length, ok, failed, skipped, results });
+        const reply = { opId, total: keys.length, ok, failed, skipped, results };
+        // 互斥回执（docs/BAN-AND-SECURITY-FIXES.md §4.1）：批量封/信任时带被互斥移除的对侧条目数
+        if (Number.isFinite(outcome.removedFromWhitelist)) reply.removedFromWhitelist = outcome.removedFromWhitelist;
+        if (Number.isFinite(outcome.removedFromBlacklist)) reply.removedFromBlacklist = outcome.removedFromBlacklist;
+        return json(res, 200, reply);
       }
 
       // ---- 管理员：批量操作记录（审计：谁、何时、对哪个列表、做了什么、成败多少）----
@@ -2576,9 +2693,27 @@ function normalizeBulkKey(keyType, raw) {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+/**
+ * 黑/白名单互斥（docs/BAN-AND-SECURITY-FIXES.md §4）：加黑自动移白、加白自动移黑，含内存态同步。
+ * SQL 在 src/store/pg.js（addBlockedIp / addWhitelistIp 已互斥删除对方表），这里负责内存态与回执。
+ * refresh: 是否立即重建内存黑名单（批量场景传 false，跑完由 runner 统一刷一次）。
+ */
+async function banIpExclusiveSql(q, ip, note, kind, { refresh = true, markReviews = true } = {}) {
+  if (kind === 'ban') {
+    const row = await db.addBlockedIp(q, { ip, note });
+    if (row.removedFromWhitelist) ratelimit.removeWhitelist(ip);
+    if (refresh) await visitors.refreshBlocklist(q).catch(() => {});
+    if (markReviews) await db.markReviewsAutoBanned(q, { ip, note: '手动封禁' }).catch(() => {});
+    return { ip: row.ip, removedFromWhitelist: row.removedFromWhitelist };
+  }
+  const row = await db.addWhitelistIp(q, { ip, note });
+  if (refresh) await visitors.refreshBlocklist(q).catch(() => {});
+  ratelimit.addWhitelist(ip);
+  return { ip: row.ip, removedFromBlacklist: row.removedFromBlacklist };
+}
+
 /** 纯 SQL 批量的收尾：返回真正改动的键，其余记为 skipped（幂等重放不虚报成功）。 */
-function bulkMissing(keys, doneKeys, reason) {
-  const done = new Set(doneKeys.map((k) => String(k)));
+function bulkMissing(keys, doneKeys, reason) {  const done = new Set(doneKeys.map((k) => String(k)));
   return keys.filter((k) => !done.has(String(k))).map((k) => ({ key: String(k), status: 'skipped', reason }));
 }
 
@@ -2611,9 +2746,8 @@ async function bulkReviewApproveIp({ q, keys, user }) {
     if (!review) return '审核记录不存在';
     if (review.status !== 'pending') return '已处理过';
     if (!review.ip) return '该记录没有 IP';
-    await db.addBlockedIp(q, { ip: review.ip, note: `批量审核通过（${review.rule}）by ${user.username}` });
-    // 与单条审批一致：封禁动作把该 IP 的其它待审记录标记为 auto_banned
-    await db.markReviewsAutoBanned(q, { ip: review.ip, note: '手动封禁' });
+    // 互斥 helper：加黑移白 + 待审标记（内存黑名单由循环后统一刷一次）
+    await banIpExclusiveSql(q, review.ip, `批量审核通过（${review.rule}）by ${user.username}`, 'ban', { refresh: false });
     await db.finishAbuseReview(q, review.id, { status: 'approved', reviewedBy: user.id, note: '批量封 IP' });
     return 'done';
   });
@@ -2647,22 +2781,26 @@ async function bulkReviewReject({ q, keys, user }) {
 }
 
 async function bulkVisitorBanIp({ q, keys, user }) {
+  let removedFromWhitelist = 0;
   const { ok, results, touched } = await bulkEach(keys, async (ip) => {
-    await db.addBlockedIp(q, { ip, note: `批量封禁 by ${user.username}` });
-    await db.markReviewsAutoBanned(q, { ip, note: '手动封禁' });
+    const outcome = await banIpExclusiveSql(q, ip, `批量封禁 by ${user.username}`, 'ban', { refresh: false });
+    if (outcome.removedFromWhitelist) removedFromWhitelist += 1;
     return 'done';
   });
   if (touched) await visitors.refreshBlocklist(q).catch(() => {});
-  return { ok, results };
+  return { ok, results, removedFromWhitelist };
 }
 
 async function bulkVisitorTrust({ q, keys, user }) {
+  let removedFromBlacklist = 0;
   const { ok, results } = await bulkEach(keys, async (ip) => {
-    await db.addWhitelistIp(q, { ip, note: `批量信任 by ${user.username}` });
-    ratelimit.addWhitelist(ip);
+    const outcome = await banIpExclusiveSql(q, ip, `批量信任 by ${user.username}`, 'trust', { refresh: false });
+    if (outcome.removedFromBlacklist) removedFromBlacklist += 1;
     return 'done';
   });
-  return { ok, results };
+  // 加白会互斥删除黑名单条目：内存黑名单必须跟着刷，否则删掉的条目还挡着路
+  if (removedFromBlacklist) await visitors.refreshBlocklist(q).catch(() => {});
+  return { ok, results, removedFromBlacklist };
 }
 
 async function bulkGameRestore({ q, keys }) {
@@ -2773,6 +2911,14 @@ function applySecurityHeaders(req, res) {
     res.setHeader('x-frame-options', 'DENY');
     res.setHeader('referrer-policy', 'strict-origin-when-cross-origin');
     res.setHeader('permissions-policy', 'geolocation=(), microphone=(), camera=()');
+    // 敏感页面（封禁/申诉）不收录、不跟随（docs/URL-PARAM-PRIVACY.md §5）
+    const pathname = String(req.url ?? '').split('?')[0];
+    if (/^\/banned(\/|\.html|$)/.test(pathname) || pathname === '/appeal' || pathname === '/appeal/') {
+      res.setHeader('x-robots-tag', 'noindex, nofollow');
+    }
+    if (pathname === '/appeal' || pathname === '/appeal/') {
+      res.setHeader('cache-control', 'no-store');
+    }
     // CSP 先以 Report-Only 观察（Element Plus 需要 inline style），跑稳后再切换成强制
     res.setHeader(
       'content-security-policy-report-only',

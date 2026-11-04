@@ -183,3 +183,93 @@ test('普通用户不能管理黑名单', async () => {
     await store.close();
   }
 });
+
+// ---------------------------------------------------------------- 黑/白名单互斥
+// docs/BAN-AND-SECURITY-FIXES.md §4：加黑移白、加白移黑；存量冲突白名单优先清理。
+
+test('互斥（store 层）：加黑自动移白、加白自动移黑，回执带 removedFrom*', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    const trust = await db.addWhitelistIp(q, { ip: '7.7.7.7', note: '出口' });
+    assert.equal(trust.removedFromBlacklist, false, '首次加白没有黑名单可移');
+
+    const ban = await db.addBlockedIp(q, { ip: '7.7.7.7', note: '拉黑' });
+    assert.equal(ban.removedFromWhitelist, true, '加黑应自动移白');
+    assert.equal((await q('select count(*)::int as n from ip_whitelist')).rows[0].n, 0, '白名单应清空');
+
+    const reTrust = await db.addWhitelistIp(q, { ip: '7.7.7.7', note: '出口' });
+    assert.equal(reTrust.removedFromBlacklist, true, '加白应自动移黑');
+    assert.equal((await q('select count(*)::int as n from ip_blacklist')).rows[0].n, 0, '黑名单应清空');
+  } finally {
+    await store.close();
+  }
+});
+
+test('迁移清理：两表并存的存量冲突白名单优先，临时封禁一并清空', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    // 绕过互斥直接造并存数据（模拟老库）
+    await q("insert into ip_blacklist (ip, note) values ('8.8.8.8', '旧黑')");
+    await q("insert into ip_whitelist (ip, note) values ('8.8.8.8', '旧白')");
+    await q("insert into ip_abuse (ip, strikes, banned_until) values ('8.8.8.8', 3, now() + interval '1 hour')");
+
+    await db.migrate(store); // 幂等重跑 → 存量清理生效
+
+    assert.equal((await q("select count(*)::int as n from ip_blacklist where ip = '8.8.8.8'")).rows[0].n, 0, '黑名单条目应被删');
+    assert.equal((await q("select count(*)::int as n from ip_whitelist where ip = '8.8.8.8'")).rows[0].n, 1, '白名单条目保留');
+    const abuse = (await q("select banned_until from ip_abuse where ip = '8.8.8.8'")).rows[0];
+    assert.equal(abuse.banned_until, null, '被白名单覆盖的临时封禁应清空');
+  } finally {
+    await store.close();
+  }
+});
+
+test('互斥（HTTP 层 + 内存态）：加黑后信任同一 IP → 立即恢复访问，黑名单不复活', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  await db.createUser(q, { username: 'admin', password: 'admin123456', role: 'admin' });
+  const srv = await startApiServer({ query: q, port: 0, host: '127.0.0.1' });
+  const base = `http://127.0.0.1:${srv.port}`;
+  try {
+    const loginRes = await fetch(`${base}/api/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin123456' }),
+    });
+    const cookie = (loginRes.headers.get('set-cookie') ?? '').split(';')[0];
+
+    const ban = await fetch(`${base}/api/admin/blacklist`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ ip: '127.0.0.1' }),
+    });
+    assert.equal((await ban.json()).removedFromWhitelist, false);
+    assert.equal((await fetch(`${base}/api/games`)).status, 403, '拉黑后匿名被拦');
+
+    // 加白 → 互斥移黑 + 内存黑名单即时刷新 → 匿名立即恢复
+    const trust = await fetch(`${base}/api/admin/whitelist`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ ip: '127.0.0.1' }),
+    });
+    assert.equal((await trust.json()).removedFromBlacklist, true, '加白应回执移除了黑名单');
+    assert.equal((await fetch(`${base}/api/games`)).status, 200, '内存黑名单已刷新');
+
+    // 再封 → 回执 removedFromWhitelist + 内存白名单同步移除 → 又拦
+    const ban2 = await fetch(`${base}/api/admin/blacklist`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ ip: '127.0.0.1' }),
+    });
+    assert.equal((await ban2.json()).removedFromWhitelist, true, '加黑应回执移除了白名单');
+    assert.equal((await fetch(`${base}/api/games`)).status, 403, '内存白名单已同步移除');
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});

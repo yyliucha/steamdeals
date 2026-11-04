@@ -437,3 +437,43 @@ test('键规范化与去重：IP 大小写 / 重复行只算一条，实际执�
     await close();
   }
 });
+
+test('批量互斥回执：批量封禁移除白名单、批量信任移除黑名单（docs/BAN-AND-SECURITY-FIXES.md §4.4）', async () => {
+  const { q, base, close } = await boot();
+  try {
+    const cookie = await login(base, 'admin', 'admin123456');
+    // 先信任两个 IP，再批量封它们：白名单应被互斥移除
+    for (const ip of ['203.0.120.1', '203.0.120.2']) {
+      await fetch(base + '/api/admin/whitelist', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie, 'x-forwarded-for': ADMIN_IP },
+        body: JSON.stringify({ ip }),
+      });
+    }
+    const banRes = await bulk(base, cookie, {
+      target: 'visitors',
+      action: 'ban-ip',
+      keys: ['203.0.120.1', '203.0.120.2', '203.0.120.3'],
+      confirmCount: 3,
+    });
+    assert.equal(banRes.status, 200);
+    const banData = await banRes.json();
+    assert.equal(banData.ok, 3);
+    assert.equal(banData.removedFromWhitelist, 2, '批量封应回执被移除的白名单条数');
+    assert.equal((await q('select count(*)::int as n from ip_whitelist')).rows[0].n, 0, '白名单应清空');
+
+    // 再批量信任前两个：黑名单应被互斥移除，且内存黑名单刷新
+    const trustRes = await bulk(base, cookie, { target: 'visitors', action: 'trust', keys: ['203.0.120.1', '203.0.120.2'] });
+    const trustData = await trustRes.json();
+    assert.equal(trustData.ok, 2);
+    assert.equal(trustData.removedFromBlacklist, 2, '批量信任应回执被移除的黑名单条数');
+    assert.equal(
+      (await q("select count(*)::int as n from ip_blacklist where ip in ('203.0.120.1', '203.0.120.2')")).rows[0].n,
+      0,
+      '黑名单条目应被移出',
+    );
+    assert.equal((await q('select count(*)::int as n from ip_blacklist where ip = $1', ['203.0.120.3'])).rows[0].n, 1, '未信任的仍留在黑名单');
+  } finally {
+    await close();
+  }
+});

@@ -2,6 +2,41 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.14.2] - 2026-11-04
+
+### 新增
+
+- **仅封禁可见页面统一守卫（docs/BAN-AND-SECURITY-FIXES.md）**：
+  - `BAN_ONLY_PAGES` 注册表（`/banned`、`/banned/`、`/banned.html`、`/appeal`、`/appeal/`）：未封禁 / 管理员 /
+    封禁已过期访问一律 302 回首页；判定只在拦截链（只读复用 `deviceBan` / `blockedBy` / `bannedUntil`，
+    页面路由零二次判定）
+  - 新增只读接口 `GET /api/ban/state`（豁免拦截链与频率计数、只用内存态、自带 1 次/秒 + 30 次/分钟限流，
+    只回调用者自己的 `{banned,type,until}`）；前端共享 `useBanOnlyPage` composable（挂载 + 每 30 秒 + 切回标签页复查），
+    解封后自动回首页
+  - `ban.page_view` 观测日志（`at: gate|ban_only` + `mobile`），`ban.redirect_home` 带 `from`
+- **黑/白名单双向互斥（同规格 §4）**：加黑自动移白、加白自动移黑（单条与批量回执 `removedFromWhitelist/Blacklist`）；
+  `banIpExclusive` 收敛单条/审核/批量四个入口；`migrate()` 幂等存量清理（白名单优先，被覆盖的临时封禁一并清空）
+- **待审口径 A（同规格 §5）**：待审 = 全部 `pending`（去掉 `NOT_ACTIVE_BAN` 二次过滤，列表与计数同口径）；
+  状态列补全 待审 / 已封禁 / 已忽略 / 自动退出 四种标签 + 悬停备注与处理时间
+- **申诉 URL 去敏感化（docs/URL-PARAM-PRIVACY.md 方案 A）**：`/appeal` 只带 `?code=AP-XXXXXX`，
+  站点名与申诉邮箱由服务端注入 `window.__APPEAL__`（封禁用户调不了 `/api/site`）；申诉页不再展示原因/解除时间，
+  旧链接多余参数忽略并在前端清洗地址栏
+
+### 修复
+
+- 申诉编号 `Math.random()` → `crypto.randomBytes` + 去易混字符（0/O/1/I），保持 `AP-XXXXXX`
+- `/banned*`、`/appeal*` 响应带 `X-Robots-Tag: noindex, nofollow`；`/appeal` 补 `Cache-Control: no-store`；
+  新增 `GET /robots.txt`（Disallow `/console` `/banned` `/appeal` `/api/`）
+- 申诉 `code` 白名单整串校验（`^[A-Za-z0-9-]{1,16}$`，非法按空处理、不反射输入）
+
+### 测试
+
+- `test/reviews.test.js` 19 → 24 项：`BAN_ONLY_PAGES` 逐页遍历（未封禁 302 / 被封禁 403 或 200）、
+  `/api/ban/state` 三类型与豁免与限流、待审口径 A
+- `test/visitors.test.js` 5 → 8 项：互斥（store 层 / 迁移清理 / HTTP 层内存态）
+- `test/admin-bulk.test.js` 12 → 13 项：批量互斥回执
+- 新增 `test/appeal-security.test.js` 6 项并接入主链：302 / 注入 / 非法 code / robots / 响应头 / 编号随机 / 前端静态断言
+
 ## [1.14.1] - 2026-11-03
 
 ### 修复

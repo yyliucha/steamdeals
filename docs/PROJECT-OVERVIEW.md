@@ -83,7 +83,7 @@ Node.js 服务 src/server.js
 | 当前价、快照、日历史、史低 | `src/ingest.js`, `src/store/pg.js` | 价格变化才写快照；主榜及历史低价查询过滤非官方/授权渠道 |
 | 比价、历史和静态曲线 | `src/compare.js`, `src/report.js`, `src/cli.js` | CLI 查询与 `chart` 静态 HTML 曲线 |
 | Web/API、安装和账户 | `src/server.js`, `src/*-routes.js`, `frontend/` | Vue 前端覆盖前台、初始化、封禁页与控制台十个模块；`web/` 旧页面仅作无构建产物时的回退；具体入口见 [WEB.md](WEB.md) |
-| 封禁与申诉 | `src/devices.js`, `src/ratelimit.js`, `src/server.js`, `frontend/src/pages/BanPage.vue`, `AppealPage.vue` | 封禁页与服务端注入的 `__BAN_PAGE__`、Vue 申诉页；`/appeal` 对封禁 IP/设备放行（申诉走邮件，不落库）。`/banned` 只做 302 回首页（判定在拦截链里完成，未封禁/管理员 bypass/封禁过期一律回首页，不渲染假封禁页） |
+| 封禁与申诉 | `src/devices.js`, `src/ratelimit.js`, `src/server.js`（`BAN_ONLY_PAGES` 注册表 + `/api/ban/state`）、`frontend/src/pages/BanPage.vue`, `AppealPage.vue`, `composables/useBanOnlyPage.js` | 仅封禁可见页面统一守卫（`/banned`、`/banned.html`、`/appeal`：未封禁/管理员/封禁过期一律 302 回首页，判定只在拦截链）；客户端每 30 秒复查，解封后自动回首页；申诉 URL 只带 `?code=`（站点信息注入 `__APPEAL__`，申诉走邮件、不落库）；`/appeal` 对封禁 IP/设备放行；黑/白名单双向互斥；待审口径 = 全部 `pending` |
 | 关注、降价提醒、通知 | `src/alerts.js`, `src/notify.js` | 目标价/史低触发；Webhook、企业微信机器人、SMTP |
 | **后台列表批量操作** | `src/server.js`（`BULK_ACTIONS` 派发表 + `/api/admin/bulk`）、`src/store/pg.js`（`bulk*` SQL + `admin_bulk_ops`）、`frontend/src/composables/useBulkSelection.js`、`components/BulkBar.vue`、`components/BulkResultDialog.vue`、`pages/AdminModules.vue`、`pages/AdminExtras.vue`、`pages/Console.vue` | 已实现并发布 v1.14.0（2026-11-03 验证：`npm test` 46 个测试文件全绿 / `frontend:build` / `scan` 干净）：11 个列表可多选批量执行（待审/访问明细/回收站/站点通知/IP 黑名单/IP 白名单/已封设备/自动封禁/游戏目录/最近设备/用户）；单次上限与高危确认由服务端派发表决定，成功/跳过/失败逐条回执，审计落 `admin_bulk_ops`。规格见 [ADMIN-BULK-ACTIONS.md](ADMIN-BULK-ACTIONS.md) |
 | 定时采集与熔断 | `src/scheduler.js` | 任务隔离子进程运行；连续失败会在冷却期内暂停调度任务 |

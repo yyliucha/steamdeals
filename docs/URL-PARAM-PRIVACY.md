@@ -1,6 +1,7 @@
-# URL 参数隐私化：敏感页面不再把信息放进 URL（待开发）
+# URL 参数隐私化：敏感页面不再把信息放进 URL
 
-> 状态：**需求与方案已确认（2026-11-04），待开发**。方案 **A**（移除而非加密）。
+> 状态：**已实现并发布（v1.14.2，2026-11-04）**——方案 **A**（移除而非加密）已落地，
+> 测试 `test/appeal-security.test.js` 6 项全绿。
 > 关联：[BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md)（同一批：`/appeal` 守卫与服务端注入）、
 > [WEB.md](WEB.md)（页面表）、[TODO.md](TODO.md)（条目）。
 >

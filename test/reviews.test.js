@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
-import { startApiServer } from '../src/server.js';
+import { startApiServer, BAN_ONLY_PAGES } from '../src/server.js';
 import * as ratelimit from '../src/ratelimit.js';
 import * as guard from '../src/guard.js';
 import * as devices from '../src/devices.js';
@@ -356,7 +356,7 @@ test('限流分桶：静态资源不占用页面/API 的阈值', async () => {
   }
 });
 
-test('异常审核联动：封禁期内的 IP 不出现在待审列表与计数，解封后恢复显示', async () => {
+test('异常审核联动（口径 A）：封禁期内的 pending 仍出现在待审列表与计数', async () => {
   const store = await openStore('pglite:', {});
   await db.migrate(store);
   const q = (sql, p) => store.query(sql, p);
@@ -366,19 +366,14 @@ test('异常审核联动：封禁期内的 IP 不出现在待审列表与计数�
     );
     await q("insert into ip_abuse (ip, strikes, banned_until) values ('198.51.100.1', 3, now() + interval '30 minutes')");
 
+    // 口径 A（docs/BAN-AND-SECURITY-FIXES.md §5）：待审 = 全部 pending。
+    // v1.9.0 起封禁动作已把旧 pending 标成 auto_banned 永久退出待审，这里不再按
+    // "IP 是否处于临时封禁"二次过滤——封禁期间新产生的 pending 恰恰是最该看的。
     const list = await db.listAbuseReviews(q, { status: 'pending', limit: 10 });
     const ips = list.map((r) => r.ip);
-    assert.deepEqual(ips.filter(Boolean), ['198.51.100.2'], '自动封禁中的 IP 不出现');
+    assert.deepEqual(ips.filter(Boolean).sort(), ['198.51.100.1', '198.51.100.2'], '封禁中的 pending 也要出现');
     assert.equal(ips.filter((ip) => ip === null).length, 1, 'ip 为 null 的记录保留');
-    assert.equal(await db.countPendingReviews(q), 2, '计数与列表一致');
-
-    // 解封（封禁过期）→ 记录自动恢复显示，原始审核数据不写状态
-    await q("update ip_abuse set banned_until = now() - interval '1 second' where ip = '198.51.100.1'");
-    const after = await db.listAbuseReviews(q, { status: 'pending', limit: 10 });
-    assert.equal(after.length, 3, '解封后恢复显示');
-    assert.equal(await db.countPendingReviews(q), 3);
-    const row = await q("select status from abuse_reviews where ip = '198.51.100.1'");
-    assert.equal(row.rows[0].status, 'pending', '只过滤显示，不改原始状态');
+    assert.equal(await db.countPendingReviews(q), 3, '计数与列表一致');
   } finally {
     await store.close();
   }
@@ -389,7 +384,7 @@ test('封禁标记：封禁时已有 pending → auto_banned（解封不恢复�
   try {
     const ip = '198.51.100.40';
     // 第一轮超频：封禁 10 分钟；本轮新生成的待审 R1 在封禁之后产生（属"新异常"，保持 pending，
-    // 封禁期内由 NOT_ACTIVE_BAN 双保险隐藏）。
+    // 口径 A 下仍出现在待审列表——与状态列「待审」一致）。
     await get(base, ip, '/');
     await get(base, ip, '/');
     assert.equal((await get(base, ip, '/')).status, 429);
@@ -417,8 +412,8 @@ test('封禁标记：封禁时已有 pending → auto_banned（解封不恢复�
     const rows = await q("select status, note from abuse_reviews where ip = $1 order by id", [ip]);
     assert.deepEqual(rows.rows.map((r) => r.status), ['auto_banned', 'pending'], '旧记录被标记、新记录保持待审');
     assert.equal(rows.rows[0].note, '自动封禁');
-    // 封禁期内双保险：待审列表与计数都不含（R2 也被 NOT_ACTIVE_BAN 隐藏）
-    assert.equal((await db.listAbuseReviews(q, { status: 'pending' })).filter((r) => r.ip === ip).length, 0);
+    // 口径 A：封禁期间的新异常（R2）仍以「待审」出现，不再被二次过滤隐藏
+    assert.equal((await db.listAbuseReviews(q, { status: 'pending' })).filter((r) => r.ip === ip).length, 1, '封禁期内的新异常应出现在待审');
 
     // 解封 → R1 不恢复 pending（永久退出）；R2 回到待审（新异常可审核）
     await q("update ip_abuse set banned_until = now() - interval '1 second' where ip = $1", [ip]);
@@ -592,4 +587,167 @@ test('日志：302 记 ban.redirect_home；被封禁仍是 ban.page；BanPage �
   } finally {
     await close();
   }
+});
+
+// ---------------------------------------------------------------- 仅封禁可见页面统一守卫
+// docs/BAN-AND-SECURITY-FIXES.md §3：BAN_ONLY_PAGES 里的页面未封禁一律 302；被封禁者
+// 封禁页（/banned*）被拦截链 403、申诉页（/appeal*）豁免拦截链可见。
+// 测试遍历的是 server.js 导出的真实集合——以后新增同类页面漏登记会直接红。
+
+/** 调 /api/ban/state；接口自带 1 次/秒限流，测试里被限流就等 1.1 秒重试（最多 3 次）。 */
+async function banState(base, ip, extra = {}) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const res = await fetch(base + '/api/ban/state', { headers: { 'x-forwarded-for': ip, ...extra } });
+    if (res.status === 429) {
+      await new Promise((r) => setTimeout(r, 1100));
+      continue;
+    }
+    return { status: res.status, body: await res.json() };
+  }
+  throw new Error('/api/ban/state 一直被限流');
+}
+
+test('BAN_ONLY_PAGES 遍历：未封禁一律 302；被封禁时 /banned* 403、/appeal* 200', async () => {
+  const { base, close } = await boot({}, { admin: true, frontendDir: banFrontDir() });
+  try {
+    const cookie = await loginAdmin(base);
+    const victim = '198.51.100.80';
+    const bystander = '198.51.100.81';
+    const pages = [...BAN_ONLY_PAGES];
+    assert.ok(pages.length >= 5, '注册表至少包含 /banned、/banned.html 与 /appeal 三组');
+
+    // 未封禁：全部 302 回首页
+    for (const p of pages) {
+      const res = await getNoFollow(base, bystander, p);
+      assert.equal(res.status, 302, `未封禁 ${p} 应 302`);
+      assert.equal(res.headers.get('location'), '/');
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+    }
+
+    // 拉黑 victim
+    const ban = await fetch(base + '/api/admin/blacklist', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie, 'x-forwarded-for': '203.0.113.77' },
+      body: JSON.stringify({ ip: victim }),
+    });
+    assert.equal(ban.status, 200);
+
+    // 被封禁：/banned* 由拦截链给 403 封禁页；/appeal* 豁免拦截链、可见（守卫不拦被封禁者）
+    for (const p of pages) {
+      const res = await fetch(base + p, { headers: { 'x-forwarded-for': victim, accept: 'text/html' } });
+      if (p.startsWith('/appeal')) {
+        assert.equal(res.status, 200, `被封禁 ${p} 应可见（申诉入口）`);
+      } else {
+        assert.equal(res.status, 403, `被封禁 ${p} 应给封禁页`);
+      }
+    }
+  } finally {
+    await close();
+  }
+});
+
+test('/api/ban/state：只读、豁免拦截链、IP/白名单口径', async () => {
+  const { base, close } = await boot({}, { admin: true });
+  try {
+    const cookie = await loginAdmin(base);
+    const ip = '198.51.100.90';
+    const trustIp = '198.51.100.91';
+
+    // 未封禁
+    const free = await banState(base, ip);
+    assert.deepEqual(free.body, { banned: false });
+
+    // IP 封禁：被封者仍能调状态接口（豁免拦截链），且拿到自己的状态
+    await fetch(base + '/api/admin/blacklist', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie, 'x-forwarded-for': '203.0.113.77' },
+      body: JSON.stringify({ ip }),
+    });
+    const ipState = await banState(base, ip);
+    assert.equal(ipState.body.banned, true);
+    assert.equal(ipState.body.type, 'ip');
+    assert.equal(ipState.body.until, null);
+
+    // 白名单视为未封禁（互斥后同 IP 不会再两边都在）
+    await fetch(base + '/api/admin/whitelist', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie, 'x-forwarded-for': '203.0.113.77' },
+      body: JSON.stringify({ ip: trustIp }),
+    });
+    const trusted = await banState(base, trustIp);
+    assert.deepEqual(trusted.body, { banned: false }, '白名单视为未封禁');
+  } finally {
+    await close();
+  }
+});
+
+test('/api/ban/state：设备与频率封禁类型', async () => {
+  const { q, base, close } = await boot({ RATE_LIMIT_MAX: '1' }, { admin: true });
+  try {
+    // 频率封禁：先触发一次临时封禁，再查状态（状态接口不参与计数、不升档）
+    const rateIp = '198.51.100.92';
+    assert.equal((await get(base, rateIp, '/')).status, 200);
+    assert.equal((await get(base, rateIp, '/')).status, 429);
+    const rateState = await banState(base, rateIp);
+    assert.equal(rateState.body.banned, true);
+    assert.equal(rateState.body.type, 'rate');
+    assert.ok(rateState.body.until, '频率封禁应带到期时间');
+    // 状态接口豁免频率计数：轮询若干次仍是同一封禁（否则轮询会把封禁升档）
+    for (let i = 0; i < 3; i += 1) {
+      const again = await banState(base, rateIp);
+      assert.equal(again.body.type, 'rate', '状态接口不得参与三振计数（也不会把封禁升档）');
+    }
+
+    // 设备封禁
+    const details = { platform: 'Win32', vendor: 'Google Inc.', language: 'zh-CN', timezone: 'Asia/Shanghai', webglVendor: 'v', webglRenderer: 'r', canvasHash: 'state-test' };
+    const did = 'device-state-01';
+    const first = await fetch(base + '/api/device', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.93' },
+      body: JSON.stringify({ deviceId: did, details }),
+    });
+    assert.equal(first.status, 200);
+    const deviceCookie = (first.headers.get('set-cookie') ?? '').split(';')[0];
+    const row = (await q("select fingerprint from device_logs where device_id = 'device-state-01'")).rows[0];
+    const adminCookie = await loginAdmin(base);
+    await fetch(base + '/api/admin/devices/ban', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie, 'x-forwarded-for': '203.0.113.77' },
+      body: JSON.stringify({ fingerprint: row.fingerprint, deviceId: did, permanent: true }),
+    });
+    const devState = await banState(base, '198.51.100.93', { cookie: deviceCookie });
+    assert.equal(devState.body.banned, true);
+    assert.equal(devState.body.type, 'device');
+    assert.equal(devState.body.until, null, '永久封禁无到期时间');
+  } finally {
+    await close();
+  }
+});
+
+test('/api/ban/state 自带限流：突发请求出现 429（防探测）', async () => {
+  const { base, close } = await boot();
+  try {
+    const ip = '198.51.100.94';
+    let limited = 0;
+    for (let i = 0; i < 31; i += 1) {
+      const res = await fetch(base + '/api/ban/state', { headers: { 'x-forwarded-for': ip } });
+      if (res.status === 429) {
+        limited += 1;
+        assert.ok(Number(res.headers.get('retry-after')) > 0, '429 应带 retry-after');
+      }
+    }
+    assert.ok(limited >= 1, '1 次/秒 + 30 次/分钟的限流应生效');
+  } finally {
+    await close();
+  }
+});
+
+test('前端：待审状态列 4 种标签 + 口径 A 说明文案', () => {
+  const modules = readFileSync(fileURLToPath(new URL('../frontend/src/pages/AdminModules.vue', import.meta.url)), 'utf8');
+  for (const label of ['>待审<', '>已封禁<', '>已忽略<', '>自动退出<']) {
+    assert.ok(modules.includes(label), `状态列应有 ${label}`);
+  }
+  assert.match(modules, /reviewStatusHint/, '状态列应有悬停提示（note/reviewed_at）');
+  assert.match(modules, /封禁期间产生的新异常仍会以「待审」出现/, '说明文案应为口径 A');
+  assert.ok(!modules.includes('解封后自动恢复显示'), '旧口径文案应移除');
 });

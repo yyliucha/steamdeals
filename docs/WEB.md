@@ -37,8 +37,8 @@ node src/cli.js serve --port 8090
 | `/setup` | 首次初始化：创建管理员、数据源/代理/提醒；完成前其他页面一律 302 到这里 |
 | `/` | Vue 单页前端：列表、筛选（全部/感兴趣/不感兴趣/已拥有）、排序（折扣/价格/名称，热度作主序）、发行时间筛选、搜索边打边查、亮暗色切换、登录 |
 | `/console` | Vue 控制台（仅管理员）：游戏管理、回收站、站点通知、访问记录、用户管理、**Steam 账号**、邮件服务、**系统设置**、数据统计、**批量操作记录**、运行日志；`?section=` 可直链到某个模块 |
-| `/banned` | Vue 封禁提示页（403/429）：服务端注入 `window.__BAN_PAGE__`（站点名/申诉邮箱/到期时间/申诉编号）；**只有真正被封禁的请求才会走到这里**（拦截链直接返回），未封禁 / 管理员 / 封禁已过期访问 `/banned` 一律 302 回首页（`ban.redirect_home`） |
-| `/appeal` | Vue 申诉页：接收 `/banned` 带过来的 `code`/`reason`/`until`/`email` 生成申诉邮件；**被封禁的 IP/设备也能打开**（服务端对 `/appeal` 跳过封禁与限流判定，但仍只放行构建产物） |
+| `/banned` | Vue 封禁提示页（403/429）：服务端注入 `window.__BAN_PAGE__`（站点名/申诉邮箱/到期时间/申诉编号）；**只有真正被封禁的请求才会走到这里**（拦截链直接返回）。`/banned`、`/banned/`、`/banned.html`、`/appeal`、`/appeal/` 都在 `BAN_ONLY_PAGES` 注册表里：未封禁 / 管理员 / 封禁已过期访问一律 302 回首页（`ban.redirect_home`），客户端另有 30 秒复查（`/api/ban/state`）保证解封后自动离开 |
+| `/appeal` | Vue 申诉页：URL 只带 `?code=AP-XXXXXX`（`reason`/`until`/`email` 已移出 URL），站点名与申诉邮箱由服务端注入 `window.__APPEAL__`；**被封禁的 IP/设备也能打开**（服务端对 `/appeal` 跳过封禁与限流判定），未封禁访问则 302 回首页；旧链接的多余参数被忽略并清洗 |
 | 点游戏名 | 详情弹窗：各平台报价、折扣、简介；管理员可直接改标记、设到价提醒；报价与价格历史分页显示 |
 
 **前台不提供 Steam 登录**：Steam OpenID 登录与游戏库同步全部放在控制台的「Steam 账号」页，
@@ -170,7 +170,14 @@ POST /api/setup/complete
 - `GET /api/admin/images` → 封面图本地缓存统计（张数/覆盖游戏数/体积/目录）
 - `GET /api/admin/emails` → 验证码邮件记录（含 `subject`/`body`：用户收不到邮件时直接看验证码）
 - `GET /api/admin/blacklist` → 黑名单列表；`POST /api/admin/blacklist` → `{ ip, note }` 拉黑（支持 CIDR）；
-  `DELETE /api/admin/blacklist/:ip` → 移出。增删后内存黑名单即时刷新
+  `DELETE /api/admin/blacklist/:ip` → 移出。增删后内存黑名单即时刷新。
+  **黑/白名单双向互斥**：加黑自动移白（回执 `removedFromWhitelist`）、加白自动移黑（回执 `removedFromBlacklist`），
+  存量冲突由启动迁移按白名单优先清理
+- `GET /api/ban/state` → **只读封禁状态**（无需登录、豁免拦截链与频率计数）：`{ banned, type, until }`；
+  只用内存态判定（设备/频率/IP），自带限流 1 次/秒、30 次/分钟（超限 429）。给封禁页/申诉页每 30 秒
+  "解封后自动回首页"复查用，只回调用者自己的状态
+- `GET /robots.txt` → `Disallow: /console /banned /appeal /api/`；`/banned*`、`/appeal*` 响应带
+  `X-Robots-Tag: noindex, nofollow`，`/appeal` 加 `Cache-Control: no-store`
 - `POST /api/admin/bulk` → **统一批量入口**：`{ target, action, keys, options?, confirmCount? }`。
   合法组合、单次上限与风险等级由 `src/server.js` 的 `BULK_ACTIONS` 派发表决定（未登记的组合 400）；
   高危动作（封禁/删除/禁用）必须带 `confirmCount` 且等于**去重后**的条数（不能只靠前端弹窗）。

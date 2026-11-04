@@ -379,6 +379,16 @@ export async function migrate(store) {
        ('steampy', 'SteamPy',    'c2c')
      on conflict (code) do update set name = excluded.name, kind = excluded.kind`,
   );
+  // 黑/白名单互斥的存量清理（docs/BAN-AND-SECURITY-FIXES.md §4.3，幂等，每次启动跑一次）：
+  // 白名单优先——同时存在于两表的 IP 删掉黑名单条目（与运行时"白名单胜出"一致），
+  // 并清掉被白名单覆盖的临时封禁，避免「白名单里却显示正在封禁」。
+  await store.query('delete from ip_blacklist b using ip_whitelist w where b.ip = w.ip');
+  await store.query(
+    `update ip_abuse a
+        set banned_until = null
+       from ip_whitelist w
+      where a.ip = w.ip and a.banned_until is not null`,
+  );
 }
 
 export async function upsertPlatform(q, { code, name, kind }) {
@@ -1508,12 +1518,14 @@ export async function listBlockedIps(q) {
   return r.rows;
 }
 
+/** 加入黑名单：与白名单互斥（删掉同 IP 的白名单条目），返回 { ip, note, removedFromWhitelist }。 */
 export async function addBlockedIp(q, { ip, note = null }) {
+  const removed = await q('delete from ip_whitelist where ip = $1', [ip]);
   const r = await q(
     'insert into ip_blacklist (ip, note) values ($1, $2) on conflict (ip) do update set note = excluded.note returning id, ip, note, created_at',
     [ip, note],
   );
-  return r.rows[0];
+  return { ...r.rows[0], removedFromWhitelist: (removed.rowCount ?? 0) > 0 };
 }
 
 export async function removeBlockedIp(q, ip) {
@@ -1528,14 +1540,16 @@ export async function listWhitelist(q) {
   return r.rows;
 }
 
+/** 加入白名单：与黑名单互斥（删掉同 IP 的黑名单条目），返回 { ip, note, removedFromBlacklist }。 */
 export async function addWhitelistIp(q, { ip, note = null }) {
+  const removed = await q('delete from ip_blacklist where ip = $1', [ip]);
   const r = await q(
     `insert into ip_whitelist (ip, note) values ($1, $2)
      on conflict (ip) do update set note = excluded.note
      returning ip, note, created_at`,
     [ip, note],
   );
-  return r.rows[0];
+  return { ...r.rows[0], removedFromBlacklist: (removed.rowCount ?? 0) > 0 };
 }
 
 export async function removeWhitelistIp(q, ip) {
@@ -1719,21 +1733,18 @@ export async function recordAbuseReview(q, { ip = null, deviceId = null, fingerp
   return r.rows[0];
 }
 
-// 封禁中的 IP 不在待审列表（已自动处理）；解封后自动恢复。ip 为 null 的记录不受影响。
-const NOT_ACTIVE_BAN = `not exists (
-  select 1 from ip_abuse a
-   where a.ip = abuse_reviews.ip
-     and a.banned_until is not null and a.banned_until > now())`;
-
+// 待审口径（docs/BAN-AND-SECURITY-FIXES.md §5）：待审 = 所有 pending。
+// v1.9.0 起封禁动作已把该 IP 的旧 pending 标成 auto_banned 永久退出待审，所以这里
+// **不再**按"IP 是否处于临时封禁"二次过滤——封禁期间新产生的 pending 恰恰是最该看的，
+// 而且状态列本来就写着「待审」。列表与 countPendingReviews 必须同一口径。
 export async function listAbuseReviews(q, { status = 'pending', limit = 100 } = {}) {
-  // pending：只看待审；all：审计视图（含 auto_banned）。NOT_ACTIVE_BAN 作为双保险保留。
+  // pending：只看待审；all：审计视图（含 auto_banned）。
   const statusCond = status === 'all' ? '' : "and status = 'pending'";
   const r = await q(
     `select id, ip, device_id, fingerprint, rule, detail, path, hits, status, note, reviewed_at, created_at, last_seen
        from abuse_reviews
       where true
         ${statusCond}
-        and ${NOT_ACTIVE_BAN}
       order by last_seen desc
       limit $1`,
     [Math.min(Math.max(Number(limit) || 100, 1), 300)],
@@ -1772,7 +1783,7 @@ export async function finishAbuseReview(q, id, { status, reviewedBy = null, note
 }
 
 export async function countPendingReviews(q) {
-  const r = await q(`select count(*)::int as n from abuse_reviews where status = 'pending' and ${NOT_ACTIVE_BAN}`);
+  const r = await q(`select count(*)::int as n from abuse_reviews where status = 'pending'`);
   return Number(r.rows[0]?.n ?? 0);
 }
 

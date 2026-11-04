@@ -275,9 +275,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   日志与前端守卫）；版本号与 CHANGELOG 等收到「构建」指令后一起改。
 
 
-## S. 待开发：封禁与安全修复批次（封禁页入口收敛 + 黑白名单互斥 + 待审口径）
+## S. ~~待开发：封禁与安全修复批次（封禁页入口收敛 + 黑白名单互斥 + 待审口径）~~ → **已实现并发布（v1.14.2，2026-11-04）**
 
-**状态：需求与方案已确认（2026-11-04），待开发**（见 [BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md)）。
+**状态：已发布 v1.14.2**（tag 已推送，CI 见 DELIVERY）。规格见 [BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md)。
 
 - **问题一（手机端打开封禁/申诉页不跳首页）**：**真因已定案（2026-11-04）**——所有者手机实际打开的是
   `https://sd.yyliucha.cn/appeal?code=…`，即 **`/appeal` 申诉页，不是 `/banned`**。`/appeal` 被 `src/server.js:341`
@@ -297,9 +297,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ② `NOT_ACTIVE_BAN` 二次过滤把封禁中的 pending 行隐藏（计数同样），与 v1.9.0 的 `auto_banned` 机制重复。
   方案（口径 A）：去掉 `NOT_ACTIVE_BAN`，待审=全部 pending，状态列补全 4 种标签，计数与列表一致。
 
-## T. 待开发：URL 参数隐私化（敏感页面不再把信息放进 URL）
+## T. ~~待开发：URL 参数隐私化（敏感页面不再把信息放进 URL）~~ → **已实现并发布（v1.14.2，2026-11-04）**
 
-**状态：需求与方案已确认（2026-11-04），待开发**（见 [URL-PARAM-PRIVACY.md](URL-PARAM-PRIVACY.md)）。
+**状态：已发布 v1.14.2**（tag 已推送，CI 见 DELIVERY）。规格见 [URL-PARAM-PRIVACY.md](URL-PARAM-PRIVACY.md)。
 
 - 起因：所有者要求"所有 URL 跳转不要有明文、前后端加密"。核对后纠正三个前提：① 传输层已是 HTTPS + HSTS
   （`src/server.js:2784`）；② 加密 URL 防不住爬虫，真实泄漏面是分享/历史/Referer/收录/日志/缓存；

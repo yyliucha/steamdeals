@@ -182,9 +182,16 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 
 ---
 
-### 当前状态（2026-11-03 更新，v1.14.1 已发布：封禁页守卫）
+### 当前状态（2026-11-04 更新，v1.14.2 已发布：封禁与安全修复批次 + URL 参数隐私化）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
+
+- **v1.14.2 已发布**（tag `v1.14.2`）：S 批（仅封禁可见页面统一守卫 `BAN_ONLY_PAGES` + `/api/ban/state`
+  复查接口 + 黑白名单双向互斥 + 待审口径 A）与 T 批（申诉 URL 只带 `?code=`、服务端注入 `__APPEAL__`、
+  robots/响应头/申诉编号 crypto 随机等 5 项加固）。测试：reviews 24 项 / visitors 8 项 / admin-bulk 13 项 /
+  新增 appeal-security 6 项全绿（`npm test` 47 个文件全绿 / `frontend:build` / `scan` 干净）。
+  规格见 [BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md)、[URL-PARAM-PRIVACY.md](URL-PARAM-PRIVACY.md)。
+  **服务器部署待执行**（按本文第 4 节升级到 `1.14.2`；compose 真实文件名仍未确认，先 `ls compose*.*`）。
 
 - **v1.14.1 已发布**（tag `v1.14.1`）：封禁页守卫——`/banned` 未封禁一律 302 回首页（判定只在拦截链，
   不做二次判定），`BanPage.vue` 加 `__BAN_PAGE__` 缺失守卫；`test/reviews.test.js` 19 项全绿。

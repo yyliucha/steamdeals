@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
+import { useBanOnlyPage } from '../composables/useBanOnlyPage.js';
 
 // 守卫（docs/BAN-PAGE-GUARD.md §3.3）：服务端现在对 /banned 一律 302，只有真正被封禁的
 // 请求才会由 serveBanPage 注入 window.__BAN_PAGE__。没有它说明是 SPA 内部误入（或解封后
@@ -9,12 +10,16 @@ import { computed, ref } from 'vue';
 if (!window.__BAN_PAGE__) {
   window.location.replace('/');
 }
+// 客户端复查（docs/BAN-AND-SECURITY-FIXES.md §3.4）：挂载 + 每 30 秒 + 切回标签页查一次，
+// 解封后自动回首页。
+useBanOnlyPage();
 
 const info = window.__BAN_PAGE__ || {};
 const language = ref(/^zh/i.test(navigator.language || '') ? 'zh-CN' : 'en');
 const copied = ref(false);
 const message = ref('');
-const appealRoute = computed(() => ({ path: '/appeal', query: { code: info.code || '', reason: info.reason || '', until: info.until || '', email: info.email || '' } }));
+// 敏感信息不再进 URL（docs/URL-PARAM-PRIVACY.md）：申诉链接只带 code，reason/until/email 由封禁页展示
+const appealRoute = computed(() => ({ path: '/appeal', query: { code: info.code || '' } }));
 const appealText = computed(() => `${language.value === 'zh-CN' ? '申诉编号' : 'Appeal code'}: ${info.code || '—'}\n${language.value === 'zh-CN' ? '时间' : 'Time'}: ${info.until || new Date().toISOString()}\n${language.value === 'zh-CN' ? '原因' : 'Reason'}: ${info.reason || '—'}\n\n${language.value === 'zh-CN' ? '请说明当时正在进行的操作，以及是否使用脚本或共享网络。' : 'Please describe what you were doing, and whether scripts or a shared network were used.'}`);
 const title = computed(() => language.value === 'zh-CN' ? '访问受限' : 'Access restricted');
 const lead = computed(() => language.value === 'zh-CN' ? '你的网络或设备暂时被本站限制访问。' : 'Your network or device is temporarily restricted from this site.');

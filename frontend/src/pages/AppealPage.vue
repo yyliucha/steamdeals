@@ -1,29 +1,53 @@
 <script setup>
-import { computed, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
+import { useBanOnlyPage } from '../composables/useBanOnlyPage.js';
 
-const route = useRoute();
-const email = String(route.query.email || '').trim();
-const appealCode = String(route.query.code || '').trim();
-const reason = String(route.query.reason || '访问受限').slice(0, 160);
-const until = String(route.query.until || '').slice(0, 40);
+// 客户端复查（docs/BAN-AND-SECURITY-FIXES.md §3.4）：挂载 + 每 30 秒 + 切回标签页查一次，
+// 解封后自动回首页——"仅封禁可见"的页面解封后不能继续显示。
+useBanOnlyPage();
+
+const router = useRouter();
+// 站点信息由服务端注入 window.__APPEAL__（URL 不再带 reason/until/email，见
+// docs/URL-PARAM-PRIVACY.md §4.2）。本地 dev 无注入时回退 fetch('/api/site') 只补邮箱。
+const injected = window.__APPEAL__ || {};
+const appealCode = String(injected.code || '').replace(/[^A-Za-z0-9-]/g, '').slice(0, 16);
+const email = ref(String(injected.email || '').trim());
 const contactEmail = ref('');
 const explanation = ref('');
 const submitted = ref(false);
+
+// 申诉正文不再包含「限制原因 / 解除时间」——页面也不展示，管理员按编号查 ban.page 日志
 const body = computed(() => [
   `申诉编号：${appealCode || '未知'}`,
-  `封禁原因：${reason}`,
-  `解除时间：${until || '未提供'}`,
   `联系邮箱：${contactEmail.value.trim() || '未填写'}`,
   '',
   '申诉说明：',
   explanation.value.trim(),
 ].join('\n'));
-const mailto = computed(() => email ? `mailto:${email}?subject=${encodeURIComponent(`[SteamDeals] 解封申请 ${appealCode}`)}&body=${encodeURIComponent(body.value)}` : '');
+const mailto = computed(() => email.value ? `mailto:${email.value}?subject=${encodeURIComponent(`[SteamDeals] 解封申请 ${appealCode}`)}&body=${encodeURIComponent(body.value)}` : '');
+
+// 旧链接兼容（docs/URL-PARAM-PRIVACY.md §4.4）：挂载后把地址栏清洗成只剩 ?code=，
+// 忽略 reason/until/email 等旧参数，不留明文在 history；再补一次邮箱回退。
+onMounted(async () => {
+  const raw = new URLSearchParams(window.location.search).get('code') || '';
+  // 与服务端同一口径：整串必须匹配白名单，非法按空处理（不反射）
+  const code = /^[A-Za-z0-9-]{1,16}$/.test(raw) ? raw : '';
+  router.replace({ path: '/appeal', query: code ? { code } : {} }).catch(() => {});
+  if (!email.value) {
+    try {
+      const r = await fetch('/api/site', { headers: { accept: 'application/json' } });
+      const data = await r.json();
+      if (data.appealEmail) email.value = String(data.appealEmail).trim();
+    } catch {
+      /* 离线：保持现状 */
+    }
+  }
+});
 
 async function submitAppeal() {
-  if (!email) return ElMessage.error('站点尚未配置申诉邮箱，请联系站点管理员。');
+  if (!email.value) return ElMessage.error('站点尚未配置申诉邮箱，请联系站点管理员。');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.value.trim())) return ElMessage.warning('请填写有效的联系邮箱。');
   if (explanation.value.trim().length < 10) return ElMessage.warning('请至少填写 10 个字说明情况。');
   const text = body.value;
@@ -46,10 +70,10 @@ async function copyAppeal() {
 
 <template>
   <main class="appeal-page"><section class="appeal-card">
-    <router-link to="/banned" class="back-link">← 返回访问受限说明</router-link>
+    <a href="/" class="back-link">← 返回首页</a>
     <p class="eyebrow">APPEAL</p><h1>申请解除访问限制</h1>
     <p class="intro">请说明当时的操作和网络情况，管理员会根据申诉编号核查访问记录。</p>
-    <div class="appeal-meta"><span>申诉编号 <code>{{ appealCode || '未提供' }}</code></span><span>限制原因 {{ reason }}</span><span>解除时间 {{ until ? new Date(until).toLocaleString('zh-CN') : '未提供' }}</span></div>
+    <div class="appeal-meta"><span>申诉编号 <code>{{ appealCode || '未提供' }}</code></span></div>
     <el-alert v-if="!email" type="warning" :closable="false" title="站点尚未配置申诉邮箱，请联系站点管理员。" />
     <el-form label-position="top" @submit.prevent="submitAppeal">
       <el-form-item label="联系邮箱"><el-input v-model="contactEmail" type="email" autocomplete="email" placeholder="管理员用于回复申诉的邮箱" /></el-form-item>

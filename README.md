@@ -516,8 +516,10 @@ node src/cli.js logs --run run-20261026025454-nu81  # 单次命令全轨迹
   控制台「访问记录 → 设备」可查看最近设备、按指纹封禁。封禁按指纹生效，换 IP 也会命中。
 - **封禁提示页**：被 IP/设备/频率封禁的浏览器请求直接返回 Vue 封禁页（403/429，按拦截来源），带「申请解封」按钮跳转 `/appeal` 申诉页
   （填写说明后生成申诉邮件）；封禁期间仅放行该页所需的构建 JS/CSS。
-  **`/banned` 路径本身不再无条件给封禁页**：判定在拦截链完成，没被封禁（含管理员、白名单、封禁已过期）
-  访问 `/banned` 一律 302 回首页（`ban.redirect_home` 日志），SPA 内误入时前端也有 `__BAN_PAGE__` 缺失守卫。
+  **仅封禁可见的页面（`/banned`、`/banned.html`、`/appeal`）统一守卫**：没被封禁（含管理员、白名单、封禁已过期）
+  一律 302 回首页（`ban.redirect_home` 日志），页面路由不做二次判定；客户端每 30 秒复查 `/api/ban/state`，
+  解封后自动回首页。申诉链接只带 `?code=AP-XXXXXX`（原因/到期/邮箱由服务端注入，不进 URL）；
+  `/banned*`、`/appeal*` 响应带 `noindex`，`robots.txt` 屏蔽 `/console /banned /appeal /api/`。
   简中/繁中/英/日/韩/俄/西/法/德，带申诉编号；没装邮件客户端时点击会复制申诉内容并显示邮箱；API/脚本仍收到纯文本。
   页面里的站点名与申诉邮箱来自 `SITE_NAME` 与「系统设置 → 申诉邮箱」（`APPEAL_EMAIL`），
   申诉邮箱留空时依次回退：邮件收件人 → 发件人 → SMTP 账号；每次返回提示页会记 `ban.page` 日志（含申诉编号），
@@ -527,7 +529,10 @@ node src/cli.js logs --run run-20261026025454-nu81  # 单次命令全轨迹
 - **被拦截的请求**按 IP 每分钟采样一条写入访问记录，带 `blocked` 标记，不计入访问量；
   控制台可切换「正常访问 / 被拦截 / 全部」。
 - 封禁名单：`ip_blacklist`（IP，永久，只由管理员或审批写入）、`device_bans`（设备指纹，可设到期）；
+  **黑/白名单双向互斥**：加黑自动移白、加白自动移黑（存量冲突按白名单优先清理），
   控制台「统计 / 黑名单 / 白名单」与「设备」页可一键解封。
+- **待审口径**：待审列表与计数 = 所有 `pending` 记录；封禁期间产生的新异常同样以「待审」出现，
+  状态列区分 待审 / 已封禁 / 已忽略 / 自动退出 四种标签。
 - **反代部署**才需要 `TRUST_PROXY=1`；内网代理会自动识别，公网代理还需通过 `TRUSTED_PROXY_IPS` 配置代理 IP/CIDR。只有来自可信代理的 `X-Real-IP` / `X-Forwarded-For` 才会用于客户端 IP 判断；
   Steam 登录回调地址同样只信任可信反代的 `X-Forwarded-Host/Proto`。
 - **CSP 以 Report-Only 观察中**：全站响应带 `Content-Security-Policy-Report-Only`（`default-src 'self'` + Element Plus 所需的 inline style），
