@@ -274,3 +274,40 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - 验证：`node test/reviews.test.js` 19 项全绿（302 / IP 403 / 设备 403 换 IP / 频率 429+Retry-After / 管理员 bypass / 过期 302 /
   日志与前端守卫）；版本号与 CHANGELOG 等收到「构建」指令后一起改。
 
+
+## S. 待开发：封禁与安全修复批次（封禁页入口收敛 + 黑白名单互斥 + 待审口径）
+
+**状态：需求与方案已确认（2026-11-04），待开发**（见 [BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md)）。
+
+- **问题一（手机端打开封禁/申诉页不跳首页）**：**真因已定案（2026-11-04）**——所有者手机实际打开的是
+  `https://sd.yyliucha.cn/appeal?code=…`，即 **`/appeal` 申诉页，不是 `/banned`**。`/appeal` 被 `src/server.js:341`
+  的 `appealPage` **故意豁免**所有封禁判定（369/378/409 三处都 `!appealPage`），且 v1.14.1 的 302 只覆盖 `/banned`
+  （528 行），因此**未封禁的人打开 `/appeal` 永远不跳首页**——与所有者"当前没有这个功能"的描述完全一致。
+  之前三轮排查（v1.14.0 假页面 `ban.page_direct`、HTTP 黑名单 403、nginx `access_log off`）均为干扰项，已各自排除。
+  **修复（已按 2026-11-04 追加要求泛化）**：不做逐页补丁，改为「仅封禁可见页面」统一治理——
+  `BAN_ONLY_PAGES` 注册表（`/banned`、`/banned/`、`/banned.html`、`/appeal`、`/appeal/`，以后新增同类页面登记即生效）
+  + 服务端统一只读判定（复用已算好的 `deviceBan`/`hit` + `ratelimit.bannedUntil`，禁用 `hit()` 防三振副作用）：
+  未封禁一律 302 `/`，被封禁者正常看到该页。
+  **解封后不得继续显示**：新增只读接口 `/api/ban/state`（豁免拦截链与频率计数，自带 1 次/秒限流）
+  + 前端共享 `useBanOnlyPage` composable（挂载即查 + 每 30 秒 + 切回标签页复查），解封后自动回首页。
+  详见规格 §3.1–3.6。顺带发现该 URL 的 `email=` 为空 → 线上 `APPEAL_EMAIL` 可能未配置（配置问题，单独确认）。
+- **问题二（黑白名单并存）**：`addBlockedIp` / `addWhitelistIp` 互不清理，运行期白名单胜出（黑名单形同虚设，删白后复活）。
+  方案：双向互斥 helper（覆盖单条/批量/审核封 IP 共 4 处）+ 存量清理迁移（白名单优先）+ CIDR 只提示不自动删。
+- **问题三（待审筛选为空）**：① 状态标签只有 `auto_banned`/其他两分支，`approved`/`rejected` 全显示成「待审」；
+  ② `NOT_ACTIVE_BAN` 二次过滤把封禁中的 pending 行隐藏（计数同样），与 v1.9.0 的 `auto_banned` 机制重复。
+  方案（口径 A）：去掉 `NOT_ACTIVE_BAN`，待审=全部 pending，状态列补全 4 种标签，计数与列表一致。
+
+## T. 待开发：URL 参数隐私化（敏感页面不再把信息放进 URL）
+
+**状态：需求与方案已确认（2026-11-04），待开发**（见 [URL-PARAM-PRIVACY.md](URL-PARAM-PRIVACY.md)）。
+
+- 起因：所有者要求"所有 URL 跳转不要有明文、前后端加密"。核对后纠正三个前提：① 传输层已是 HTTPS + HSTS
+  （`src/server.js:2784`）；② 加密 URL 防不住爬虫，真实泄漏面是分享/历史/Referer/收录/日志/缓存；
+  ③ 前端不能持对称密钥（等于公开）。**结论：不加密，直接把敏感信息移出 URL（方案 A）**。
+- 范围：全站盘点 9 处 URL 参数，敏感的只有 `BanPage.vue:17` 的 `/appeal?code&reason&until&email`。
+  只治理敏感页面，不做全站 URL 加密。
+- 方案：URL 只留 `?code=AP-XXXXXX`；站点名/申诉邮箱由服务端注入 `window.__APPEAL__`（封禁用户调不了 `/api/site`）；
+  申诉页不再展示原因/解除时间（封禁页仍展示，管理员按编号查 `ban.page` 日志）；旧链接忽略多余参数并 `replaceState` 清洗。
+- 配套加固 5 项：申诉编号改 `crypto.randomBytes`（现在是 `Math.random()`）、`X-Robots-Tag: noindex` + `robots.txt`、
+  `/appeal` 加 `no-store`、日志不落 query（现状已满足）、未来"按 code 查上下文"接口必须限流。
+- 与 [S 批次](BAN-AND-SECURITY-FIXES.md) 的 `/appeal` 守卫是同一处服务端改动，建议合并实施。

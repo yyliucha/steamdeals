@@ -19,3 +19,5 @@ compose.cn.external-db.local.yaml
 *.db-shm
 data/secret.key
 frontend/dist/
+# 本机技能目录（DSH 本地工作流文件，不进公开仓库）
+.dsh/
