@@ -419,7 +419,7 @@ node src/probe.js --target steam --rounds 24 --interval 3600   # 跑 24 小时�
 | `IMG_DIR` | `data/images` | 封面图缓存目录（随 data 卷持久化） |
 | `STEAM_HEAT_INTERVAL_MIN` | `10080` | 热度任务间隔（分钟，每周） |
 | `STEAM_HEAT_LIMIT` | `20000` | 热度任务每轮上限（只刷「过期且已有报价」的条目） |
-| `STEAM_STATUS_INTERVAL_MIN` / `STEAM_STATUS_RATE_MS` / `STEAM_STATUS_LIMIT` | `10080` / `1500` / `200000` | Steam 状态判定任务间隔（分钟）/ 逐 appid 请求间隔（毫秒）/ 每轮上限；`STEAM_STATUS_INITIAL_DELAY_SEC` 默认 `21600`（避开热度播种期）。**建议把 `STEAM_STATUS_LIMIT` 调到 `8000`**（约 3.3 小时/天，三周补完 17.5 万条）——默认 200000 单轮要跑 73–80 小时 |
+| `STEAM_STATUS_INTERVAL_MIN` / `STEAM_STATUS_RATE_MS` / `STEAM_STATUS_LIMIT` | `10080` / `1500` / `8000` | Steam 状态判定任务间隔（分钟）/ 逐 appid 请求间隔（毫秒）/ 每轮上限（默认 **8000** ≈ 3.3 小时/天，三周补完 17.5 万条）；`STEAM_STATUS_INITIAL_DELAY_SEC` 默认 `21600`（避开热度播种期）。这三项都在「系统设置 → 数据源与采集 → 高级」里可改（键：`steamStatus.intervalMin` / `steamStatus.rateMs` / `steamStatus.limit`） |
 | `SITE_ADULT_DISPLAY` | `hide` | 成人内容展示策略：`hide`（前台不显示，默认）/ `badge`（带角标）/ `show`（正常展示）；后台始终可见 |
 | `STEAM_ACCOUNTS_INTERVAL_MIN` / `STEAM_ACCOUNTS_SLEEP_MS` | `1440` / `1000` | 绑定账号同步间隔与账号间间隔（需要 `STEAM_API_KEY`） |
 | `STEAM_CLAIM_USERNAME` / `STEAM_CLAIM_STEAM_ID` | 空 | 配置后调度器自动把历史未归属账号认领给该用户（幂等，完成后可删） |

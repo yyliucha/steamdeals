@@ -60,7 +60,7 @@ export function jobsFromEnv(env = process.env) {
       // 逐 appid 全量 appdetails（cc=cn 失败补 cc=hk），状态与分级共用同一次请求；
       // 免费已由迁移一次性置位；steam_checked_at 作续跑游标，失败不写游标下轮重试；
       // 首轮延迟避开热度播种期（热度把每日配额吃满），与其它 Steam 任务互斥串行。
-      args: ['steam-status', '--limit', String(num(env.STEAM_STATUS_LIMIT, 200000)), '--rate', String(num(env.STEAM_STATUS_RATE_MS, 1500))],
+      args: ['steam-status', '--limit', String(num(env.STEAM_STATUS_LIMIT, 8000)), '--rate', String(num(env.STEAM_STATUS_RATE_MS, 1500))],
       intervalMin: num(env.STEAM_STATUS_INTERVAL_MIN, 10080),
       initialDelaySec: num(env.STEAM_STATUS_INITIAL_DELAY_SEC, 21600),
       enabled: env.STEAM_ENABLED !== '0',

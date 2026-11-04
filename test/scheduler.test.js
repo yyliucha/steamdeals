@@ -40,7 +40,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.deepEqual(args('images'), ['images', 'pull', '--limit', '200', '--sleep', '300']);
   assert.deepEqual(args('steam-prices'), ['sync', 'steam-prices', '--limit', '200000']);
   assert.deepEqual(args('heat'), ['heat', '--limit', '20000', '--sleep', '1700']);
-  assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '200000', '--rate', '1500']);
+  assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '8000', '--rate', '1500']);
   assert.deepEqual(args('rename'), ['rename', '--limit', '200000', '--batch', '100', '--sleep', '1500']);
   assert.deepEqual(args('backfill'), ['backfill', '--limit', '20000', '--batch', '100', '--sleep', '3000']);
   assert.deepEqual(args('prune'), ['prune']);

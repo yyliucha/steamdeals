@@ -19,8 +19,8 @@ async function fresh() {
   return { store, q };
 }
 
-test('设置定义完整：55 项、7 个密钥、关键分组都在', () => {
-  assert.equal(settings.SETTINGS.length, 55);
+test('设置定义完整：56 项、7 个密钥、关键分组都在', () => {
+  assert.equal(settings.SETTINGS.length, 56);
   assert.equal(settings.SETTINGS.filter((d) => d.secret).length, 7);
   const tz = settings.SETTINGS.find((d) => d.key === 'system.timezone');
   assert.ok(tz, '要有 system.timezone（时区设置化）');
@@ -38,6 +38,7 @@ test('设置定义完整：55 项、7 个密钥、关键分组都在', () => {
     'system.logLevel',
     'site.adultDisplay',
     'steamStatus.rateMs',
+    'steamStatus.limit',
     'steamStatus.intervalMin',
   ]) {
     assert.ok(keys.includes(key), `缺少 ${key}`);
@@ -45,6 +46,8 @@ test('设置定义完整：55 项、7 个密钥、关键分组都在', () => {
   assert.equal(new Set(keys).size, keys.length, 'key 不能重复');
   const adult = settings.SETTINGS.find((d) => d.key === 'site.adultDisplay');
   assert.deepEqual(adult.options, ['hide', 'badge', 'show'], '成人内容策略三档');
+  const ssl = settings.SETTINGS.find((d) => d.key === 'steamStatus.limit');
+  assert.equal(ssl.default, 8000, 'steam-status 每轮默认 8000（约 3.3 小时/天）');
 });
 
 test('默认值 + 密钥加密：库里不存明文，公开接口只给 hasValue', async () => {

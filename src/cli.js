@@ -2152,7 +2152,8 @@ async function cmdHeat() {
  * 状态判定与分级解析共用同一次响应；steam_checked_at 作续跑游标，失败不写游标下轮重试。
  */
 async function cmdSteamStatus() {
-  const limit = Math.max(1, Math.min(Number(flag('limit', '200000')) || 200000, 200000));
+  // 默认上限读设置（steamStatus.limit / STEAM_STATUS_LIMIT，默认 8000 ≈ 3.3 小时/轮）
+  const limit = Math.max(1, Math.min(Number(flag('limit', process.env.STEAM_STATUS_LIMIT ?? '8000')) || 8000, 200000));
   const batch = Math.max(1, Math.min(Number(flag('batch', '30')) || 30, 100));
   const rateMs = Math.max(0, Number(flag('rate', process.env.STEAM_STATUS_RATE_MS ?? '1500')) || 0);
   const startedMs = Date.now();
