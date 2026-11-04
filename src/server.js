@@ -1484,6 +1484,13 @@ export function createApiServer({
             : sync === 'done'
               ? " and g.steam_appid is not null and g.steam_status = 'ok' and g.description is not null and g.description <> ''"
               : statusWhere;
+        // 内容分级筛选（docs/STEAM-SYNC-STATUS-AND-RATING.md §13.2）：可与搜索/平台/同步状态叠加
+        const ratingParam = String(url.searchParams.get('rating') ?? '').trim();
+        const ratingWhere =
+          ratingParam === 'adult' ? ' and g.adult_flag'
+            : ratingParam === 'mature' ? ' and g.mature_flag'
+              : ratingParam === 'none' ? ' and not g.adult_flag and not g.mature_flag'
+                : '';
         // 平台筛选：按参数位置生成（计数查询与列表查询占位符不同）
         const platformCond = (index) =>
           platform
@@ -1492,7 +1499,7 @@ export function createApiServer({
         const baseWhere =
           "where ($1 = '' or lower(coalesce(g.name, '')) like lower('%' || $1 || '%') " +
           "or lower(coalesce(g.name_en, '')) like lower('%' || $1 || '%') or cast(g.steam_appid as text) = $1)" +
-          deletedWhere + syncWhere + offersWhere;
+          deletedWhere + syncWhere + offersWhere + ratingWhere;
         const cnt = await q(
           'select count(*)::int as n from games g ' + baseWhere + platformCond(2),
           platform ? [kw, platform] : [kw],

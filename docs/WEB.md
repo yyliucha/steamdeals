@@ -187,12 +187,14 @@ POST /api/setup/complete
   支持的目标与动作见 [ADMIN-BULK-ACTIONS.md](ADMIN-BULK-ACTIONS.md) §2（11 个列表）
 - `GET /api/admin/bulk-ops?limit&target` → 批量操作审计列表；`GET /api/admin/bulk-ops/:id` → 单条详情（含键样本）
 - `GET /api/admin/version` → 当前版本 + 最新 release 检查（`?force=1` 绕过 6 小时缓存）
-- `GET /api/admin/games?q&page&pageSize&platform&sync&status&offers` → 游戏目录列表。
+- `GET /api/admin/games?q&page&pageSize&platform&sync&status&offers&rating` → 游戏目录列表。
   `sync=pending/done` 为新口径（[STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §4：
   pending = 从未探测或 `ok` 缺简介；done = `ok` 且有简介）；`status=<ok|free|coming_soon|region_locked|no_price|not_found|pending|synced|other>`
-  按六态分项筛选（后台指标卡点击用）；行带 `steam_status` / `required_age` / `adult_flag` / `mature_flag` / `steam_checked_at`
+  按六态分项筛选（后台指标卡点击用）；`rating=<adult|mature|none>` 内容分级筛选（§13，可与搜索/平台/状态叠加）；
+  行带 `steam_status` / `required_age` / `adult_flag` / `mature_flag` / `steam_checked_at`
 - `GET /api/admin/games/stats` → `pending` / `synced` 新口径 + 六态分项（`pendingProbe` / `free` / `comingSoon` /
-  `regionLocked` / `noPrice` / `notFound` / `other`，分项之和 = 有 appid 数）
+  `regionLocked` / `noPrice` / `notFound` / `other`，分项之和 = 有 appid 数）+ `adult` / `mature` 分级计数
+  （成人 + 成熟 + 未标注 = 未删除总数）
 - `GET /api/site` → 追加 `adultDisplay`（`site.adultDisplay` 设置值，前台卡片按它决定成人角标）
 - `steam-status` CLI 任务（并入调度器每周执行）：逐 appid 全量 appdetails（`cc=cn`，`success:false` 时补 `cc=hk` 判定锁区），
   状态与分级解析共用同一次响应，`steam_checked_at` 作续跑游标；免费游戏已由迁移一次 SQL 置位，不消耗请求

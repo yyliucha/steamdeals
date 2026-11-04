@@ -314,6 +314,25 @@ test('游戏同步统计与筛选：待同步数量、pending/done 过滤（新�
     const none = await (await fetch(`${base}/api/admin/games?offers=none`, { headers: { cookie: admin.cookie } })).json();
     assert.equal(none.total, 0);
 
+    // V 批：内容分级筛选（docs/STEAM-SYNC-STATUS-AND-RATING.md §13）：
+    // 再造两款游戏：一款成人、一款成熟；成人+成熟+未标注 = 未删除总数
+    await q("insert into games (steam_appid, name, description, adult_flag) values (413151, '成人游戏', '说明', true)");
+    await q("insert into games (steam_appid, name, description, mature_flag) values (413152, '成熟游戏', '说明', true)");
+    const adult = await (await fetch(`${base}/api/admin/games?rating=adult`, { headers: { cookie: admin.cookie } })).json();
+    assert.equal(adult.total, 1, '成人筛出 1');
+    assert.equal(adult.games[0].steam_appid, 413151);
+    const mature = await (await fetch(`${base}/api/admin/games?rating=mature`, { headers: { cookie: admin.cookie } })).json();
+    assert.equal(mature.total, 1, '成熟筛出 1');
+    const noneRating = await (await fetch(`${base}/api/admin/games?rating=none`, { headers: { cookie: admin.cookie } })).json();
+    assert.equal(noneRating.total, 1, '未标注只剩原游戏');
+    // 与状态叠加：rating=adult + status=pending（413151 未探测）
+    const stacked = await (await fetch(`${base}/api/admin/games?rating=adult&status=pending`, { headers: { cookie: admin.cookie } })).json();
+    assert.equal(stacked.total, 1, '分级与状态可叠加');
+    const s3 = (await (await fetch(statsUrl, { headers: { cookie: admin.cookie } })).json()).stats;
+    assert.equal(s3.adult, 1);
+    assert.equal(s3.mature, 1);
+    assert.equal(s3.total - s3.deleted, s3.adult + s3.mature + noneRating.total, '成人+成熟+未标注=未删除总数');
+
     assert.equal((await fetch(statsUrl)).status, 401, '匿名不能看统计');
   } finally {
     await srv.close();

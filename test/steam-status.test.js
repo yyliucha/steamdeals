@@ -1,11 +1,13 @@
 // Steam 同步状态与内容分级（docs/STEAM-SYNC-STATUS-AND-RATING.md）：
-// 状态判定纯函数、分级派生、迁移置位、任务选取/写回、统计口径、前台成人过滤。
+// 状态判定纯函数、分级派生、迁移置位、任务选取/写回、统计口径、前台成人过滤、
+// applySteamDetails 共用函数的写/不写分支（V 批 §14.3.1）。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import { classifySteamStatus } from '../src/adapters/steam.js';
 import { classifyContentRating, normalizeOfficial } from '../src/adapters/steam-meta.js';
+import { applySteamDetails, entryFromMeta } from '../src/steam-status.js';
 
 const cn = (data) => ({ success: true, data });
 const fail = () => ({ success: false, data: null });
@@ -161,6 +163,92 @@ test('前台成人过滤：adult=hide 时 adult_flag 的游戏不出现在列表
     assert.equal(detailHidden, null, 'hide 时详情也 404');
     const detailShown = await db.gameDetail(q, { steamAppid: 3002, region: 'cn', adult: 'show' });
     assert.equal(detailShown.adult_flag, true);
+  } finally {
+    await store.close();
+  }
+});
+
+// ---------------------------------------------------------------- V 批：applySteamDetails 共用函数
+// docs/STEAM-SYNC-STATUS-AND-RATING.md §14.3/§14.3.1：backfill 与 steam-status 同口径的写/不写分支。
+
+test('entryFromMeta：从归一化 meta 还原判定条目（价格/免费/未发售/判定不了）', () => {
+  assert.deepEqual(entryFromMeta(null), null);
+  assert.equal(entryFromMeta({ isFree: true }).data.is_free, true);
+  assert.ok(entryFromMeta({ priceOverview: { final: 9900 } }).data.price_overview);
+  assert.ok(entryFromMeta({ comingSoon: true }).data.release_date.coming_soon);
+  assert.equal(entryFromMeta({ name: '只有名字' }), null, '没有判定依据时返回 null');
+});
+
+test('applySteamDetails：有状态+分级 → 全写（含 steam_checked_at 游标）', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    await q("insert into games (steam_appid, name, is_free) values (4001, '判定X', false)");
+    const meta = normalizeOfficial(4001, {
+      name: '判定X',
+      price_overview: { final: 9900, initial: 9900, currency: 'CNY' },
+      required_age: '18',
+      content_descriptors: { ids: [3] },
+      ratings: { esrb: { rating: 'AO' } },
+    });
+    const outcome = await applySteamDetails(q, { appid: 4001, cnEntry: entryFromMeta(meta), meta });
+    assert.equal(outcome.status, 'ok');
+    assert.equal(outcome.rating.adultFlag, true);
+    assert.equal(outcome.wroteStatus, true);
+    const row = (await q('select steam_status, steam_checked_at, required_age, adult_flag from games where steam_appid = 4001')).rows[0];
+    assert.equal(row.steam_status, 'ok');
+    assert.ok(row.steam_checked_at, '游标应推进');
+    assert.equal(row.required_age, 18);
+    assert.equal(row.adult_flag, true);
+  } finally {
+    await store.close();
+  }
+});
+
+test('applySteamDetails：拿不到状态且无分级 → 不写库不推游标（GetItems 路径）', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    await q("insert into games (steam_appid, name, is_free) values (4002, 'GetItems-only', false)");
+    // GetItems 条目：有名字/价格字段但无分级字段、entryFromMeta 也判定不了（比如价格在 priceCents 而不是 priceOverview）
+    const meta = { steamAppid: 4002, nameZh: 'GetItems-only', priceCents: 9900, source: 'getitems' };
+    const outcome = await applySteamDetails(q, { appid: 4002, cnEntry: entryFromMeta(meta), meta });
+    assert.equal(outcome.status, null);
+    assert.equal(outcome.wroteStatus, false, '不推游标');
+    const row = (await q('select steam_status, steam_checked_at, required_age from games where steam_appid = 4002')).rows[0];
+    assert.equal(row.steam_status, null);
+    assert.equal(row.steam_checked_at, null, 'steam-status 下次仍会选中它');
+    assert.equal(row.required_age, null);
+  } finally {
+    await store.close();
+  }
+});
+
+test('applySteamDetails：分级本次没拿到 → 不覆盖已有值；重复跑幂等', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    await q("insert into games (steam_appid, name, is_free) values (4003, '保留分级', false)");
+    // 第一次：有完整分级
+    await applySteamDetails(q, {
+      appid: 4003,
+      cnEntry: { success: true, data: { price_overview: { final: 9900 } } },
+      meta: normalizeOfficial(4003, { name: '保留分级', required_age: '18', content_descriptors: { ids: [3] }, ratings: {} }),
+    });
+    // 第二次：只有状态、分级字段全空（如 GetItems 回退混入）→ 不覆盖
+    const second = await applySteamDetails(q, {
+      appid: 4003,
+      cnEntry: { success: true, data: { price_overview: { final: 8800 } } },
+      meta: { steamAppid: 4003, source: 'getitems' },
+    });
+    assert.equal(second.status, 'ok');
+    const row = (await q('select required_age, content_descriptors, adult_flag from games where steam_appid = 4003')).rows[0];
+    assert.equal(row.required_age, 18, '已有分级不被 null 覆盖');
+    assert.deepEqual(row.content_descriptors, [3]);
+    assert.equal(row.adult_flag, true, '派生标记也不被覆盖');
   } finally {
     await store.close();
   }

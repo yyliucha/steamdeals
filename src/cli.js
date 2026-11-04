@@ -10,6 +10,7 @@ import { startApiServer } from './server.js';
 import * as db from './store/pg.js';
 import { ingestOffers } from './ingest.js';
 import { missingPriceAppids, mergePriceOffers } from './backfill.js';
+import { applySteamDetails, entryFromMeta } from './steam-status.js';
 import { buildSite } from './report.js';
 import { evaluateAlerts, renderDigest, toPayload } from './alerts.js';
 import { channelsFromEnv, deliver, hasNotifier } from './notify.js';
@@ -26,7 +27,7 @@ import {
 } from './adapters/sonkwo-discover.js';
 import { bestMatch, confidenceLabel } from './match.js';
 import { renderCompare, groupOffersByRegion } from './compare.js';
-import { extractAppId, fetchMetadata, normalizeOfficial, classifyContentRating } from './adapters/steam-meta.js';
+import { extractAppId, fetchMetadata, normalizeOfficial } from './adapters/steam-meta.js';
 import { describeProxy, decideProxy, parseProxy, redactProxy } from './proxy.js';
 import { startStaticServer } from './serve.js';
 import * as settings from './settings.js';
@@ -1859,6 +1860,12 @@ async function cmdBackfill() {
         for (const item of items) {
           await db.upsertGameMeta(q, item);
           stored += 1;
+          // V 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §14.3）：appdetails 来源的条目
+          // （normalizeOfficial，含分级字段）顺带落状态与分级；GetItems 条目没有分级字段，
+          // entryFromMeta 判定不了时只写已有的、不推游标——steam-status 之后仍会选中它们。
+          if (item.source === 'official') {
+            await applySteamDetails(q, { appid: item.steamAppid, cnEntry: entryFromMeta(item), meta: item });
+          }
         }
         if (offersToWrite.length) {
           await ingestOffers(store, { platform: { code: 'steam', name: 'Steam 国区', kind: 'official' }, offers: offersToWrite, logger });
@@ -2182,23 +2189,11 @@ async function cmdSteamStatus() {
           data = hkEntry?.success === true ? hkEntry.data : null;
         }
         const status = classifySteamStatus(cnEntry, hkEntry);
-        // 分级字段与状态来自同一响应；锁区时用港区数据（内容分级与区服无关）
+        // 分级字段与状态来自同一响应；锁区时用港区数据（内容分级与区服无关）。
+        // V 批：判定 + 落库收敛到共用函数 applySteamDetails（与 backfill 同口径，§14.3）
         const meta = data ? normalizeOfficial(appid, data) : null;
-        const rating = classifyContentRating({
-          requiredAge: meta?.requiredAge ?? null,
-          descriptorIds: meta?.contentDescriptors ?? [],
-          ratings: meta?.ageRatings ?? {},
-        });
-        await withStore((store) =>
-          db.setSteamStatus((sql, p) => store.query(sql, p), {
-            steamAppid: appid,
-            status,
-            requiredAge: meta?.requiredAge ?? null,
-            contentDescriptors: meta?.contentDescriptors ?? null,
-            ageRatings: meta?.ageRatings ?? null,
-            adultFlag: rating.adultFlag,
-            matureFlag: rating.matureFlag,
-          }),
+        const outcome = await withStore((store) =>
+          applySteamDetails((sql, p) => store.query(sql, p), { appid, cnEntry, hkEntry, meta }),
         );
         counts[status] = (counts[status] ?? 0) + 1;
         done += 1;

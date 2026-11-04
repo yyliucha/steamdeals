@@ -135,7 +135,7 @@
 | **Steam 多账号绑定** | ✅ | 每个站点用户最多绑 5 个 Steam 账号、一账号只属一人；OpenID + state 防 CSRF；后台「Steam 账号」页可同步库/愿望单、改别名、解绑、认领，并统计每个账号的游戏数与 **DLC 数**（同步时自动补全目录类型） |
 | **后台版本检查** | ✅ | 侧栏显示当前版本，有新版本提示链接，点击强制重查 |
 | **后台列表批量操作** | ✅ | 11 个列表可多选批量执行（待审 / 访问明细 / 回收站 / 站点通知 / IP 黑名单 / IP 白名单 / 已封设备 / 自动封禁 / 游戏目录 / 最近设备 / 用户）；统一 `POST /api/admin/bulk`：白名单派发表决定单次上限（高危 50 / 常规 200 / 回收站 1000），高危动作服务端二次校验 `confirmCount`，成功/跳过/失败逐条回执；审计落 `admin_bulk_ops`，「系统 → 批量操作记录」可查键样本 |
-| **Steam 同步状态与内容分级** | ✅ | 六态状态机解释「为什么没价格」：免费 / 未发售 / 锁国区 / 国区无价 / 国区不可售 / 正常；锁国区（港区可售）标「国区不可售」且不出国区价格；成人/成熟内容按 Steam 平台标签标注（`site.adultDisplay` = hide/badge/show，默认 hide 前台不显示、后台始终可见）；后台指标卡按六态拆分，`steam-status` 每周任务一次请求同时拿状态与分级 |
+| **Steam 同步状态与内容分级** | ✅ | 六态状态机解释「为什么没价格」：免费 / 未发售 / 锁国区 / 国区无价 / 国区不可售 / 正常；锁国区（港区可售）标「国区不可售」且不出国区价格；成人/成熟内容按 Steam 平台标签标注（`site.adultDisplay` = hide/badge/show，默认 hide 前台不显示、后台始终可见）；后台指标卡按六态 + 成人/成熟拆分，支持 `rating=adult|mature|none` 分级筛选；`steam-status` 每周任务一次请求同时拿状态与分级，backfill 的 appdetails 回退路径顺带写状态与分级（拿不到状态不推游标、分级不覆盖） |
 | **单款历史 CSV** | ⏸ | 前端入口已移除，接口默认 404（`HISTORY_CSV_ENABLED=1` 可临时打开） |
 | 多区服对比 | 🚧 | 列表可按区服切换；同屏多区对比未做展示 |
 
@@ -419,7 +419,7 @@ node src/probe.js --target steam --rounds 24 --interval 3600   # 跑 24 小时�
 | `IMG_DIR` | `data/images` | 封面图缓存目录（随 data 卷持久化） |
 | `STEAM_HEAT_INTERVAL_MIN` | `10080` | 热度任务间隔（分钟，每周） |
 | `STEAM_HEAT_LIMIT` | `20000` | 热度任务每轮上限（只刷「过期且已有报价」的条目） |
-| `STEAM_STATUS_INTERVAL_MIN` / `STEAM_STATUS_RATE_MS` / `STEAM_STATUS_LIMIT` | `10080` / `1500` / `200000` | Steam 状态判定任务间隔（分钟）/ 逐 appid 请求间隔（毫秒）/ 每轮上限；`STEAM_STATUS_INITIAL_DELAY_SEC` 默认 `21600`（避开热度播种期） |
+| `STEAM_STATUS_INTERVAL_MIN` / `STEAM_STATUS_RATE_MS` / `STEAM_STATUS_LIMIT` | `10080` / `1500` / `200000` | Steam 状态判定任务间隔（分钟）/ 逐 appid 请求间隔（毫秒）/ 每轮上限；`STEAM_STATUS_INITIAL_DELAY_SEC` 默认 `21600`（避开热度播种期）。**建议把 `STEAM_STATUS_LIMIT` 调到 `8000`**（约 3.3 小时/天，三周补完 17.5 万条）——默认 200000 单轮要跑 73–80 小时 |
 | `SITE_ADULT_DISPLAY` | `hide` | 成人内容展示策略：`hide`（前台不显示，默认）/ `badge`（带角标）/ `show`（正常展示）；后台始终可见 |
 | `STEAM_ACCOUNTS_INTERVAL_MIN` / `STEAM_ACCOUNTS_SLEEP_MS` | `1440` / `1000` | 绑定账号同步间隔与账号间间隔（需要 `STEAM_API_KEY`） |
 | `STEAM_CLAIM_USERNAME` / `STEAM_CLAIM_STEAM_ID` | 空 | 配置后调度器自动把历史未归属账号认领给该用户（幂等，完成后可删） |

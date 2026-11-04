@@ -2061,7 +2061,10 @@ export async function adminGameStats(q) {
            count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'region_locked')::int as region_locked,
            count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'no_price')::int as no_price,
            count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'not_found')::int as not_found,
-           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status is not null and g.steam_status not in ('ok','free','coming_soon','region_locked','no_price','not_found'))::int as other
+           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status is not null and g.steam_status not in ('ok','free','coming_soon','region_locked','no_price','not_found'))::int as other,
+           -- 内容分级计数（docs/STEAM-SYNC-STATUS-AND-RATING.md §13.2）：成人/成熟（未标注 = total-deleted 减这两项）
+           count(*) filter (where not g.deleted and g.adult_flag)::int as adult,
+           count(*) filter (where not g.deleted and g.mature_flag)::int as mature
       from games g`);
   const row = r.rows[0] ?? {};
   const num = (k) => Number(row[k] ?? 0);
@@ -2080,6 +2083,9 @@ export async function adminGameStats(q) {
     noPrice: num('no_price'),
     notFound: num('not_found'),
     other: num('other'),
+    // 内容分级计数
+    adult: num('adult'),
+    mature: num('mature'),
   };
 }
 
@@ -2106,31 +2112,39 @@ export async function listSteamStatusCandidates(q, { limit = 30 } = {}) {
   return r.rows.map((row) => ({ id: Number(row.id), steamAppid: Number(row.steam_appid) }));
 }
 
-/** 状态写回：一次请求判定完一个 appid 就落库（steam_checked_at 即续跑游标）。 */
+/**
+ * 状态写回（docs/STEAM-SYNC-STATUS-AND-RATING.md §14.3 写入语义）：
+ * - status 为 null → 不写 steam_status、不推 steam_checked_at 游标（留给 steam-status 判定）；
+ * - 分级字段传 null → 不覆盖已有值（coalesce 保留旧值）；
+ * - adultFlag / matureFlag 传 null → 不覆盖（false/true 显式写）。
+ */
 export async function setSteamStatus(q, {
   steamAppid,
-  status,
+  status = null,
   requiredAge = null,
   contentDescriptors = null,
   ageRatings = null,
-  adultFlag = false,
-  matureFlag = false,
+  adultFlag = null,
+  matureFlag = null,
 }) {
-  const r = await q(
-    `update games set steam_status = $2, steam_checked_at = now(),
-                      required_age = $3, content_descriptors = $4, age_ratings = $5::jsonb,
-                      adult_flag = $6, mature_flag = $7, updated_at = now()
-      where steam_appid = $1 returning id, steam_status`,
-    [
-      steamAppid,
-      status,
-      requiredAge == null ? null : Number(requiredAge),
-      Array.isArray(contentDescriptors) ? contentDescriptors.map(Number) : null,
-      ageRatings ? JSON.stringify(ageRatings) : null,
-      Boolean(adultFlag),
-      Boolean(matureFlag),
-    ],
+  const params = [steamAppid];
+  const push = (value) => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+  const sets = [];
+  if (status != null) {
+    sets.push(`steam_status = ${push(status)}`, 'steam_checked_at = now()');
+  }
+  sets.push(`required_age = coalesce(${push(requiredAge == null ? null : Number(requiredAge))}, required_age)`);
+  sets.push(
+    `content_descriptors = coalesce(${push(Array.isArray(contentDescriptors) ? contentDescriptors.map(Number) : null)}, content_descriptors)`,
   );
+  sets.push(`age_ratings = coalesce(${push(ageRatings ? JSON.stringify(ageRatings) : null)}::jsonb, age_ratings)`);
+  if (adultFlag != null) sets.push(`adult_flag = ${push(Boolean(adultFlag))}`);
+  if (matureFlag != null) sets.push(`mature_flag = ${push(Boolean(matureFlag))}`);
+  sets.push('updated_at = now()');
+  const r = await q(`update games set ${sets.join(', ')} where steam_appid = $1 returning id, steam_status`, params);
   return r.rows[0] ?? null;
 }
 
