@@ -228,3 +228,128 @@ docker exec steamdeals node src/cli.js steam-status --limit 2000
 把策略切到 `badge`（或 `show`）。
 
 无遗留待确认项。
+
+## 13. V 批：后台分级筛选 + backfill 合并写分级（待开发）
+
+> 状态：**需求已确认（2026-11-04），待开发**。对应 [TODO.md](TODO.md) 的 V 条目，建议随 v1.15.x 热修发布。
+>
+> **本批包含两部分**：
+> 1. **分级筛选**（§13.1–13.4）：后台能单独筛「成人（18+）」；
+> 2. **backfill 合并写分级**（§14.3–14.3.1）：抽 `src/steam-status.js` 共用函数，让元数据回填顺手落状态与分级，
+>    省掉约 6.9 万次重复请求。
+
+### 13.1 现状（v1.15.0 已上线部分）
+
+- 后台「游戏目录」表格已有 **「分级」列**（`adult_flag` 红标「成人」、`mature_flag` 黄标「成熟」、否则「—」）；
+- 但**没有任何筛选入口**：筛选栏只有「搜索 / 全部平台 / 全部同步状态」，指标卡也没有成人与成熟计数；
+- 结果：想单独看 18+ 游戏只能翻页用眼睛找，实际不可用。
+
+### 13.2 方案
+
+| 层 | 改动 |
+|---|---|
+| `GET /api/admin/games` | 新增 `rating=adult\|mature\|none`（与 `status`/`platform` 同风格）：`adult` → `g.adult_flag`；`mature` → `g.mature_flag`；`none` → 两者皆 false |
+| `adminGameStats`（`src/store/pg.js:2047`） | 增加 `adult`、`mature` 计数（`count(*) filter (where g.adult_flag)` / `(g.mature_flag)`） |
+| 筛选栏（`AdminModules.vue:7`） | 新增下拉「内容分级」：全部 / **成人（18+）** / 成熟 / 未标注 |
+| 指标卡（`AdminModules.vue:8`） | 新增「成人 N」「成熟 N」两张卡，点击即筛选（与现有卡片一致） |
+| 索引（可选） | `create index if not exists games_adult on games (adult_flag) where adult_flag;`；19.8 万行顺序扫描也可接受 |
+| 前台 | **不改**：仍按 `site.adultDisplay` 决定隐藏/角标/展示 |
+
+### 13.3 顺手修的一致性问题
+
+筛选下拉的「全部同步状态」仍是旧口径（只有「待同步 / 已同步」），而指标卡已是六态。
+建议改为：全部 / 未探测 / 已同步 / 免费 / 未发售 / 锁国区 / 国区无价 / 国区不可售 / 其他（与卡片一一对应）。
+
+### 13.4 验收
+
+1. 选「成人（18+）」后列表只剩 `adult_flag=true`，条数与指标卡「成人 N」一致；
+2. 「成熟」只剩 `mature_flag=true`；「未标注」= 两个 flag 都为 false（含尚未采集的）；
+3. 三者之和 = 未删除游戏总数（与「目录游戏」对得上）；
+4. 可与搜索/平台/同步状态叠加，分页正确，批量勾选与批量操作不受影响；
+5. 前台行为不变（`site.adultDisplay` 三档仍生效）；
+6. `npm test` 全绿（新增筛选用例）、`npm run frontend:build`、`npm run scan`。
+
+> **前置提醒**：截至 2026-11-04，「国区不可售」仅 121 条、`未探测` 仍有 17.5 万，说明 `steam-status`
+> 才刚起步。筛选上线后**结果会很少**，这是采集进度问题，不是筛选 bug；等任务跑满才有意义的量。
+
+## 14. 筛选与定时任务的关系（2026-11-04 追加）
+
+### 14.1 结论：筛选不是任务，采集才是
+
+- **筛选**（`rating=adult`）是查询条件，每次打开页面即时查库，**没有"跑"的概念**，做成定时任务没有意义；
+- **采集**（`steam-status`）才是任务，v1.15.0 已并入 `jobsFromEnv`：每周一轮、首轮延迟 6 小时、
+  `steam_checked_at` 作续跑游标，**上线即自动运行**，不需要新建任务。
+
+### 14.2 能否并进已有任务：按任务逐个判断
+
+| 现有任务 | 能否合并 | 原因 |
+|---|---|---|
+| `backfill`（元数据回填） | ✅ **应该合并** | 它本来就逐 appid 拉**全量** appdetails，响应里已有 `required_age`／`content_descriptors`／`ratings`，现在被 `normalizeOfficial` 丢掉。接上 `classifyContentRating` 即零成本拿到分级 |
+| `steam-prices`（价格同步） | ❌ 不能 | 走批量接口（30 appid/请求 + `filters=price_overview`），**响应里没有分级字段**；改逐条会让它慢 30 倍 |
+| `heat`（热度） | ❌ 不能 | 用 `filters=recommendations`，只返回评测数 |
+| `rename`（改名） | ❌ 不相关 | 只改名字 |
+| `steam-status` | ✅ 已在做 | 它就是为状态 + 分级设计的；目前只差"跑满" |
+
+### 14.3 实现方式：抽共用模块（**已纳入 V 批**）
+
+新建 `src/steam-status.js`，把"一次 appdetails 响应 → 状态 + 分级 + 落库"收敛成一个函数：
+
+```js
+// src/steam-status.js
+export async function applySteamDetails(q, { appid, cnEntry, hkEntry = null, meta = null }) {
+  // 1) 分级（纯函数，已有）：classifyContentRating({ requiredAge, descriptorIds, ratings })
+  // 2) 状态判定（纯函数）：ok / free / coming_soon / region_locked / no_price / not_found
+  // 3) 写库（setSteamStatus）：状态与分级一起写
+  return { status, rating, wroteStatus };
+}
+```
+
+**写入语义（关键，避免把游标与数据搞乱）**：
+
+| 情况 | 写什么 |
+|---|---|
+| 能确定 `steam_status`（有价格 / 免费 / 未发售 / 锁区…） | 状态 + 分级 + `steam_checked_at` |
+| 拿不到状态（例如 GetItems 无价格且无 `coming_soon` 信息） | **只写分级（有值才写），不写 `steam_checked_at`** —— 游标不推进，留给 `steam-status` 判定 |
+| 分级字段本次没拿到（`requiredAge`/`contentDescriptors` 为 undefined） | **不覆盖已有值**（`case when $x is null then 原值 else $x end`） |
+
+**两条调用路径**：
+
+- `cmdBackfill`（`src/cli.js:1745`）：拿到 items 后逐条调用 `applySteamDetails`。注意 items 有两个来源——
+  `fetchStoreItems`（GetItems，可能没有分级字段）和 `fetchMetadata`（appdetails，有全量字段）；
+  只有后者能写分级，前者按上表"不覆盖"处理；
+- `cmdSteamStatus`（`src/cli.js:2147`）：替换现有内联逻辑，改调同一函数，保证两条路径口径一致。
+
+**效果**：约 **6.9 万条**（缺简介或缺报价的那批）在 backfill 里顺手完成，不必再由 `steam-status` 单独请求一次，
+全量扫描时间减半。
+
+### 14.3.1 验收（合并部分）
+
+1. 跑一次 `backfill --limit 200`，被处理且 appdetails 有分级字段的游戏，`required_age`/`content_descriptors`/
+   `adult_flag`/`mature_flag` 有值；同时有价格的写入 `steam_status='ok'` 与 `steam_checked_at`。
+2. 只有 GetItems（无分级字段）的那批：**不写 `steam_checked_at`**，下一次 `steam-status` 仍会选中它们。
+3. 重复跑不覆盖已有分级值（`null` 不覆盖）。
+4. 两条路径对同一个 appid 的判定结果一致（单测用同一份 fixture 断言）。
+5. `npm test` 全绿（新增 `test/steam-status.test.js` 覆盖 `applySteamDetails` 的写/不写分支）。
+
+### 14.4 成本更正（重要）
+
+规格 §6 原估"待探测约 6.9 万、约 37 小时"**只统计了缺报价的那批**。实际 `listSteamStatusCandidates`
+（`src/store/pg.js:2096`）的条件是 `steam_status is distinct from 'free'`，即**所有非免费游戏都要判定**：
+
+| 项 | 数值 |
+|---|---|
+| 非免费候选（`未探测` 卡片） | **175,184** |
+| 全量逐条请求 | ≈ 175,000 次 + 锁区复核（约 5–10%） |
+| 单轮时长（rate 1500ms ≈ 2400 次/小时） | **≈ 73–80 小时** |
+
+**调度建议**：`STEAM_STATUS_LIMIT` 默认 200000 会让**单轮跑 3 天以上**，期间和其它 Steam 任务争配额。
+建议改为**每日一小段**（如 `STEAM_STATUS_LIMIT=8000`，约 3.3 小时/天，三周左右补完），
+或一次性在维护窗口跑完。
+
+### 14.5 如果目的是"定时产出一份 18+ 清单"
+
+不需要新任务：`steam-status.done` 已输出每轮分布（`src/cli.js:2221`）。在此基础上：
+
+- 想要**后台可见**：V 批指标卡「成人 N」即可；
+- 想要**定期推送**：在 `steam-status.done` 里附带 `adult/mature` 计数，复用现有 `notify.js`
+  通道发一条周报即可（属于可选增强，不改变采集链路）。
