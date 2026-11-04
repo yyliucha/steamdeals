@@ -190,8 +190,9 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
   指标卡「成人/成熟」计数 + 筛选下拉与六态卡片对齐）+ backfill 合并写状态与分级（`src/steam-status.js`
   的 `applySteamDetails` 共用函数，appdetails 回退路径顺带落库，拿不到状态不推游标、分级 null 不覆盖，
   省约 6.9 万次重复请求）。测试：`test/steam-status.test.js` 6 → 10 项、`api.test.js` 新增筛选用例，
-  `npm test` / `frontend:build` / `scan` 全绿。规格见
-  [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §13/§14.3。
+  `npm test` / `frontend:build` / `scan` 全绿。CI：`docker-hub` run 41807033753（test/smoke/publish 全绿）、
+  `docker-tcr` run 41807033648（`build-push-action` 与 `Verify manifests` 均 success），两个镜像源均已推送。
+  规格见 [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §13/§14.3。
   **服务器部署待执行**（按本文第 4 节升级到 `1.15.1`；compose 真实文件名仍未确认，先 `ls compose*.*`）。
   **上线时建议把 `STEAM_STATUS_LIMIT` 调到 8000**（单轮约 3.3 小时/天，三周补完）。
 
