@@ -190,6 +190,8 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
   复查接口 + 黑白名单双向互斥 + 待审口径 A）与 T 批（申诉 URL 只带 `?code=`、服务端注入 `__APPEAL__`、
   robots/响应头/申诉编号 crypto 随机等 5 项加固）。测试：reviews 24 项 / visitors 8 项 / admin-bulk 13 项 /
   新增 appeal-security 6 项全绿（`npm test` 47 个文件全绿 / `frontend:build` / `scan` 干净）。
+  CI：`docker-hub` run 41772653681（test/smoke/publish 全绿）、`docker-tcr` run 41772653679
+  （`build-push-action` 与 `Verify manifests` 均 success），两个镜像源均已推送。
   规格见 [BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md)、[URL-PARAM-PRIVACY.md](URL-PARAM-PRIVACY.md)。
   **服务器部署待执行**（按本文第 4 节升级到 `1.14.2`；compose 真实文件名仍未确认，先 `ls compose*.*`）。
 
