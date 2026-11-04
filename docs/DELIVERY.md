@@ -191,6 +191,8 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
   `steam-status` 任务（每周、续跑游标、与热度共用配额）、后台指标卡 7 分项 + 状态/分级列、前台成人隐藏/角标与锁区/未发售标注、
   设置 `site.adultDisplay`（hide/badge/show）与 `steamStatus.*`。测试：新增 `test/steam-status.test.js` 6 项入主链
   （`npm test` 48 个文件全绿 / `frontend:build` / `scan` / `api.test.js` 22 项）。
+  CI：`docker-hub` run 41792878309（test/smoke/publish 全绿）、`docker-tcr` run 41792877726
+  （`build-push-action` 与 `Verify manifests` 均 success），两个镜像源均已推送。
   **上线后的同步步骤见规格 §12**（迁移自动置位免费 → 手工 `steam-status --limit 2000` 验证分布 → 放开全量，
   约 37 小时可中断续跑）。**服务器部署待执行**（按本文第 4 节升级到 `1.15.0`；
   compose 真实文件名仍未确认，先 `ls compose*.*`）。
