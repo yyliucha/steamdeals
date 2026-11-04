@@ -311,3 +311,23 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - 配套加固 5 项：申诉编号改 `crypto.randomBytes`（现在是 `Math.random()`）、`X-Robots-Tag: noindex` + `robots.txt`、
   `/appeal` 加 `no-store`、日志不落 query（现状已满足）、未来"按 code 查上下文"接口必须限流。
 - 与 [S 批次](BAN-AND-SECURITY-FIXES.md) 的 `/appeal` 守卫是同一处服务端改动，建议合并实施。
+
+## U. 待开发：Steam 同步状态 + 锁国区 + 内容分级标注
+
+**状态：需求与方案已确认（2026-11-04），待开发**（见 [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md)）。
+
+- **起因**：后台「游戏目录」显示 92,580 条待同步。实测（2026-11-04 生产库只读 + 20 条 cc=cn/hk 探针）：
+  从未回填仅 242 条（0.26%），**免费游戏 23,185（25%）**，缺 Steam 报价 92,152（99.5%），缺简介 11,878；
+  探针结果 14 条未发售 / 6 条锁国区（港区有价或免费）/ **0 条"国区其实有价"** → **不是回填漏数据**。
+- **结论**：「待同步」把「免费 / 未发售 / 锁区 / 真失败」混成一个数字，永远不会归零，必须重定义。
+- **方案**：`games` 加 `steam_status/steam_checked_at/required_age/content_descriptors/age_ratings/adult_flag/mature_flag`；
+  状态机六态；锁区用 `cc=cn` 的 `success:false` + `cc=hk` 复核确认；分级字段本来就在同一次 appdetails 响应里
+  （`steam-meta.js:179` 无 filters），只是 `normalizeOfficial` 没解析——**一次请求同时拿状态和分级**。
+- **新任务**：`steam-status`（并入 `jobsFromEnv`），待探测约 6.9 万次 + 锁区复核约 2.1 万次 ≈ **37 小时**，可中断续跑；
+  免费 2.3 万不消耗请求（`is_free` 已在库，一次 SQL 置位）。
+- **展示策略（2026-11-04 已拍板）**：成人内容（descriptors 3/4 或 ESRB AO）**前台不显示、后台正常显示**，
+  做成配置 `site.adultDisplay` = `hide`(默认)/`badge`/`show`（部分国家成人内容合法，不硬编码）；成熟内容加角标；
+  锁国区**不隐藏**，只标「国区不可售」且不出国区价格；未发售标「尚未发售」。
+  **代码只做平台标签→站点策略映射，不做法律定性**。
+- **决策已全部确认（2026-11-04）**：成人内容前台隐藏（配置可切 `badge`/`show`）、18+ 以 descriptors 3/4 + ESRB AO
+  为主口径、锁国区不隐藏只标注。规格 §11 已改为「已确认的决策」，无遗留待确认项。
