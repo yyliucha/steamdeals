@@ -182,9 +182,14 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 
 ---
 
-### 当前状态（2026-11-04 更新，v1.15.1 已发布：后台内容分级筛选 + backfill 合并写分级）
+### 当前状态（2026-11-04 更新，v1.15.2 已发布：STEAM_STATUS_LIMIT 进系统设置）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
+
+- **v1.15.2 已发布**（tag `v1.15.2`）：`STEAM_STATUS_LIMIT` 进系统设置（`steamStatus.limit`，默认 8000，
+  保存即热加载）；调度器与 `steam-status` CLI 默认上限同步改为 8000。测试 `npm test` 48 个文件全绿 /
+  `scan` 干净。**服务器部署待执行**（按本文第 4 节升级到 `1.15.2`；compose 真实文件名仍未确认，
+  先 `ls compose*.*`）。
 
 - **v1.15.1 已发布**（tag `v1.15.1`）：V 批——后台内容分级筛选（`rating=adult|mature|none` +
   指标卡「成人/成熟」计数 + 筛选下拉与六态卡片对齐）+ backfill 合并写状态与分级（`src/steam-status.js`

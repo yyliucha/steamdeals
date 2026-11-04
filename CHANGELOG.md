@@ -2,6 +2,15 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.15.2] - 2026-11-04
+
+### 修复
+
+- **`STEAM_STATUS_LIMIT` 进系统设置**：此前只在调度器读环境变量，控制台看不到也改不了。
+  新增设置项 `steamStatus.limit`（env `STEAM_STATUS_LIMIT`，默认 **8000** ≈ 3.3 小时/天，
+  三周补完 17.5 万条；上限 200000）——「系统设置 → 数据源与采集 → 高级」可改、保存即热加载；
+  调度器与 `steam-status` CLI 的默认上限同步改为 8000
+
 ## [1.15.1] - 2026-11-04
 
 ### 新增
