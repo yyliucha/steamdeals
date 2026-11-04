@@ -1,7 +1,7 @@
 # Steam 同步状态与内容分级标注
 
-> 状态：**已实现（2026-11-04），待发版**——代码与测试已完成（新增 `test/steam-status.test.js` 6 项入主链），
-> 未打 tag、未触发构建（硬规则 5）。
+> 状态：**已实现并发布（v1.15.0，2026-11-04）**——tag `v1.15.0` 已推送触发镜像构建；
+> 新增 `test/steam-status.test.js` 6 项入主链（`npm test` 48 个文件全绿）。
 > 关联：[ROADMAP.md](ROADMAP.md)（原有的「地区限制与 18+ 内容」议题，本文件是它的落地方案）、
 > [DATA-SOURCES.md](DATA-SOURCES.md)（数据源可达性）、[WEB.md](WEB.md)（后台模块）、[TODO.md](TODO.md)。
 >
@@ -185,5 +185,46 @@ mature_flag = 非 adult 且（content_descriptors 含 2 或 5，或 PEGI >= 18�
 | 1 | **成人内容前台不显示、后台正常显示**，并做成配置：`site.adultDisplay` = `hide`（默认）/ `badge` / `show`。理由：部分国家成人内容是合法商品，策略不应硬编码 |
 | 2 | **18+ 口径**：`content_descriptors` 含 3 或 4，或 ESRB = AO → `adult_flag`；`required_age>=18` / PEGI 18 / descriptors 2、5 → `mature_flag`（仅角标） |
 | 3 | **锁国区不隐藏**：前台照常展示，只标「国区不可售」且不出国区价格；港区价格若已采集则照常展示 |
+
+## 12. 上线后怎么同步（v1.15.0 部署后的操作步骤）
+
+**部署即生效的部分（零操作）**：
+
+1. 容器启动时 `migrate()` 幂等跑 7 个 `alter table add column if not exists` + 免费置位
+   `update games set steam_status = 'free' where is_free and steam_status is null`——
+   约 2.3 万免费游戏**不发任何请求**，升级完成后立刻从「待同步」里拆出去。
+2. 调度器约 15 秒内加载新任务 `steam-status`：默认**每周**跑一次（`steamStatus.intervalMin`=10080），
+   首轮延迟 6 小时（避开热度播种期）。之后的增量由它全自动完成，无需手工命令。
+
+**建议的验证与放开节奏（避免 37 小时任务白跑）**：
+
+```bash
+# ① 先小批量验证真实分布（2000 条，约 1 小时）
+docker exec steamdeals node src/cli.js steam-status --limit 2000
+
+# ② 看后台「游戏目录」指标卡：免费应≈2.3 万，未探测开始下降；
+#    或查日志分布：
+#    docker logs steamdeals 2>&1 | grep steam-status.done
+#    → {"done":2000,"ok":…,"free":…,"coming_soon":…,"region_locked":…,"no_price":…,"not_found":…}
+
+# ③ 分布与探针结论一致（14 未发售 / 6 锁区 / 0 "国区有价"）就放开全量：
+#    方式一（推荐）：把 STEAM_STATUS_INTERVAL_MIN 从 0 改回 10080，等调度器每周自动续跑；
+#    方式二（当天跑完）：docker exec steamdeals node src/cli.js steam-status --limit 200000
+```
+
+**成本与续跑**：待探测约 6.9 万次 + 锁区复核约 2.1 万次 ≈ **37 小时**（rate 1500ms）。
+任务**可随时中断**：`steam_checked_at` 是游标，只写已判定成功的 appid；中断后下一次从
+`steam_checked_at is null or < now()-30d` 继续，失败（网络/429）不写游标下轮重试，
+**不会重复请求已判定的条目**（30 天过期才复判）。
+
+**配额注意**：与 heat/backfill/catalog/价格同步共用 Steam **200 次/5 分钟**配额，
+任务在调度器里互斥串行；如果当天要跑热度，让 `steam-status` 排在其它时段或调低优先级。
+
+**观测**：`steam-status.done`（完成分布）、`steam-status.failed`（单条失败）、
+`steam.status` / `steam.status.hk`（每次请求）；命中 429 时任务自动停本轮（已判定的留游标）。
+
+**成人内容默认不显示**：`site.adultDisplay` 默认 `hide`（前台过滤、后台可见）。
+上线后前台搜索"成人游戏"搜不到是**预期行为**；如需带角标展示，在「系统设置 → 站点与内容」
+把策略切到 `badge`（或 `show`）。
 
 无遗留待确认项。

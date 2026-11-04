@@ -2,6 +2,31 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.15.0] - 2026-11-04
+
+### 新增
+
+- **Steam 同步状态可解释（docs/STEAM-SYNC-STATUS-AND-RATING.md）**：
+  - `games` 加 7 列幂等迁移（`steam_status` / `steam_checked_at` / `required_age` / `content_descriptors` /
+    `age_ratings` / `adult_flag` / `mature_flag`）+ partial index；免费游戏一次 SQL 置位（2.3 万条不发请求）
+  - 六态状态机：`ok` / `free` / `coming_soon` / `region_locked` / `no_price` / `not_found` / 未探测——
+    每款游戏能回答"为什么没有价格"；「待同步」重定义为 未探测 或 `ok` 缺简介，9.2 万不再永远不归零
+  - `steam-status` 任务并入调度器（默认每周、首轮延迟 6 小时避开热度播种期）：逐 appid 全量 appdetails
+    （`cc=cn`，`success:false` 补 `cc=hk` 判定锁区），状态与分级**共用同一次请求**，`steam_checked_at` 作续跑游标，
+    失败不写游标下轮重试；与 heat/backfill/catalog/价格共用 Steam 配额、任务互斥
+- **锁国区标注**：国区不可售但港区可售/免费 → `region_locked`，后台标「锁国区」，前台标「国区不可售」且不出国区价格（不隐藏）
+- **内容分级标注**：`required_age` / `content_descriptors` / `age_ratings` 原样落库；按平台标签派生
+  `adult_flag`（descriptors 3/4 或 ESRB AO）与 `mature_flag`（descriptors 2/5、PEGI≥18、required_age≥18）——
+  只做平台标签→站点策略映射，不做法律定性。新设置 `site.adultDisplay` = `hide`（默认，前台不显示、后台可见）/
+  `badge`（带「成人内容」角标）/ `show`；`steamStatus.rateMs` / `steamStatus.intervalMin` 可调
+- **后台指标卡重定义**：游戏目录改为 已同步 / 未探测 / 免费 / 未发售 / 锁国区 / 国区无价 / 国区不可售 / 其他 分项
+  （点击即按 `status` 筛选），列表新增「同步状态」「分级」两列
+
+### 测试
+
+- 新增 `test/steam-status.test.js` 6 项并接入主链（六态判定、分级派生、迁移置位、任务写回/续跑、前台成人过滤）；
+  `npm test` 48 个文件全绿；scheduler / settings / setup / api 的计数断言同步更新
+
 ## [1.14.2] - 2026-11-04
 
 ### 新增
