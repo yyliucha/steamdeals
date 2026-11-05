@@ -354,11 +354,14 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## W. 手机端 PWA（像 App 一样打开）
 
-**状态：已实现，待发版（2026-11-05）**（见 [MOBILE-PWA.md](MOBILE-PWA.md)）；Android 真机「添加到主屏幕」验收待部署后执行。
+**状态：已实现（含版本检查），待发版（2026-11-05）**（见 [MOBILE-PWA.md](MOBILE-PWA.md)）；Android 真机「添加到主屏幕 / 更新提示 / 离线不误报」验收待部署后执行。
 
 - **目标**：手机上"添加到主屏幕"后全屏运行，像 App；**不上架、不打 APK、不引入 Android 工具链**。
 - **做**：`manifest.webmanifest`（standalone + 192/512 图标 + theme-color）、`index.html` 引用、
   统一网络失败提示（断网提示、不缓存）、Android 返回键关闭浮层（`history.pushState` + `popstate`）。
+- **版本检查（半自动更新）**：启动与切回前台时比对 `/api/site` 的 `version`（`server.js:657`），不一致时顶部提示
+  「已更新到 vX.Y.Z，点击刷新」，**默认不自动刷新**（详情弹窗/表单会丢状态）；离线时静默跳过。
+  部署侧需确认 nginx 未对 HTML 加 `expires`/`proxy_cache`（否则重新打开也是旧版）。
 - **不做**：service worker / 离线缓存（会重演"看到旧页面"）、推送、离线包。
 - **购物车方案已否决（决策存档）**：站内待买清单意义不足（所有者判断，最终还是跳 Steam 自己买）；
   Steam 自动加购技术上不可行（购物车无 Web API，需网页登录态 = 账号密码 + Steam Guard，越出项目

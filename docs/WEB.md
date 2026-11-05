@@ -56,6 +56,12 @@ node src/cli.js serve --port 8090
   有重试入口；不缓存页面，避免"看到旧页面"。
 - **Android 返回键**：详情弹窗、抽屉、筛选层打开时 `history.pushState` 入栈，`popstate` 先关闭最上层
   （`frontend/src/composables/useBackGuard.js`），再按一次才退出 PWA；PC 端不接管，浏览器返回保持原行为。
+- **版本检查（半自动更新）**：`frontend/src/composables/useVersionGuard.js` 在启动时记下 `/api/site` 的
+  `version` 作基线，`visibilitychange` 切回前台再查一次，不一致 → App.vue 顶部提示「已更新到 vX.Y.Z，
+  点击刷新」（全局唯一、可关闭，关闭后本次会话不再提示）；`AUTO_RELOAD=false`，默认只提示不自动刷新，
+  避免丢详情弹窗/搜索输入/表单状态；请求失败（离线）用原始 fetch 静默跳过，不点亮断网提示条。
+  前提是 HTML 保持 `cache-control: no-cache`——**部署侧需确认 nginx 未对 HTML 加 `expires` / `proxy_cache`**，
+  否则重新打开也是旧版。
 - **已知取舍**：standalone 里点 Steam 商店等外链会跳出系统浏览器，买完需手动切回；部分国产 ROM 浏览器
   不支持独立窗口，仍以标签页打开。详见 [MOBILE-PWA.md](MOBILE-PWA.md) §5。
 

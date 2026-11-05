@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isFrontendPublicFile, serveFrontendStatic } from '../src/server.js';
+import { shouldShowUpdate } from '../frontend/src/composables/useVersionGuard.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const PUBLIC = join(ROOT, 'frontend', 'public');
@@ -148,6 +149,24 @@ test('PWA 根文件判定不吞掉普通静态资源', () => {
   assert.equal(isFrontendPublicFile('/icon-512.png'), true);
   assert.equal(isFrontendPublicFile('/assets/index-abc.js'), false);
   assert.equal(isFrontendPublicFile('/chart.html'), false);
+});
+
+test('版本比较纯函数：相等不提示 / 不一致提示 / 首次为空不提示', () => {
+  assert.equal(shouldShowUpdate('1.15.2', '1.15.2'), false, '版本相同不能弹更新');
+  assert.equal(shouldShowUpdate('1.15.2', '1.16.0'), true, '版本不一致要提示');
+  assert.equal(shouldShowUpdate('', '1.16.0'), false, '首次打开（基线为空）不提示');
+  assert.equal(shouldShowUpdate(null, '1.16.0'), false, '拿不到基线不提示');
+  assert.equal(shouldShowUpdate(undefined, '1.16.0'), false);
+  assert.equal(shouldShowUpdate('1.15.2', ''), false, '服务端没回版本不提示');
+});
+
+test('App.vue 有全局唯一更新提示条，main.js 启动版本检查', () => {
+  const app = readFileSync(join(ROOT, 'frontend/src/App.vue'), 'utf8');
+  assert.ok(app.includes('已更新到 v'), 'App.vue 缺更新提示文案');
+  assert.ok(app.includes('点击刷新'), '更新提示要能点击刷新');
+  assert.ok(app.includes('dismissUpdate'), '更新提示要可关闭');
+  const main = readFileSync(join(ROOT, 'frontend/src/main.js'), 'utf8');
+  assert.match(main, /startVersionGuard/, 'main.js 应启动版本检查');
 });
 
 test('fetch 断网统一提示「网络不可用，请检查连接后重试」，主动取消不误报', async () => {
