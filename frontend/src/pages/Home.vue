@@ -24,6 +24,7 @@
         </section>
         <div class="result-line"><span>{{ loading ? '正在加载游戏…' : `找到 ${total.toLocaleString()} 款游戏` }}</span><span>价格与地区货币以商店显示为准</span></div>
         <el-skeleton v-if="loading && !games.length" :rows="6" animated />
+        <el-empty v-else-if="!games.length && listNetworkError" :description="NETWORK_ERROR_MESSAGE"><el-button type="primary" @click="retryLoad">重试</el-button></el-empty>
         <el-empty v-else-if="!games.length" description="没有找到匹配的游戏" />
         <section v-else class="game-grid">
           <article v-for="game in games" :key="game.game_id || game.id" class="game-card" @click="openDetail(game)">
@@ -57,6 +58,7 @@
       <div class="m-tabs"><button :class="{on:activeTab==='all'}" @click="setTab('all')">全部</button><button :class="{on:activeTab==='on'}" @click="setTab('on')">感兴趣</button><button :class="{on:activeTab==='off'}" @click="setTab('off')">不感兴趣</button></div>
       <div class="m-result-line">{{ loading ? '正在加载…' : `找到 ${total.toLocaleString()} 款游戏` }}</div>
       <el-skeleton v-if="loading && !games.length" :rows="4" animated class="m-skeleton" />
+      <el-empty v-else-if="!games.length && listNetworkError" :description="NETWORK_ERROR_MESSAGE" class="m-empty"><el-button type="primary" @click="retryLoad">重试</el-button></el-empty>
       <el-empty v-else-if="!games.length" description="没有找到匹配的游戏" class="m-empty" />
       <section v-else class="m-game-list">
         <article v-for="game in games" :key="game.game_id || game.id" class="m-game-card" @click="openDetail(game)">
@@ -86,8 +88,10 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import PaginationBar from '../components/PaginationBar.vue';
+import { useBackGuard } from '../composables/useBackGuard.js';
 import { useListPagination } from '../composables/useListPagination.js';
 import { useTheme } from '../composables/useTheme.js';
+import { NETWORK_ERROR_MESSAGE } from '../utils/network.js';
 import { useRoute, useRouter } from 'vue-router';
 import { Search, Bell, Filter } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
@@ -100,7 +104,7 @@ async function persistTheme(m){ if(!user.value) return; try { await request('/ap
 const regions = [{code:'cn',label:'中国大陆'},{code:'hk',label:'中国香港'},{code:'tw',label:'中国台湾'},{code:'us',label:'美国'},{code:'jp',label:'日本'},{code:'ru',label:'俄罗斯'},{code:'tr',label:'土耳其'},{code:'ar',label:'阿根廷'}];
 // 已拥有 / 愿望单是登录用户专属维度：游客隐藏这两个标签页（规格 §6）
 const tabs=computed(()=>{const base=[{value:'all',label:'全部'},{value:'on',label:'感兴趣'},{value:'off',label:'不感兴趣'}];if(user.value)base.push({value:'owned',label:'已拥有'},{value:'wishlist',label:'愿望单'});return base;});
-const games = ref([]), notices = ref([]), total = ref(0), pages = ref(0), page = ref(1), pageSize = ref(20), loading = ref(false);
+const games = ref([]), notices = ref([]), total = ref(0), pages = ref(0), page = ref(1), pageSize = ref(20), loading = ref(false), listNetworkError = ref(false);
 const catalogCount = ref(0), pricedCount = ref(0), siteAdultDisplay = ref('hide');
 const query = ref(''), region = ref('cn'), type = ref('all'), sort = ref('discount'), activeTab=ref('all'), user = ref(null), guestGameFlags=ref({}), released = ref('all');
 const guestFlagsStorageKey='steamdeals.guest-game-flags.v1';
@@ -163,6 +167,17 @@ function mNav(value){if(value==='me'){mySheet.value=true;return;}if(!user.value)
 const detailVisible=ref(false),detailLoading=ref(false),detail=ref(null),watchTarget=ref(''),watchExists=ref(false);
 const offersPager=useListPagination(computed(()=>detail.value?.offers||[])), seriesPager=useListPagination(computed(()=>[...(detail.value?.series||[])].reverse()));
 const pagedOffers=offersPager.items,offersPage=offersPager.page,offersPageSize=offersPager.pageSize,pagedSeries=seriesPager.items,seriesPage=seriesPager.page,seriesPageSize=seriesPager.pageSize;
+// Android 返回键（docs/MOBILE-PWA.md §2）：浮层打开时接管返回键，先关浮层再退出。
+// 只在手机结构下登记——PC 端的浏览器返回保持原行为（验收第 6 条：PC 零变化）。
+const backGuard = useBackGuard();
+backGuard.guard(() => isMobile.value && filterDrawer.value, () => { filterDrawer.value = false; });
+backGuard.guard(() => isMobile.value && mySheet.value, () => { mySheet.value = false; });
+backGuard.guard(() => isMobile.value && noticeDrawer.value, () => { noticeDrawer.value = false; });
+backGuard.guard(() => isMobile.value && noticeDialog.value, () => { noticeDialog.value = false; });
+backGuard.guard(() => isMobile.value && detailVisible.value, () => { detailVisible.value = false; });
+backGuard.guard(() => isMobile.value && loginVisible.value, () => { loginVisible.value = false; });
+backGuard.guard(() => isMobile.value && wishlistPick.value.visible, () => { wishlistPick.value.visible = false; });
+backGuard.guard(() => isMobile.value && wishlistRemovePick.value.visible, () => { wishlistRemovePick.value.visible = false; });
 function money(cents, currency) { if (cents == null) return '暂无报价'; const symbols={CNY:'¥',USD:'$',HKD:'HK$',TWD:'NT$',JPY:'¥',RUB:'₽',TRY:'₺',ARS:'$'}; const fallback={cn:'CNY',hk:'HKD',tw:'TWD',us:'USD',jp:'JPY',ru:'RUB',tr:'TRY',ar:'ARS'}[region.value]||'CNY';const code=currency||fallback;return `${symbols[code] || code+' '}${(Number(cents)/100).toFixed(2)}`; }
 function discount(g) { return Number(g.discount) || 0; }
 function cover(g) { return g.steam_appid ? `/img/steam/${g.steam_appid}/header` : '/favicon.svg'; }
@@ -178,8 +193,10 @@ function wishlistByText(game){const by=Array.isArray(game.wishlisted_by)?game.wi
 // 已拥有按钮三态：手动 true（可清除）→ 排除 false（可恢复）→ 未标记（跟随推导）
 function ownedBtnLabel(game){if(game.user_owned===false)return '恢复已拥有';if(game.owned)return '✓ 已拥有';return '已拥有';}
 async function toggleOwned(game){const uo=game.user_owned;if(uo===false)return setGameFlag(game,'owned','clear');if(game.owned)return setGameFlag(game,'owned',uo===true?'clear':false);return setGameFlag(game,'owned',true);}
-async function loadGames(nextPage=1,append=false){gameRequestController?.abort();const controller=new AbortController();gameRequestController=controller;const seq=++requestSeq;loading.value=true;page.value=nextPage;const params={page:page.value,pageSize:pageSize.value,region:region.value,type:type.value,sort:sort.value,q:query.value.trim(),interest:activeTab.value==='on'?'on':activeTab.value==='off'?'off':'all',owned:activeTab.value==='owned'?'only':'exclude',wishlist:activeTab.value==='wishlist'?true:undefined,released:released.value,marks:activeTab.value==='all'?'unmarked':'any'};const cacheKey=params.q?`${params.q}|${params.region}|${params.sort}|${params.type}|${params.released}|${params.marks}|${params.interest}|${params.owned}|${params.wishlist?'w':''}|${params.page}|${params.pageSize}|${user.value?'u':'g'}|${guestFlagsRev.value}`:'';const cached=cacheKey&&!append?searchCache.get(cacheKey):null;if(cached&&Date.now()-cached.at<30000){applyGames(cached.data,seq,controller);loading.value=false;gameRequestController=null;return;}try{const interestedIds=localFlagIds('interested',true),uninterestedIds=localFlagIds('interested',false);const flags={interestedIds:activeTab.value==='on'?interestedIds:[],uninterestedIds:activeTab.value==='off'?uninterestedIds:[],excludeIds:activeTab.value==='all'?[...new Set([...interestedIds,...uninterestedIds])]:[]};const options=user.value?params:{...params,guestFlags:flags};const data=await request('/api/games/search',{method:'POST',body:JSON.stringify(options),signal:controller.signal});if(cacheKey&&!append)setCache(cacheKey,data);applyGames(data,seq,controller,append);}catch(e){if(e.name!=='AbortError'){if(!append)games.value=[];ElMessage.error(e.message);}}finally{if(gameRequestController===controller){gameRequestController=null;loading.value=false;}}}
-function applyGames(data,seq,controller,append=false){if(controller.signal.aborted||seq!==requestSeq)return;const rows=visibleGames(data.games||[]);games.value=append?[...games.value,...rows]:rows;total.value=Number(data.total)||0;pages.value=Number(data.pages)||0;}
+async function loadGames(nextPage=1,append=false){gameRequestController?.abort();const controller=new AbortController();gameRequestController=controller;const seq=++requestSeq;loading.value=true;page.value=nextPage;const params={page:page.value,pageSize:pageSize.value,region:region.value,type:type.value,sort:sort.value,q:query.value.trim(),interest:activeTab.value==='on'?'on':activeTab.value==='off'?'off':'all',owned:activeTab.value==='owned'?'only':'exclude',wishlist:activeTab.value==='wishlist'?true:undefined,released:released.value,marks:activeTab.value==='all'?'unmarked':'any'};const cacheKey=params.q?`${params.q}|${params.region}|${params.sort}|${params.type}|${params.released}|${params.marks}|${params.interest}|${params.owned}|${params.wishlist?'w':''}|${params.page}|${params.pageSize}|${user.value?'u':'g'}|${guestFlagsRev.value}`:'';const cached=cacheKey&&!append?searchCache.get(cacheKey):null;if(cached&&Date.now()-cached.at<30000){applyGames(cached.data,seq,controller);loading.value=false;gameRequestController=null;return;}try{const interestedIds=localFlagIds('interested',true),uninterestedIds=localFlagIds('interested',false);const flags={interestedIds:activeTab.value==='on'?interestedIds:[],uninterestedIds:activeTab.value==='off'?uninterestedIds:[],excludeIds:activeTab.value==='all'?[...new Set([...interestedIds,...uninterestedIds])]:[]};const options=user.value?params:{...params,guestFlags:flags};const data=await request('/api/games/search',{method:'POST',body:JSON.stringify(options),signal:controller.signal});if(cacheKey&&!append)setCache(cacheKey,data);applyGames(data,seq,controller,append);}catch(e){if(e.name!=='AbortError'){if(!append)games.value=[];listNetworkError.value=e.name==='NetworkError';ElMessage.error(e.message);}}finally{if(gameRequestController===controller){gameRequestController=null;loading.value=false;}}}
+// 网络恢复后的重试入口：重新拉用户态、列表、公告与计数（不做离线缓存，没网时仍会回到失败提示）
+async function retryLoad(){await loadUser();await Promise.all([loadGames(page.value),loadNotices(),loadCounts(),loadSiteInfo()]);}
+function applyGames(data,seq,controller,append=false){if(controller.signal.aborted||seq!==requestSeq)return;const rows=visibleGames(data.games||[]);games.value=append?[...games.value,...rows]:rows;total.value=Number(data.total)||0;pages.value=Number(data.pages)||0;listNetworkError.value=false;}
 function setCache(key,data){searchCache.set(key,{at:Date.now(),data});if(searchCache.size>50){const first=searchCache.keys().next().value;searchCache.delete(first);}}
 // 边打边查：300ms 防抖 + 中文输入法合成期不查 + 最短长度 + 回车立即 + 清空立即
 let lastSearchedQ='';

@@ -186,6 +186,12 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
+- **待发版：手机端 PWA**（2026-11-05 已提交 main，等「构建 vX.Y.Z」指令）：manifest + 192/512 图标
+  （512 maskable）、`index.html` 的 manifest/theme-color/apple meta、服务端从 `frontendDir` 提供 PWA 根文件
+  （避开 outDir 404）、fetch 失败统一提示、Android 返回键先关浮层（`useBackGuard`）；**不做** service worker /
+  离线缓存 / 推送 / 购物车。验证：`npm test` 49 个文件 417 项全绿 / `node test/api.test.js` 22 项全绿 /
+  `frontend:build` / `scan` 干净。规格见 [MOBILE-PWA.md](MOBILE-PWA.md)。真机「添加到主屏幕」验收待部署后执行。
+
 - **v1.15.2 已发布**（tag `v1.15.2`）：`STEAM_STATUS_LIMIT` 进系统设置（`steamStatus.limit`，默认 8000，
   保存即热加载）；调度器与 `steam-status` CLI 默认上限同步改为 8000。测试 `npm test` 48 个文件全绿 /
   `scan` 干净。CI：`docker-hub` run 41810479183（test/smoke/publish 全绿）、`docker-tcr` run 41810479240

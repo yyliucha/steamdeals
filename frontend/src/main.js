@@ -21,10 +21,13 @@ import 'element-plus/es/components/tag/style/css';
 import App from './App.vue';
 import router from './router/index.js';
 import { bootstrapSiteTimezone } from './utils/siteTime.js';
+import { installNetworkGuard } from './utils/network.js';
 import 'element-plus/theme-chalk/dark/css-vars.css';
 import './styles/main.css';
 
 bootstrapSiteTimezone();
+// 统一网络失败提示（docs/MOBILE-PWA.md §2）：放在创建应用前，页面里的 fetch 都走这层
+installNetworkGuard();
 
 // 移动端兜底（docs/MOBILE-VIEWPORT.md §3.2）：个别内核改写 viewport meta 后布局宽度仍不收敛时，
 // 用 zoom 按 screen.width 比例补偿（优先 index.html 的 viewport 方案，这里只是最后手段；

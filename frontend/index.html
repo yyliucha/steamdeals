@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
+    <!-- PWA（docs/MOBILE-PWA.md §2）：加到主屏幕后 standalone 运行；不做离线缓存，所以没有 service worker -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0f1524" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="SteamDeals" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>SteamDeals</title>
     <script>
       // 首屏防闪烁：在 CSS/JS 加载前按「显式选择 → 系统偏好」决定暗色 class

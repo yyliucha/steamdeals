@@ -34,6 +34,7 @@ const TYPES = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
@@ -2999,13 +3000,22 @@ function serveStatic(res, outDir, pathname) {
   res.end(body);
 }
 
+/**
+ * PWA 根文件（manifest / 图标）：源文件在 frontend/public，构建后落在 dist 根目录。
+ * 不能走 outDir——线上 outDir 是 web/（旧页面与图标）或 out/（静态曲线页），
+ * 否则 /manifest.webmanifest 与 /icon-*.png 会 404，"添加到主屏幕"直接失效。
+ */
+export function isFrontendPublicFile(pathname) {
+  return pathname === '/manifest.webmanifest' || pathname.startsWith('/icon-');
+}
+
 /** Vue 构建产物负责站点所有页面；无构建产物时回退到 web 目录。 */
-function serveFrontendStatic(res, frontendDir, outDir, pathname) {
+export function serveFrontendStatic(res, frontendDir, outDir, pathname) {
   if (!frontendDir || !existsSync(resolve(frontendDir, 'index.html'))) return serveStatic(res, outDir, pathname);
   if (['/', '/console', '/console/', '/setup', '/setup/', '/banned', '/banned/', '/appeal', '/appeal/', '/index.html', '/console.html', '/setup.html', '/banned.html'].includes(pathname)) {
     return serveStatic(res, frontendDir, '/index.html');
   }
-  if (pathname.startsWith('/assets/')) return serveStatic(res, frontendDir, pathname);
+  if (pathname.startsWith('/assets/') || isFrontendPublicFile(pathname)) return serveStatic(res, frontendDir, pathname);
   return serveStatic(res, outDir, pathname);
 }
 

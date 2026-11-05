@@ -351,3 +351,16 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **第二部分（2026-11-04 追加，已纳入本批）**：抽 `src/steam-status.js` 的共用函数，让 `backfill` 在拉 appdetails 时
   顺手写状态与分级——**能确定状态才写 `steam_checked_at`**，分级字段「有值才写、不覆盖」；
   `steam-status` 改调同一函数保证口径一致。效果：约 6.9 万条不必重复请求，全量时间减半。详见规格 §14.3/§14.3.1。
+
+## W. 手机端 PWA（像 App 一样打开）
+
+**状态：已实现，待发版（2026-11-05）**（见 [MOBILE-PWA.md](MOBILE-PWA.md)）；Android 真机「添加到主屏幕」验收待部署后执行。
+
+- **目标**：手机上"添加到主屏幕"后全屏运行，像 App；**不上架、不打 APK、不引入 Android 工具链**。
+- **做**：`manifest.webmanifest`（standalone + 192/512 图标 + theme-color）、`index.html` 引用、
+  统一网络失败提示（断网提示、不缓存）、Android 返回键关闭浮层（`history.pushState` + `popstate`）。
+- **不做**：service worker / 离线缓存（会重演"看到旧页面"）、推送、离线包。
+- **购物车方案已否决（决策存档）**：站内待买清单意义不足（所有者判断，最终还是跳 Steam 自己买）；
+  Steam 自动加购技术上不可行（购物车无 Web API，需网页登录态 = 账号密码 + Steam Guard，越出项目
+  "不绕过登录与签名校验"的边界，README:474）。**手机端与 PC 一致**：点进详情 → 跳转 Steam 商店 → 用户自己买。
+- **验收**：见规格 §7（standalone 生效、manifest 字段齐全、断网提示、返回键行为、PC 零变化）。

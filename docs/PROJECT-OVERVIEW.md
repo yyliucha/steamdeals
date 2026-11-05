@@ -66,7 +66,7 @@ Node.js 服务 src/server.js
 
 ### Web 服务与前端
 
-`src/server.js` 负责组合 HTTP API、初始化/认证/设置路由和静态前端；辅助路由分别在 `src/setup-routes.js`、`src/auth-routes.js`、`src/settings-routes.js`。`src/serve.js` 提供静态文件服务。前端是 `frontend/` 里的 Vue 3 应用（Vue Router + Element Plus + Vite），主页面和后台页面位于 `frontend/src/pages/`；服务端按 `frontendDir` 提供构建产物，`web/` 下的旧页面只在没有 `frontend/dist/index.html` 时作为回退。
+`src/server.js` 负责组合 HTTP API、初始化/认证/设置路由和静态前端；辅助路由分别在 `src/setup-routes.js`、`src/auth-routes.js`、`src/settings-routes.js`。`src/serve.js` 提供静态文件服务。前端是 `frontend/` 里的 Vue 3 应用（Vue Router + Element Plus + Vite），主页面和后台页面位于 `frontend/src/pages/`；服务端按 `frontendDir` 提供构建产物（含 PWA 的 `/manifest.webmanifest` 与 `/icon-*.png`），`web/` 下的旧页面只在没有 `frontend/dist/index.html` 时作为回退。
 
 安全与用户能力由服务端模块承载：`src/session-cookie.js`、`src/email-auth.js`、`src/captcha.js`、`src/ratelimit.js`、`src/guard.js`、`src/visitors.js`、`src/devices.js`、`src/steam-login.js`。不要仅凭前端隐藏按钮判断授权；权限必须由 API 校验。
 
@@ -84,6 +84,7 @@ Node.js 服务 src/server.js
 | 当前价、快照、日历史、史低 | `src/ingest.js`, `src/store/pg.js` | 价格变化才写快照；主榜及历史低价查询过滤非官方/授权渠道 |
 | 比价、历史和静态曲线 | `src/compare.js`, `src/report.js`, `src/cli.js` | CLI 查询与 `chart` 静态 HTML 曲线 |
 | Web/API、安装和账户 | `src/server.js`, `src/*-routes.js`, `frontend/` | Vue 前端覆盖前台、初始化、封禁页与控制台十个模块；`web/` 旧页面仅作无构建产物时的回退；具体入口见 [WEB.md](WEB.md) |
+| **手机端 PWA** | `frontend/public/manifest.webmanifest`、`icon-192.png`、`icon-512.png`、`frontend/index.html`、`src/server.js`（`serveFrontendStatic` + `isFrontendPublicFile`）、`frontend/src/utils/network.js`、`frontend/src/composables/useBackGuard.js`、`frontend/src/pages/Home.vue` | 已实现，待发版（2026-11-05 验证：`npm test` 49 个文件 417 项全绿 / `node test/api.test.js` 22 项全绿 / `frontend:build` / `scan` 干净）：`display: standalone` + `orientation: portrait`，192/512 图标（512 声明 maskable），主题色对齐暗色 token；**不做 service worker / 离线缓存 / 推送 / 购物车**；fetch 失败统一提示「网络不可用，请检查连接后重试」并可重试；Android 返回键先关闭浮层再退出（仅手机结构，PC 不接管）。规格见 [MOBILE-PWA.md](MOBILE-PWA.md) |
 | 封禁与申诉 | `src/devices.js`, `src/ratelimit.js`, `src/server.js`（`BAN_ONLY_PAGES` 注册表 + `/api/ban/state`）、`frontend/src/pages/BanPage.vue`, `AppealPage.vue`, `composables/useBanOnlyPage.js` | 仅封禁可见页面统一守卫（`/banned`、`/banned.html`、`/appeal`：未封禁/管理员/封禁过期一律 302 回首页，判定只在拦截链）；客户端每 30 秒复查，解封后自动回首页；申诉 URL 只带 `?code=`（站点信息注入 `__APPEAL__`，申诉走邮件、不落库）；`/appeal` 对封禁 IP/设备放行；黑/白名单双向互斥；待审口径 = 全部 `pending` |
 | 关注、降价提醒、通知 | `src/alerts.js`, `src/notify.js` | 目标价/史低触发；Webhook、企业微信机器人、SMTP |
 | **后台列表批量操作** | `src/server.js`（`BULK_ACTIONS` 派发表 + `/api/admin/bulk`）、`src/store/pg.js`（`bulk*` SQL + `admin_bulk_ops`）、`frontend/src/composables/useBulkSelection.js`、`components/BulkBar.vue`、`components/BulkResultDialog.vue`、`pages/AdminModules.vue`、`pages/AdminExtras.vue`、`pages/Console.vue` | 已实现并发布 v1.14.0（2026-11-03 验证：`npm test` 46 个测试文件全绿 / `frontend:build` / `scan` 干净）：11 个列表可多选批量执行（待审/访问明细/回收站/站点通知/IP 黑名单/IP 白名单/已封设备/自动封禁/游戏目录/最近设备/用户）；单次上限与高危确认由服务端派发表决定，成功/跳过/失败逐条回执，审计落 `admin_bulk_ops`。规格见 [ADMIN-BULK-ACTIONS.md](ADMIN-BULK-ACTIONS.md) |

@@ -41,14 +41,33 @@ node src/cli.js serve --port 8090
 | `/appeal` | Vue 申诉页：URL 只带 `?code=AP-XXXXXX`（`reason`/`until`/`email` 已移出 URL），站点名与申诉邮箱由服务端注入 `window.__APPEAL__`；**被封禁的 IP/设备也能打开**（服务端对 `/appeal` 跳过封禁与限流判定），未封禁访问则 302 回首页；旧链接的多余参数被忽略并清洗 |
 | 点游戏名 | 详情弹窗：各平台报价、折扣、简介；管理员可直接改标记、设到价提醒；报价与价格历史分页显示 |
 
+### 手机端 PWA（添加到主屏幕）
+
+- `frontend/public/manifest.webmanifest`：`name`/`short_name` = SteamDeals、`start_url` = `/`、
+  `display: standalone`、`orientation: portrait`；`theme_color` 与 `styles/main.css` 暗色 `--bg` 一致（`#0f1524`）。
+- 图标：`frontend/public/icon-192.png`（`purpose: any`）与 `icon-512.png`（`any maskable`），由 `web/favicon.svg`
+  导出；构建后随 `frontend/dist` 一起输出（`frontend/dist/` 不入库）。
+- `frontend/index.html`：`<link rel="manifest">`、`theme-color`、`apple-mobile-web-app-capable` /
+  `status-bar-style` / `title`、`<link rel="apple-touch-icon">`。
+- **服务端落点**：`src/server.js` 的 `serveFrontendStatic` 把 `/manifest.webmanifest` 与 `/icon-*.png`
+  交给 `frontendDir`；否则这些请求会落到 `outDir`（`web/` 旧页或 `out/` 曲线页）变成 404，
+  「添加到主屏幕」静默失效（回归测试 `test/pwa.test.js`）。
+- **不做 service worker / 离线缓存 / 推送**：断网时 fetch 失败统一提示「网络不可用，请检查连接后重试」，
+  有重试入口；不缓存页面，避免"看到旧页面"。
+- **Android 返回键**：详情弹窗、抽屉、筛选层打开时 `history.pushState` 入栈，`popstate` 先关闭最上层
+  （`frontend/src/composables/useBackGuard.js`），再按一次才退出 PWA；PC 端不接管，浏览器返回保持原行为。
+- **已知取舍**：standalone 里点 Steam 商店等外链会跳出系统浏览器，买完需手动切回；部分国产 ROM 浏览器
+  不支持独立窗口，仍以标签页打开。详见 [MOBILE-PWA.md](MOBILE-PWA.md) §5。
+
 **前台不提供 Steam 登录**：Steam OpenID 登录与游戏库同步全部放在控制台的「Steam 账号」页，
 与站点账号体系相互独立；前台只展示游戏优惠数据。
 
 前端源码在 `frontend/`（Vue 3 + Vue Router + Element Plus + Vite）：多页面入口由 `frontend/src/router/index.js` 定义，
 页面在 `frontend/src/pages/`，样式在 `frontend/src/styles/main.css`。开发用 `npm run frontend:dev`，
 构建用 `npm run frontend:build`（产物 `frontend/dist/`，不入库，镜像构建时生成）。
-`src/server.js` 的 `frontendDir` 负责把 `/`、`/console`、`/setup`、`/banned` 与 `/assets/*` 交给构建产物；
-没有 `frontend/dist/index.html` 时自动回退到 `web/` 旧页面（旧页面里的设置表单仍由 `web/settings-ui.js` 渲染）。
+`src/server.js` 的 `frontendDir` 负责把 `/`、`/console`、`/setup`、`/banned`、`/assets/*` 与 PWA 根文件
+（`/manifest.webmanifest`、`/icon-*.png`）交给构建产物；没有 `frontend/dist/index.html` 时自动回退到 `web/` 旧页面
+（旧页面里的设置表单仍由 `web/settings-ui.js` 渲染）。
 
 ## 初始化与系统设置
 
