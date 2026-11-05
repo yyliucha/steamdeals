@@ -1851,6 +1851,15 @@ export async function runningSyncRun(q) {
   return r.rows[0] ?? null;
 }
 
+/**
+ * 每个 mode 最近一次开始时间（X 批 P1-1）：调度器重启后用这些值恢复 lastRunMs，
+ * 避免每次发版都把全部任务打回首轮延迟重新计时。调用方负责把 mode 名对齐 job.name。
+ */
+export async function lastSyncRunStartedByMode(q) {
+  const r = await q('select mode, max(started_at) as last from sync_runs group by mode');
+  return r.rows ?? [];
+}
+
 /** 服务启动时把上次中断的 running 记录标成失败，避免按钮永远禁用。 */
 export async function markStaleSyncRuns(q) {
   const r = await q(

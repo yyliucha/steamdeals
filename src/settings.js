@@ -77,17 +77,17 @@ export const SETTINGS = [
     advanced: true,
     help: 'steam-status 任务逐 appid 请求的间隔；与热度/回填共用 Steam 200 次/5 分钟配额。',
   }),
-  def('steamStatus.limit', 'STEAM_STATUS_LIMIT', 'sources', 'Steam 状态判定每轮上限', 'int', 8000, {
+  def('steamStatus.limit', 'STEAM_STATUS_LIMIT', 'sources', 'Steam 状态判定每轮上限', 'int', 12000, {
     min: 1000,
     max: 200000,
     advanced: true,
-    help: 'steam-status 每轮最多判定多少款（steam_checked_at 续跑游标，下轮继续）。默认 8000 ≈ 3.3 小时/天，三周补完 17.5 万条；一次跑满 200000 单轮要 73–80 小时。',
+    help: 'steam-status 每轮最多判定多少款（steam_checked_at 续跑游标，下轮继续）。默认 12000 ≈ 5 小时/天，约两周补完 17.5 万条；一次跑满 200000 单轮要 73–80 小时。',
   }),
-  def('steamStatus.intervalMin', 'STEAM_STATUS_INTERVAL_MIN', 'sources', 'Steam 状态判定间隔（分钟）', 'int', 10080, {
+  def('steamStatus.intervalMin', 'STEAM_STATUS_INTERVAL_MIN', 'sources', 'Steam 状态判定间隔（分钟）', 'int', 1440, {
     min: 0,
     max: 10080,
     advanced: true,
-    help: '每周重判一次；0 可关闭定时任务（手工 node src/cli.js steam-status 仍可用）。',
+    help: '每天重判一次（X 批：原每周 10080 分钟）；0 可关闭定时任务（手工 node src/cli.js steam-status 仍可用）。',
   }),
 
   def('sources.steam.initialDelaySec', 'STEAM_INITIAL_DELAY_SEC', 'sources', 'Steam 价格首轮延迟（秒）', 'int', 600, {

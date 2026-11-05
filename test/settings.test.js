@@ -47,7 +47,9 @@ test('设置定义完整：56 项、7 个密钥、关键分组都在', () => {
   const adult = settings.SETTINGS.find((d) => d.key === 'site.adultDisplay');
   assert.deepEqual(adult.options, ['hide', 'badge', 'show'], '成人内容策略三档');
   const ssl = settings.SETTINGS.find((d) => d.key === 'steamStatus.limit');
-  assert.equal(ssl.default, 8000, 'steam-status 每轮默认 8000（约 3.3 小时/天）');
+  assert.equal(ssl.default, 12000, 'steam-status 每轮默认 12000（约 5 小时/天，X 批）');
+  const ssi = settings.SETTINGS.find((d) => d.key === 'steamStatus.intervalMin');
+  assert.equal(ssi.default, 1440, 'steam-status 默认每天一轮（X 批：原每周）');
 });
 
 test('默认值 + 密钥加密：库里不存明文，公开接口只给 hasValue', async () => {

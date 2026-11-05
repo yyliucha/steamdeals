@@ -367,3 +367,20 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   Steam 自动加购技术上不可行（购物车无 Web API，需网页登录态 = 账号密码 + Steam Guard，越出项目
   "不绕过登录与签名校验"的边界，README:474）。**手机端与 PC 一致**：点进详情 → 跳转 Steam 商店 → 用户自己买。
 - **验收**：见规格 §7（standalone 生效、manifest 字段齐全、断网提示、返回键行为、PC 零变化）。
+
+## X. 调度器长任务阻塞修复（重任务 await 饿死全部任务）
+
+**状态：已实现，待发版（2026-11-05）**（见 [SCHEDULER-BLOCKING-FIX.md](SCHEDULER-BLOCKING-FIX.md)）。
+
+- **现象**：所有者反馈"两天没同步"。生产诊断（2026-11-05）：容器只跑了 1.4 小时（两次发版重启），
+  `steam-prices --limit 200000` 已运行 **91 分钟**；`scheduler-status.json` 的 `updatedAt` 停在启动时刻，
+  **所有任务 `lastRunAt: null`**；日志只有一条 `scheduler.job_start`。
+- **根因**：`src/scheduler.js:536-538` 重任务 `await runJob(job)`，子进程不退出就阻塞整个 tick 循环
+  （`runJob` 只在 exit 时 resolve）→ `sonkwo`(60min)/`gog`/`alerts`/`steam-status` 全部饿死。
+  v1.8.0 的"轻任务并行"只对同一 tick 内已发射的任务有效。
+- **修复**：P0 重任务改"非阻塞发射 + 全局单槽"（保留串行语义、不阻塞 tick）；`steam-status` 加进 `STEAM_HEAVY`；
+  P1 `lastRunMs` 启动时从 `sync_runs` 恢复（避免每次发版重置计时）、`steam-status` 首轮延迟降到 10 分钟、
+  周期改每天、上限 12000（约 2 周补完 17.5 万）；P2 状态文件每 tick 刷新（可观测）。
+- **验收**：长任务运行期间轻任务照常跑；同一时刻只一个重任务；重启后 nextRunAt 不全部重置；status 文件每 15 秒更新。
+- **交接单**：[HANDOVER-X-SCHEDULER.md](HANDOVER-X-SCHEDULER.md)（含改动点、行号、风险与验收命令）。
+- **已确认**：`steam-status` 每天 12000 条；`steam-prices` 本批不动（缩量另行优化）。

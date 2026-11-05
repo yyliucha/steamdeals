@@ -56,13 +56,13 @@ export function jobsFromEnv(env = process.env) {
     },
     {
       name: 'steam-status',
-      // 每周判定一次 Steam 同步状态 + 内容分级（docs/STEAM-SYNC-STATUS-AND-RATING.md）：
+      // 每天判定一次 Steam 同步状态 + 内容分级（docs/STEAM-SYNC-STATUS-AND-RATING.md）：
       // 逐 appid 全量 appdetails（cc=cn 失败补 cc=hk），状态与分级共用同一次请求；
       // 免费已由迁移一次性置位；steam_checked_at 作续跑游标，失败不写游标下轮重试；
-      // 首轮延迟避开热度播种期（热度把每日配额吃满），与其它 Steam 任务互斥串行。
-      args: ['steam-status', '--limit', String(num(env.STEAM_STATUS_LIMIT, 8000)), '--rate', String(num(env.STEAM_STATUS_RATE_MS, 1500))],
-      intervalMin: num(env.STEAM_STATUS_INTERVAL_MIN, 10080),
-      initialDelaySec: num(env.STEAM_STATUS_INITIAL_DELAY_SEC, 21600),
+      // 归入 STEAM_HEAVY 与价格/热度/回填互斥串行；每天 12000 条约 2 周补完 17.5 万条（X 批）。
+      args: ['steam-status', '--limit', String(num(env.STEAM_STATUS_LIMIT, 12000)), '--rate', String(num(env.STEAM_STATUS_RATE_MS, 1500))],
+      intervalMin: num(env.STEAM_STATUS_INTERVAL_MIN, 1440),
+      initialDelaySec: num(env.STEAM_STATUS_INITIAL_DELAY_SEC, 600),
       enabled: env.STEAM_ENABLED !== '0',
     },
     {
@@ -221,7 +221,8 @@ const SYNC_LIKE = new Set(['steam', 'sonkwo', 'itad', 'gog', 'humble', 'discover
 
 // Steam 重任务：与后台手动同步/回填/热度共用配额与槽位，有手动任务在跑时让路。
 // 它们都打 store.steampowered.com/appdetails（200 次/5 分钟配额），必须串行互斥。
-const STEAM_HEAVY = new Set(['steam-prices', 'rename', 'backfill', 'heat', 'catalog']);
+// steam-status 也在其中（X 批）：逐 appid 全量请求，与价格/热度/回填并列重任务槽。
+export const STEAM_HEAVY = new Set(['steam-prices', 'rename', 'backfill', 'heat', 'catalog', 'steam-status']);
 
 // 轻任务：目标站与配额都和重任务独立（杉果国内源、GOG/Humble catalog、备份/日志/提醒/图片），
 // 允许在 heat/steam-prices 等长任务运行时并行执行——否则 heat 首轮播种 9 小时会饿死所有其它源。
@@ -231,6 +232,44 @@ const LIGHT_JOBS = new Set(['sonkwo', 'itad', 'gog', 'humble', 'discover', 'stea
 export function lightConcurrency(env = process.env) {
   const n = Number(env.SCHEDULER_LIGHT_CONCURRENCY ?? 3);
   return Number.isFinite(n) ? Math.min(Math.max(Math.trunc(n), 1), 8) : 3;
+}
+
+/**
+ * 每 tick 的派发计划（纯函数，便于回归测试，X 批 P0-1）：
+ * - 重任务：`heavySlot` 非空或已在 running 时一个都不排（全局单槽，串行互斥）；
+ * - 轻任务：**不受重任务槽影响**（steam-prices 跑 90 分钟期间 sonkwo/alerts 照常发），
+ *   只受 running 去重与 lightMax 并行上限约束；非重非轻的任务（如 prune）不受上限约束（与旧行为一致）。
+ */
+export function planTick({ due, heavySlot = null, running = new Set(), lightMax = 3, heavyJobs = STEAM_HEAVY, lightJobs = LIGHT_JOBS }) {
+  const light = [];
+  const heavy = [];
+  const lightRunning = [...running].filter((name) => lightJobs.has(name)).length;
+  for (const job of due) {
+    if (heavyJobs.has(job.name)) {
+      if (!heavySlot && !running.has(job.name)) heavy.push(job);
+      continue;
+    }
+    if (running.has(job.name)) continue;
+    if (lightJobs.has(job.name) && light.length + lightRunning >= lightMax) continue;
+    light.push(job);
+  }
+  return { light, heavy };
+}
+
+/**
+ * 把 `select mode, max(started_at) group by mode` 的结果行转成 Map(jobName -> ms)（X 批 P1-1）。
+ * 只有 mode 是合法字符串、时间能解析的行才恢复；坏行跳过，绝不阻塞调度器启动。
+ */
+export function lastRunMsFromRows(rows) {
+  const map = new Map();
+  for (const row of rows ?? []) {
+    if (!row || typeof row.mode !== 'string' || !row.mode) continue;
+    // null / 空串 / 非法时间一律视为"没跑过"，不恢复（new Date(null) 是 epoch 0，必须显式挡掉）
+    if (row.last == null || row.last === '') continue;
+    const ms = new Date(row.last).getTime();
+    if (Number.isFinite(ms)) map.set(row.mode, ms);
+  }
+  return map;
 }
 
 /**
@@ -411,8 +450,18 @@ export async function main() {
 
     const startedMs = Date.now();
     const lastRunMs = new Map();
+    // P1-1（X 批）：重启后从 sync_runs 恢复每个 mode 的最近开始时间，避免每次发版重启都
+    // 把全部任务打回首轮延迟计时（6 小时首轮的任务在频繁发版时永远轮不到）。
+    try {
+      const rows = await db.lastSyncRunStartedByMode(q);
+      for (const [name, ms] of lastRunMsFromRows(rows)) lastRunMs.set(name, ms);
+      if (lastRunMs.size) logger.info('scheduler.lastrun_restored', { jobs: [...lastRunMs.keys()] });
+    } catch (err) {
+      logger.warn('scheduler.lastrun_restore_failed', { err: serializeError(err) });
+    }
     const health = new Map(); // job.name -> { failures, openUntil }
     const running = new Set();
+    let heavySlot = null; // 正在跑的 Steam 重任务名（全局单槽，X 批 P0-1：串行但不阻塞 tick）
     const lightMax = lightConcurrency(process.env);
     // chart 后续任务串行链：避免多个 chart 子进程并发写 out/
     let followUpChain = Promise.resolve();
@@ -472,6 +521,27 @@ export async function main() {
         });
     };
 
+    /**
+     * 非阻塞发射一个 Steam 重任务并占用全局单槽（X 批 P0-1）：
+     * tick 循环不再 await 它，子进程结束后才释放槽位——轻任务在它运行期间照常派发。
+     * 槽位释放放在 .finally，completeJob 之外再加一道保险，两个 Steam 重任务并行打配额是红线。
+     */
+    const launchHeavy = (job) => {
+      heavySlot = job.name;
+      running.add(job.name);
+      runJob(job)
+        .then(({ code }) => completeJob(job, code))
+        .catch((err) => {
+          logger.error('scheduler.job_unexpected', { job: job.name, err: serializeError(err) });
+          completeJob(job, -1);
+        })
+        .finally(() => {
+          heavySlot = null;
+          logger.info('scheduler.heavy_slot_released', { job: job.name });
+          wake?.(); // 槽位一空立即唤醒 tick，不用等到下个 sleep 结束
+        });
+    };
+
     if (!jobs.length) logger.warn('scheduler.no_jobs', { hint: '所有任务均被禁用或间隔为 0' });
     logger.info('scheduler.start', {
       jobs: jobs.map((j) => j.name),
@@ -498,21 +568,21 @@ export async function main() {
 
       const now = Date.now();
       const due = dueJobs(jobs, { nowMs: now, startedMs, lastRunMs });
-      const lightRunningCount = () => [...running].filter((name) => LIGHT_JOBS.has(name)).length;
+
+      // 每 tick 的派发计划（X 批 P0-1）：重任务槽被占只挡重任务，轻任务照常发。
+      const plan = planTick({ due, heavySlot, running, lightMax });
 
       // 1) 轻任务：非阻塞并行发射（上限 lightMax）。heat/steam-prices 等长任务运行时它们照常跑，
-      //    不会出现"heat 首轮播种 9 小时饿死杉果/GOG"这类排队。
-      for (const job of due) {
+      //    不会出现"steam-prices 90 分钟饿死杉果/提醒"这类排队。
+      for (const job of plan.light) {
         if (stopping) break;
-        if (STEAM_HEAVY.has(job.name) || running.has(job.name)) continue;
-        if (lightRunningCount() >= lightMax) break;
         launch(job, now);
       }
 
-      // 2) Steam 重任务：严格串行，且与后台手动同步/回填互斥（appdetails 200 次/5 分钟配额）。
-      for (const job of due) {
+      // 2) Steam 重任务：非阻塞发射 + 全局单槽（heavySlot 被占时本 tick 不再派发新的）。
+      for (const job of plan.heavy) {
         if (stopping) break;
-        if (!STEAM_HEAVY.has(job.name) || running.has(job.name)) continue;
+        if (heavySlot) break;
 
         // 后台手动回填/同步也写 sync_runs；让 Steam 重任务等它结束再执行，避免并行冲击 Steam。
         const activeSync = await db.runningSyncRun(q).catch(() => null);
@@ -533,11 +603,12 @@ export async function main() {
           continue;
         }
 
-        running.add(job.name);
-        const { code } = await runJob(job);
-        completeJob(job, code);
+        launchHeavy(job);
       }
       if (stopping) break;
+      // P2（X 批）：状态文件每个 tick 都写一次，updatedAt 才能反映调度器存活
+      // （此前只在启动与任务完成时写，长任务运行期间看起来像卡死）。
+      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS });
       await sleepInterruptible(TICK_MS);
     }
 

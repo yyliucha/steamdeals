@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency } from '../src/scheduler.js';
+import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows } from '../src/scheduler.js';
 
 test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），默认 3，非法回落默认', () => {
   assert.equal(lightConcurrency({}), 3);
@@ -22,7 +22,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   const interval = (name) => jobs.find((j) => j.name === name).intervalMin;
   assert.equal(interval('steam-prices'), 1440, 'Steam 价格默认每天刷新');
   assert.equal(interval('heat'), 1440, '热度默认每天刷新（首轮自动播种，之后刷过期条目）');
-  assert.equal(interval('steam-status'), 10080, 'Steam 状态判定默认每周一次');
+  assert.equal(interval('steam-status'), 1440, 'Steam 状态判定默认每天一次（X 批）');
   assert.equal(interval('rename'), 10080, '重写名字默认每周一次');
   assert.equal(interval('backfill'), 10080, '增量回填默认每周一次');
   assert.equal(interval('prune'), 10080, '清理默认每周一次');
@@ -40,7 +40,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.deepEqual(args('images'), ['images', 'pull', '--limit', '200', '--sleep', '300']);
   assert.deepEqual(args('steam-prices'), ['sync', 'steam-prices', '--limit', '200000']);
   assert.deepEqual(args('heat'), ['heat', '--limit', '20000', '--sleep', '1700']);
-  assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '8000', '--rate', '1500']);
+  assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '12000', '--rate', '1500']);
   assert.deepEqual(args('rename'), ['rename', '--limit', '200000', '--batch', '100', '--sleep', '1500']);
   assert.deepEqual(args('backfill'), ['backfill', '--limit', '20000', '--batch', '100', '--sleep', '3000']);
   assert.deepEqual(args('prune'), ['prune']);
@@ -293,4 +293,63 @@ test('状态文件：从未跑过的任务 nextRunAt 按首轮延迟计算，跑
   } finally {
     rmSync(file, { force: true });
   }
+});
+
+test('X 批：steam-status 归入重任务集合（与价格/热度/回填共用单槽，串行互斥）', () => {
+  assert.ok(STEAM_HEAVY.has('steam-status'), 'steam-status 必须走重任务槽');
+  assert.ok(STEAM_HEAVY.has('steam-prices'));
+  assert.ok(STEAM_HEAVY.has('heat'));
+  assert.ok(!STEAM_HEAVY.has('sonkwo'), '杉果仍是轻任务');
+  assert.ok(!STEAM_HEAVY.has('alerts'), '提醒仍是轻任务');
+});
+
+test('X 批：重任务占用单槽期间轻任务照常派发（P0-1 回归）', () => {
+  const key = '0123456789ABCDEF';
+  const due = jobsFromEnv({ STEAM_API_KEY: key });
+  const running = new Set(['steam-prices']);
+  const plan = planTick({ due, heavySlot: 'steam-prices', running, lightMax: 12 });
+  assert.equal(plan.heavy.length, 0, '重任务槽被占时不再排新的重任务');
+  const lightNames = plan.light.map((j) => j.name);
+  assert.ok(lightNames.includes('sonkwo'), 'steam-prices 跑 90 分钟期间 sonkwo 不被饿死');
+  assert.ok(lightNames.includes('alerts'), 'alerts 不被饿死');
+  assert.ok(lightNames.includes('steam-accounts'), 'steam-accounts 不被饿死');
+  assert.ok(lightNames.includes('gog'), 'gog 不被饿死');
+  assert.ok(plan.light.every((j) => !STEAM_HEAVY.has(j.name)), '轻任务列表不含重任务');
+  assert.ok(!lightNames.includes('steam-prices'), '运行中的任务不重复派发');
+
+  const plan2 = planTick({ due, heavySlot: null, running: new Set(), lightMax: 3 });
+  assert.ok(plan2.heavy.some((j) => j.name === 'steam-prices'), '空槽时重任务可派发');
+  assert.ok(plan2.heavy.some((j) => j.name === 'steam-status'), 'steam-status 走重任务槽');
+
+  // 并行上限只约束轻任务：lightMax=1 时只发一个轻任务（prune 非重非轻，不受上限）
+  const plan3 = planTick({ due, heavySlot: 'heat', running: new Set(['heat']), lightMax: 1 });
+  const lightJobs3 = plan3.light.filter((j) =>
+    ['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'backup', 'logs', 'alerts', 'images'].includes(j.name),
+  );
+  assert.equal(lightJobs3.length, 1, 'lightMax=1 只发一个轻任务');
+  assert.equal(plan3.heavy.length, 0, 'heat 占槽时不排其它重任务');
+});
+
+test('X 批：重启后 lastRunMs 从 sync_runs 恢复，坏行跳过', () => {
+  const map = lastRunMsFromRows([
+    { mode: 'steam-prices', last: '2026-11-05T04:00:00Z' },
+    { mode: 'steam-status', last: '2026-11-05T03:00:00Z' },
+    { mode: 'sonkwo', last: null },
+    { mode: 'heat', last: 'not-a-date' },
+    { mode: 42, last: '2026-11-05T02:00:00Z' },
+    { mode: '', last: '2026-11-05T02:00:00Z' },
+  ]);
+  assert.equal(map.get('steam-prices'), Date.parse('2026-11-05T04:00:00Z'));
+  assert.equal(map.get('steam-status'), Date.parse('2026-11-05T03:00:00Z'));
+  assert.equal(map.has('sonkwo'), false, 'null 视为没跑过，不恢复');
+  assert.equal(map.has('heat'), false, '非法时间不恢复');
+  assert.equal(map.has('42'), false, 'mode 必须是字符串');
+  assert.equal(map.has(''), false, '空 mode 不恢复');
+
+  // 恢复后按"最近一次 + 间隔"计时，而不是从头按首轮延迟
+  const jobs = [{ name: 'steam-prices', intervalMin: 1440, initialDelaySec: 600 }];
+  const due = dueJobs(jobs, { nowMs: Date.parse('2026-11-05T04:00:00Z') + 59 * 60_000, startedMs: 0, lastRunMs: map });
+  assert.equal(due.length, 0, '恢复的任务没有到点不重跑');
+  const due2 = dueJobs(jobs, { nowMs: Date.parse('2026-11-05T04:00:00Z') + 1440 * 60_000, startedMs: 0, lastRunMs: map });
+  assert.equal(due2.length, 1, '到间隔后才重跑');
 });

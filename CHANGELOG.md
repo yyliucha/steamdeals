@@ -2,6 +2,29 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+
+- **调度器长任务阻塞（X 批，docs/SCHEDULER-BLOCKING-FIX.md）**：
+  - Steam 重任务改为「非阻塞发射 + 全局单槽」（`heavySlot`）：tick 循环不再 `await runJob(job)`，
+    `steam-prices` 跑 90 分钟期间 `sonkwo`/`gog`/`alerts`/`steam-accounts` 等轻任务照常派发；
+    槽位在 `.finally` 里释放并 `wake()` 立即唤醒，两个重任务并行打配额是红线（`scheduler.heavy_slot_released` 可观测）；
+  - `steam-status` 归入 `STEAM_HEAVY`（此前走轻任务分支，会与价格/热度并行打 Steam 配额）；
+  - 启动时从 `sync_runs` 按 mode 恢复 `lastRunMs`：发版重启不再把全部任务打回首轮延迟重新计时；
+  - `data/scheduler-status.json` 每个 tick 刷新，`updatedAt` 能反映调度器存活。
+
+### 变更
+
+- `steam-status` 节奏（X 批已确认）：首轮延迟 6 小时 → **10 分钟**、周期每周 → **每天**、每轮上限 8000 → **12000**
+  （约 5 小时/天，约两周补完 17.5 万条）。`steamStatus.limit`/`steamStatus.intervalMin` 设置项默认值同步改；
+  **线上若曾在系统设置页保存过旧值，需在「系统设置」里确认/重置这两项**（设置优先级：数据库 > 环境变量 > 默认值）。
+
+### 测试
+
+- `test/scheduler.test.js` 22 项（+4）：`steam-status` ∈ `STEAM_HEAVY`、重任务占槽期间轻任务照常派发
+  （`planTick`）、`lastRunMs` 恢复（坏行跳过、按间隔计时）；`test/settings.test.js` 默认值断言同步。
+
 ## [1.16.0] - 2026-11-05
 
 ### 新增

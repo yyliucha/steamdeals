@@ -134,13 +134,15 @@ docker exec steamdeals node -p "require('./package.json').version"   # 期望输
 | `sync catalog` | 每周 | Steam 全量目录同步（幂等），**新游戏自动进库**；需 `STEAM_API_KEY`，没配则该任务不出现 |
 | `backfill` 增量回填 | 每周 | 给新游戏补元数据/说明/价格；有说明+报价的自动跳过，没活秒退（`STEAM_BACKFILL_LIMIT` 默认 20000） |
 | `heat` 热度回填 | **每天**（v1.4.3 起） | 首轮自动全量播种（每天 2 万款 ≈ 9.4h，19.6 万款约 10 天播完）；之后只刷"过期 7 天且有报价"的条目 |
+| `steam-status` 状态判定 | **每天**（X 批：原每周） | 逐 appid 全量 appdetails 判定同步状态 + 内容分级（`steam_checked_at` 续跑游标，失败不推游标）；每轮 **12000** 条 ≈ 5 小时，约两周补完 17.5 万条；归入 Steam 重任务槽，与价格/热度/回填互斥串行（X 批：原每轮 8000、首轮延迟 6 小时） |
 | `rename` 名字重写 | 每周 | 机器英文名补中文（英文挪进 name_en）；选择条件自带收敛，没活秒退 |
 | `steam-accounts` | 每天 | 所有已绑定 Steam 账号的库 + 愿望单同步（差集删除、愿望单→自动提醒）；需 `STEAM_API_KEY`，账号间串行 ≥1s，单账号失败隔离 |
 | `steam-claim`（可选） | 每天 | 仅在 compose 配置 `STEAM_CLAIM_USERNAME` + `STEAM_CLAIM_STEAM_ID` 时出现：把历史未归属账号认领给该用户（幂等，认领后可删配置） |
 | `prune` 定期清理 | 每周 | 访问记录 180 天 / 采集与任务 90 天 / 验证码 7 天 |
 | `images pull` / `backup` / `alerts` | 定时 | 封面缓存 / 每日备份 / 到价提醒 |
 
-Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**互斥**，不会并行抢限流；
+Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手动任务**互斥**，不会并行抢限流；
+调度器主循环不再被重任务阻塞（X 批），价格刷新跑 90 分钟期间杉果/GOG/提醒等轻任务照常执行。
 `rename` / `backfill` 成功后自动重建静态页。
 
 **仍需手工**：`/setup` 首次初始化（一次性）、`diagnose`、`proxy-check`（排查工具，出问题才用）。
@@ -185,6 +187,14 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
 ### 当前状态（2026-11-05 更新，v1.16.0 已发布：手机端 PWA）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
+
+- **待发版：X 批「调度器长任务阻塞修复」**（2026-11-05 已提交 main，等「构建 vX.Y.Z」指令）：
+  重任务改「非阻塞发射 + 全局单槽」（tick 不再被 `steam-prices` 阻塞 90 分钟）、`steam-status` 归入
+  `STEAM_HEAVY`、启动从 `sync_runs` 恢复 `lastRunMs`、状态文件每 tick 刷新；`steam-status` 节奏改为
+  首轮 10 分钟 / 每天 / 每轮 12000。规格见 [SCHEDULER-BLOCKING-FIX.md](SCHEDULER-BLOCKING-FIX.md)。
+  **上线时注意**：`steamStatus.limit` / `steamStatus.intervalMin` 是落库设置，线上若已在页面保存过旧值
+  （8000 / 10080），需在「系统设置」里确认/重置为 12000 / 1440；部署后观察一轮 `scheduler.job_start`
+  序列确认轻任务不再被饿死。
 
 - **v1.16.0 已发布**（tag `v1.16.0`）：手机端 PWA——standalone 全屏（manifest + 192/512 图标，512 maskable）、
   断网统一提示「网络不可用，请检查连接后重试」可重试、Android 返回键先关浮层（`useBackGuard`）、
