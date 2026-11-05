@@ -191,6 +191,8 @@ Steam 重任务（价格/目录/回填/热度/改名）与后台手动任务**�
   版本检查与「已更新」提示（`useVersionGuard`：启动记基线 + `visibilitychange` 比对 `/api/site`，
   默认只提示不自动刷新，离线静默跳过）；**不做** service worker / 离线缓存 / 推送 / 购物车。
   验证：`npm test` 49 个文件 419 项全绿 / `node test/api.test.js` 22 项全绿 / `frontend:build` / `scan` 干净。
+  CI：`docker-hub` run 41972177950（test/smoke/publish 全绿）、`docker-tcr` run 41972178047
+  （`build-push-action` 与 `Verify manifests` 均 success），两个镜像源均已推送。
   规格见 [MOBILE-PWA.md](MOBILE-PWA.md)。**服务器部署待执行**（按本文第 4 节升级到 `1.16.0`；
   部署侧需确认 nginx 未对 HTML 加 `expires`/`proxy_cache`，见规格 §2.1）；
   真机验收（添加主屏幕 / 更新提示 / 离线不误报）随部署执行。
