@@ -191,7 +191,9 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 - **v1.16.1 已发布**（tag `v1.16.1`）：X 批「调度器长任务阻塞修复」——重任务改「非阻塞发射 + 全局单槽」
   （tick 不再被 `steam-prices` 阻塞 90 分钟）、`steam-status` 归入 `STEAM_HEAVY`、启动从 `sync_runs` 恢复
   `lastRunMs`、状态文件每 tick 刷新；`steam-status` 节奏改为首轮 10 分钟 / 每天 / 每轮 12000。
-  验证：`npm test` 49 个文件 422 项全绿 / `frontend:build` / `scan` 干净。
+  验证：`npm test` 49 个文件 422 项全绿 / `node test/api.test.js` 22 项全绿 / `frontend:build` / `scan` 干净。
+  CI：`docker-hub` run 41989284328（test/smoke/publish 全绿）、`docker-tcr` run 41989284397
+  （`build-push-action` 与 `Verify manifests` 均 success），两个镜像源均已推送。
   规格见 [SCHEDULER-BLOCKING-FIX.md](SCHEDULER-BLOCKING-FIX.md)。**服务器部署待执行**（按本文第 4 节升级到 `1.16.1`）。
   **上线时注意**：`steamStatus.limit` / `steamStatus.intervalMin` 是落库设置，线上若已保存过旧值（8000 / 10080），
   需在「系统设置」里确认/重置为 12000 / 1440；部署后观察一轮 `scheduler.job_start` 序列确认轻任务不再被饿死。
