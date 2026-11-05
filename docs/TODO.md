@@ -354,7 +354,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## W. 手机端 PWA（像 App 一样打开）
 
-**状态：已实现（含版本检查），待发版（2026-11-05）**（见 [MOBILE-PWA.md](MOBILE-PWA.md)）；Android 真机「添加到主屏幕 / 更新提示 / 离线不误报」验收待部署后执行。
+**状态：已实现并发布 v1.16.0（2026-11-05）**（见 [MOBILE-PWA.md](MOBILE-PWA.md)）；Android 真机「添加到主屏幕 / 更新提示 / 离线不误报」验收待服务器部署后执行。
 
 - **目标**：手机上"添加到主屏幕"后全屏运行，像 App；**不上架、不打 APK、不引入 Android 工具链**。
 - **做**：`manifest.webmanifest`（standalone + 192/512 图标 + theme-color）、`index.html` 引用、

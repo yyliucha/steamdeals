@@ -2,6 +2,37 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.16.0] - 2026-11-05
+
+### 新增
+
+- **手机端 PWA（docs/MOBILE-PWA.md）**：`manifest.webmanifest`（`standalone` + `portrait`，主题色对齐暗色 token）
+  与 192/512 图标（512 声明 `any maskable`，由 `web/favicon.svg` 导出）；`index.html` 补 manifest /
+  theme-color / apple-mobile-web-app-* / apple-touch-icon。手机浏览器「添加到主屏幕」后全屏运行、无地址栏；
+  购买仍跳 Steam 商店，**不做购物车、不做站内购买**。
+- **统一网络失败提示**：`frontend/src/utils/network.js` 包装 fetch，断网/超时统一换成语义化错误
+  「网络不可用，请检查连接后重试」；App.vue 顶部提示条 + 首页列表空态可重试；**不做离线缓存**，
+  没有 service worker（避免"看到旧页面"）。
+- **Android 返回键先关浮层**：`frontend/src/composables/useBackGuard.js` 以 `history.pushState`/`popstate`
+  管理浮层栈——详情弹窗、筛选抽屉、站点通知、登录、愿望单弹窗打开时入栈，返回键只关最上层；
+  仅手机结构生效，PC 端浏览器返回保持原行为。
+- **版本检查与「已更新」提示（§2.1 半自动更新）**：`frontend/src/composables/useVersionGuard.js`
+  启动时记 `/api/site` 的 `version` 基线，`visibilitychange` 切回前台再查，不一致 → 顶部提示
+  「已更新到 vX.Y.Z，点击刷新」（全局唯一、可关闭）；`AUTO_RELOAD=false` 默认不自动刷新，
+  避免丢弹窗/表单状态；离线或请求失败静默跳过、不误报。
+
+### 变更
+
+- `src/server.js` 的 `serveFrontendStatic` 把 `/manifest.webmanifest` 与 `/icon-*.png` 交给 `frontendDir`
+  （此前会落到 `outDir` → 404，导致「添加到主屏幕」静默失效）；补 `.webmanifest` 的 MIME。
+- `frontend/src/utils/network.js` 导出 `rawFetch`：版本探测这类后台请求失败不点亮全局断网提示条。
+
+### 测试
+
+- 新增 `test/pwa.test.js`（9 项）接入主链：manifest 字段齐全、图标存在且 PNG 尺寸正确、
+  `index.html` 引用完整、前端无 serviceWorker 注册、服务端 PWA 根文件路由、版本比较纯函数
+  （相等/不等/首次为空）、断网提示与 AbortError 不误报。
+
 ## [1.15.2] - 2026-11-04
 
 ### 修复
