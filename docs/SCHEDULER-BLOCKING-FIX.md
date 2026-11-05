@@ -1,6 +1,6 @@
-# 调度器长任务阻塞修复（已实现，待发版）
+# 调度器长任务阻塞修复（已发布 v1.16.1）
 
-> 状态：**已实现，待发版（2026-11-05）**；已提交 main，等「构建 vX.Y.Z」指令。
+> 状态：**已实现并发布 v1.16.1（2026-11-05）**；tag `v1.16.1` 已推送，镜像构建见 CI。
 > 关联：[DELIVERY.md](DELIVERY.md)（数据任务与自动化）、[PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md)、
 > [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md)（`steam-status` 任务）、
 > [TODO.md](TODO.md)。

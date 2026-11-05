@@ -2,7 +2,7 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [1.16.1] - 2026-11-05
 
 ### 修复
 
@@ -22,7 +22,7 @@
 
 ### 测试
 
-- `test/scheduler.test.js` 22 项（+4）：`steam-status` ∈ `STEAM_HEAVY`、重任务占槽期间轻任务照常派发
+- `test/scheduler.test.js` 22 项（+3）：`steam-status` ∈ `STEAM_HEAVY`、重任务占槽期间轻任务照常派发
   （`planTick`）、`lastRunMs` 恢复（坏行跳过、按间隔计时）；`test/settings.test.js` 默认值断言同步。
 
 ## [1.16.0] - 2026-11-05
