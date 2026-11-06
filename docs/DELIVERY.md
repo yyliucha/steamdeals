@@ -195,7 +195,9 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   数据任务全部写 `sync_runs`、重任务排队可观测（`job_wait_slot`/`job_wait_end` + 面板「等待」）、
   后台任务表「上次结果/耗时/失败原因」三列、`/api/admin/sync/status` 带 `warnings`（缺 Key/被关闭任务显式提示）。
   验证：`npm test` 56 个文件全绿 / `frontend:build` / `scan` 干净。
-  CI：待补（发布后）。**服务器部署待执行**（按本文第 4 节升级到 `1.18.0`）；
+  CI：`docker-hub` run 42188621967（test/smoke/publish 全绿）、`docker-tcr` run 42188622023
+  （`build-push-action` 与 `Verify manifests` 均 success），两个镜像源均已推送。
+  **服务器部署待执行**（按本文第 4 节升级到 `1.18.0`）；
   部署后按 [QA-AE-AF-AG-AC1.md](QA-AE-AF-AG-AC1.md) 的 5 项「需人工确认」验收。
 
 - **v1.17.0 已发布**（tag `v1.17.0`）：AD 批「搜索支持中英文（含平台中文别名）」——搜索三源命中
