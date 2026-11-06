@@ -192,7 +192,9 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   `.json` 导致的 0 写入、写入不可静默（`wrote` 只计真写入 + `skip_write`/`write_miss` 日志 + 全跳过报错）、
   限速按每请求计、429 立即收轮、整轮复用连接、每轮写 `sync_runs`；补 `steamStatus.initialDelaySec` 设置项（原 Y 批）、
   `steamStatus.limit` 默认 12000→6000。验证：`npm test` 51 个文件全绿 / `frontend:build` / `scan` 干净。
-  CI：待补（发布后）。**服务器部署待执行**（按本文第 4 节升级到 `1.16.4`）；
+  CI：`docker-hub` run 42177725546（test/smoke/publish 全绿）、`docker-tcr` run 42177725483
+  （`build-push-action` 与 `Verify manifests` 均 success），两个镜像源均已推送。
+  **服务器部署待执行**（按本文第 4 节升级到 `1.16.4`）；
   部署后请同步「系统设置 → 数据源与采集」里的 `steamStatus.limit` 为 6000（库值覆盖代码默认），
   并跑 `--limit 20` 抽查 `steam_status`/`steam_checked_at` 真的写入。
 
