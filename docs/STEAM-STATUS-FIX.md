@@ -1,6 +1,6 @@
 # Steam 状态判定修复：JSON 取错导致整轮静默不写库（已确认待开发）
 
-> 状态：**已实现待发版（代码提交 e432d2f，2026-11-06；质检通过后随下一版发布）**。
+> 状态：**已实现并发布 v1.16.4（2026-11-06）**。
 > 关联：[STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md)（V 批 / `steam-status` 任务）、
 > [SCHEDULER-BLOCKING-FIX.md](SCHEDULER-BLOCKING-FIX.md)（X 批，调度器）、[TODO.md](TODO.md) 的 AB 条目。
 

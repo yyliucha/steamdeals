@@ -2,6 +2,28 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.16.4] - 2026-11-06
+
+### 修复
+
+- **Steam 状态判定整轮静默不写库（AB 批，docs/STEAM-STATUS-FIX.md）**：
+  - 根因：取 appdetails 条目时少取 `.json`（`res[appid]` 应为 `res.json[appid]`）→ 两个 entry 恒为 undefined
+    → 状态判定全空 → 整轮请求 200 但 **0 行写入**，且无任何失败日志；
+  - 写入不可静默：`wrote` 只统计真的写进库的行；判定不了记 `steam-status.skip_write`（debug）、
+    写库未命中记 `steam-status.write_miss`（warn）；本轮全部没写入直接抛错，不再静默"成功"；
+  - 限速按「每个请求」计（cn/hk 各 sleep 一次，非 429 的 4xx 也 sleep）；撞 429 立即收轮，不再睡 30 分钟空转；
+  - 整轮复用数据库连接（原每条新建连接池）；每轮写 `sync_runs`（后台「同步记录」可观测）；
+  - 空数组/空对象不再覆盖已有分级；`content_descriptors` 补显式 `::int[]`。
+- **补 `steamStatus.initialDelaySec` 设置项（原 Y 批并入）**：`STEAM_STATUS_INITIAL_DELAY_SEC`，默认 600 秒，
+  可在「系统设置」调整；`steamStatus.limit` 默认 **12000 → 6000**（约 5 小时/轮，避免单轮拖过夜撞配额）。
+  **注意：库里已保存的 12000 会覆盖默认值，部署后需在系统设置里同步改。**
+
+### 测试
+
+- `test/steam-status.test.js` 新增 3 项：appid 不在库 → 写入未命中不算成功、空数组/空 ratings 不清空已有分级、
+  `runSteamStatusRound` 一轮四态（取 `.json` 写入 / 无条目跳过不写库 / 4xx 继续 / 429 立即收轮）；
+  `test/scheduler.test.js` 新增 env 覆盖用例；`test/settings.test.js` 57 项定义 + 水合断言。
+
 ## [1.16.3] - 2026-11-06
 
 ### 修复

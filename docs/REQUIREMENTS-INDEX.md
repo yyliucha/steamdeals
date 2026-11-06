@@ -25,8 +25,8 @@
 
 | 编号 | 主题 | 规格 | 状态 | 开发描述 |
 |---|---|---|---|---|
-| **AB** | Steam 状态判定整轮静默不写库（JSON 取错） | [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md) | 已实现待发版（e432d2f，待质检） | ✅ 已在对话给出 |
-| **Y** | 补 `steamStatus.initialDelaySec` 设置项 | 并入 [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md) §3-F | 已实现待发版（随 AB，e432d2f） | 随 AB |
+| **AB** | Steam 状态判定整轮静默不写库（JSON 取错） | [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md) | 已发布 v1.16.4 | ✅ 已在对话给出 |
+| **Y** | 补 `steamStatus.initialDelaySec` 设置项 | 并入 [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md) §3-F | 已发布 v1.16.4（随 AB） | 随 AB |
 | **AD** | 搜索支持中英文（含平台中文别名） | [SEARCH-I18N.md](SEARCH-I18N.md) | 待开发（决策已确认） | ✅ 已在对话给出 |
 | **AA** | 添加愿望单推送失败 | [WISHLIST-FIX.md](WISHLIST-FIX.md) | 待排查（等 `wishlist_add_failed` 日志） | ❌ 等根因 |
 | **AC** | 同步不可达的未保证项（AC1–AC11） | [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) | 待决策（§5 的 Q1–Q5 未答） | ❌ 待决策 |
