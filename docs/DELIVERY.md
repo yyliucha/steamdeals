@@ -211,6 +211,14 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   frontend:build、scan 干净；1 项真机人工确认：真实邮箱客户端 HTML 渲染）。
   规格见 [USER-LIFECYCLE.md](USER-LIFECYCLE.md)。
 
+- **待发版：AM-1 批「Steam 代理池后端」**（2026-11-06 已提交 main，等「构建 vX.Y.Z」指令）：
+  `network.steamProxy` 支持多条（换行/逗号、去重、≤10，老单行 = 1 条且行为不变）；同请求内代理层失败自动换下一条
+  （连不上/超时/TLS/CONNECT 4xx/5xx），HTTP 5xx/429 不切换；失败冷却 60s/5min/30min、成功粘住；
+  全部失败抛 `PROXY_ALL_FAILED` 不回退直连；健康状态落 `data/proxy-health.json`（sha256 key、原子写、跨子进程）；
+  `GET /api/admin/proxies`（仅管理员，脱敏）；diagnose 输出池状态。测试断言「第 2 次尝试代理 ≠ 第 1 次」+
+  反例自检（nextCandidate 恒返第一条 → 套件变红）。规格见 [PROXY-POOL.md](PROXY-POOL.md)。
+  注意：AM-2（设置页列表编辑器 + 健康状态表）已解锁为待开发，属下一批。
+
 - **v1.18.0 已发布**（tag `v1.18.0`）：AE/AF/AG/AC-1 四批——版本徽标按服务器 IP 选镜像仓库
   （ipinfo.io 定位 → 大陆/香港优先 TCR、其他优先 Hub，401 换 token、双失败回退 GitHub，结果带 source/region）；
   搜索态写操作后列表立刻刷新（先失效 30 秒搜索缓存）；后台「游戏管理」平台链接抽屉（`/api/admin/games/:id/links`
