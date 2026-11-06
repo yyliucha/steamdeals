@@ -57,6 +57,9 @@ test('删除成功：级联清理 + 手动清 steam_games/steam_wishlist + 审�
     await q('insert into user_wishlist (user_id, game_id) values ($1, $2)', [bob.id, game]);
     await q("insert into sessions (token, user_id, expires_at) values ('tok-bob', $1, now() + interval '1 day')", [bob.id]);
     await q('insert into user_prefs (user_id) values ($1)', [bob.id]);
+    await q('insert into user_game_flags (user_id, game_id, interested) values ($1, $2, true)', [bob.id, game]);
+    const notice = (await q("insert into announcements (title, body, active) values ('测试公告', 'x', true) returning id")).rows[0].id;
+    await q('insert into announcement_reads (user_id, announcement_id) values ($1, $2)', [bob.id, notice]);
 
     const result = await db.deleteUserAudited(q, {
       username: 'bob',
@@ -72,6 +75,8 @@ test('删除成功：级联清理 + 手动清 steam_games/steam_wishlist + 审�
     assert.equal((await q("select count(*)::int as n from users where username='bob'")).rows[0].n, 0);
     assert.equal((await q("select count(*)::int as n from sessions where token='tok-bob'")).rows[0].n, 0, '会话立即失效（级联）');
     assert.equal((await q('select count(*)::int as n from user_prefs where user_id = $1', [bob.id])).rows[0].n, 0);
+    assert.equal((await q('select count(*)::int as n from user_game_flags where user_id = $1', [bob.id])).rows[0].n, 0, '游戏标记级联清理');
+    assert.equal((await q('select count(*)::int as n from announcement_reads where user_id = $1', [bob.id])).rows[0].n, 0, '公告已读级联清理');
     assert.equal((await q('select count(*)::int as n from user_wishlist where user_id = $1', [bob.id])).rows[0].n, 0);
     assert.equal((await q("select count(*)::int as n from steam_accounts where steam_id='76561198000000001'")).rows[0].n, 0);
     // 两张没有外键的表必须手动清掉，否则留孤儿行
