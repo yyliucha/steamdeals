@@ -708,4 +708,18 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **现状**：`route` 在重试循环外算一次（`http.js:186`），代理挂了两条重试也还是撞同一台；配置是单个 secret 字符串。
 - **验收**：见规格 §7。
 
+## AN. 待开发：未保存修改的离开提醒
+
+**状态：待开发**
+**依赖：** 无
+**解锁：** 无
+**规格**：[UNSAVED-GUARD.md](UNSAVED-GUARD.md)
+
+- **需求**：编辑过（系统设置 / 邮件配置 / 站点通知 / 编辑游戏 / 新建用户）之后切菜单或离开页面，弹窗提示：
+  「还有没保存的修改」→「…还有修改没保存，离开后会丢失。要先保存吗？」按钮 **保存并离开 / 放弃修改 / 留在本页**。
+- **方案**：新增 `useUnsavedGuard.js` + 全局 `UnsavedLeaveDialog.vue`（挂 App.vue）；五个面注册 `{label, isDirty, save}`；
+  拦截点是 `Console.select()` 与 `router.beforeEach`；**刷新/关闭不拦**，401/退出登录不拦。
+- **验收**：见规格 §6。
+
+
 
