@@ -2,6 +2,37 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.18.0] - 2026-11-06
+
+### 新增
+
+- **版本徽标按服务器 IP 选镜像仓库（AE 批，docs/VERSION-SOURCE.md）**：`detectRegion()`（`ipinfo.io`，
+  2s 超时、成功缓存 24h / 失败 10min）→ 大陆/香港优先腾讯云 TCR、其他地区优先 Docker Hub
+  （两仓库都走匿名 token，401 换新 token 重试；tag 无 `v` 前缀、过滤 `X.Y.Z` 取最大）；
+  首选失败回退另一仓库、双失败回退 GitHub；结果带 `source`/`region`；成功缓存 6h / 全失败 10min。
+- **后台平台链接抽屉 + 游戏名复制（AG 批，docs/ADMIN-PLATFORM-LINKS.md）**：后台「游戏管理」新增
+  「链接」列（`link_count`，只计 http/https），点击打开抽屉按需加载该游戏全部平台链接
+  （`GET /api/admin/games/:id/links`，按平台/区服排序、`javascript:` 过滤、无链接但有 AppID 给 Steam 兜底）；
+  后台游戏名/AppID 与前台卡片/详情标题点击复制（`frontend/src/utils/clipboard.js`：clipboard API +
+  `execCommand` 降级，HTTP 环境可用）。
+- **同步观测与任务健康（AC-1 批，docs/SYNC-FAILURE-MODES.md §6）**：heat/rename/backfill/discover/images/
+  backup/prune/alerts/report/logs-prune 全部写 `sync_runs`（后台「同步记录」可见）；重任务排队可观测
+  （`scheduler.job_wait_slot`/`job_wait_end` 日志 + 状态文件 `waitingFor`）；后台任务表新增「上次结果 /
+  耗时 / 失败原因 / 等待」列；`/api/admin/sync/status` 返回 `warnings`（缺 `STEAM_API_KEY` 或被
+  `*_ENABLED=0` 关闭的任务），「同步与回填」页顶部显式提示。
+
+### 修复
+
+- **搜索态写操作后列表不刷新（AF 批，docs/FRONTEND-STALE-LIST.md）**：加/删愿望单、切换感兴趣/已拥有
+  标记、取消提醒成功后先失效 30 秒搜索缓存再重拉列表（`invalidateSearchCache()`），不再"点了没反应"；
+  无搜索词与缓存能力不变。
+
+### 测试
+
+- 新增 `test/frontend-search-cache.test.js`（6 项静态断言）与 `test/admin-games.test.js`（3 项 HTTP 级）；
+  `test/version.test.js` 新增 7 项（CN→TCR / US→Hub / 401 换 token / geo 降级 / 缓存 / tag 过滤）；
+  `test/scheduler.test.js` 新增 2 项（auditJobs / 状态文件健康字段）；主链 56 个文件全绿。
+
 ## [1.17.0] - 2026-11-06
 
 ### 新增
