@@ -404,9 +404,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **交接单**：[HANDOVER-X-SCHEDULER.md](HANDOVER-X-SCHEDULER.md)（含改动点、行号、风险与验收命令）。
 - **已确认**：`steam-status` 每天 12000 条；`steam-prices` 本批不动（缩量另行优化）。
 
-## Y. ~~待开发：补 `steamStatus.initialDelaySec` 设置项~~ → **已并入 AB 批，已实现待发版（e432d2f）**
+## Y. ~~待开发：补 `steamStatus.initialDelaySec` 设置项~~ → **已并入 AB 批，质检通过（e432d2f）**
 
-**状态：已实现待发版（e432d2f，随 AB 批）**（见 [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md) §3-F）。
+**状态：质检通过（e432d2f，随 AB 批）**（见 [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md) §3-F）。
 
 - **背景**：X 批（v1.16.1）把 `steam-status` 首轮延迟默认值从 21600s 改成 600s，但**只改代码默认、没加设置项**。
   其他任务都有（`sources.steam/sonkwo/itad/gog/humble/discover.initialDelaySec`），`steam-status` 漏了 →
@@ -463,9 +463,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   3. 确认账号是否配置 API Key、Steam OpenID 是否仍有效；
   4. 区分「站内入库失败」与「入库成功但推 Steam 失败」——两者用户感知相似但根因不同。
 
-## AB. ~~待开发：Steam 状态判定整轮静默不写库（JSON 取错）~~ → **已实现待发版（e432d2f，2026-11-06）**
+## AB. ~~待开发：Steam 状态判定整轮静默不写库（JSON 取错）~~ → **质检通过（e432d2f，2026-11-06）**
 
-**状态：已实现待发版（e432d2f，2026-11-06）**。规格见 [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md)。
+**状态：质检通过（e432d2f，2026-11-06）**。规格见 [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md)。
 
 - **现象**：`steam-status` 12:39 启动、请求持续 200 成功，但「近 24h 判定 = 0」、`max(steam_checked_at)=11-04`，
   抽查 appid 全是 null，且**没有一条 `steam-status.failed`**——请求成功但一条都没写库。
