@@ -30,6 +30,8 @@ import { appealEmailFrom } from './appeal.js';
 import { ensureSteamSchemaOnce, baseUrl } from './steam-login.js';
 import * as mailTemplates from './mail-templates.js';
 import * as notify from './notify.js';
+import * as accountNotify from './account-notify.js';
+import { maskEmail } from './auth-routes.js';
 import { auditJobs as auditSchedulerJobs } from './scheduler.js';
 
 const TYPES = {
@@ -1770,6 +1772,8 @@ export function createApiServer({
         if (!requireAdmin()) return;
         const body = await readBody(req);
         const username = decodeURIComponent(userMatch[1]);
+        // AJ 批：删除通知必须在删库前取好收件邮箱（docs/USER-LIFECYCLE.md §4.2）
+        const pre = (await q('select email, email_verified from users where username = $1', [username])).rows[0];
         const result = await db.deleteUserAudited(q, {
           username,
           confirmUsername: String(body.confirmUsername ?? ''),
@@ -1786,13 +1790,29 @@ export function createApiServer({
           by: user.username,
           reason: String(body.reason ?? '').trim() || null,
         });
-        // AH 批不含通知（AJ 接入后这里改为 notifyUserAction 异步发送）
-        return json(res, 200, { ok: true, deleted: result.deleted });
+        // AJ 批：account_deleted 通知异步发送（响应 notify:'queued'，不阻塞删除）；
+        // 发送失败只记日志 + mail_log，不影响已完成的删除（决策 6）
+        let notify = 'skipped_no_email';
+        if (String(pre?.email ?? '').trim()) {
+          notify = 'queued';
+          void accountNotify.notifyUserActionQueued({
+            q,
+            logger,
+            user: { username, email: pre.email },
+            action: 'account_deleted',
+            actor: user.username,
+            siteUrl: baseUrl(req),
+            contactEmail: appealEmail(),
+          });
+        }
+        return json(res, 200, { ok: true, deleted: result.deleted, notify });
       }
       if (userMatch && req.method === 'PATCH') {
         if (!requireAdmin()) return;
         const body = await readBody(req);
         const username = decodeURIComponent(userMatch[1]);
+        const before = (await q('select email, email_verified, display_name, role, disabled from users where username = $1', [username])).rows[0];
+        if (!before) return json(res, 404, { error: '没有该用户' });
         const row = await db.updateUser(q, {
           username,
           displayName: body.display_name,
@@ -1801,7 +1821,34 @@ export function createApiServer({
         });
         if (!row) return json(res, 404, { error: '没有该用户或没有要改的字段' });
         logger?.info('api.user_updated', { username, by: user.username, ...body });
-        return json(res, 200, { user: row });
+        // AJ 批：字段实际变化才发通知；一次请求最多一封，优先级 disabled > role > display_name
+        // （docs/USER-LIFECYCLE.md §4.2）。快操作 await 发送，结果进响应；失败不影响已保存的修改。
+        let action = null;
+        let extra = {};
+        if (body.disabled !== undefined && Boolean(body.disabled) !== Boolean(before.disabled)) {
+          action = Boolean(body.disabled) ? 'account_disabled' : 'account_enabled';
+        } else if (body.role !== undefined && String(body.role) !== String(before.role ?? '')) {
+          action = 'account_role_changed';
+          extra = { action: body.role === 'admin' ? '管理员' : '普通用户' };
+        } else if (body.display_name !== undefined && String(body.display_name ?? '') !== String(before.display_name ?? '')) {
+          action = 'account_renamed';
+          extra = { action: String(body.display_name ?? '').trim() || '（已清除）' };
+        }
+        const reply = { user: row };
+        if (action) {
+          const notifyResult = await accountNotify.notifyUserActionQueued({
+            q,
+            logger,
+            user: { username, email: before.email },
+            action,
+            extra,
+            actor: user.username,
+            siteUrl: baseUrl(req),
+            contactEmail: appealEmail(),
+          });
+          reply.notify = { status: notifyResult.status, error: notifyResult.error ?? null };
+        }
+        return json(res, 200, reply);
       }
 
       const pwdMatch = path.match(/^\/api\/admin\/users\/([^/]+)\/password$/);
@@ -1810,10 +1857,24 @@ export function createApiServer({
         const body = await readBody(req);
         const password = String(body.password ?? '');
         if (password.length < 8 || password.length > 200) return json(res, 400, { error: '密码需要 8-200 位' });
-        const row = await db.setUserPassword(q, { username: decodeURIComponent(pwdMatch[1]), password });
+        const username = decodeURIComponent(pwdMatch[1]);
+        const before = (await q('select email from users where username = $1', [username])).rows[0];
+        if (!before) return json(res, 404, { error: '没有该用户' });
+        const row = await db.setUserPassword(q, { username, password });
         if (!row) return json(res, 404, { error: '没有该用户' });
-        logger?.info('api.user_password_reset', { username: decodeURIComponent(pwdMatch[1]), by: user.username });
-        return json(res, 200, { ok: true });
+        logger?.info('api.user_password_reset', { username, by: user.username });
+        // AJ 批：重置密码同步发通知；正文只写"已重置，请向管理员获取新密码"，
+        // 绝不出现新密码明文（docs/USER-LIFECYCLE.md 决策 3）
+        const notifyResult = await accountNotify.notifyUserActionQueued({
+          q,
+          logger,
+          user: { username, email: before.email },
+          action: 'account_password_reset',
+          actor: user.username,
+          siteUrl: baseUrl(req),
+          contactEmail: appealEmail(),
+        });
+        return json(res, 200, { ok: true, notify: { status: notifyResult.status, error: notifyResult.error ?? null } });
       }
 
       // ---- 管理员：禁用游戏 / 编辑说明 / 触发 Steam 同步 ----
@@ -2178,6 +2239,9 @@ export function createApiServer({
         const email = raw ? auth.normalizeEmail(raw) : null;
         if (raw && !email) return json(res, 400, { error: '邮箱格式不正确' });
         const username = decodeURIComponent(bindMatch[1]);
+        // AJ 批：改邮箱前先读旧邮箱（变更通知的收件人判定用，docs/USER-LIFECYCLE.md 决策 8/18）
+        const oldRow = (await q('select email, email_verified from users where username = $1', [username])).rows[0];
+        if (!oldRow) return json(res, 404, { error: '没有该用户' });
         const doBind = () =>
           q(
             'update users set email = $1, email_verified = false where username = $2 returning id, username, email, role, disabled',
@@ -2203,7 +2267,30 @@ export function createApiServer({
             email: email ? String(email).replace(/^(.)(.*)(@.*)$/, '$1***$3') : null,
             by: user.username,
           });
-          return json(res, 200, { user: r.rows[0] });
+          // AJ 批：改邮箱发两封（docs/USER-LIFECYCLE.md §4.2/决策 18）——异步发送，响应 notify:'queued'，
+          // 避免两封串行拖住请求。旧邮箱收「登录邮箱已变更」（旧邮箱为空/未验证时改发新邮箱），
+          // 新邮箱收「绑定成功」；新旧邮箱相同时只发「绑定成功」一封；解绑（新邮箱为空）不发。
+          const reply = { user: r.rows[0] };
+          if (email) {
+            const oldEmail = String(oldRow.email ?? '').trim();
+            const oldUsable = Boolean(oldEmail && oldRow.email_verified);
+            const same = Boolean(oldEmail && oldEmail.toLowerCase() === email.toLowerCase());
+            const base = {
+              q,
+              logger,
+              user: { username, email },
+              actor: user.username,
+              siteUrl: baseUrl(req),
+              contactEmail: appealEmail(),
+              extra: { action: maskEmail(email) },
+            };
+            if (!same) {
+              void accountNotify.notifyUserActionQueued({ ...base, action: 'account_email_changed', to: oldUsable ? oldEmail : email });
+            }
+            void accountNotify.notifyUserActionQueued({ ...base, action: 'account_email_bound', to: email });
+            reply.notify = 'queued';
+          }
+          return json(res, 200, reply);
         } catch (err) {
           if (String(err.code) === '23505') return json(res, 409, { error: '这个邮箱已被其他账号绑定' });
           logger?.error('api.user_email_bind_failed', {
@@ -3123,6 +3210,7 @@ async function bulkGuardUserDisable({ q, keys, user }) {
   return null;
 }
 
+// 批量禁用/启用不发用户通知（docs/USER-LIFECYCLE.md 决策 9：只记日志；单条操作才发）
 async function bulkUserDisable({ q, keys }) {
   const done = await db.bulkSetUsersDisabled(q, { ids: keys, disabled: true });
   // 禁用要立即生效：删掉这些用户的会话，否则旧 cookie 还能继续用
