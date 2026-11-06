@@ -2,7 +2,9 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [2.0.0] - 2026-11-06
+
+账号生命周期三件套（用户彻底删除 AH、邮件模板化 AI、账号变更通知 AJ）与 Steam 代理池 AM-1 一并交付，跃升大版本 2.0.0。
 
 ### 新增
 
@@ -19,12 +21,6 @@
   - 「邮件服务」页新增模板卡（事件 tab、启停、主题/HTML 编辑、变量按钮、预览/发测试/套用示例/恢复默认/保存）
     与「最近发送记录」验证码/通知双 tab；`admin-ui.js` 补注册 `ElTabs`/`ElTabPane`。
 
-### 测试
-
-- 新增 `test/mail-templates.test.js`（7 项）、`test/notify-html.test.js`（3 项）接入主链：
-  默认模板/变量转义/未知变量/页脚/text 兜底、校验（CR/LF、{{code}}、未知变量警告）、示例版式、DB 存取；
-  multipart 结构、纯文本兼容、主题防注入。
-
 - **用户彻底删除（AH 批，docs/USER-LIFECYCLE.md §3.2/§4.1/§5.1）**：
   `DELETE /api/admin/users/:username`（`confirmUsername` 必填精确匹配）——删自己 400、最后一个可用管理员 409、
   不存在 404；单事务先清 `steam_games`/`steam_wishlist`（两张表无外键）再删 `users`（其余级联，被删用户会话立即失效）；
@@ -32,12 +28,44 @@
   删除后用户名可立即重新注册。前端用户表加「删除」（自己那行不渲染、最后一个可用管理员置灰）+
   确认弹窗（列出会话/Steam 账号/愿望单与标记，输入用户名才可提交，可选原因只进审计）+
   「最近删除」只读审计表（按用户名模糊搜索，`GET /api/admin/users/deletions?q=`）。
-  `listUsers` 附带 `sessions`/`steam_accounts` 计数供弹窗展示。**通知邮件随 AJ 批接入**（本批先不含）。
+  `listUsers` 附带 `sessions`/`steam_accounts` 计数供弹窗展示。通知邮件随 AJ 批接入。
+
+- **账号变更通知（AJ 批，docs/USER-LIFECYCLE.md §4.2/§6）**：
+  - 新增 `src/account-notify.js`：8 类事件（禁用/启用/删除/改名/改邮箱/改角色/重置密码 + 邮箱绑定成功）渲染与发送，
+    模块级串行队列（同进程一封一封发）、单封超时 8 秒失败不重试、每次真实发送写 `mail_log`（成功/失败都落，actor 记真实操作者）；
+  - 四个入口接入：PATCH 改用户（字段实际变化才发、一次请求最多一封、优先级 禁用 > 角色 > 显示名、结果进响应）、
+    改邮箱（发两封：旧邮箱「登录邮箱已变更」+ 新邮箱「绑定成功」；旧邮箱空/未验证改发新邮箱；新旧相同只发一封；解绑不发）、
+    重置密码（正文绝不写新密码）、删除（异步 `notify:'queued'`）；批量禁用/启用不发（决策 9）、创建用户不通知；
+  - 操作者统一「站点管理员」（`mail_log.actor` 另记真实操作者）；正文不含密码/token/API Key/IP/完整邮箱，删除原因不进邮件；
+    模板停用跳过（`skipped_disabled`）、未绑定邮箱跳过并提示（`skipped_no_email`）、发送失败不影响业务（`failed`）；
+    前端各入口带 notify 回执 toast。
+
+- **Steam 代理池后端（AM-1 批，docs/PROXY-POOL.md §3/§4）**：
+  - `network.steamProxy` 支持多条（换行/逗号分隔、去重、上限 10 条、非法行报行号；老单行 = 1 条且行为完全不变）；
+  - 新增 `src/proxy-pool.js`：候选顺序（最近成功者粘住优先 → 配置顺序跳过冷却中的 → 全部冷却取最早解冻再试一次）、
+    失败冷却 60s / 5min / 30min 封顶、成功清零；健康状态落 `data/proxy-health.json`（sha256 key 不含地址密码、
+    1 秒防抖 + tmp→rename 原子写、跨子进程共享）；
+  - `http.js` 把选代理挪进重试循环：只有代理层失败（连不上/超时/TLS/代理 CONNECT 4xx/5xx）才换下一条，
+    目标 HTTP 5xx 与 429 不切换（429 按出口 IP 限流，切代理等于绕配额）；全部失败抛 `PROXY_ALL_FAILED` **不回退直连**；
+    `GET /api/admin/proxies`（仅管理员、地址脱敏）返回每条状态（正常/冷却中/未知、连续失败、最近错误）；
+    diagnose 输出代理池条数与每条状态。
 
 ### 测试
 
+- 新增 `test/mail-templates.test.js`（7 项）、`test/notify-html.test.js`（3 项）接入主链：
+  默认模板/变量转义/未知变量/页脚/text 兜底、校验（CR/LF、{{code}}、未知变量警告）、示例版式、DB 存取；
+  multipart 结构、纯文本兼容、主题防注入。
+
 - 新增 `test/admin-user-delete.test.js`（4 项）接入主链：护栏四态、级联清理 + 手动清无外键表 + 审计脱敏、
   删除后可重新注册 + 列表计数、最近删除模糊搜索（ilike/limit）。
+
+- 新增 `test/account-notify.test.js`（8 项）接入主链：8 事件渲染与 mail_log、跳过/失败路径、串行队列、
+  PATCH 四类入口与优先级、密码正文无明文、改邮箱两封（含相同只发一封/旧邮箱未验证改发新邮箱/解绑不发）、
+  删除异步通知与批量不发（决策 9）。
+
+- 新增 `test/proxy-pool.test.js`（8 项）、`test/http-proxy-failover.test.js`（7 项）接入主链：
+  多条解析/候选顺序/冷却阶梯/健康文件脱敏与重启持久/设置校验（行号、≤10）/`/api/admin/proxies` 权限与脱敏；
+  故障切换断言「第 2 次尝试的代理 ≠ 第 1 次」（逐次记录实际代理）+ 反例自检（`nextCandidate` 恒返第一条 → 套件变红）。
 
 ## [1.18.0] - 2026-11-06
 

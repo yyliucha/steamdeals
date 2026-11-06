@@ -1,6 +1,6 @@
 # 用户生命周期：彻底删除 + 变更通知 + 邮件模板化（已确认待开发）
 
-> 状态：**需求与方案已确认（2026-11-06），待开发**。本批拆三条待办（编号待入 [TODO.md](TODO.md) 时落定，
+> 状态：**已实现并发布 v2.0.0（2026-11-06）**。本批拆三条待办（编号待入 [TODO.md](TODO.md) 时落定，
 > 暂记 **AH** 删除 / **AI** 邮件模板与 HTML / **AJ** 账号变更通知）。
 > 关联：[ADMIN-PARITY.md](ADMIN-PARITY.md)（后台模块）、[MAIL-CONFIG-PAGE.md](MAIL-CONFIG-PAGE.md)（邮件服务页）、
 > [WEB.md](WEB.md)（接口）、[HANDOVER.md](HANDOVER.md)（状态词与流程）。

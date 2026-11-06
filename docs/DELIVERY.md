@@ -184,41 +184,23 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-06 更新，v1.18.0 已发布；待发版：AH 用户彻底删除 + AI 邮件模板/HTML/发送记录 + AJ 账号变更通知）
+### 当前状态（2026-11-06 更新，v2.0.0 已发布：用户生命周期 AH/AI/AJ + Steam 代理池 AM-1）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
-- **待发版：AH 批「用户彻底删除」**（2026-11-06 已提交 main，等「构建 vX.Y.Z」指令）：
-  `DELETE /api/admin/users/:username`（confirmUsername 精确匹配、删自己 400、最后一个可用管理员 409、
-  单事务先清无外键的 `steam_games`/`steam_wishlist` 再删 `users`、审计落 `admin_user_deletions` 脱敏快照）+
-  「最近删除」审计表（按用户名模糊搜索）；前端删除按钮/确认弹窗/最近删除表。通知邮件已随 AJ 批接入（dfdad47）。
-  规格见 [USER-LIFECYCLE.md](USER-LIFECYCLE.md)。注意：`admin_user_deletions` 建表随 `db.migrate` 幂等执行，
-  部署无需手工 SQL。
-
-- **待发版：AI 批「邮件模板 + HTML 邮件 + 发送记录」**（2026-11-06 已提交 main，等「构建 vX.Y.Z」指令）：
-  HTML 多部分邮件（主题去 CR/LF）；9 事件模板（编辑/启停/预览/发测试/恢复默认/3 套示例版式，`{{code}}`
-  仅验证码可用）+ `mail_templates`/`mail_log` 表（随 `ensureEmailSchema` 幂等建）；登录/重置/绑定验证码邮件
-  套 `verify_code` 模板（停用回退纯文本）；「邮件服务」页模板卡 + 发送记录双 tab。
-  规格见 [USER-LIFECYCLE.md](USER-LIFECYCLE.md)。
-
-- **待发版：AJ 批「账号变更通知」**（2026-11-06 已提交 main，等「构建 vX.Y.Z」指令）：
-  7 类管理操作触发 8 类通知邮件（禁用/启用/删除/改名/改邮箱/改角色/重置密码 + 邮箱绑定成功）；改邮箱发两封
-  （旧邮箱收「登录邮箱已变更」、新邮箱收「绑定成功」；旧邮箱空/未验证改发新邮箱；新旧相同只发一封；解绑不发）；
-  删除/改邮箱异步（响应 `notify:'queued'`），PATCH/重置密码同步且 `notify:{status,error}` 进响应；
-  串行队列 + 单封 8 秒超时失败不重试 + 每次真实发送落 `mail_log`（成功/失败都落，actor 记真实操作者）；
-  操作者固定「站点管理员」；正文不含密码/token/Key/IP/完整邮箱，删除原因不进邮件；批量禁用/启用不发（决策 9）。
-  质检 ✅ 放行（第 1 轮，[QA-USER-NOTIFY-AJ.md](QA-USER-NOTIFY-AJ.md)：57 文件/480 项 npm test 全绿、
-  frontend:build、scan 干净；1 项真机人工确认：真实邮箱客户端 HTML 渲染）。
-  规格见 [USER-LIFECYCLE.md](USER-LIFECYCLE.md)。
-
-- **待发版：AM-1 批「Steam 代理池后端」**（2026-11-06 已提交 main，等「构建 vX.Y.Z」指令）：
-  `network.steamProxy` 支持多条（换行/逗号、去重、≤10，老单行 = 1 条且行为不变）；同请求内代理层失败自动换下一条
-  （连不上/超时/TLS/CONNECT 4xx/5xx），HTTP 5xx/429 不切换；失败冷却 60s/5min/30min、成功粘住；
-  全部失败抛 `PROXY_ALL_FAILED` 不回退直连；健康状态落 `data/proxy-health.json`（sha256 key、原子写、跨子进程）；
-  `GET /api/admin/proxies`（仅管理员，脱敏）；diagnose 输出池状态。测试断言「第 2 次尝试代理 ≠ 第 1 次」+
-  反例自检（nextCandidate 恒返第一条 → 套件变红）。质检 ✅ 放行（第 1 轮，[QA-PROXY-POOL-AM1.md](QA-PROXY-POOL-AM1.md)：
-  59 文件/495 项 npm test 全绿、frontend:build、scan 干净）。规格见 [PROXY-POOL.md](PROXY-POOL.md)。
-  注意：AM-2（设置页列表编辑器 + 健康状态表）已解锁为待开发，属下一批。
+- **v2.0.0 已发布**（tag `v2.0.0`）：AH 用户彻底删除 + AI 邮件模板/HTML/发送记录 + AJ 账号变更通知 +
+  AM-1 Steam 代理池后端 四批——
+  ① 后台用户管理可彻底删除用户（输入用户名确认、删自己/最后可用管理员被拦、级联清理 + 最近删除审计表）；
+  ② 邮件模板化（9 事件模板 + HTML 多部分邮件 + `mail_log` 发送记录双 tab）；
+  ③ 7 类管理操作自动发 8 类通知邮件（改邮箱两封、批量不发、发送失败不影响业务、操作者固定「站点管理员」）；
+  ④ `network.steamProxy` 支持多条自动切换（冷却 60s/5min/30min、成功粘住、全部失败报错不回退直连、
+  5xx/429 不切换）+ 健康状态落 `data/proxy-health.json` + `GET /api/admin/proxies`。
+  验证：`npm test` 59 个文件 / 495 项全绿、`node test/api.test.js` 22 项、`frontend:build`、`scan` 干净；
+  质检：AH/AI/AJ/AM-1 四批均 ✅ 放行（QA-USER-DELETE-AH.md / QA-USER-LIFECYCLE-AI.md / QA-USER-NOTIFY-AJ.md /
+  QA-PROXY-POOL-AM1.md）。
+  CI：docker-hub run <id>（test/smoke/publish）、docker-tcr run <id>（build-push + Verify manifests）——结果见发版汇报。
+  **服务器部署待执行**（按本文第 4 节升级到 `2.0.0`）；部署后重点人工确认：
+  真实邮箱客户端 HTML 渲染（AJ QA 需人工确认项）、真实多代理切换/冷却日志（AM-1 QA 需人工确认项）。
 
 - **v1.18.0 已发布**（tag `v1.18.0`）：AE/AF/AG/AC-1 四批——版本徽标按服务器 IP 选镜像仓库
   （ipinfo.io 定位 → 大陆/香港优先 TCR、其他优先 Hub，401 换 token、双失败回退 GitHub，结果带 source/region）；

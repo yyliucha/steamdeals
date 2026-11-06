@@ -622,9 +622,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **验收**：数量与抽屉内容一致、同平台多区服都显示、`javascript:` 不渲染、后台复制不触发其他动作、
   前台复制不打开详情、手机抽屉全屏、`npm test` + `frontend:build` + `scan`。
 
-## AH. 待开发：用户彻底删除（硬删除 + 最近删除审计）
+## AH. 已发布 v2.0.0：用户彻底删除（硬删除 + 最近删除审计）
 
-**状态：质检通过（2026-11-06，8f53365；QA 报告 docs/QA-USER-DELETE-AH.md，独立复核 ✅ 17:38）**
+**状态：已发布 v2.0.0（2026-11-06，8f53365；QA 报告 docs/QA-USER-DELETE-AH.md）**
 **依赖：** 无
 **解锁：** 无（AJ 还要等 AI）
 **规格**：[USER-LIFECYCLE.md](USER-LIFECYCLE.md) §3.2 / §4.1 / §4.5 / §5.1 / §8 验收 1–4、14
@@ -636,9 +636,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   落 `admin_user_deletions`（打码邮箱、关联计数、操作者、原因）；原因只进审计、**不进邮件**。
 - **验收**：见规格 §8 的 1–4 与 14。
 
-## AI. 待开发：邮件模板化 + HTML 邮件 + 发送记录
+## AI. 已发布 v2.0.0：邮件模板化 + HTML 邮件 + 发送记录
 
-**状态：质检通过（2026-11-06，4570d81；QA 报告 docs/QA-USER-LIFECYCLE-AI.md，独立复核 ✅ 17:38）**
+**状态：已发布 v2.0.0（2026-11-06，4570d81；QA 报告 docs/QA-USER-LIFECYCLE-AI.md）**
 **依赖：** 无
 **解锁：** AJ
 **规格**：[USER-LIFECYCLE.md](USER-LIFECYCLE.md) §3.1 / §3.3 / §4.3 / §4.4 / §5.2 / §8 验收 8–10、15
@@ -650,9 +650,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   主题过滤 CR/LF、HTML 变量转义。
 - **验收**：见规格 §8 的 8–10 与 15。
 
-## AJ. 待开发：账号变更通知（7 类操作 / 8 类邮件）
+## AJ. 已发布 v2.0.0：账号变更通知（7 类操作 / 8 类邮件）
 
-**状态：质检通过（2026-11-06，dfdad47；QA 报告 docs/QA-USER-NOTIFY-AJ.md）**
+**状态：已发布 v2.0.0（2026-11-06，dfdad47；QA 报告 docs/QA-USER-NOTIFY-AJ.md）**
 **依赖：** AI、AH
 **解锁：** 无
 **规格**：[USER-LIFECYCLE.md](USER-LIFECYCLE.md) §4.2 / §6 / §8 验收 5–7、11
@@ -691,16 +691,16 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   密码可见切换、Caps Lock 提示、错误就地显示、记住我 7/30 天、登录回跳只允许站内路径。
 - **验收**：见规格 §8 的 10。
 
-## AM. 待开发：Steam 代理池（多代理按序自动切换 + 健康状态）
+## AM. Steam 代理池（多代理按序自动切换 + 健康状态）
 
-**状态：质检通过（AM-1，2026-11-06，4e6b0a0；QA 报告 docs/QA-PROXY-POOL-AM1.md；AM-2 待开发）**
+**状态：AM-1 已发布 v2.0.0（2026-11-06，4e6b0a0；QA 报告 docs/QA-PROXY-POOL-AM1.md）；AM-2 待开发**
 **依赖：** 无（子批依赖见下表）
 **解锁：** 无
 **规格**：[PROXY-POOL.md](PROXY-POOL.md)
 
 | 批次 | 内容 | 状态 |
 |---|---|---|
-| **AM-1** 代理池后端 | `network.steamProxy` 支持多行多条（≤10）、新增 `src/proxy-pool.js`（顺序/粘住/冷却/落盘）、`http.js` 把选代理挪进重试循环、`GET /api/admin/proxies`、日志与测试 | **质检通过（2026-11-06，4e6b0a0）** |
+| **AM-1** 代理池后端 | `network.steamProxy` 支持多行多条（≤10）、新增 `src/proxy-pool.js`（顺序/粘住/冷却/落盘）、`http.js` 把选代理挪进重试循环、`GET /api/admin/proxies`、日志与测试 | **已发布 v2.0.0（2026-11-06，4e6b0a0）** |
 | **AM-2** 设置页 | 「网络与代理」列表编辑器（增删 / 上移 / 下移 / 清空）+ 每条健康状态表 | 待开发（2026-11-06 由 AM-1 完成解锁） |
 
 - **测试要求（防假绿）**：必须断言「第 2 次尝试用的代理 ≠ 第 1 次」，并做反例自检（临时永远用第一条，测试要变红）；

@@ -33,12 +33,12 @@
 | **AE** | 版本检测按服务器 IP 选镜像仓库（TCR/Hub） | [VERSION-SOURCE.md](VERSION-SOURCE.md) | 已发布 v1.18.0 | ✅ 已在对话给出 |
 | **AF** | 愿望单/标记操作后列表不刷新（搜索缓存未失效） | [FRONTEND-STALE-LIST.md](FRONTEND-STALE-LIST.md) | 已发布 v1.18.0 | ✅ 已在对话给出 |
 | **AG** | 后台平台链接抽屉 + 游戏名点击复制（后台/前台） | [ADMIN-PLATFORM-LINKS.md](ADMIN-PLATFORM-LINKS.md) | 已发布 v1.18.0 | ✅ 已在对话给出 |
-| **AH** | 用户彻底删除（硬删除 + 最近删除审计） | [USER-LIFECYCLE.md](USER-LIFECYCLE.md) | 质检通过（2026-11-06，8f53365；独立复核 ✅） | ✅ 已在对话给出 |
-| **AI** | 邮件模板化 + HTML 邮件 + 发送记录 | [USER-LIFECYCLE.md](USER-LIFECYCLE.md) | 质检通过（2026-11-06，4570d81；独立复核 ✅） | ✅ 已在对话给出 |
-| **AJ** | 账号变更通知（7 类操作 / 8 类邮件） | [USER-LIFECYCLE.md](USER-LIFECYCLE.md) | 质检通过（2026-11-06，dfdad47） | ✅ 已在对话给出 |
+| **AH** | 用户彻底删除（硬删除 + 最近删除审计） | [USER-LIFECYCLE.md](USER-LIFECYCLE.md) | 已发布 v2.0.0（2026-11-06） | ✅ 已在对话给出 |
+| **AI** | 邮件模板化 + HTML 邮件 + 发送记录 | [USER-LIFECYCLE.md](USER-LIFECYCLE.md) | 已发布 v2.0.0（2026-11-06） | ✅ 已在对话给出 |
+| **AJ** | 账号变更通知（7 类操作 / 8 类邮件） | [USER-LIFECYCLE.md](USER-LIFECYCLE.md) | 已发布 v2.0.0（2026-11-06） | ✅ 已在对话给出 |
 | **AK** | 密码系统重设计（AK-1 策略/哈希、AK-2 登录防护、AK-3 账号流程） | [AUTH-REDESIGN.md](AUTH-REDESIGN.md) | AK-1 待开发；AK-2/3 依赖阻塞 | ✅ 规格自包含（按 §8 顺序派发） |
 | **AL** | 登录 / 注册 / 改密页面 | [AUTH-REDESIGN.md](AUTH-REDESIGN.md) | 依赖阻塞（AK-3） | ✅ 规格自包含（按 §8 顺序派发） |
-| **AM** | Steam 代理池（多代理按序切换 + 健康状态） | [PROXY-POOL.md](PROXY-POOL.md) | AM-1 质检通过（2026-11-06，4e6b0a0）；AM-2 待开发 | ✅ 规格自包含（按 §8 顺序派发） |
+| **AM** | Steam 代理池（多代理按序切换 + 健康状态） | [PROXY-POOL.md](PROXY-POOL.md) | AM-1 已发布 v2.0.0（2026-11-06）；AM-2 待开发 | ✅ 规格自包含（按 §8 顺序派发） |
 | **AN** | 未保存修改的离开提醒（后台 5 个编辑面） | [UNSAVED-GUARD.md](UNSAVED-GUARD.md) | 待开发 | ✅ 规格自包含 |
 | **F** | Steam 价格同步优化（缩量 / 热点优先） | ❌ 无独立规格（计划写在 [TODO.md](TODO.md) F 段） | 等排期 | ❌ 未给 |
 | **C1** | heat 逐 appid 全 `success:false` | ❌ 无规格（[TODO.md](TODO.md) C1） | 待探测 | ❌ 未给 |

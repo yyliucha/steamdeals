@@ -101,7 +101,7 @@
 | 跨平台名称匹配 | ✅ | bigram Dice 打分 + 阈值分级（自动/待确认/无候选）+ 人工 `--confirm`；确认后自动合并重复游戏行 |
 | 多区服对比 | ✅ | 同一游戏按区服并排（GOG 支持 cn/us/tr/ru/ar 等）；**不同币种不折算** |
 | Steam 游戏信息导入 | ✅ | `import steam`：appid / 商店链接 / 清单文件 → 中文名、封面、发行日期、开发商 |
-| 出网代理 | ✅ | 按目标主机分流：Steam 走 `STEAM_PROXY`，其余走 `HTTPS_PROXY`，境内源直连 |
+| 出网代理 | ✅ | 按目标主机分流：Steam 走 `STEAM_PROXY`（**支持多条自动切换**：失败冷却 60s/5min/30min、成功粘住、全部失败报错不回退直连，v2.0.0），其余走 `HTTPS_PROXY`，境内源直连 |
 | ITAD 官方 API | ⚠️ | 按商店拆成独立平台，需自备免费 key；未用真 key 跑过 |
 | 价格历史与史低 | ✅ | 变化才写快照，按天聚合，终端画轨迹 |
 | 官方渠道结构约束 | ✅ | `v_lowest_official` 视图 + 查询层过滤 + 回归断言 |
@@ -117,6 +117,10 @@
 | 曲线页自动重建 | ✅ | 采集成功后由调度器自动刷新 `out/`（`CHART_ON_SYNC=0` 可关） |
 | 关注列表与降价提醒 | ✅ | 目标价 / 史低两种触发，同价位去重 |
 | 提醒通道 | ✅ | webhook / 企业微信机器人 / 邮件（SMTP，支持 STARTTLS 与 AUTH PLAIN/LOGIN） |
+| **用户彻底删除** | ✅ | 后台 → 用户管理 → 删除：必须输入用户名确认；不能删自己、不能删最后一个可用管理员；级联清理会话/Steam 账号/愿望单/标记 + 「最近删除」只读审计表（v2.0.0） |
+| **邮件模板 + HTML 邮件** | ✅ | 9 事件模板（8 类账号通知 + 验证码）可编辑/启停/预览/发测试/恢复默认/套用 3 套示例版式；HTML 多部分邮件（纯文本兜底）；「最近发送记录」验证码/通知双 tab（v2.0.0） |
+| **账号变更通知** | ✅ | 禁用/启用/删除/改名/改邮箱/改角色/重置密码自动发通知邮件；改邮箱发两封（旧邮箱安全提醒 + 新邮箱绑定确认）；批量操作不发；发送失败不影响业务（v2.0.0） |
+| **Steam 代理池健康状态** | ✅ | `GET /api/admin/proxies` 显示每条代理状态（正常/冷却中/未知、连续失败、最近错误，地址脱敏）；健康状态落 `data/proxy-health.json` 跨进程共享（v2.0.0） |
 | 采集熔断 | ✅ | 连续失败自动暂停，避免持续撞墙 |
 | GOG 采集 | ✅ | 官方 catalog 接口，CNY 价格，只接受精确标题匹配 |
 | Humble 采集 | ⚠️ | slug 探测 + JSON-LD，名称必须完全一致；探测不到就跳过 |
@@ -554,6 +558,8 @@ node test/gog.test.js        # 11 项：标题归一化、精确匹配、拒绝�
 node test/humble.test.js     # 9 项：slug 生成、JSON-LD 解析、名称校验、重定向与 404
 node test/steam-meta.test.js # 15 项：appid 解析、双后端归一化、官方不可用时自动回落
 node test/proxy.test.js      # 10 项：代理决策、NO_PROXY、密码脱敏、本地代理真实转发
+node test/proxy-pool.test.js # 8 项：多条解析、候选顺序、冷却阶梯、健康文件脱敏、设置校验、健康 API
+node test/http-proxy-failover.test.js # 7 项：真实转发链路的故障切换（断言两次尝试代理不同）、5xx/429 不切换
 node test/http-error.test.js # 8 项：代理隧道错误翻译（407/403/502）、code=0 不误判、真实 ProxyAgent
 node test/favicon.test.js    # 4 项：三个页面的图标引用一致且文件存在、SVG/ICO/PNG 格式合法
 node test/serve.test.js      # 5 项：路径穿越防护、内容类型、GET/HEAD/405
@@ -594,7 +600,7 @@ node test/secrets.test.js    # 5 项：凭据扫描器自身的正确性 + 当�
 
 ## 已知限制
 
-1. **Steam 官方接口在国内网络不可达**（实测 `UND_ERR_CONNECT_TIMEOUT`）。生产环境需配 `STEAM_PROXY`（按主机分流，只让 Steam 域名走代理）；价格回填与热度回填共用 Steam 配额，二者通过后台任务槽位互斥。
+1. **Steam 官方接口在国内网络不可达**（实测 `UND_ERR_CONNECT_TIMEOUT`）。生产环境需配 `STEAM_PROXY`（按主机分流，只让 Steam 域名走代理；自 v2.0.0 支持多条按序自动切换与冷却）；价格回填与热度回填共用 Steam 配额，二者通过后台任务槽位互斥。
    - 元数据导入做了**双后端**：先探官方（5s 超时），不通则自动回落到 `api.steamcmd.net`（Steam PICS 数据镜像）。镜像能给出中文名、封面、发行日期、开发商，但**不提供 `is_free`**，也**不能按名字搜索**（只能给 appid 或商店链接）。
 2. **ITAD 响应结构未用真 key 验证**。无 key 时返回 `403 Invalid or expired api key`；结构不符时会记 `adapter.itad.shape_mismatch` 并带原始片段。
 3. **热度数据需要先跑一次回填**：新库 `heat` 全为 null，排序退化为原来的折扣优先；部署后执行
@@ -624,7 +630,7 @@ node test/secrets.test.js    # 5 项：凭据扫描器自身的正确性 + 当�
 - [ ] Steam 锁国区与 18+ 内容的地区化展示（设计已留痕，见 [ROADMAP.md](docs/ROADMAP.md)）
 - [ ] 汇率折算（当前多区服只并排展示，不折算）
 - [ ] 后台其余列表的手机端卡片化（当前游戏目录/访问记录已卡片化）
-- [ ] 提醒通道：邮件模板美化与多收件人分组
+- [ ] 提醒通道：多收件人分组（邮件模板美化已于 v2.0.0 完成）
 
 ## 项目结构
 
