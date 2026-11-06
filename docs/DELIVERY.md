@@ -191,7 +191,10 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 - **v1.16.2 已发布**（tag `v1.16.2`）：Z 批「手机端适配修复」——详情弹窗 `vw` 逃逸根因修复
   （`%`/`dvh` + 弹窗宽 100% + 删死规则 + 全局防横向溢出）、桌面版网站渲染提示（保留 zoom 兜底）、
   「安装到桌面」提示（`useInstallPrompt`，不支持时给 Chrome 说明）、后台游戏目录/访问记录各 tab 手机卡片化、
-  其余表格左右滑动提示。验证：`npm test` 50 个文件 427 项全绿 / `frontend:build` / `scan` 干净。
+  其余表格左右滑动提示。验证：`npm test` 50 个文件 427 项全绿 / `node test/api.test.js` 22 项全绿 /
+  `frontend:build` / `scan` 干净。CI：`docker-hub` run 42153332843（test/smoke/publish 全绿）、
+  `docker-tcr` run 42153332850（`build-push-action` 与 `Verify manifests` 均 success；
+  PostgreSQL 镜像 mirror 耗时约 47 分钟，比往常慢但完成），两个镜像源均已推送。
   规格见 [MOBILE-FIX.md](MOBILE-FIX.md)。**服务器部署待执行**（按本文第 4 节升级到 `1.16.2`）；
   真机验收（红米 K100 Pro Max + 小米自带浏览器：详情不溢出、安装按钮、后台卡片、PC 零回归）随部署执行。
 
