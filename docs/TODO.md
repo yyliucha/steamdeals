@@ -624,7 +624,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AH. 待开发：用户彻底删除（硬删除 + 最近删除审计）
 
-**状态：质检通过（2026-11-06，8f53365；QA 报告 docs/QA-USER-DELETE-AH.md）**
+**状态：质检通过（2026-11-06，8f53365；QA 报告 docs/QA-USER-DELETE-AH.md，独立复核 ✅ 17:38）**
 **依赖：** 无
 **解锁：** 无（AJ 还要等 AI）
 **规格**：[USER-LIFECYCLE.md](USER-LIFECYCLE.md) §3.2 / §4.1 / §4.5 / §5.1 / §8 验收 1–4、14
@@ -638,7 +638,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AI. 待开发：邮件模板化 + HTML 邮件 + 发送记录
 
-**状态：质检通过（2026-11-06，4570d81；QA 报告 docs/QA-USER-LIFECYCLE-AI.md）**
+**状态：质检通过（2026-11-06，4570d81；QA 报告 docs/QA-USER-LIFECYCLE-AI.md，独立复核 ✅ 17:38）**
 **依赖：** 无
 **解锁：** AJ
 **规格**：[USER-LIFECYCLE.md](USER-LIFECYCLE.md) §3.1 / §3.3 / §4.3 / §4.4 / §5.2 / §8 验收 8–10、15
