@@ -216,7 +216,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   （连不上/超时/TLS/CONNECT 4xx/5xx），HTTP 5xx/429 不切换；失败冷却 60s/5min/30min、成功粘住；
   全部失败抛 `PROXY_ALL_FAILED` 不回退直连；健康状态落 `data/proxy-health.json`（sha256 key、原子写、跨子进程）；
   `GET /api/admin/proxies`（仅管理员，脱敏）；diagnose 输出池状态。测试断言「第 2 次尝试代理 ≠ 第 1 次」+
-  反例自检（nextCandidate 恒返第一条 → 套件变红）。规格见 [PROXY-POOL.md](PROXY-POOL.md)。
+  反例自检（nextCandidate 恒返第一条 → 套件变红）。质检 ✅ 放行（第 1 轮，[QA-PROXY-POOL-AM1.md](QA-PROXY-POOL-AM1.md)：
+  59 文件/495 项 npm test 全绿、frontend:build、scan 干净）。规格见 [PROXY-POOL.md](PROXY-POOL.md)。
   注意：AM-2（设置页列表编辑器 + 健康状态表）已解锁为待开发，属下一批。
 
 - **v1.18.0 已发布**（tag `v1.18.0`）：AE/AF/AG/AC-1 四批——版本徽标按服务器 IP 选镜像仓库
