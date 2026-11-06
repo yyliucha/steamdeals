@@ -8,7 +8,8 @@
 // 只有 requestId 相同的记录属于同一次尝试，排障时按它串起来即可。
 import { redactUrl } from './log.js';
 import * as undici from 'undici';
-import { decideProxy, redactProxy } from './proxy.js';
+import { decideProxy, redactProxy, steamProxyUrls } from './proxy.js';
+import * as proxyPool from './proxy-pool.js';
 
 export const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 steamdeals/0.2 (personal use)';
@@ -31,14 +32,19 @@ export function proxyAgentOptions(proxyUrl) {
     : proxyUrl;
 }
 
+/** 给一个代理 URL 建/取复用的 Agent（route.url 保留未脱敏地址，供代理池记状态）。 */
+function dispatcherForUrl(proxyUrl, via = 'steam-proxy') {
+  if (!agents.has(proxyUrl)) {
+    agents.set(proxyUrl, new undici.ProxyAgent(proxyAgentOptions(proxyUrl)));
+  }
+  return { dispatcher: agents.get(proxyUrl), via, proxy: redactProxy(proxyUrl), url: proxyUrl };
+}
+
 /** 按目标主机挑选出网通道；返回 null 表示直连。 */
 function dispatcherFor(host) {
   const decision = decideProxy(host, process.env);
   if (!decision.url) return { dispatcher: null, via: 'direct', proxy: null };
-  if (!agents.has(decision.url)) {
-    agents.set(decision.url, new undici.ProxyAgent(proxyAgentOptions(decision.url)));
-  }
-  return { dispatcher: agents.get(decision.url), via: decision.via, proxy: redactProxy(decision.url) };
+  return dispatcherForUrl(decision.url, decision.via);
 }
 
 const hostOf = (url) => {
@@ -106,6 +112,19 @@ export function proxyStatusHint(status) {
 
 /** 配了代理却连不上代理本身时，这几个错误码更可能是"代理没开/地址错"，而不是目标站点的问题。 */
 const PROXY_UNREACHABLE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET']);
+
+// AM-1（docs/PROXY-POOL.md 决策 1）：只有网络层/代理层失败才换代理——连不上、超时、TLS 错误、
+// 代理 CONNECT 4xx/5xx。目标返回 HTTP 5xx / 429 是"有响应"，不切换（429 按出口 IP 限流，切代理等于绕配额）。
+const PROXY_SWITCH_CODES = new Set([
+  'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'ENOTFOUND', 'EAI_AGAIN',
+  'UND_ERR_SOCKET', 'EPIPE', 'ABORTED', 'UND_ERR_ABORTED',
+  'UND_ERR_PRX_TLS', 'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'DEPTH_ZERO_SELF_SIGNED_CERT', 'ERR_TLS_CERT_ALTNAME_INVALID',
+]);
+
+function isProxyLayerFailure(info, aborted) {
+  return aborted || info.proxyStatus != null || PROXY_SWITCH_CODES.has(info.code);
+}
 
 /** 把错误码翻译与出网通道合起来，得到最终给用户看的一句提示。 */
 export function errorHint(info, route, { aborted = false, timeoutMs = 0 } = {}) {
@@ -182,12 +201,18 @@ export async function fetchText(url, opts = {}) {
   } = opts;
 
   // 传入 fetchImpl 时（测试/特殊场景）不干预出网通道；
-  // forceDirect 强制直连（诊断/兜底用）；否则按主机决定是否走代理
-  const route = fetchImpl
-    ? { dispatcher: null, via: 'custom', proxy: null }
-    : forceDirect
-      ? { dispatcher: null, via: 'direct', proxy: null }
-      : dispatcherFor(hostOf(url));
+  // forceDirect 强制直连（诊断/兜底用）；否则按主机决定是否走代理。
+  const host = hostOf(url);
+  // AM-1：Steam 代理池（docs/PROXY-POOL.md §4.3）——只有走 Steam 专用代理的请求才启用；
+  // 老单行配置 = 1 条代理，保持旧行为（验收 1「照常工作」，含 407 只请求一次等语义），≥2 条才启用池。
+  const configuredPool = !fetchImpl && !forceDirect && decideProxy(host, process.env).via === 'steam-proxy'
+    ? steamProxyUrls(process.env)
+    : [];
+  const poolUrls = configuredPool.length >= 2 ? configuredPool : [];
+  const maxAttempts = poolUrls.length ? Math.min(10, Math.max(retries + 1, poolUrls.length)) : 0;
+  const triedProxies = [];
+  let poolCandidates = [];
+  let route = null;
   const doFetch = fetchImpl ?? undici.fetch;
   const retryConfig = process.env.STEAM_429_RETRIES ?? '1';
   const configuredSteam429Retries = Number(retryConfig);
@@ -198,9 +223,50 @@ export async function fetchText(url, opts = {}) {
       : 1;
 
   let lastError;
+  let lastFailureInfo = null;
   let attempt = 0;
   let retriesUsed = 0;
   let steam429Retries = 0;
+  let shouldAdvance = true; // 是否要为下一次尝试重新选代理（只有代理层失败才置 true）
+
+  /** AM-1：全部候选失败 → 报错并记日志，绝不回退直连（docs/PROXY-POOL.md 决策 3）。 */
+  const throwAllFailed = () => {
+    const reasons = poolUrls.map((u) => {
+      const rec = proxyPool.healthRecord(u, { logger });
+      return `${redactProxy(u)}（${rec?.lastError ?? '未知错误'}）`;
+    });
+    logger?.error('http.proxy_all_failed', {
+      count: poolUrls.length,
+      lastError: String(lastFailureInfo?.code ?? lastError?.code ?? lastError?.message ?? 'unknown').slice(0, 120),
+    });
+    const allFailed = new Error(`所有代理均失败（${poolUrls.length} 条）：${reasons.join('；')}`);
+    allFailed.code = 'PROXY_ALL_FAILED';
+    allFailed.status = lastError?.status;
+    allFailed.cause = lastError?.cause;
+    throw allFailed;
+  };
+
+  /** AM-1：为本次尝试选一条池内代理；候选全部试过 → PROXY_ALL_FAILED。 */
+  const poolRouteForAttempt = () => {
+    poolCandidates = proxyPool.candidatesFor(host, process.env, { logger });
+    const next = proxyPool.nextCandidate(poolCandidates, triedProxies);
+    if (!next) throwAllFailed();
+    const nextRoute = dispatcherForUrl(next, 'steam-proxy');
+    if (route?.proxy && route.proxy !== nextRoute.proxy) {
+      logger?.info('http.proxy_switch', {
+        from: route.proxy,
+        to: nextRoute.proxy,
+        reason: String(lastFailureInfo?.code ?? lastError?.code ?? lastError?.message ?? 'cooldown').slice(0, 60),
+      });
+    }
+    const cooling = proxyPool.cooldownUntil(next, { logger });
+    if (cooling) {
+      logger?.warn('http.proxy_cooldown_override', { proxy: nextRoute.proxy, downUntil: cooling });
+    }
+    triedProxies.push(next);
+    return nextRoute;
+  };
+
   while (true) {
     attempt += 1;
     if (isSteamHost(hostOf(url)) && steamCooldownUntil > Date.now()) {
@@ -208,6 +274,14 @@ export async function fetchText(url, opts = {}) {
       logger?.warn('http.rate_limit_wait', { label, delayMs, message: 'Steam 处于 429 冷却期，等待后再请求' });
       await sleep(delayMs);
     }
+    route = fetchImpl
+      ? { dispatcher: null, via: 'custom', proxy: null }
+      : forceDirect
+        ? { dispatcher: null, via: 'direct', proxy: null }
+        : poolUrls.length
+          ? (shouldAdvance ? poolRouteForAttempt() : route) // 非代理层失败的重试：复用同一条代理，不切换
+          : dispatcherFor(host);
+    shouldAdvance = false;
     const requestId = rid();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -260,6 +334,11 @@ export async function fetchText(url, opts = {}) {
         err.retryAfter = res.headers.get('retry-after');
         throw err;
       }
+      // AM-1：成功 → 失败计数清零、记 lastGood（下个请求粘住这条）
+      if (poolUrls.length && route?.url) {
+        proxyPool.noteProxySuccess(route.url, { logger });
+        logger?.debug('http.proxy_ok', { proxy: route.proxy });
+      }
       return { body: text, status: res.status, bytes: text.length, elapsedMs, contentType: res.headers.get('content-type'), finalUrl: res.url };
     } catch (err) {
       const elapsedMs = Date.now() - startedAt;
@@ -267,6 +346,7 @@ export async function fetchText(url, opts = {}) {
       const info = explainError(err);
       const aborted = err.name === 'AbortError';
       const code = aborted ? 'ABORTED' : info.code;
+      lastFailureInfo = { code, message: String(err.message ?? '').slice(0, 120) };
       const hint = errorHint(info, route, { aborted, timeoutMs });
       // 代理拒绝隧道（403/407）是配置问题，重试 3 次只会拖慢并刷屏；5xx 才值得再试
       const steam429 = err.status === 429 && isSteamHost(hostOf(url));
@@ -314,6 +394,19 @@ export async function fetchText(url, opts = {}) {
         continue;
       }
 
+      // AM-1：代理层失败 → 记冷却并换下一条（docs/PROXY-POOL.md 决策 1/2）；
+      // HTTP 5xx / 429 是"有响应"，走上面/下面的原重试逻辑，不切换代理。
+      if (poolUrls.length && route?.url && isProxyLayerFailure(info, aborted)) {
+        const rec = proxyPool.noteProxyFailure(
+          route.url,
+          { code, message: String(lastError?.message ?? '').slice(0, 120) },
+          { logger },
+        );
+        logger?.warn('http.proxy_down', { proxy: route.proxy, fails: rec.fails, downUntil: rec.downUntil });
+        shouldAdvance = true; // 下一条代理
+        if (attempt < maxAttempts) continue;
+      }
+
       if (!retryable || retriesUsed >= retries) break;
       // 403 不应重试；其他短暂错误按普通退避处理。
       if (err.status === 403) break;
@@ -326,17 +419,22 @@ export async function fetchText(url, opts = {}) {
     }
   }
 
+  if (poolUrls.length && poolCandidates.length && triedProxies.length >= poolCandidates.length) {
+    // 池内候选全部试过且都失败（含 retries=0 的直落路径）→ 统一报 PROXY_ALL_FAILED，不回退直连
+    throwAllFailed();
+  }
+
   const info = explainError(lastError);
   const code = info.code;
   const hint = errorHint(info, route, { aborted: lastError?.name === 'AbortError' });
-  let host = url;
+  let errHost = url;
   try {
-    host = new URL(url).host;
+    errHost = new URL(url).host;
   } catch {
     /* 保留原串 */
   }
   const finalErr = new Error(
-    `${lastError?.message ?? 'request failed'}${code ? ` (${code})` : ''} → ${host}${hint ? ` · ${hint}` : ''}` +
+    `${lastError?.message ?? 'request failed'}${code ? ` (${code})` : ''} → ${errHost}${hint ? ` · ${hint}` : ''}` +
       `${route.via !== 'direct' ? ` · 经 ${route.via}${route.proxy ? `(${route.proxy})` : ''}` : ''}`,
   );
   finalErr.status = lastError?.status;

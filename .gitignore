@@ -9,6 +9,7 @@ data/images/
 data/backup/
 data/*.jsonl
 data/sonkwo-discovery.json
+data/proxy-health.json
 .env
 .env.local
 compose.hub.external-db.local.yaml

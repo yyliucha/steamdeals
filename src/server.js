@@ -31,6 +31,7 @@ import { ensureSteamSchemaOnce, baseUrl } from './steam-login.js';
 import * as mailTemplates from './mail-templates.js';
 import * as notify from './notify.js';
 import * as accountNotify from './account-notify.js';
+import * as proxyPool from './proxy-pool.js';
 import { maskEmail } from './auth-routes.js';
 import { auditJobs as auditSchedulerJobs } from './scheduler.js';
 
@@ -2478,6 +2479,12 @@ export function createApiServer({
         if (!requireAdmin()) return;
         const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 200) || 200, 1), 500);
         return json(res, 200, { entries: await db.listMailLog(q, { limit }) });
+      }
+
+      // ---- 代理池健康状态（docs/PROXY-POOL.md §4.5，AM-1 批）：仅管理员；地址一律脱敏 ----
+      if (path === '/api/admin/proxies' && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        return json(res, 200, proxyPool.proxyHealth(process.env, { logger }));
       }
 
       if (path === '/api/admin/views' && req.method === 'GET') {

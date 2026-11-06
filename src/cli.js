@@ -1531,6 +1531,16 @@ async function cmdDiagnose() {
   const proxyInfo = describeProxy(process.env);
   add('proxy:steam', true, proxyInfo.steam.via === 'direct' ? '直连（国内通常不可达）' : `${proxyInfo.steam.via} → ${proxyInfo.steam.proxy}`);
   add('proxy:others', true, proxyInfo.others.via === 'direct' ? '直连' : `${proxyInfo.others.via} → ${proxyInfo.others.proxy}`);
+  // AM-1：Steam 代理池（docs/PROXY-POOL.md §4.5）——池里每条的状态（地址已脱敏）
+  if (proxyInfo.steam.poolCount > 1) {
+    add('proxy:pool', true, `Steam 代理池 ${proxyInfo.steam.poolCount} 条`);
+    const { proxyHealth } = await import('./proxy-pool.js');
+    for (const p of proxyHealth(process.env).proxies) {
+      const stateText = p.state === 'ok' ? '正常' : p.state === 'cooldown' ? `冷却中（至 ${p.downUntil}）` : '未知';
+      const detail = [stateText, p.fails ? `连续失败 ${p.fails}` : '', p.lastError ? `最近错误 ${p.lastError}` : ''].filter(Boolean).join('，');
+      add(`proxy:pool#${p.index}`, true, `${p.proxy} ${detail}`);
+    }
+  }
 
   // 代理"协议层"探测：TCP 通 ≠ CONNECT 通（407 要账号密码、403 是代理禁目标、代理挂了是 ECONNREFUSED）。
   // 关键点：必须用**未脱敏**的代理地址探测——凭证在 URL 里，拿 "http://***@host" 去探只会得到 407。
@@ -1571,10 +1581,17 @@ async function cmdDiagnose() {
     }
   };
 
-  // socks5:// 之类会被 parseProxy 静默丢掉、回落直连——最难查的一类配置错误，单独报出来
+  // socks5:// 之类会被 parseProxy 静默丢掉、回落直连——最难查的一类配置错误，单独报出来（AM-1：兼容多条）
   const rawSteamProxy = String(process.env.STEAM_PROXY ?? process.env.steam_proxy ?? '').trim();
-  if (rawSteamProxy && !parseProxy(rawSteamProxy)) {
-    add('proxy:format', false, 'STEAM_PROXY 不是合法的 http/https 地址（只支持 http:// 或 https://，socks5 不支持）');
+  if (rawSteamProxy) {
+    const { parseProxyList } = await import('./proxy.js');
+    const parsed = parseProxyList(rawSteamProxy);
+    const lineCount = rawSteamProxy.split(/[\r\n,]+/).filter(Boolean).length;
+    if (!parsed.length) {
+      add('proxy:format', false, 'STEAM_PROXY 不是合法的 http/https 地址（只支持 http:// 或 https://，socks5 不支持）');
+    } else if (parsed.length < lineCount) {
+      add('proxy:format', false, `STEAM_PROXY 共 ${lineCount} 行，只有 ${parsed.length} 行是合法的 http/https 代理（其余被忽略）`);
+    }
   }
 
   // store 与 api 的放行规则经常不一样，而「导入目录」走的正是 api.steampowered.com
@@ -1666,9 +1683,10 @@ async function cmdDiagnose() {
  */
 async function cmdProxyCheck() {
   const net = await import('node:net');
-  const { describeProxy, parseProxy, redactProxy } = await import('./proxy.js');
+  const { describeProxy, parseProxy, parseProxyList, redactProxy } = await import('./proxy.js');
   const info = describeProxy(process.env);
-  const steamUrl = parseProxy(process.env.STEAM_PROXY ?? process.env.steam_proxy ?? '');
+  // AM-1：Steam 专用代理可能配多条，本命令只逐层探测第一条（池内切换由 http.js 负责）
+  const steamUrl = parseProxyList(process.env.STEAM_PROXY ?? process.env.steam_proxy ?? '')[0] ?? null;
   console.log('配置：Steam 专用代理 = ' + (steamUrl ? redactProxy(steamUrl) : '（未配置）'));
   console.log('      通用出网代理 = ' + (info.others.via === 'direct' ? '（未配置）' : info.others.proxy));
   if (!steamUrl) {

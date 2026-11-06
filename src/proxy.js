@@ -26,6 +26,28 @@ export function parseProxy(value) {
   }
 }
 
+/**
+ * 多条代理解析（docs/PROXY-POOL.md §3.1，AM-1 批）：换行/逗号分隔 → 去空 →
+ * 逐条 parseProxy（非法行丢弃）→ 去重（保留首次出现）。老的单行配置天然等于 1 条。
+ */
+export function parseProxyList(value) {
+  const seen = new Set();
+  const out = [];
+  for (const part of String(value ?? '').split(/[\r\n,]+/)) {
+    const url = parseProxy(part);
+    if (url && !seen.has(url)) {
+      seen.add(url);
+      out.push(url);
+    }
+  }
+  return out;
+}
+
+/** 读取 STEAM_PROXY 的全部条目（环境变量同样接受换行/逗号分隔）；没配返回 []。 */
+export function steamProxyUrls(env = process.env) {
+  return parseProxyList(firstDefined(env.STEAM_PROXY, env.steam_proxy));
+}
+
 /** NO_PROXY / no_proxy → 数组；支持 *、逗号、后缀匹配、带端口。 */
 export function parseNoProxy(value) {
   return String(value ?? '')
@@ -58,8 +80,10 @@ export function decideProxy(host, env = process.env, steamHosts = DEFAULT_STEAM_
 
   const isSteam = steamHosts.some((suffix) => target === suffix || target.endsWith(`.${suffix}`));
   if (isSteam) {
-    const steam = parseProxy(firstDefined(env.STEAM_PROXY, env.steam_proxy));
-    if (steam) return { via: 'steam-proxy', url: steam };
+    // AM-1：Steam 专用代理现在可以配多条；本函数保持"取一条"的旧语义（取第一条），
+    // 多条的顺序切换/冷却在 src/proxy-pool.js 与 http.js 的重试循环里处理。
+    const steam = steamProxyUrls(env);
+    if (steam.length) return { via: 'steam-proxy', url: steam[0] };
     // Steam 没配专用代理时，落回通用代理（如果配了）
     const general = parseProxy(firstDefined(env.HTTPS_PROXY, env.https_proxy, env.HTTP_PROXY, env.http_proxy));
     if (general && !shouldBypass(target, noProxy)) return { via: 'proxy', url: general };
@@ -90,8 +114,9 @@ export function redactProxy(url) {
 export function describeProxy(env = process.env) {
   const steam = decideProxy('store.steampowered.com', env);
   const other = decideProxy('catalog.gog.com', env);
+  const pool = steamProxyUrls(env);
   return {
-    steam: { via: steam.via, proxy: redactProxy(steam.url) },
+    steam: { via: steam.via, proxy: redactProxy(steam.url), poolCount: pool.length },
     others: { via: other.via, proxy: redactProxy(other.url) },
   };
 }

@@ -8,6 +8,7 @@
 // 这样老部署的 .env 仍能作为首次导入/兜底，新部署在 /setup 或控制台写库后立即以库为准。
 import { readFileSync } from 'node:fs';
 import { timingSafeEqual } from 'node:crypto';
+import { parseProxy } from './proxy.js';
 import {
   EMAIL_SCHEMA,
   decryptSecret,
@@ -144,7 +145,7 @@ export const SETTINGS = [
 
   // ---- 网络 ----
   def('network.steamProxy', 'STEAM_PROXY', 'network', 'Steam 专用代理', 'secret', '', {
-    help: '只作用于 Steam 域名，如 http://127.0.0.1:7890。仅支持 http/https。',
+    help: '只作用于 Steam 域名，如 http://127.0.0.1:7890。可配多条（换行分隔、按顺序尝试、最多 10 条），仅支持 http/https。',
   }),
   def('network.httpsProxy', 'HTTPS_PROXY', 'network', '通用出网代理', 'secret', '', {
     help: '作用于其余所有主机；受 NO_PROXY 排除。仅支持 http/https。',
@@ -317,7 +318,18 @@ export function validateSetting(d, input) {
   if (['alerts.webhookUrl', 'alerts.wecomUrl'].includes(d.key) && value && !isHttpUrl(value)) {
     return { ok: false, error: `${d.label} 需要 http/https URL` };
   }
-  if (['network.steamProxy', 'network.httpsProxy'].includes(d.key) && value && !isHttpUrl(value)) {
+  // AM-1（docs/PROXY-POOL.md §3.1）：Steam 专用代理改多行多条——换行/逗号分隔 → 去空 →
+  // 逐条校验（报行号）→ 去重 → 1–10 条；老单行配置 = 1 条，完全兼容。
+  if (d.key === 'network.steamProxy') {
+    if (value) {
+      const lines = String(value).split(/[\r\n,]+/).map((s) => s.trim()).filter(Boolean);
+      const badIdx = lines.findIndex((line) => !parseProxy(line));
+      if (badIdx >= 0) return { ok: false, error: `第 ${badIdx + 1} 行不是合法的 http/https 代理（不支持 socks5）` };
+      if (lines.length > 10) return { ok: false, error: 'Steam 代理池最多 10 条' };
+      value = [...new Set(lines.map((line) => parseProxy(line)))].join('\n');
+    }
+  }
+  if (d.key === 'network.httpsProxy' && value && !isHttpUrl(value)) {
     return { ok: false, error: `${d.label} 需要 http/https 代理地址（不支持 socks5）` };
   }
   if (d.key === 'sources.itad.apiKey' && value && value.length < 8) {
