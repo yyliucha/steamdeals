@@ -64,6 +64,11 @@ node src/cli.js serve --port 8090
   否则重新打开也是旧版。
 - **已知取舍**：standalone 里点 Steam 商店等外链会跳出系统浏览器，买完需手动切回；部分国产 ROM 浏览器
   不支持独立窗口，仍以标签页打开。详见 [MOBILE-PWA.md](MOBILE-PWA.md) §5。
+- **Z 批手机端适配修复（[MOBILE-FIX.md](MOBILE-FIX.md)，待发版）**：真机（小米浏览器忽略 viewport、按 980 排版）
+  详情弹窗右侧被裁的根因是 `vw` 不受 zoom 影响——移动端全屏样式改回 `%`/`dvh`，弹窗宽度绑 `100%`，
+  并删掉从未生效的 `html.mobile-layout` 死规则；桌面版网站渲染时顶部给可关闭提示（保留 zoom 兜底）；
+  Chrome 可用时顶部出「安装到桌面」（`useInstallPrompt`），不支持时「我的」页给 Chrome 操作说明；
+  后台游戏目录/访问记录在手机上为卡片列表，其余表格带「左右滑动查看更多」提示。
 
 **前台不提供 Steam 登录**：Steam OpenID 登录与游戏库同步全部放在控制台的「Steam 账号」页，
 与站点账号体系相互独立；前台只展示游戏优惠数据。

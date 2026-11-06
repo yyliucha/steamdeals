@@ -384,3 +384,37 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **验收**：长任务运行期间轻任务照常跑；同一时刻只一个重任务；重启后 nextRunAt 不全部重置；status 文件每 15 秒更新。
 - **交接单**：[HANDOVER-X-SCHEDULER.md](HANDOVER-X-SCHEDULER.md)（含改动点、行号、风险与验收命令）。
 - **已确认**：`steam-status` 每天 12000 条；`steam-prices` 本批不动（缩量另行优化）。
+
+## Y. 待开发：补 `steamStatus.initialDelaySec` 设置项
+
+**状态：需求已确认（2026-11-05），待开发**（小改，可随下个发版）。
+
+- **背景**：X 批（v1.16.1）把 `steam-status` 首轮延迟默认值从 21600s 改成 600s，但**只改代码默认、没加设置项**。
+  其他任务都有（`sources.steam/sonkwo/itad/gog/humble/discover.initialDelaySec`），`steam-status` 漏了 →
+  线上无法在「系统设置 → 数据源」调整，只能改 compose 环境变量并重启。
+- **补充事实**：`cmdSteamStatus` 不写 `sync_runs`，所以 X 批的 `lastRunMs` 恢复对它不生效——
+  每次重启仍按 `initialDelaySec` 重新计时（默认 600s，可接受）。
+- **改动**：
+  - `src/settings.js`：在 `steamStatus.rateMs/limit/intervalMin` 之后加一行
+    `def('steamStatus.initialDelaySec', 'STEAM_STATUS_INITIAL_DELAY_SEC', 'sources', 'Steam 状态判定首轮延迟（秒）', 'int', 600, { min: 0, max: 86400, advanced: true })`
+  - `test/settings.test.js`：断言该 def 存在、默认 600、DB 值能水合到 `process.env.STEAM_STATUS_INITIAL_DELAY_SEC`
+  - `test/scheduler.test.js`：断言 `jobsFromEnv` 读取该环境变量作为 `initialDelaySec`
+  - 文档：`docs/DELIVERY.md` 数据任务/环境变量表补一行；前端无需改（设置页按 schema 渲染）
+- **验收**：设置页出现「Steam 状态判定首轮延迟（秒）」；保存后热加载生效；默认 600；`npm test` 全绿；不自行打 tag。
+
+## Z. 手机端适配修复（vw 逃逸 + 安装提示 + 后台卡片化）
+
+**状态：已实现，待发版（2026-11-06）**（见 [MOBILE-FIX.md](MOBILE-FIX.md)）；红米 + 小米浏览器真机验收待部署后执行。
+
+- **真机证据**（红米 K100 Pro Max + 小米自带浏览器）：`?debug=1` 显示 `innerWidth 980 / screen.width 400 /
+  DPR 3 / isMobile true / desktopMode true`，UA 为桌面 `X11; Linux x86_64` —— 浏览器忽略 viewport meta，按 980 排版。
+- **根因**：`main.js:38-47` 用 `zoom=innerWidth/screen.width=2.45` 把 CSS 视口压回 400（列表页因此正常），
+  但 **`vw` 不受 zoom 影响**：`Home.vue` 的 `.mobile-full{width:100vw}` 仍是 980 → 详情弹窗右侧被裁。
+  另有一条死规则 `html.mobile-layout`（class 从未添加）。
+- **安装提示缺失**：全仓无 `beforeinstallprompt`；小米浏览器只会建普通书签，打开仍是浏览器外观。
+- **后台表格未卡片化**：`AdminModules.vue:101` 的 `isMobile` 是死变量，`main.css` 无 el-table 响应式；
+  README:129 却写"已卡片式"（文档与实现不符，需同步修正）。
+- **方案**：A 去掉移动端 `vw/vh`（改 `%`/`dvh`）+ 图片 max-width；B 桌面模式顶部提示（保留 zoom）；
+  C 新增 `useInstallPrompt` + 顶部「安装到桌面」+ 不支持时给 Chrome 说明；D 后台游戏目录/访问记录卡片化、
+  其余表格加横向滚动提示；E 视觉微调（触摸 ≥44px）。
+- **验收**：真机详情页不再横向溢出、安装按钮可用、后台卡片化不横向滚动、PC 零回归、`npm test` 全绿。

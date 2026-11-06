@@ -2,6 +2,36 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+
+- **手机端详情弹窗右侧被裁（Z 批，docs/MOBILE-FIX.md）**：真机（红米 K100 Pro Max + 小米自带浏览器）
+  忽略 `<meta viewport>`、按 980 排版；`main.js` 的 zoom 兜底把列表页压回正常宽度，但 **`vw` 不受 zoom 影响**，
+  `.mobile-full{width:100vw}` 仍是 980 → 详情弹窗被裁。移动端全屏样式改回 `%`/`dvh`、弹窗宽度绑 `100%`，
+  图片补 `max-width:100%`，删除从未生效的 `html.mobile-layout` 死规则，`html,body` 全局防横向溢出。
+
+### 新增
+
+- **桌面版网站渲染提示**：检测到 `screen.width≤640 && innerWidth>700` 时，移动端顶部给可关闭提示条
+  （关闭状态存 sessionStorage）+「我的」页常驻说明；zoom 兜底公式保持不变。
+- **安装到桌面（PWA）**：`frontend/src/composables/useInstallPrompt.js` 监听 `beforeinstallprompt` /
+  `appinstalled` / `display-mode: standalone`；Chrome 可用时顶部出「安装到桌面」，不支持的小米浏览器
+  在「我的」页显示 Chrome 安装说明（旧快捷方式先删再装）。
+- **后台表格手机卡片化**：游戏目录与访问记录各 tab（访问明细/待审/最近设备/已封设备/黑名单/白名单/自动封禁）
+  在手机上渲染卡片列表（勾选与批量操作可用，字段与表格列一致，游戏卡补齐同步状态/分级标签）；
+  其余表格加「左右滑动查看更多」提示与右侧渐隐。`isMobile` 改为 760 断点响应式（resize/旋转监听）。
+
+### 变更
+
+- 移动端视觉微调：卡片间距 12、触摸目标统一 ≥44px、搜索框与筛选按钮等高（44px）。
+
+### 测试
+
+- 新增 `test/frontend-mobile.test.js`（5 项）接入主链：Home.vue 无 `100vw`/`100vh`/`mobile-layout`、
+  `main.css` 含 `100dvh`/防溢出/滑动提示、`main.js` 保留 zoom 兜底、安装提示与桌面模式提示接线、
+  `AdminModules` 卡片分支与 760 断点。
+
 ## [1.16.1] - 2026-11-05
 
 ### 修复

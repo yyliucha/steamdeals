@@ -1,5 +1,5 @@
 <template>
-  <div class="extra-wrap">
+  <div class="extra-wrap" :class="{ 'm-console': isMobile }">
     <template v-if="section==='users'">
       <div class="module-card"><div class="card-heading"><div><h3>新建用户</h3><p>管理员可进入控制台；普通用户只能个性化浏览。</p></div><el-button @click="loadUsers">刷新列表</el-button></div><el-form :model="newUser" class="user-create" @submit.prevent="createUser"><el-input v-model="newUser.username" placeholder="用户名" autocomplete="username" @keyup.enter.prevent="createUser"/><el-input v-model="newUser.password" type="password" show-password placeholder="初始密码（8–200 位）" autocomplete="new-password" @keyup.enter.prevent="createUser"/><el-input v-model="newUser.email" placeholder="登录邮箱（可选）" @keyup.enter.prevent="createUser"/><el-select v-model="newUser.role"><el-option label="普通用户" value="user"/><el-option label="管理员" value="admin"/></el-select><el-button type="primary" :loading="saving" @click="createUser">创建账号</el-button></el-form></div>
       <div class="module-card table-card"><BulkBar :count="sel.users.count" :actions="usersBulkActions" :running="bulkRunning" :hint="usersBulkHint" @run="(a)=>runBulk(a,sel.users,{refresh:loadUsers})" @clear="sel.users.clear()"/><el-table ref="usersTable" row-key="id" :data="pagedUsers" v-loading="loading" stripe @selection-change="sel.users.onSelectionChange"><el-table-column type="selection" width="44"/><el-table-column prop="username" label="用户名" min-width="125"/><el-table-column prop="display_name" label="显示名" min-width="120"><template #default="{row}">{{ row.display_name||'—' }}</template></el-table-column><el-table-column label="邮箱" min-width="200"><template #default="{row}"><span>{{ row.email||'未绑定' }}</span><el-tag v-if="row.email" :type="row.email_verified?'success':'warning'" size="small" class="tag-gap">{{ row.email_verified?'已验证':'未验证' }}</el-tag></template></el-table-column><el-table-column label="角色" width="95"><template #default="{row}"><el-tag :type="row.role==='admin'?'danger':'info'" size="small">{{ row.role==='admin'?'管理员':'普通用户' }}</el-tag></template></el-table-column><el-table-column label="状态" width="95"><template #default="{row}"><el-tag :type="row.disabled?'info':'success'" size="small">{{ row.disabled?'已禁用':'正常' }}</el-tag></template></el-table-column><el-table-column label="最近登录" min-width="155"><template #default="{row}">{{ dateTime(row.last_login_at) }}</template></el-table-column><el-table-column label="管理操作" min-width="255" fixed="right"><template #default="{row}"><el-button link @click="editName(row)">改名</el-button><el-button link @click="editEmail(row)">邮箱</el-button><el-button v-if="row.email&&!row.email_verified" link @click="verifyEmail(row)">验证</el-button><el-button link @click="resetPassword(row)">重置密码</el-button><el-button link :type="row.disabled?'success':'danger'" @click="toggleUser(row)">{{ row.disabled?'启用':'禁用' }}</el-button></template></el-table-column></el-table><PaginationBar v-model:page="usersPage" v-model:page-size="usersPageSize" :total="users.length"/></div>
@@ -12,19 +12,19 @@
       <div class="module-card steam-account">
         <div class="card-heading"><div><h3>绑定的 Steam 账号</h3><p>每个站点用户最多绑定 5 个 Steam 账号，一个 Steam 账号只能属于一个用户；绑定后自动同步游戏库与愿望单。</p><p>Steam API 不返回 DLC 拥有数据，故不展示 DLC 数。</p></div><div class="steam-actions"><el-button type="primary" :disabled="steamAccounts.length>=steamLimit" @click="bindSteam">{{ steamAccounts.length>=steamLimit?'已达绑定上限':'绑定新账号' }}</el-button><el-button @click="loadSteam">刷新</el-button></div></div>
         <el-alert v-if="steamError" :title="steamError" type="error" :closable="false" class="steam-alert"/>
-        <el-table v-if="steamAccounts.length" :data="steamAccounts" stripe>
+        <div class="table-scroll" v-if="steamAccounts.length"><el-table :data="steamAccounts" stripe>
           <el-table-column label="账号" min-width="230"><template #default="{row}"><div class="steam-account-cell"><img v-if="row.avatar" :src="row.avatar" class="steam-avatar-img" @error="$event.target.style.display='none'"><div><strong>{{ row.alias||row.persona_name||row.steam_id }}</strong><small>{{ row.alias&&row.persona_name?row.persona_name+' · ':'' }}{{ row.steam_id }}</small></div></div></template></el-table-column>
           <el-table-column label="游戏库" width="90" align="right"><template #default="{row}"><el-button link type="primary" @click="toggleLibrary(row)">{{ row.games }}</el-button></template></el-table-column>
           <el-table-column label="愿望单" width="90" align="right"><template #default="{row}">{{ row.wishlist }}</template></el-table-column>
           <el-table-column label="推送 Key" width="100"><template #default="{row}"><el-tag :type="row.api_key_set?'success':'info'" size="small">{{ row.api_key_set?'已配置':'未配置' }}</el-tag></template></el-table-column>
           <el-table-column label="最近同步" min-width="150"><template #default="{row}">{{ dateTime(row.library_synced_at)||'未同步' }}</template></el-table-column>
           <el-table-column label="操作" min-width="400" fixed="right"><template #default="{row}"><el-button link type="primary" @click="syncSteam(row,'library')">同步游戏库</el-button><el-button link @click="syncSteam(row,'wishlist')">同步愿望单</el-button><el-button link @click="editAlias(row)">改别名</el-button><el-button link @click="editApiKey(row)">API Key</el-button><el-button link type="danger" @click="unbindSteam(row)">解绑</el-button></template></el-table-column>
-        </el-table>
+        </el-table></div>
         <el-empty v-else description="还没有绑定 Steam 账号，点右上角「绑定新账号」开始"/>
       </div>
       <div v-if="unownedAccounts.length" class="module-card table-card">
         <div class="card-heading padded"><div><h3>未归属的 Steam 账号（迁移认领）</h3><p>历史登录留下的账号还没有归属任何站点用户，认领后即可同步游戏库与愿望单。</p></div></div>
-        <el-table :data="unownedAccounts" stripe><el-table-column label="账号" min-width="240"><template #default="{row}"><div class="steam-account-cell"><div><strong>{{ row.persona_name||row.steam_id }}</strong><small>{{ row.steam_id }}</small></div></div></template></el-table-column><el-table-column label="已同步游戏" width="120" align="right"><template #default="{row}">{{ row.games }}</template></el-table-column><el-table-column label="操作" width="130" fixed="right"><template #default="{row}"><el-button link type="primary" @click="claimSteam(row)">认领到当前管理员</el-button></template></el-table-column></el-table>
+        <div class="table-scroll"><el-table :data="unownedAccounts" stripe><el-table-column label="账号" min-width="240"><template #default="{row}"><div class="steam-account-cell"><div><strong>{{ row.persona_name||row.steam_id }}</strong><small>{{ row.steam_id }}</small></div></div></template></el-table-column><el-table-column label="已同步游戏" width="120" align="right"><template #default="{row}">{{ row.games }}</template></el-table-column><el-table-column label="操作" width="130" fixed="right"><template #default="{row}"><el-button link type="primary" @click="claimSteam(row)">认领到当前管理员</el-button></template></el-table-column></el-table></div>
       </div>
       <div v-if="activeAccount && libraryGames.length" class="module-card table-card">
         <div class="card-heading padded"><div><h3>{{ activeAccount.alias||activeAccount.persona_name||activeAccount.steam_id }} 的游戏库</h3><p>最多显示 500 条，按游玩时长排序。</p></div><el-button text @click="activeAccount=null;libraryGames=[]">收起</el-button></div>
@@ -60,6 +60,11 @@ import { useListPagination } from '../composables/useListPagination.js';
 import { ElMessage,ElMessageBox } from 'element-plus';
 import { fmtDateTime as dateTime } from '../utils/siteTime.js';
 const props=defineProps({section:{type:String,required:true},me:{type:Object,default:null}});
+// 窄屏（手机）：其余表格由 .m-console 的「左右滑动查看更多」提示覆盖（docs/MOBILE-FIX.md §3D）
+const mobileQuery=typeof window!=='undefined'&&window.matchMedia?window.matchMedia('(max-width: 760px)'):null;
+const isMobile=ref(Boolean(mobileQuery&&mobileQuery.matches));
+function onMobileChange(e){isMobile.value=e.matches;}
+if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',onMobileChange);else mobileQuery.addListener(onMobileChange);}
 const loading=ref(false),saving=ref(false),users=ref([]),recycleGames=ref([]),steamAccounts=ref([]),unownedAccounts=ref([]),steamLimit=ref(5),steamError=ref(''),activeAccount=ref(null),libraryGames=ref([]),apiKeyDialog=ref({visible:false,row:null,value:''}),smtp=ref({}),mailRecords=ref([]),mailMessage=ref(''),mailOk=ref(false),smtpTrace=ref(''),testEmail=ref(''),mailDialog=ref(false),activeMail=ref(null),mailCode=ref(null),logEntries=ref([]),logFiles=ref([]),logQuery=ref(''),logScope=ref(''),logMinutes=ref('0'),autoLogs=ref(false),syncRuns=ref([]);
 const newUser=ref({username:'',password:'',email:'',role:'user'});
 const usersPager=useListPagination(users), recyclePager=useListPagination(recycleGames), steamPager=useListPagination(libraryGames), mailPager=useListPagination(mailRecords), logsPager=useListPagination(logEntries);
@@ -149,7 +154,7 @@ watch(()=>props.section,s=>{if(s==='users')loadUsers();else if(s==='recycle')loa
 // 翻页清空选择（常规列表只支持本页勾选）；回收站例外：可用「全选当前筛选」一次性选满
 watch(recyclePage,()=>sel.recycle.clear());watch(usersPage,()=>sel.users.clear());
 onMounted(()=>{if(props.section==='users')loadUsers();else if(props.section==='recycle')loadRecycle();else if(props.section==='steam'){consumeSteamQuery();loadSteam();}else if(props.section==='mail')loadMail();else if(props.section==='sync'){loadLogs();loadSyncRuns();}});
-const timer=setInterval(()=>{if(props.section==='sync'&&autoLogs.value&&!document.hidden)loadLogs();},10000);onBeforeUnmount(()=>clearInterval(timer));
+const timer=setInterval(()=>{if(props.section==='sync'&&autoLogs.value&&!document.hidden)loadLogs();},10000);onBeforeUnmount(()=>{clearInterval(timer);if(mobileQuery){if(mobileQuery.removeEventListener)mobileQuery.removeEventListener('change',onMobileChange);else mobileQuery.removeListener(onMobileChange);}});
 </script>
 
 <style scoped>

@@ -1,6 +1,8 @@
 # 调度器长任务阻塞修复（已发布 v1.16.1）
 
 > 状态：**已实现并发布 v1.16.1（2026-11-05）**；tag `v1.16.1` 已推送，镜像构建见 CI。
+> **遗留**：`steamStatus.initialDelaySec` 没有做成设置项（其他任务都有），线上只能靠环境变量
+> `STEAM_STATUS_INITIAL_DELAY_SEC`；已登记为 [TODO.md](TODO.md) 的 Y 条目。
 > 关联：[DELIVERY.md](DELIVERY.md)（数据任务与自动化）、[PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md)、
 > [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md)（`steam-status` 任务）、
 > [TODO.md](TODO.md)。
