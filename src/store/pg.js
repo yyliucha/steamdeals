@@ -1298,10 +1298,10 @@ export function verifyPassword(password, stored) {
   return candidate.length === expected.length && timingSafeEqual(candidate, expected);
 }
 
-export async function createUser(q, { username, password, role = 'user' }) {
+export async function createUser(q, { username, password, role = 'user', email = null }) {
   const r = await q(
-    'insert into users (username, password_hash, role) values ($1, $2, $3) returning id, username, role',
-    [username, hashPassword(password), role],
+    'insert into users (username, password_hash, role, email) values ($1, $2, $3, $4) returning id, username, role, email, email_verified',
+    [username, hashPassword(password), role, email],
   );
   return r.rows[0];
 }

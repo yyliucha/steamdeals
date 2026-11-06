@@ -2269,8 +2269,41 @@ export function createApiServer({
         if (!username || password.length < 8 || password.length > 200) {
           return json(res, 400, { error: '用户名必填，密码需要 8-200 位' });
         }
-        const created = await db.createUser(q, { username, password, role: body.role === 'admin' ? 'admin' : 'user' });
-        logger?.info('api.user_created', { username: created.username, role: created.role });
+        // 邮箱可选，但必须和账号在同一次写入里落库：先建号、再绑邮箱的两步式会让
+        // "邮箱已被占用"时账号已落库，前端报错刷新却冒出幽灵用户（2026-11-06 反馈的 bug）。
+        const auth = await import('./email-auth.js');
+        const rawEmail = String(body.email ?? '').trim();
+        const email = rawEmail ? auth.normalizeEmail(rawEmail) : null;
+        if (rawEmail && !email) return json(res, 400, { error: '邮箱格式不正确' });
+        const doCreate = () => db.createUser(q, { username, password, role: body.role === 'admin' ? 'admin' : 'user', email });
+        let created;
+        try {
+          try {
+            created = await doCreate();
+          } catch (err) {
+            // 老库可能缺列：补建后重试一次（与绑邮箱路由同款兜底）
+            if (String(err.code) === '42703') {
+              await q('alter table users add column if not exists email text');
+              await q('alter table users add column if not exists email_verified boolean not null default false');
+              created = await doCreate();
+            } else {
+              throw err;
+            }
+          }
+        } catch (err) {
+          if (String(err.code) === '23505') {
+            const dupEmail = String(err.constraint ?? err.message ?? '').includes('email');
+            return json(res, 409, { error: dupEmail ? '这个邮箱已被其他账号绑定' : '用户名已存在' });
+          }
+          logger?.error('api.user_create_failed', {
+            username,
+            code: err.code ?? null,
+            message: String(err.message).slice(0, 200),
+            by: user.username,
+          });
+          return json(res, 500, { error: '创建失败：' + String(err.message).slice(0, 160) });
+        }
+        logger?.info('api.user_created', { username: created.username, role: created.role, emailBound: Boolean(email) });
         return json(res, 201, { user: created });
       }
 
