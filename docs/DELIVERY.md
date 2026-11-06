@@ -184,14 +184,14 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-06 更新，v1.18.0 已发布：版本徽标按 IP 选源 + 平台链接抽屉 + 搜索缓存失效 + 同步观测）
+### 当前状态（2026-11-06 更新，v1.18.0 已发布；待发版：AH 用户彻底删除 + AI 邮件模板/HTML/发送记录 + AJ 账号变更通知）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
 - **待发版：AH 批「用户彻底删除」**（2026-11-06 已提交 main，等「构建 vX.Y.Z」指令）：
   `DELETE /api/admin/users/:username`（confirmUsername 精确匹配、删自己 400、最后一个可用管理员 409、
   单事务先清无外键的 `steam_games`/`steam_wishlist` 再删 `users`、审计落 `admin_user_deletions` 脱敏快照）+
-  「最近删除」审计表（按用户名模糊搜索）；前端删除按钮/确认弹窗/最近删除表。通知邮件随 AJ 批接入。
+  「最近删除」审计表（按用户名模糊搜索）；前端删除按钮/确认弹窗/最近删除表。通知邮件已随 AJ 批接入（dfdad47）。
   规格见 [USER-LIFECYCLE.md](USER-LIFECYCLE.md)。注意：`admin_user_deletions` 建表随 `db.migrate` 幂等执行，
   部署无需手工 SQL。
 
@@ -199,6 +199,16 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   HTML 多部分邮件（主题去 CR/LF）；9 事件模板（编辑/启停/预览/发测试/恢复默认/3 套示例版式，`{{code}}`
   仅验证码可用）+ `mail_templates`/`mail_log` 表（随 `ensureEmailSchema` 幂等建）；登录/重置/绑定验证码邮件
   套 `verify_code` 模板（停用回退纯文本）；「邮件服务」页模板卡 + 发送记录双 tab。
+  规格见 [USER-LIFECYCLE.md](USER-LIFECYCLE.md)。
+
+- **待发版：AJ 批「账号变更通知」**（2026-11-06 已提交 main，等「构建 vX.Y.Z」指令）：
+  7 类管理操作触发 8 类通知邮件（禁用/启用/删除/改名/改邮箱/改角色/重置密码 + 邮箱绑定成功）；改邮箱发两封
+  （旧邮箱收「登录邮箱已变更」、新邮箱收「绑定成功」；旧邮箱空/未验证改发新邮箱；新旧相同只发一封；解绑不发）；
+  删除/改邮箱异步（响应 `notify:'queued'`），PATCH/重置密码同步且 `notify:{status,error}` 进响应；
+  串行队列 + 单封 8 秒超时失败不重试 + 每次真实发送落 `mail_log`（成功/失败都落，actor 记真实操作者）；
+  操作者固定「站点管理员」；正文不含密码/token/Key/IP/完整邮箱，删除原因不进邮件；批量禁用/启用不发（决策 9）。
+  质检 ✅ 放行（第 1 轮，[QA-USER-NOTIFY-AJ.md](QA-USER-NOTIFY-AJ.md)：57 文件/480 项 npm test 全绿、
+  frontend:build、scan 干净；1 项真机人工确认：真实邮箱客户端 HTML 渲染）。
   规格见 [USER-LIFECYCLE.md](USER-LIFECYCLE.md)。
 
 - **v1.18.0 已发布**（tag `v1.18.0`）：AE/AF/AG/AC-1 四批——版本徽标按服务器 IP 选镜像仓库

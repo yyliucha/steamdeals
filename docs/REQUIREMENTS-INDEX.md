@@ -35,7 +35,7 @@
 | **AG** | 后台平台链接抽屉 + 游戏名点击复制（后台/前台） | [ADMIN-PLATFORM-LINKS.md](ADMIN-PLATFORM-LINKS.md) | 已发布 v1.18.0 | ✅ 已在对话给出 |
 | **AH** | 用户彻底删除（硬删除 + 最近删除审计） | [USER-LIFECYCLE.md](USER-LIFECYCLE.md) | 质检通过（2026-11-06，8f53365；独立复核 ✅） | ✅ 已在对话给出 |
 | **AI** | 邮件模板化 + HTML 邮件 + 发送记录 | [USER-LIFECYCLE.md](USER-LIFECYCLE.md) | 质检通过（2026-11-06，4570d81；独立复核 ✅） | ✅ 已在对话给出 |
-| **AJ** | 账号变更通知（7 类操作 / 8 类邮件） | [USER-LIFECYCLE.md](USER-LIFECYCLE.md) | 已实现待发版（2026-11-06，dfdad47） | ✅ 已在对话给出 |
+| **AJ** | 账号变更通知（7 类操作 / 8 类邮件） | [USER-LIFECYCLE.md](USER-LIFECYCLE.md) | 质检通过（2026-11-06，dfdad47） | ✅ 已在对话给出 |
 | **AK** | 密码系统重设计（AK-1 策略/哈希、AK-2 登录防护、AK-3 账号流程） | [AUTH-REDESIGN.md](AUTH-REDESIGN.md) | AK-1 待开发；AK-2/3 依赖阻塞 | ✅ 规格自包含（按 §8 顺序派发） |
 | **AL** | 登录 / 注册 / 改密页面 | [AUTH-REDESIGN.md](AUTH-REDESIGN.md) | 依赖阻塞（AK-3） | ✅ 规格自包含（按 §8 顺序派发） |
 | **AM** | Steam 代理池（多代理按序切换 + 健康状态） | [PROXY-POOL.md](PROXY-POOL.md) | AM-1 待开发；AM-2 依赖阻塞 | ✅ 规格自包含（按 §8 顺序派发） |
