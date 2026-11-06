@@ -27,7 +27,9 @@ import { handleSetupRoutes } from './setup-routes.js';
 import { sessionCookie } from './session-cookie.js';
 import { handleSettingsRoutes } from './settings-routes.js';
 import { appealEmailFrom } from './appeal.js';
-import { ensureSteamSchemaOnce } from './steam-login.js';
+import { ensureSteamSchemaOnce, baseUrl } from './steam-login.js';
+import * as mailTemplates from './mail-templates.js';
+import * as notify from './notify.js';
 import { auditJobs as auditSchedulerJobs } from './scheduler.js';
 
 const TYPES = {
@@ -43,6 +45,9 @@ const TYPES = {
 
 const COOKIE = 'gp_session';
 const DEVICE_COOKIE = 'gp_device';
+
+// 测试邮件限流：同一管理员 10 秒 1 次（docs/USER-LIFECYCLE.md §7.5）
+const mailTestCooldown = new Map();
 
 // 单款价格历史 CSV 默认关闭：线上暂不对外提供（避免被试探出导出能力）；HISTORY_CSV_ENABLED=1 才放行
 const historyCsvEnabled = () => process.env.HISTORY_CSV_ENABLED === '1';
@@ -1698,9 +1703,28 @@ export function createApiServer({
           [target.email, target.id, auth.hashCode(target.email, code), 'SteamDeals 邮箱验证码', '验证码邮件正文未保存。'],
         );
         try {
+          // AI 批：绑定验证码同样套用 verify_code 模板（停用时回退纯文本）
+          const tpl = await mailTemplates.resolveTemplate(q, 'verify_code').catch(() => null);
+          const expiryAt = new Date(Date.now() + 5 * 60 * 1000);
+          let mail = { subject: 'SteamDeals 邮箱验证码', text: '验证码：' + code + '\n有效期 5 分钟。', html: null };
+          if (tpl?.enabled) {
+            mail = mailTemplates.renderTemplate({
+              subject: tpl.subject,
+              bodyHtml: tpl.bodyHtml,
+              bodyText: tpl.bodyText ?? '',
+              vars: {
+                username: target.username,
+                action: '绑定邮箱',
+                time: `${String(expiryAt.getFullYear()).padStart(4, '0')}-${String(expiryAt.getMonth() + 1).padStart(2, '0')}-${String(expiryAt.getDate()).padStart(2, '0')} ${String(expiryAt.getHours()).padStart(2, '0')}:${String(expiryAt.getMinutes()).padStart(2, '0')}`,
+                code,
+                siteUrl: baseUrl(req),
+                contactEmail: appealEmail(),
+              },
+            });
+          }
           await sendMail(
             { host: cfg.host, port: cfg.port, secure: cfg.secure, user: cfg.user, pass: cfg.pass, from: cfg.from, to: target.email,
-              subject: 'SteamDeals 邮箱验证码', text: '验证码：' + code + '\n有效期 5 分钟。' },
+              subject: mail.subject, text: mail.text, html: mail.html },
             { logger },
           );
           await q('update email_codes set sent_ok = true where id = $1', [ins.rows[0].id]);
@@ -2271,6 +2295,102 @@ export function createApiServer({
         const search = String(url.searchParams.get('q') ?? '').trim().slice(0, 80);
         const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 50) || 50, 1), 200);
         return json(res, 200, { deletions: await db.listUserDeletions(q, { search, limit }) });
+      }
+
+      // ---- 邮件模板与发送记录（docs/USER-LIFECYCLE.md §4.3/§4.5，AI 批）----
+      if (path === '/api/admin/mail/templates' && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const saved = await db.listMailTemplates(q);
+        const contactEmail = appealEmail();
+        const templates = mailTemplates.TEMPLATE_EVENTS.map((def) => {
+          const row = saved.get(def.event);
+          const overrides = row
+            ? { subject: row.subject, bodyHtml: row.body_html, bodyText: row.body_text, enabled: row.enabled }
+            : { subject: def.subject ?? '', bodyHtml: mailTemplates.DEFAULT_TEMPLATES[def.event]?.bodyHtml ?? '', bodyText: mailTemplates.DEFAULT_TEMPLATES[def.event]?.bodyText ?? '', enabled: true };
+          return {
+            event: def.event,
+            label: def.label,
+            variables: def.variables,
+            subject: overrides.subject,
+            body_html: overrides.bodyHtml,
+            body_text: overrides.bodyText,
+            enabled: overrides.enabled,
+            isDefault: !row,
+            contactEmail,
+          };
+        });
+        return json(res, 200, { templates, samples: mailTemplates.SAMPLE_THEMES, variables: mailTemplates.TEMPLATE_VARIABLES });
+      }
+
+      const tplAction = path.match(/^\/api\/admin\/mail\/templates\/([a-z_]+)\/(reset|preview|test)$/);
+      if (tplAction) {
+        if (!requireAdmin()) return;
+        const event = tplAction[1];
+        const action = tplAction[2];
+        const known = mailTemplates.TEMPLATE_EVENTS.some((d) => d.event === event);
+        if (!known) return json(res, 404, { error: '没有该模板事件' });
+        if (action === 'reset') {
+          await db.resetMailTemplate(q, event);
+          return json(res, 200, { ok: true });
+        }
+        const body = await readBody(req);
+        const vars = mailTemplates.templateVarsForPreview(event, String(body.to ?? user.email ?? ''), appealEmail());
+        const target = await db.listMailTemplates(q).then((m) => m.get(event));
+        const rendered = mailTemplates.renderTemplate({
+          subject: target?.subject ?? mailTemplates.DEFAULT_TEMPLATES[event].subject,
+          bodyHtml: target?.body_html ?? mailTemplates.DEFAULT_TEMPLATES[event].bodyHtml,
+          bodyText: target?.body_text ?? mailTemplates.DEFAULT_TEMPLATES[event].bodyText ?? '',
+          vars,
+        });
+        if (action === 'preview') return json(res, 200, rendered);
+        // test：发给指定地址（默认当前管理员邮箱），走同一发送路径并写 mail_log
+        const to = String(body.to ?? '').trim() || String(user.email ?? '');
+        if (!to || !to.includes('@')) return json(res, 400, { error: '请提供有效的收件邮箱' });
+        const nowMs = Date.now();
+        const last = mailTestCooldown.get(user.id) ?? 0;
+        if (nowMs - last < 10_000) return json(res, 429, { error: '测试邮件 10 秒内只能发一次' });
+        mailTestCooldown.set(user.id, nowMs);
+        const auth = await import('./email-auth.js');
+        const cfg = await auth.smtpConfig(q);
+        if (!auth.isSmtpConfigured(cfg)) return json(res, 503, { error: 'SMTP 未配置，无法发送测试邮件' });
+        const sendResult = await notify.sendMail(
+          { host: cfg.host, port: cfg.port, secure: cfg.secure, user: cfg.user, pass: cfg.pass, from: cfg.from, to, subject: rendered.subject, text: rendered.text, html: rendered.html },
+          { logger, timeoutMs: 8000 },
+        );
+        await db.insertMailLog(q, { event, toEmail: to, subject: rendered.subject, ok: sendResult.ok, error: sendResult.error ?? null, actor: user.username });
+        if (!sendResult.ok) return json(res, 502, { error: '发送失败：' + String(sendResult.error ?? '未知错误').slice(0, 200) });
+        logger?.info('admin.mail_test_sent', { event, to: authRoutes.maskEmail(to), by: user.username });
+        return json(res, 200, { ok: true });
+      }
+
+      const tplPut = path.match(/^\/api\/admin\/mail\/templates\/([a-z_]+)$/);
+      if (tplPut && req.method === 'PUT') {
+        if (!requireAdmin()) return;
+        const event = tplPut[1];
+        const known = mailTemplates.TEMPLATE_EVENTS.some((d) => d.event === event);
+        if (!known) return json(res, 404, { error: '没有该模板事件' });
+        const body = await readBody(req);
+        const check = mailTemplates.validateTemplatePayload(event, {
+          subject: body.subject,
+          bodyHtml: body.body_html,
+          bodyText: body.body_text == null ? null : String(body.body_text),
+        });
+        if (!check.ok) return json(res, 400, { error: check.error });
+        await db.upsertMailTemplate(q, {
+          event,
+          subject: check.subject,
+          bodyHtml: check.bodyHtml,
+          bodyText: check.bodyText,
+          enabled: body.enabled !== false,
+          updatedBy: user.username,
+        });
+        return json(res, 200, { ok: true, warnings: check.warnings });
+      }
+
+      if (path === '/api/admin/mail/log' && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 200) || 200, 1), 500);
+        return json(res, 200, { entries: await db.listMailLog(q, { limit }) });
       }
 
       if (path === '/api/admin/views' && req.method === 'GET') {

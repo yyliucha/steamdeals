@@ -6,6 +6,25 @@
 
 ### 新增
 
+- **邮件模板 + HTML 邮件 + 发送记录（AI 批，docs/USER-LIFECYCLE.md §3.1/§3.3/§4.3/§4.4/§4.5/§5.2）**：
+  - `buildMessage`/`sendMail` 支持 **HTML 多部分**（`multipart/alternative`，text/plain 兜底 + text/html，均 base64）；
+    主题在 `encodeSubject` 里先过滤 CR/LF（防头注入）；
+  - 新增 `src/mail-templates.js`：9 个事件（8 类账号通知 + 验证码）默认模板、渲染（变量 HTML 转义、
+    未知变量原样保留、统一页脚代码追加、text 自动兜底）、保存前校验（主题 ≤200 去换行、HTML ≤20000、
+    `{{code}}` 仅验证码可用）、3 套示例版式（简洁/卡片/正式）；
+  - 模板存 `mail_templates`（表里没有 = 用代码默认；恢复默认 = 删表行）；管理接口
+    `GET/PUT /api/admin/mail/templates`、`POST .../:event/reset|preview|test`（测试发 10 秒限流、写 `mail_log`）；
+  - 通知类邮件落 `mail_log`（`GET /api/admin/mail/log`），验证码仍由 `email_codes` 记录；
+    登录/重置/绑定三类验证码邮件套用 `verify_code` 模板（模板被停用时回退内置纯文本，验证码是功能性邮件不断发）；
+  - 「邮件服务」页新增模板卡（事件 tab、启停、主题/HTML 编辑、变量按钮、预览/发测试/套用示例/恢复默认/保存）
+    与「最近发送记录」验证码/通知双 tab；`admin-ui.js` 补注册 `ElTabs`/`ElTabPane`。
+
+### 测试
+
+- 新增 `test/mail-templates.test.js`（7 项）、`test/notify-html.test.js`（3 项）接入主链：
+  默认模板/变量转义/未知变量/页脚/text 兜底、校验（CR/LF、{{code}}、未知变量警告）、示例版式、DB 存取；
+  multipart 结构、纯文本兼容、主题防注入。
+
 - **用户彻底删除（AH 批，docs/USER-LIFECYCLE.md §3.2/§4.1/§5.1）**：
   `DELETE /api/admin/users/:username`（`confirmUsername` 必填精确匹配）——删自己 400、最后一个可用管理员 409、
   不存在 404；单事务先清 `steam_games`/`steam_wishlist`（两张表无外键）再删 `users`（其余级联，被删用户会话立即失效）；

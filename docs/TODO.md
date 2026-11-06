@@ -638,7 +638,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AI. 待开发：邮件模板化 + HTML 邮件 + 发送记录
 
-**状态：待开发**
+**状态：已实现待发版（2026-11-06）**
 **依赖：** 无
 **解锁：** AJ
 **规格**：[USER-LIFECYCLE.md](USER-LIFECYCLE.md) §3.1 / §3.3 / §4.3 / §4.4 / §5.2 / §8 验收 8–10、15
@@ -652,7 +652,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AJ. 待开发：账号变更通知（7 类操作 / 8 类邮件）
 
-**状态：依赖阻塞（AI、AH）**
+**状态：待开发（2026-11-06 由 AI 完成解锁）**
 **依赖：** AI、AH
 **解锁：** 无
 **规格**：[USER-LIFECYCLE.md](USER-LIFECYCLE.md) §4.2 / §6 / §8 验收 5–7、11

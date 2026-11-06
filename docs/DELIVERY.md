@@ -195,6 +195,12 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   规格见 [USER-LIFECYCLE.md](USER-LIFECYCLE.md)。注意：`admin_user_deletions` 建表随 `db.migrate` 幂等执行，
   部署无需手工 SQL。
 
+- **待发版：AI 批「邮件模板 + HTML 邮件 + 发送记录」**（2026-11-06 已提交 main，等「构建 vX.Y.Z」指令）：
+  HTML 多部分邮件（主题去 CR/LF）；9 事件模板（编辑/启停/预览/发测试/恢复默认/3 套示例版式，`{{code}}`
+  仅验证码可用）+ `mail_templates`/`mail_log` 表（随 `ensureEmailSchema` 幂等建）；登录/重置/绑定验证码邮件
+  套 `verify_code` 模板（停用回退纯文本）；「邮件服务」页模板卡 + 发送记录双 tab。
+  规格见 [USER-LIFECYCLE.md](USER-LIFECYCLE.md)。
+
 - **v1.18.0 已发布**（tag `v1.18.0`）：AE/AF/AG/AC-1 四批——版本徽标按服务器 IP 选镜像仓库
   （ipinfo.io 定位 → 大陆/香港优先 TCR、其他优先 Hub，401 换 token、双失败回退 GitHub，结果带 source/region）；
   搜索态写操作后列表立刻刷新（先失效 30 秒搜索缓存）；后台「游戏管理」平台链接抽屉（`/api/admin/games/:id/links`

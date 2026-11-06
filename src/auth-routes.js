@@ -23,6 +23,9 @@ import {
 import { sendMail } from './notify.js';
 import { clientIp } from './visitors.js';
 import { sessionCookie } from './session-cookie.js';
+import { baseUrl } from './steam-login.js';
+import { appealEmailFrom } from './appeal.js';
+import { renderTemplate, resolveTemplate } from './mail-templates.js';
 
 export function maskEmail(email) {
   const v = String(email ?? '');
@@ -107,12 +110,35 @@ export async function handleEmailAuth({ path, req, res, q, logger, json, readBod
     }
 
     const code = generateCode();
-    const subject = purpose === 'reset' ? 'SteamDeals 重置密码验证码' : 'SteamDeals 登录验证码';
-    const text =
+    // AI 批（docs/USER-LIFECYCLE.md §5.2）：验证码邮件套用 verify_code 模板；
+    // 模板被停用时回退内置纯文本（验证码是功能性邮件，不能因模板停用而断发）。
+    const tpl = await resolveTemplate(q, 'verify_code').catch(() => null);
+    const expiryAt = new Date(Date.now() + CODE_TTL_SEC * 1000);
+    let subject = purpose === 'reset' ? 'SteamDeals 重置密码验证码' : 'SteamDeals 登录验证码';
+    let text =
       `你的验证码是：${code}\n` +
       `用途：${purpose === 'reset' ? '重置密码' : '登录'}\n` +
       `有效期：${Math.round(CODE_TTL_SEC / 60)} 分钟，用完即失效。\n` +
       '如果不是你本人操作，请忽略这封邮件。';
+    let html = null;
+    if (tpl?.enabled) {
+      const rendered = renderTemplate({
+        subject: tpl.subject,
+        bodyHtml: tpl.bodyHtml,
+        bodyText: tpl.bodyText ?? '',
+        vars: {
+          username: target.username,
+          action: purpose === 'reset' ? '重置密码' : '登录',
+          time: `${String(expiryAt.getFullYear()).padStart(4, '0')}-${String(expiryAt.getMonth() + 1).padStart(2, '0')}-${String(expiryAt.getDate()).padStart(2, '0')} ${String(expiryAt.getHours()).padStart(2, '0')}:${String(expiryAt.getMinutes()).padStart(2, '0')}`,
+          code,
+          siteUrl: baseUrl(req),
+          contactEmail: appealEmailFrom(process.env),
+        },
+      });
+      subject = rendered.subject;
+      text = rendered.text;
+      html = rendered.html;
+    }
     const inserted = await q(
       `insert into email_codes (email, user_id, purpose, code_hash, subject, body, expires_at)
        values ($1, $2, $3, $4, $5, $6, now() + ($7 || ' seconds')::interval)
@@ -133,6 +159,7 @@ export async function handleEmailAuth({ path, req, res, q, logger, json, readBod
           to: email,
           subject,
           text,
+          html,
         },
         { logger },
       );

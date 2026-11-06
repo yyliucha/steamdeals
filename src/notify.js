@@ -82,20 +82,21 @@ export async function sendWecom(text, { url, fetchImpl, logger = null } = {}) {
 
 const BASE64_LINE = 76;
 
-/** 非 ASCII 主题必须按 RFC 2047 编码，否则客户端会显示乱码。 */
+/** 非 ASCII 主题必须按 RFC 2047 编码；先去掉 CR/LF 防头注入（docs/USER-LIFECYCLE.md §4.4）。 */
 export function encodeSubject(subject) {
-  const text = String(subject ?? '');
+  const text = String(subject ?? '').replace(/[\r\n]+/g, ' ');
   if (/^[\x20-\x7E]*$/.test(text)) return text;
   return `=?UTF-8?B?${Buffer.from(text, 'utf8').toString('base64')}?=`;
 }
 
-export function buildMessage({ from, to, subject, text, date = new Date(), messageId = null }) {
+export function buildMessage({ from, to, subject, text, html = null, date = new Date(), messageId = null }) {
   const recipients = Array.isArray(to) ? to.join(', ') : String(to);
-  const body = Buffer.from(String(text ?? ''), 'utf8')
-    .toString('base64')
-    .replace(new RegExp(`(.{${BASE64_LINE}})`, 'g'), '$1\r\n');
+  const encode = (value) =>
+    Buffer.from(String(value ?? ''), 'utf8')
+      .toString('base64')
+      .replace(new RegExp(`(.{${BASE64_LINE}})`, 'g'), '$1\r\n');
   const id = messageId ?? `<${Date.now()}.${Math.random().toString(36).slice(2, 10)}@steamdeals>`;
-  return [
+  const head = [
     `From: ${from}`,
     `To: ${recipients}`,
     `Subject: ${encodeSubject(subject)}`,
@@ -104,10 +105,33 @@ export function buildMessage({ from, to, subject, text, date = new Date(), messa
     `Reply-To: ${from}`,
     'X-Mailer: SteamDeals',
     'MIME-Version: 1.0',
+  ];
+  if (html) {
+    // HTML 多部分（docs/USER-LIFECYCLE.md §4.4）：text/plain 兜底 + text/html，均 base64
+    const boundary = `sd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    return [
+      ...head,
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+      '',
+      `--${boundary}`,
+      'Content-Type: text/plain; charset=UTF-8',
+      'Content-Transfer-Encoding: base64',
+      '',
+      encode(text ?? ''),
+      `--${boundary}`,
+      'Content-Type: text/html; charset=UTF-8',
+      'Content-Transfer-Encoding: base64',
+      '',
+      encode(html),
+      `--${boundary}--`,
+    ].join('\r\n');
+  }
+  return [
+    ...head,
     'Content-Type: text/plain; charset=UTF-8',
     'Content-Transfer-Encoding: base64',
     '',
-    body,
+    encode(text),
   ].join('\r\n');
 }
 
@@ -238,7 +262,7 @@ function capabilities(reply) {
  * 支持 AUTH PLAIN / LOGIN 与 STARTTLS；不支持 OAuth2。
  */
 export async function sendMail(
-  { host, port = 465, secure = true, user = '', pass = '', from, to, subject, text },
+  { host, port = 465, secure = true, user = '', pass = '', from, to, subject, text, html = null },
   { logger = null, timeoutMs = 15000 } = {},
 ) {
   const session = new SmtpSession({ logger, timeoutMs });
@@ -279,7 +303,7 @@ export async function sendMail(
       await session.cmd(`RCPT TO:<${rcpt}>`, { expect: [250, 251] });
     }
     await session.cmd('DATA', { expect: [354] });
-    const message = buildMessage({ from, to, subject, text });
+    const message = buildMessage({ from, to, subject, text, html });
     await session.cmd(`${message}\r\n.`, { expect: [250] });
     await session.cmd('QUIT', { expect: [221] });
     logger?.info('notify.email_sent', { host, to: Array.isArray(to) ? to.length : 1 });

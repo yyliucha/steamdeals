@@ -1462,6 +1462,47 @@ export async function listUserDeletions(q, { search = '', limit = 50 } = {}) {
   return r.rows;
 }
 
+// ---------------------------------------------------------------- 邮件模板与发送记录（docs/USER-LIFECYCLE.md §3.1/§3.3/§4.3）
+
+/** 读出所有已保存的模板行（event → 行）。 */
+export async function listMailTemplates(q) {
+  const r = await q('select event, subject, body_html, body_text, enabled, updated_at, updated_by from mail_templates');
+  return new Map(r.rows.map((row) => [row.event, row]));
+}
+
+/** 保存/更新一个模板；event 白名单由调用方校验。 */
+export async function upsertMailTemplate(q, { event, subject, bodyHtml, bodyText = null, enabled = true, updatedBy = null }) {
+  await q(
+    'insert into mail_templates (event, subject, body_html, body_text, enabled, updated_by) values ($1,$2,$3,$4,$5,$6) ' +
+      'on conflict (event) do update set subject = excluded.subject, body_html = excluded.body_html, body_text = excluded.body_text, enabled = excluded.enabled, updated_by = excluded.updated_by, updated_at = now()',
+    [event, subject, bodyHtml, bodyText, Boolean(enabled), updatedBy],
+  );
+}
+
+/** 恢复默认 = 删表行（渲染时回落到代码默认值）。 */
+export async function resetMailTemplate(q, event) {
+  await q('delete from mail_templates where event = $1', [event]);
+}
+
+/** 通知类邮件发送记录（§3.3）：成功/失败各一行；验证码邮件不写这张表。 */
+export async function insertMailLog(q, { event, toEmail, subject = null, ok = false, error = null, actor = null }) {
+  await q('insert into mail_log (event, to_email, subject, ok, error, actor) values ($1,$2,$3,$4,$5,$6)', [
+    event,
+    toEmail,
+    subject ? String(subject).slice(0, 300) : null,
+    Boolean(ok),
+    error ? String(error).slice(0, 500) : null,
+    actor,
+  ]);
+}
+
+/** 最近发送记录（通知 tab）：倒序，limit ≤ 500。 */
+export async function listMailLog(q, { limit = 200 } = {}) {
+  const cap = Math.min(Math.max(Number(limit) || 200, 1), 500);
+  const r = await q('select id, created_at, event, to_email, subject, ok, error, actor from mail_log order by id desc limit $1', [cap]);
+  return r.rows;
+}
+
 /** 禁用游戏：不出现在列表，但继续采集与统计。 */
 export async function setGameBlocked(q, { steamAppid, gameId = null, blocked }) {
   const r = await q(

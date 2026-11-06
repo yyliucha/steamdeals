@@ -158,6 +158,28 @@ create table if not exists smtp_settings (
   enabled boolean default false,
   updated_at timestamptz default now()
 );
+-- 邮件模板（docs/USER-LIFECYCLE.md §3.1）：表里没有该 event 行 = 用代码默认值
+create table if not exists mail_templates (
+  event      text primary key,
+  subject    text not null,
+  body_html  text not null,
+  body_text  text,
+  enabled    boolean not null default true,
+  updated_at timestamptz not null default now(),
+  updated_by text
+);
+-- 通知类邮件发送记录（§3.3）：验证码仍由 email_codes 记录
+create table if not exists mail_log (
+  id          bigserial primary key,
+  created_at  timestamptz not null default now(),
+  event       text not null,
+  to_email    text not null,
+  subject     text,
+  ok          boolean not null default false,
+  error       text,
+  actor       text
+);
+create index if not exists idx_mail_log_time on mail_log (created_at desc);
 `;
 
 export async function ensureEmailSchema(store) {
