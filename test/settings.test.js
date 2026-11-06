@@ -19,8 +19,8 @@ async function fresh() {
   return { store, q };
 }
 
-test('设置定义完整：56 项、7 个密钥、关键分组都在', () => {
-  assert.equal(settings.SETTINGS.length, 56);
+test('设置定义完整：57 项、7 个密钥、关键分组都在', () => {
+  assert.equal(settings.SETTINGS.length, 57);
   assert.equal(settings.SETTINGS.filter((d) => d.secret).length, 7);
   const tz = settings.SETTINGS.find((d) => d.key === 'system.timezone');
   assert.ok(tz, '要有 system.timezone（时区设置化）');
@@ -40,6 +40,7 @@ test('设置定义完整：56 项、7 个密钥、关键分组都在', () => {
     'steamStatus.rateMs',
     'steamStatus.limit',
     'steamStatus.intervalMin',
+    'steamStatus.initialDelaySec',
   ]) {
     assert.ok(keys.includes(key), `缺少 ${key}`);
   }
@@ -47,9 +48,12 @@ test('设置定义完整：56 项、7 个密钥、关键分组都在', () => {
   const adult = settings.SETTINGS.find((d) => d.key === 'site.adultDisplay');
   assert.deepEqual(adult.options, ['hide', 'badge', 'show'], '成人内容策略三档');
   const ssl = settings.SETTINGS.find((d) => d.key === 'steamStatus.limit');
-  assert.equal(ssl.default, 12000, 'steam-status 每轮默认 12000（约 5 小时/天，X 批）');
+  assert.equal(ssl.default, 6000, 'steam-status 每轮默认 6000（AB 批从 12000 下调，约 5 小时/轮）');
   const ssi = settings.SETTINGS.find((d) => d.key === 'steamStatus.intervalMin');
   assert.equal(ssi.default, 1440, 'steam-status 默认每天一轮（X 批：原每周）');
+  const ssd = settings.SETTINGS.find((d) => d.key === 'steamStatus.initialDelaySec');
+  assert.equal(ssd.default, 600, 'steam-status 首轮延迟默认 600 秒（Y 批并入 AB）');
+  assert.equal(ssd.env, 'STEAM_STATUS_INITIAL_DELAY_SEC');
 });
 
 test('默认值 + 密钥加密：库里不存明文，公开接口只给 hasValue', async () => {
@@ -125,6 +129,7 @@ test('水合：把库值写回 env，SMTP 关闭时清空 SMTP_HOST', async () =
         'alerts.smtp.host': 'smtp.example.com',
         'alerts.smtp.user': 'u@example.com',
         'alerts.smtp.pass': 'pass-123456',
+        'steamStatus.initialDelaySec': 1800,
       },
       { env: {}, secretKey: SECRET },
     );
@@ -137,6 +142,7 @@ test('水合：把库值写回 env，SMTP 关闭时清空 SMTP_HOST', async () =
     assert.equal(env.SMTP_USER, 'u@example.com');
     assert.equal(env.SMTP_PASS, 'pass-123456');
     assert.equal(env.SMTP_FROM, 'u@example.com', '发件人留空回退到账号');
+    assert.equal(env.STEAM_STATUS_INITIAL_DELAY_SEC, '1800', 'AB 批：steamStatus.initialDelaySec 落库后水合到 env（Y 批）');
   } finally {
     await store.close();
   }

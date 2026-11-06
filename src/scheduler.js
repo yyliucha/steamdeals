@@ -59,8 +59,8 @@ export function jobsFromEnv(env = process.env) {
       // 每天判定一次 Steam 同步状态 + 内容分级（docs/STEAM-SYNC-STATUS-AND-RATING.md）：
       // 逐 appid 全量 appdetails（cc=cn 失败补 cc=hk），状态与分级共用同一次请求；
       // 免费已由迁移一次性置位；steam_checked_at 作续跑游标，失败不写游标下轮重试；
-      // 归入 STEAM_HEAVY 与价格/热度/回填互斥串行；每天 12000 条约 2 周补完 17.5 万条（X 批）。
-      args: ['steam-status', '--limit', String(num(env.STEAM_STATUS_LIMIT, 12000)), '--rate', String(num(env.STEAM_STATUS_RATE_MS, 1500))],
+      // 归入 STEAM_HEAVY 与价格/热度/回填互斥串行；每款平均 2 请求，6000 款 ≈ 5 小时/轮（AB 批从 12000 下调）。
+      args: ['steam-status', '--limit', String(num(env.STEAM_STATUS_LIMIT, 6000)), '--rate', String(num(env.STEAM_STATUS_RATE_MS, 1500))],
       intervalMin: num(env.STEAM_STATUS_INTERVAL_MIN, 1440),
       initialDelaySec: num(env.STEAM_STATUS_INITIAL_DELAY_SEC, 600),
       enabled: env.STEAM_ENABLED !== '0',

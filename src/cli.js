@@ -10,7 +10,7 @@ import { startApiServer } from './server.js';
 import * as db from './store/pg.js';
 import { ingestOffers } from './ingest.js';
 import { missingPriceAppids, mergePriceOffers } from './backfill.js';
-import { applySteamDetails, entryFromMeta } from './steam-status.js';
+import { applySteamDetails, entryFromMeta, runSteamStatusRound } from './steam-status.js';
 import { buildSite } from './report.js';
 import { evaluateAlerts, renderDigest, toPayload } from './alerts.js';
 import { channelsFromEnv, deliver, hasNotifier } from './notify.js';
@@ -2147,77 +2147,43 @@ async function cmdHeat() {
 }
 
 /**
- * Steam 同步状态 + 内容分级（docs/STEAM-SYNC-STATUS-AND-RATING.md）：
+ * Steam 同步状态 + 内容分级（docs/STEAM-SYNC-STATUS-AND-RATING.md + AB 批 docs/STEAM-STATUS-FIX.md）：
  * 逐 appid 请求全量 appdetails（cc=cn；success:false 时补一次 cc=hk 判定锁区），
  * 状态判定与分级解析共用同一次响应；steam_checked_at 作续跑游标，失败不写游标下轮重试。
+ * AB 批：取值 .json、写入不可静默（wrote 只计真写入）、限速按每请求、429 立即收轮、整轮复用连接。
  */
 async function cmdSteamStatus() {
-  // 默认上限读设置（steamStatus.limit / STEAM_STATUS_LIMIT，默认 8000 ≈ 3.3 小时/轮）
-  const limit = Math.max(1, Math.min(Number(flag('limit', process.env.STEAM_STATUS_LIMIT ?? '8000')) || 8000, 200000));
+  // 默认上限读设置（steamStatus.limit / STEAM_STATUS_LIMIT，默认 6000 ≈ 5 小时/轮，AB 批 §3-C）
+  const limit = Math.max(1, Math.min(Number(flag('limit', process.env.STEAM_STATUS_LIMIT ?? '6000')) || 6000, 200000));
   const batch = Math.max(1, Math.min(Number(flag('batch', '30')) || 30, 100));
   const rateMs = Math.max(0, Number(flag('rate', process.env.STEAM_STATUS_RATE_MS ?? '1500')) || 0);
   const startedMs = Date.now();
-  let done = 0, failed = 0, requests = 0;
-  const counts = { ok: 0, free: 0, coming_soon: 0, region_locked: 0, no_price: 0, not_found: 0 };
 
-  console.log(`Steam 状态判定：逐 appid 请求全量 appdetails（间隔 ${rateMs}ms、上限 ${limit} 款，steam_checked_at 续跑游标）`);
-  while (done < limit) {
-    const size = Math.min(batch, limit - done);
-    const rows = await withStore((store) => db.listSteamStatusCandidates((sql, p) => store.query(sql, p), { limit: size }));
-    if (!rows.length) {
-      console.log('没有需要判定状态或已过期的游戏了');
-      break;
-    }
-    for (const row of rows) {
-      const appid = row.steamAppid;
-      try {
-        const cn = await fetchJson(
-          `https://store.steampowered.com/api/appdetails?appids=${appid}&cc=cn&l=schinese`,
-          { logger, label: 'steam.status', timeoutMs: 30000, retries: 1 },
-        );
-        requests += 1;
-        const cnEntry = cn?.[String(appid)];
-        let hkEntry = null;
-        let data = cnEntry?.success === true ? cnEntry.data : null;
-        if (!data) {
-          // 国区不可售/下架：补一次港区判定锁区（有价/免费=锁国区）
-          const hk = await fetchJson(
-            `https://store.steampowered.com/api/appdetails?appids=${appid}&cc=hk&l=schinese`,
-            { logger, label: 'steam.status.hk', timeoutMs: 30000, retries: 1 },
-          );
-          requests += 1;
-          hkEntry = hk?.[String(appid)];
-          data = hkEntry?.success === true ? hkEntry.data : null;
-        }
-        const status = classifySteamStatus(cnEntry, hkEntry);
-        // 分级字段与状态来自同一响应；锁区时用港区数据（内容分级与区服无关）。
-        // V 批：判定 + 落库收敛到共用函数 applySteamDetails（与 backfill 同口径，§14.3）
-        const meta = data ? normalizeOfficial(appid, data) : null;
-        const outcome = await withStore((store) =>
-          applySteamDetails((sql, p) => store.query(sql, p), { appid, cnEntry, hkEntry, meta }),
-        );
-        counts[status] = (counts[status] ?? 0) + 1;
-        done += 1;
-        if (done % 100 === 0) console.log(`  已判定 ${done} 款…（${JSON.stringify(counts)}）`);
-      } catch (err) {
-        // 网络/限流失败：不写 steam_checked_at，下轮会被重新选中（续跑）
-        failed += 1;
-        logger.warn('steam-status.failed', { appid, message: String(err.message ?? err).slice(0, 160) });
-        if (err.status && err.status >= 400 && err.status < 500) {
-          if (err.status === 429) {
-            console.log('命中 Steam 429：本轮停止（已判定过的会留下游标）');
-            break;
-          }
-          continue;
-        }
-      }
-      if (rateMs) await sleep(rateMs);
-    }
-  }
-  logger.info('steam-status.done', { done, failed, requests, ...counts, elapsedMs: Date.now() - startedMs });
-  console.log(`完成：判定 ${done} 款，失败 ${failed}，分布 ${JSON.stringify(counts)}`);
-  if (done === 0 && failed > 0) {
-    throw new Error(`Steam 状态判定全程失败（${failed} 个请求未拿到数据）：检查代理/限流后重跑`);
+  console.log(`Steam 状态判定：逐 appid 请求全量 appdetails（每请求间隔 ${rateMs}ms、上限 ${limit} 款，steam_checked_at 续跑游标）`);
+  // AB 批 §3-D：整轮一次连接；取值/写回/限速/429 都在 runSteamStatusRound（可注入测试）
+  const result = await withStore((store) =>
+    runSteamStatusRound((sql, p) => store.query(sql, p), {
+      limit,
+      batch,
+      rateMs,
+      fetchJsonImpl: fetchJson,
+      logger,
+      onProgress: ({ attempted, wrote, skipped, failed }) => {
+        if (attempted % 100 === 0) console.log(`  已尝试 ${attempted} 款（写入 ${wrote} / 跳过 ${skipped} / 失败 ${failed}）…`);
+      },
+    }),
+  );
+  const { wrote, skipped, failed, requests, counts } = result;
+  logger.info('steam-status.done', { wrote, skipped, failed, requests, ...counts, elapsedMs: Date.now() - startedMs });
+  console.log(
+    `完成：写入 ${wrote} 款，跳过 ${skipped}，失败 ${failed}，分布 ${JSON.stringify(counts)}${result.aborted429 ? '（429 提前收轮）' : ''}`,
+  );
+  syncNote = `steam-status 写入 ${wrote} / 跳过 ${skipped} / 失败 ${failed}`;
+  // AB 批 §3-B：全部尝试都没有写进去 → 必须失败，不许静默通过
+  if (wrote === 0 && result.attempted > 0) {
+    throw new Error(
+      `Steam 状态判定本轮未写入任何数据（尝试 ${result.attempted}，跳过 ${skipped}，失败 ${failed}）：检查取值链路/代理/限流后重跑`,
+    );
   }
 }
 
@@ -2561,6 +2527,8 @@ async function main() {
   }
   if (command === 'steam-accounts') return runSyncTracked('steam-accounts', cmdSteamAccounts);
   if (command === 'steam-claim') return cmdSteamClaim();
+  // AB 批 §3-E：steam-status 每轮写 sync_runs（后台「同步记录」可观测），fetch_runs 顺带留痕
+  if (command === 'steam-status') return runSyncTracked('steam-status', cmdSteamStatus);
   const fn = commands[command];
   if (!fn) {
     console.log(`用法: node src/cli.js <命令>

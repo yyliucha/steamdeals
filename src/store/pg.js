@@ -2147,7 +2147,7 @@ export async function setSteamStatus(q, {
   }
   sets.push(`required_age = coalesce(${push(requiredAge == null ? null : Number(requiredAge))}, required_age)`);
   sets.push(
-    `content_descriptors = coalesce(${push(Array.isArray(contentDescriptors) ? contentDescriptors.map(Number) : null)}, content_descriptors)`,
+    `content_descriptors = coalesce(${push(Array.isArray(contentDescriptors) ? contentDescriptors.map(Number) : null)}::int[], content_descriptors)`,
   );
   sets.push(`age_ratings = coalesce(${push(ageRatings ? JSON.stringify(ageRatings) : null)}::jsonb, age_ratings)`);
   if (adultFlag != null) sets.push(`adult_flag = ${push(Boolean(adultFlag))}`);

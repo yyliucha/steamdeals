@@ -40,7 +40,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.deepEqual(args('images'), ['images', 'pull', '--limit', '200', '--sleep', '300']);
   assert.deepEqual(args('steam-prices'), ['sync', 'steam-prices', '--limit', '200000']);
   assert.deepEqual(args('heat'), ['heat', '--limit', '20000', '--sleep', '1700']);
-  assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '12000', '--rate', '1500']);
+  assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '6000', '--rate', '1500']);
   assert.deepEqual(args('rename'), ['rename', '--limit', '200000', '--batch', '100', '--sleep', '1500']);
   assert.deepEqual(args('backfill'), ['backfill', '--limit', '20000', '--batch', '100', '--sleep', '3000']);
   assert.deepEqual(args('prune'), ['prune']);
@@ -165,6 +165,13 @@ test('环境变量能改间隔与首轮延迟', () => {
   const jobs = jobsFromEnv({ STEAM_PRICE_INTERVAL_MIN: '15', SONKWO_INITIAL_DELAY_SEC: '5' });
   assert.equal(jobs.find((j) => j.name === 'steam-prices').intervalMin, 15);
   assert.equal(jobs.find((j) => j.name === 'sonkwo').initialDelaySec, 5);
+});
+
+test('AB 批：steam-status 的 limit 与 initialDelaySec 读环境变量（Y 批设置项水合）', () => {
+  const jobs = jobsFromEnv({ STEAM_STATUS_LIMIT: '8000', STEAM_STATUS_INITIAL_DELAY_SEC: '1800' });
+  const job = jobs.find((j) => j.name === 'steam-status');
+  assert.deepEqual(job.args, ['steam-status', '--limit', '8000', '--rate', '1500'], 'limit 从 env 读');
+  assert.equal(job.initialDelaySec, 1800, 'initialDelaySec 从 env 读');
 });
 
 test('显式禁用或间隔为 0 的任务会被剔除', () => {

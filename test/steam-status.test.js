@@ -7,7 +7,7 @@ import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import { classifySteamStatus } from '../src/adapters/steam.js';
 import { classifyContentRating, normalizeOfficial } from '../src/adapters/steam-meta.js';
-import { applySteamDetails, entryFromMeta } from '../src/steam-status.js';
+import { applySteamDetails, entryFromMeta, runSteamStatusRound } from '../src/steam-status.js';
 
 const cn = (data) => ({ success: true, data });
 const fail = () => ({ success: false, data: null });
@@ -249,6 +249,91 @@ test('applySteamDetails：分级本次没拿到 → 不覆盖已有值；重复�
     assert.equal(row.required_age, 18, '已有分级不被 null 覆盖');
     assert.deepEqual(row.content_descriptors, [3]);
     assert.equal(row.adult_flag, true, '派生标记也不被覆盖');
+  } finally {
+    await store.close();
+  }
+});
+
+// ---------------------------------------------------------------- AB 批（docs/STEAM-STATUS-FIX.md）
+
+test('applySteamDetails：appid 不在库 → 写入未命中，wroteStatus=false（不可静默，§3-B）', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    const outcome = await applySteamDetails(q, {
+      appid: 999001,
+      cnEntry: { success: true, data: { price_overview: { final: 9900 } } },
+      meta: null,
+    });
+    assert.equal(outcome.status, 'ok');
+    assert.equal(outcome.wroteStatus, false, 'UPDATE 未命中行不得算写成功');
+  } finally {
+    await store.close();
+  }
+});
+
+test('applySteamDetails：descriptorIds 空数组 / 空 ratings 不得清空已有分级（§2.5-5）', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    await q("insert into games (steam_appid, name, is_free) values (4004, '空数组覆盖', false)");
+    await applySteamDetails(q, {
+      appid: 4004,
+      cnEntry: { success: true, data: { price_overview: { final: 9900 } } },
+      meta: normalizeOfficial(4004, { name: '空数组覆盖', content_descriptors: { ids: [3] }, ratings: { esrb: { rating: 'AO' } } }),
+    });
+    // 第二次：hasRating 由 requiredAge 触发，但 descriptors 为空数组、ratings 为空对象
+    // → coalesce 只挡 null，空数组/空对象会覆盖已有值，AB 批改为与 null 同等对待
+    await applySteamDetails(q, {
+      appid: 4004,
+      cnEntry: { success: true, data: { price_overview: { final: 8800 } } },
+      meta: normalizeOfficial(4004, { name: '空数组覆盖', required_age: '16', ratings: {} }),
+    });
+    const row = (await q('select content_descriptors, age_ratings, required_age from games where steam_appid = 4004')).rows[0];
+    assert.deepEqual(row.content_descriptors, [3], '空数组不得清空已有 content_descriptors');
+    assert.equal(row.age_ratings.esrb.rating, 'AO', '空对象不得清空已有 age_ratings');
+    assert.equal(row.required_age, 16, '有值的字段正常更新');
+  } finally {
+    await store.close();
+  }
+});
+
+test('runSteamStatusRound：取 .json、无条目不写库、4xx 继续、429 立即收轮（§3-A/B/C）', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    await q("insert into games (steam_appid, name, is_free) values (5001,'有价',false),(5002,'无条目',false),(5003,'4xx',false),(5004,'429',false)");
+    const fakeFetch = async (url) => {
+      if (url.includes('5004')) {
+        const e = new Error('rate limited');
+        e.status = 429;
+        throw e;
+      }
+      if (url.includes('5003')) {
+        const e = new Error('not found');
+        e.status = 404;
+        throw e;
+      }
+      if (url.includes('5002')) return { json: {} }; // 响应里没有该 appid 条目 → cnEntry=null
+      // 5001：cn 有价（不再请求 hk）
+      return { json: { 5001: { success: true, data: { name: '有价', price_overview: { final: 9900, initial: 9900, currency: 'CNY', discount_percent: 0 } } } } };
+    };
+    const r = await runSteamStatusRound(q, { limit: 4, rateMs: 0, fetchJsonImpl: fakeFetch });
+    assert.equal(r.wrote, 1, '只有 5001 真正写库');
+    assert.equal(r.skipped, 1, '5002 无条目 → skip_write 不计入写入');
+    assert.equal(r.failed, 2, '5003(404) 与 5004(429) 都计失败');
+    assert.equal(r.attempted, 4);
+    assert.equal(r.aborted429, true, '429 立即收轮');
+    assert.equal(r.counts.ok, 1, 'counts 只统计已知状态');
+    const ok = (await q('select steam_status, steam_checked_at from games where steam_appid = 5001')).rows[0];
+    assert.equal(ok.steam_status, 'ok');
+    assert.ok(ok.steam_checked_at, '写入才推游标');
+    const miss = (await q('select steam_status, steam_checked_at from games where steam_appid = 5002')).rows[0];
+    assert.equal(miss.steam_status, null, '无条目的 appid 不写库不推游标');
+    assert.equal(miss.steam_checked_at, null);
   } finally {
     await store.close();
   }
