@@ -191,7 +191,9 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 - **v1.17.0 已发布**（tag `v1.17.0`）：AD 批「搜索支持中英文（含平台中文别名）」——搜索三源命中
   （`name`/`name_en`/平台别名）+ 空格/全角归一化，前台与后台「游戏管理」同口径；`rename` 放开为
   「name 不含中文即补中文名」（覆盖保护仍在）。验证：`npm test` 51 个文件全绿 / `frontend:build` / `scan` 干净。
-  CI：待补（发布后）。**服务器部署待执行**（按本文第 4 节升级到 `1.17.0`）；
+  CI：`docker-hub` run 42179973683（test/smoke/publish 全绿）、`docker-tcr` run 42179973696
+  （`build-push-action` 与 `Verify manifests` 均 success），两个镜像源均已推送。
+  **服务器部署待执行**（按本文第 4 节升级到 `1.17.0`）；
   部署后请在后台复验：搜「英雄连」应命中 `Company of Heroes 3`（若该游戏的平台别名已入库）。
 
 - **v1.16.4 已发布**（tag `v1.16.4`）：AB 批「Steam 状态判定整轮静默不写库」——修 appdetails 条目少取
