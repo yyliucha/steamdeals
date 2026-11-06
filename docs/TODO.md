@@ -1,12 +1,17 @@
 # 待办总览（未完成事项清单）
 
-> 最后更新：2026-10-30。这是**当前所有未完成事项**的总清单，接手会话先看这个，再看
+> 最后更新：2026-11-06。这是**当前所有未完成事项**的总清单，接手会话先看这个，再看
+> [REQUIREMENTS-INDEX.md](REQUIREMENTS-INDEX.md)（**需求批次总账**：规格 + 状态 + 是否已有开发描述）、
 > [DELIVERY.md](DELIVERY.md)（流程/发版）与 [UI-FIXES.md](UI-FIXES.md)（界面缺陷细节）。
 > 完成一项就把标题改成 ~~删除线~~ 并标注完成版本。
+> 注：K/M/N/O/P 各出现两次是历史遗留（旧编号被改写后保留了原文），阅读时以后出现的为准。
+>
+> **状态词（唯一口径）**：`待开发` / `依赖阻塞` / `开发中` / `已实现待发版` / `待质检` / `质检通过` / `质检打回` / `已发布 vX.Y.Z` / `待排查` / `待决策` / `已过时`。
+> **每个待办条目必须有一行 `**状态：…**`**——本文件是开发、质检两个 skill 的**唯一事实来源**，靠这一行判断是否可开工、是否已交付。
 
 ---
 
-## A. 立即待办（阻塞在"等指令 / 等部署"）
+## A. ~~立即待办（v1.4.6 时代）~~ → **已过时，保留供追溯**
 
 | # | 事项 | 现状 | 下一步 | 备注 |
 |---|---|---|---|---|
@@ -33,6 +38,8 @@
 
 ## C. 线上问题 / 需要探测
 
+**状态：C1 待探测；C2 待确认。**
+
 | # | 事项 | 现状 | 下一步 |
 |---|---|---|---|
 | C1 | **heat 逐 appid 全 `success:false`** | 线上 heat 请求返回全 `success:false`（日志"无效跳过 30"），疑似 `l=schinese` 与 `l=zh` 的差异或 `filters=recommendations,release_date` 被拒 | 在服务器跑一条最小探测：`docker exec steamdeals node --input-type=module -e '…fetchText appdetails…'`，对比不同 `l` 参数与 filters 组合的响应；确认后改 `heat` 的 URL 参数 |
@@ -55,6 +62,8 @@
 - 新功能必须同步进调度器（硬规则 3），人工命令只作调试手段。
 
 ## F. 待实施：Steam 价格同步优化（方案已定，2026-11-02，等排期）
+
+**状态：等排期**（方案已定，未给开发描述；见下方两条）。
 
 调查结论：目录/回填/改名/热度都已是增量；唯一"全量重拉"的是价格刷新——每天把**有 Steam 报价的
 10.6 万款**逐个重拉（约 3500 次请求、1 小时+）。Steam 没有价格差分接口，无法直接"只拉变更"，只能缩小轮询集合。
@@ -136,7 +145,9 @@ chart 后续任务串行执行。
 
 验收：见文档各节；通用验证 `npm test` + `frontend:build` + `scan`。
 
-## K. 待开发：移动端真机适配补丁（强制 viewport）
+## K. ~~待开发：移动端真机适配补丁（强制 viewport）~~ → **已过时（被后面的 K 段覆盖）**
+
+> ⚠️ 重复条目：后者「K. 已实现并发布 v1.10.0」才是唯一事实，本条保留供追溯。
 
 **状态：已定位、规格已写、待开发**（见 [docs/MOBILE-VIEWPORT.md](MOBILE-VIEWPORT.md)）。
 
@@ -177,7 +188,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   history.replaceState('/banned')，无头 Edge 实测通过（pathname=/banned、.ban-card 存在、/appeal 放行）。
 - loadCaptcha 失败 ElMessage.warning + 可点击重试占位块。
 
-## M. 待开发：申诉邮箱回退链缺陷 + 新增「申诉邮箱」设置
+## M. ~~待开发：申诉邮箱回退链缺陷 + 新增「申诉邮箱」设置~~ → **已过时（被后面的 M 段覆盖）**
+
+> ⚠️ 重复条目：后者「M. 已实现并发布 v1.12.1」才是唯一事实。
 
 **状态：已定位，待开发**（见 [docs/APPEAL-EMAIL.md](APPEAL-EMAIL.md)）。
 
@@ -188,7 +201,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `alerts.appealEmail`（`APPEAL_EMAIL`，「邮件与提醒」分组，留空回退）；测试 51→52 + 新增 appeal 用例。
 - 线上立即恢复：compose 加 `APPEAL_EMAIL=yyliucha@163.com` 并重启（发版前唯一可靠方式）。
 
-## N. 待开发：邮件配置合并到「邮件服务」页（方案 A 已确认）
+## N. ~~待开发：邮件配置合并到「邮件服务」页（方案 A 已确认）~~ → **已过时（被后面的 N 段覆盖）**
+
+> ⚠️ 重复条目：后者「N. 已实现并发布 v1.12.1」才是唯一事实。
 
 **状态：方案已确认（A，2026-11-03），待开发**（见 [docs/MAIL-CONFIG-PAGE.md](MAIL-CONFIG-PAGE.md)）。
 
@@ -216,7 +231,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - 邮件服务页插入「邮件配置」卡；说明改「配置保存在此页，保存后立即生效」。
 - 系统设置过滤邮件 key；alerts 分组改「通知与提醒」；保存不再提交邮件 key。
 
-## O. 待开发：申诉系统改造——服务端受理 + 后台申诉管理
+## O. ~~待开发：申诉系统改造——服务端受理 + 后台申诉管理~~ → **已过时（被后面的 O 段覆盖）**
+
+> ⚠️ 重复条目：后者「O. 已实现并发布 v1.12.1」才是唯一事实。
 
 **状态：需求与方案已确认（2026-11-03），待开发**（见 [docs/APPEAL-SYSTEM.md](APPEAL-SYSTEM.md)）。
 
@@ -228,7 +245,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   SMTP 未配置不影响入库；处理动作联动现有解封逻辑（ip_blacklist / ip_abuse / device_bans）。
 - 依赖：先修封禁页跳转（FRONTEND-RENDER-FIX §2）。验收见文档 §8。
 
-## P. 待开发：后台功能对齐（设备 tab + 合并重复游戏 + 同步历史 + 回填进度）
+## P. ~~待开发：后台功能对齐（设备 tab + 合并重复游戏 + 同步历史 + 回填进度）~~ → **已过时（被后面的 P 段覆盖）**
+
+> ⚠️ 重复条目：后者「P. 已实现并发布 v1.13.0」才是唯一事实。
 
 **状态：已排查，待开发**（见 [docs/ADMIN-PARITY.md](ADMIN-PARITY.md)）。排查方法：后端 40 个 admin 路由 vs 前端调用 36 个做差集 + 旧 `web/console.html` 逐项对照。
 
@@ -385,9 +404,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **交接单**：[HANDOVER-X-SCHEDULER.md](HANDOVER-X-SCHEDULER.md)（含改动点、行号、风险与验收命令）。
 - **已确认**：`steam-status` 每天 12000 条；`steam-prices` 本批不动（缩量另行优化）。
 
-## Y. 待开发：补 `steamStatus.initialDelaySec` 设置项
+## Y. ~~待开发：补 `steamStatus.initialDelaySec` 设置项~~ → **已并入 AB 批，已实现待发版（e432d2f）**
 
-**状态：需求已确认（2026-11-05），待开发**（小改，可随下个发版）。
+**状态：已实现待发版（e432d2f，随 AB 批）**（见 [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md) §3-F）。
 
 - **背景**：X 批（v1.16.1）把 `steam-status` 首轮延迟默认值从 21600s 改成 600s，但**只改代码默认、没加设置项**。
   其他任务都有（`sources.steam/sonkwo/itad/gog/humble/discover.initialDelaySec`），`steam-status` 漏了 →
@@ -418,3 +437,87 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   C 新增 `useInstallPrompt` + 顶部「安装到桌面」+ 不支持时给 Chrome 说明；D 后台游戏目录/访问记录卡片化、
   其余表格加横向滚动提示；E 视觉微调（触摸 ≥44px）。
 - **验收**：真机详情页不再横向溢出、安装按钮可用、后台卡片化不横向滚动、PC 零回归、`npm test` 全绿。
+
+## AA. 待排查：添加愿望单功能失败
+
+**状态：已记录，待排查（2026-11-06 所有者反馈）**。本条只登记现象与排查线索，**不改代码**；
+按所有者要求，先处理「Steam 状态判定跑不起来」那个问题，本条排在其后。
+
+- **现象**：前端「添加愿望单」操作失败（具体表现待补：是报错弹窗、静默无反应，还是加入了但没同步到 Steam）。
+  **已出审计文档**：[WISHLIST-FIX.md](WISHLIST-FIX.md)——链路、5 条候选根因（按可能性排序）、6 项无论根因都要修的产品缺陷、
+  需要所有者补充的 4 条信息。根因确认后再出开发描述。
+- **待补信息（下次排查先问）**：
+  1. 操作路径：首页卡片「愿望单」按钮 / 详情页 / 「心愿单」页？
+  2. 界面表现：有无错误提示？文案是什么？
+  3. 时间点与所用账号（是否管理员、是否已绑定 Steam 账号）；
+  4. 该 Steam 账号是否已配置自己的 **API Key**（推送依赖它）。
+- **已知代码落点（排查用）**：
+  - 前端入口：`frontend/src/pages/Home.vue`（愿望单按钮与多账号选择弹窗 `wishlistPick`）；
+  - 接口：`src/server.js:1311` 起的 `/api/wishlist`（POST 加入、DELETE 移除）；
+  - 推送 Steam：`src/steam-accounts.js` 的 `pushWishlistItem`（`IWishlistService/AddToWishlist`，
+    未文档化接口，需要该账号自配 API Key；失败只记日志、每日同步对账兜底）；
+  - 存储：`user_wishlist` 表（`src/steam-login.js:63`），并联动 `watchlist` 自动到价提醒。
+- **排查步骤（下次执行）**：
+  1. 后台「运行日志」搜 `wishlist`，看 `api.wishlist_*` / `adapter.steam.wishlist_*_failed`；
+  2. 看接口返回码（400 参数 / 403 权限 / 409 重复 / 500 内部错误）；
+  3. 确认账号是否配置 API Key、Steam OpenID 是否仍有效；
+  4. 区分「站内入库失败」与「入库成功但推 Steam 失败」——两者用户感知相似但根因不同。
+
+## AB. ~~待开发：Steam 状态判定整轮静默不写库（JSON 取错）~~ → **已实现待发版（e432d2f，2026-11-06）**
+
+**状态：已实现待发版（e432d2f，2026-11-06）**。规格见 [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md)。
+
+- **现象**：`steam-status` 12:39 启动、请求持续 200 成功，但「近 24h 判定 = 0」、`max(steam_checked_at)=11-04`，
+  抽查 appid 全是 null，且**没有一条 `steam-status.failed`**——请求成功但一条都没写库。
+- **真因（P0）**：`src/cli.js:2179`/`:2189` 把 `fetchJson` 返回对象当成 payload 取：
+  `const cnEntry = cn?.[String(appid)]`（应 `cn?.json?.[...]`），`hkEntry` 同错 → 两个 entry 恒为 `undefined`
+  → `applySteamDetails` 判定 `status=null` → 直接 return 不写库；而 `done += 1` 照加，整轮"跑满"但 0 行写入。
+- **P0 附带**：每行最多 2 个请求但只 sleep 一次 → 约 300–400 次/5 分钟，超 Steam 200 次/5 分钟配额；
+  撞 429 后 `http.js:55` 冷却 **30 分钟**，单轮被拖成"卡死"；`cli.js:2205` 的 429 分支 `break` 只跳内层循环。
+- **P1**：`cli.js:2196` 逐条 `withStore`（每条新建连接池）；`setSteamStatus` 未命中返回 null 但无人校验（静默 no-op）。
+- **方案**：A 修 `.json` 取值；B 写入不可静默（`wroteStatus` 决定 done、`write_miss` 日志、未知状态单列）；
+  C 限速按每请求计 + 429 结束整轮 + `limit` 12000→6000（约 5 小时/轮）；D 连接提到循环外；E 每轮写 `sync_runs`。
+- **同链路审计追加（规格 §2.5）**：① `outcome` 是死变量，`wroteStatus` 被丢弃；② 非 429 的 4xx 走 `continue`
+  跳过 `sleep` → 无间隔连发；③ `done/counts` 不看是否真写库 → 汇总"判定几百条"但库里 0 行；
+  ④ 收尾只判 `done===0 && failed>0`，全 skipped 会静默通过；⑤ `descriptorIds` 为空数组时会覆盖已有分级
+  （`coalesce` 挡不住 `[]`）；⑥ 国区失败时每行都补 hk，是超配额的直接原因；
+  ⑦ **写入路径从未真正执行过**，`content_descriptors` 参数未显式 `::int[]`，修好后首次写入可能暴露类型问题，
+  必须在 `--limit 20` 验收时确认。- **验收**：`--limit 20` 后抽查 appid 的 `steam_status`/`steam_checked_at` 都有值；`done` 与真实写入一致；
+  撞 429 立即收轮；指标卡下降量 = done；`npm test` 全绿。
+
+## AC. 待办：同步不可达的未保证项（A1–A11 汇总）
+
+**依赖：AC6、AC8 依赖 AB**（状态判定先能正常写库，否则"顺带写 offer""429 收轮"都无法验证）；
+**依赖阻塞期间不要开工 AC6/AC8**，其余 AC1–AC5、AC7、AC9–AC11 可独立推进。
+
+**状态：排查中（2026-11-06）**。总表与证据见 [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md)；
+当前"完全没同步"的直接原因是 AB 批（[STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md)），以下是不依赖 AB 的独立缺口：
+
+- **AC1** 启动校验"该有但没有"的任务（缺 `STEAM_API_KEY` / 被 `*_ENABLED=0` 关掉），后台显式提示，不要静默消失。
+- **AC2** 熔断/代理失败/429 在后台可见，并支持手动重置熔断（现在熔断 3 次=6 小时、内存态、重启清零、无人知晓）。
+- **AC3** `steam-status`/`heat`/`rename` 也写 `sync_runs`（或落盘 lastRun），避免每次发版重启都重置节奏。
+- **AC4** 每日 Steam 配额预算：`steam-prices`(~90min)+`heat`+`backfill`+`steam-status`(目标 5h) 串行总时长必须 <24h，超了自动降频并告警。
+- **AC5** 后台显示"重任务被手动任务占用"的时长与占用者（现在只有 `scheduler.job_deferred_busy` 日志）。
+- **AC6** 429 改为全局退避预算（本轮跳过并记录），不要每个子进程各睡 30 分钟。
+- **AC7** 解析增加结构校验（关键字段缺失记 `shape_mismatch`），字段改名不要静默变 null。
+- **AC8** 明确"状态 ok"与"有报价"的关系：`steam-status` 判 ok 时顺带写 offer，或 `backfill` 优先这些游戏；
+  并复核「已同步」口径（现在是 ok+有简介，不要求有价格）。
+- **AC9** 新游戏优先入回填队列（按 created_at/catalog 时间排序），现在按 id 顺序排队，新游戏可能等数周。
+- **AC10** 所有数据任务统一写 `sync_runs`，后台「同步记录」可见每轮结果。
+- **AC11** 后台加「任务健康」面板：上次运行/耗时/结果/失败原因/下次时间/是否在跑。
+
+> 待所有者回答 5 个问题（见 SYNC-FAILURE-MODES.md §5）后确定优先级。
+
+## AD. 待开发：搜索支持中英文（含平台中文别名）
+
+**状态：需求已确认（2026-11-06），待开发**（见 [SEARCH-I18N.md](SEARCH-I18N.md)）。
+
+- **现象**：前台用中文搜不到（如搜「英雄连」找不到 `Company of Heroes 3`），英文可搜到；卡片标题本身显示英文。
+- **根因**：① `pg.js:1030-1033` / `server.js:1501-1502` 的搜索只匹配 `games.name` 与 `name_en`，
+  **不匹配 `game_aliases.platform_title`**（杉果等平台的中文标题）；② `upsertGameMeta` 只有在 Steam 返回中文名时才
+  把 `name` 换成中文，欧美游戏没有官方中文名时就一直是英文；③ `cmdRename` 的候选条件要求 `name_en` 为空，
+  一旦 `name_en` 被填就**永远不再补中文名**。
+- **方案**：A 搜索加 `game_aliases` 子查询；B 关键词与字段做空格/全角归一化；C（可选）人工中文别名字段；
+  D（可选）命中来源参与排序。不做拼音搜索。
+- **验收**：搜「英雄连」命中 CoH3、搜英文仍命中、带空格与不带空格结果一致、后台搜索同样生效、耗时不超过 2 倍。
+- **已确认（2026-11-06）**：放开 `rename` 给不含中文名的游戏补中文名；搜索必须命中平台别名；不做人工别名字段、不做拼音搜索。
