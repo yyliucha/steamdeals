@@ -2,6 +2,23 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.17.0] - 2026-11-06
+
+### 新增
+
+- **搜索支持中英文（含平台中文别名，AD 批 docs/SEARCH-I18N.md）**：
+  - 关键词条件收敛到 `db.gameKeywordSql`——`name` / `name_en` / `game_aliases.platform_title`
+    三源命中（exists 子查询防重复行），前台搜索与后台「游戏管理」搜索同口径；
+  - 空格（半角/全角）在关键词与字段两侧都归一化后再包含匹配，搜「英雄连 3」与「英雄连3」结果一致；
+  - 纯数字关键词继续按 AppID 精确匹配（走索引）；
+  - `rename` 任务候选放开为「name 不含中文即补中文名」（写入仍走 `upsertGameMeta`，
+    人工维护的名字不会被覆盖）。不做人工中文别名字段、不做拼音搜索（所有者已确认）。
+
+### 测试
+
+- `test/store-browse.test.js` 新增 3 项：中文命中 name 与平台别名 + 英文回归、空格/全角归一化一致、
+  后台「游戏管理」搜索 HTTP 层同口径验证。
+
 ## [1.16.4] - 2026-11-06
 
 ### 修复

@@ -487,17 +487,18 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AC. 待办：同步不可达的未保证项（A1–A11 汇总）
 
-**依赖：AC6、AC8 依赖 AB**（状态判定先能正常写库，否则"顺带写 offer""429 收轮"都无法验证）；
-**依赖阻塞期间不要开工 AC6/AC8**，其余 AC1–AC5、AC7、AC9–AC11 可独立推进。
+**依赖：** AC6、AC8 原本依赖 AB——**AB 已随 v1.16.4 发布（2026-11-06），依赖已解除**，
+可以基于 1.16.4 起的 `steam-status` 日志与数据做验证；其余 AC1–AC5、AC7、AC9–AC11 本就不依赖。
 
 **状态：排查中（2026-11-06）**。总表与证据见 [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md)；
 当前"完全没同步"的直接原因是 AB 批（[STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md)），以下是不依赖 AB 的独立缺口：
 
 - **AC1** 启动校验"该有但没有"的任务（缺 `STEAM_API_KEY` / 被 `*_ENABLED=0` 关掉），后台显式提示，不要静默消失。
+  **2026-11-06 实测**：1.16.4 启动日志 `jobs=["catalog",…,"steam-accounts",…]` 含这两项 → 本部署 `STEAM_API_KEY` 已配置，AC1 针对的是其它/未来部署。
 - **AC2** 熔断/代理失败/429 在后台可见，并支持手动重置熔断（现在熔断 3 次=6 小时、内存态、重启清零、无人知晓）。
-- **AC3** `steam-status`/`heat`/`rename` 也写 `sync_runs`（或落盘 lastRun），避免每次发版重启都重置节奏。
+- **AC3** `heat`/`rename` 也写 `sync_runs`（或落盘 lastRun）（**`steam-status` 已随 AB 批写入 `sync_runs`**），避免每次发版重启都重置节奏。
 - **AC4** 每日 Steam 配额预算：`steam-prices`(~90min)+`heat`+`backfill`+`steam-status`(目标 5h) 串行总时长必须 <24h，超了自动降频并告警。
-- **AC5** 后台显示"重任务被手动任务占用"的时长与占用者（现在只有 `scheduler.job_deferred_busy` 日志）。
+- **AC5** 后台显示"重任务被占用"的时长与占用者。**2026-11-06 实测：重任务之间互相等待时完全无日志**——scheduler.job_deferred_busy 只在**手动 sync** 占用时打印（scheduler.js:590），`steam-prices` 占槽导致 `steam-status` 排队时没有任何输出，"没跑"只能靠算时间。建议加 `scheduler.job_wait_slot`。
 - **AC6** 429 改为全局退避预算（本轮跳过并记录），不要每个子进程各睡 30 分钟。
 - **AC7** 解析增加结构校验（关键字段缺失记 `shape_mismatch`），字段改名不要静默变 null。
 - **AC8** 明确"状态 ok"与"有报价"的关系：`steam-status` 判 ok 时顺带写 offer，或 `backfill` 优先这些游戏；
@@ -508,9 +509,20 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 > 待所有者回答 5 个问题（见 SYNC-FAILURE-MODES.md §5）后确定优先级。
 
-## AD. ~~待开发：搜索支持中英文（含平台中文别名）~~ → **质检通过（8037187，2026-11-06）**
+### 基于 v1.16.4 日志可验证的条目（2026-11-06 起）
 
-**状态：质检通过（8037187，2026-11-06）**。规格见 [SEARCH-I18N.md](SEARCH-I18N.md)。
+| 条目 | 需要的证据（都是只读） |
+|---|---|
+| **AC8** | `steam-status.done` 里的 `wrote / skipped / failed`；`steam_status='ok'` 的数量与「有报价」的差值 |
+| **AC6** | 是否仍出现 `http.rate_limit_pause delayMs=1800000` 或「命中 Steam 429」 |
+| **AC3** | `sync_runs` 里有没有 `steam-status` 行；重启后 `nextRunAt` 是否接着算而不是重新等 600s |
+| **AC4** | 各任务 `scheduler.job_done` 的 `elapsedMs`：`steam-prices` / `heat` / `backfill` / `steam-status` 四者之和 |
+| **AC1** | `scheduler.start` 的 `jobs=[…]` 里是否包含 `catalog`、`steam-accounts`（缺就是没配 `STEAM_API_KEY`） |
+| **AC2** | 是否出现 `circuit_skip`，或同一任务连续 `job_failed` |
+
+## AD. ~~待开发：搜索支持中英文（含平台中文别名）~~ → **已发布 v1.17.0（2026-11-06）**
+
+**状态：已发布 v1.17.0（2026-11-06）**。规格见 [SEARCH-I18N.md](SEARCH-I18N.md)。
 
 - **现象**：前台用中文搜不到（如搜「英雄连」找不到 `Company of Heroes 3`），英文可搜到；卡片标题本身显示英文。
 - **根因**：① `pg.js:1030-1033` / `server.js:1501-1502` 的搜索只匹配 `games.name` 与 `name_en`，
@@ -521,3 +533,38 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   D（可选）命中来源参与排序。不做拼音搜索。
 - **验收**：搜「英雄连」命中 CoH3、搜英文仍命中、带空格与不带空格结果一致、后台搜索同样生效、耗时不超过 2 倍。
 - **已确认（2026-11-06）**：放开 `rename` 给不含中文名的游戏补中文名；搜索必须命中平台别名；不做人工别名字段、不做拼音搜索。
+
+## AE. 待决策：版本检测按服务器 IP 选择镜像仓库（TCR / Docker Hub）
+
+**状态：待决策**（1 个问题待所有者确认，见规格 §6）
+**依赖：** 无
+**解锁：** 无
+**规格**：[VERSION-SOURCE.md](VERSION-SOURCE.md)
+
+- **现状**：`src/version.js` 只查 `api.github.com`（release → tags，缓存 6h）。大陆服务器经常超时/限流，
+  徽标停在旧版本；且徽标说"有新版"时，用户实际拉镜像的仓库（TCR / Docker Hub）可能还没同步。
+- **目标**：按服务器网络位置自动选源，**不做设置项**、代码硬编码：
+  大陆/香港 → 优先 TCR；其他 → 优先 Docker Hub；首选失败回退另一个；两者都失败回退 GitHub。
+- **方案**：`detectRegion()`（IP 归属，缓存 24h）→ `checkRegistryLatest()`（Hub 走匿名 token，TCR 走匿名
+  tags/list，过滤 `^v\d+\.\d+\.\d+$` 取最大）→ 顺序选择；结果带 `source`/`region`，前端本批不改。
+- **待确认**：允许调用第三方 IP 归属接口（`ip-api.com`）吗？
+  - 允许（推荐）：地理判定准，2s 超时 + 24h 缓存 + 可降级；
+  - 不允许：改为纯连通性探测（比较两个 registry 响应时间，快者优先），不依赖第三方 IP 服务。
+- **风险**：TCR 个人版匿名 `tags/list` 可能 401 → 代码按"401 即回退 Hub"实现，线上实测后再定最终策略。
+- **验收**：CN→TCR、US→Hub、TCR 401→回退、双失败→GitHub、geo 超时不阻塞、缓存生效、`npm test` 全绿。
+
+## AF. 待开发：愿望单/标记操作后列表不刷新（搜索缓存未失效）
+
+**状态：待开发**（根因已确认）
+**依赖：** 无
+**解锁：** 无
+**规格**：[FRONTEND-STALE-LIST.md](FRONTEND-STALE-LIST.md)
+
+- **现象**：加/移除愿望单后卡片仍是操作前状态，需手动刷新；**只在有搜索词时复现**。
+- **根因**：`Home.vue:211` `loadGames()` 有 30 秒搜索结果缓存（`cacheKey` 仅当 `q` 非空建立），
+  而 `addWishlist`(:257)、`confirmWishlistRemove`(:256)、`setGameFlag`(:247) 写完都直接 `await loadGames(page.value)`，
+  **没有任何一处让缓存失效** → 命中旧缓存，列表不更新。缓存 key 也没有数据版本维度。
+- **方案**：新增 `invalidateSearchCache()`（`searchCache.clear()`）或 `refreshAfterMutation()`，
+  在每个写操作成功后、`loadGames` 之前调用；覆盖愿望单加/删、感兴趣/不感兴趣/已拥有、取消提醒。
+- **验收**：搜索态下加/删愿望单卡片立刻变化；无搜索词行为不变；**缓存能力保留**（无写操作时二次搜索仍走缓存）；
+  `npm test` + `frontend:build`。

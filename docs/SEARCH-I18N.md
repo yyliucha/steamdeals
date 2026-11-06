@@ -1,6 +1,6 @@
 # 搜索支持中英文（含平台中文别名）（待开发）
 
-> 状态：**已实现并质检通过（8037187，2026-11-06，待发版）**。范围：A 别名搜索 + B 归一化 + D 放宽 `rename`；C 人工别名不做，拼音不做。
+> 状态：**已实现并发布 v1.17.0（2026-11-06）**。范围：A 别名搜索 + B 归一化 + D 放宽 `rename`；C 人工别名不做，拼音不做。
 > 关联：[WEB.md](WEB.md)（前台搜索）、[STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md)（名字来源）、
 > [TODO.md](TODO.md) 的 AD 条目。
 
