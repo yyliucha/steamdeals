@@ -198,7 +198,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   验证：`npm test` 59 个文件 / 495 项全绿、`node test/api.test.js` 22 项、`frontend:build`、`scan` 干净；
   质检：AH/AI/AJ/AM-1 四批均 ✅ 放行（QA-USER-DELETE-AH.md / QA-USER-LIFECYCLE-AI.md / QA-USER-NOTIFY-AJ.md /
   QA-PROXY-POOL-AM1.md）。
-  CI：docker-hub run <id>（test/smoke/publish）、docker-tcr run <id>（build-push + Verify manifests）——结果见发版汇报。
+  CI：`docker-hub` run 42211636798（test/smoke/publish 全绿）、`docker-tcr` run 42211636783
+  （test 全绿、`build-push-action@v6` 与 `Verify manifests` 均 success），两个镜像源均已推送。
   **服务器部署待执行**（按本文第 4 节升级到 `2.0.0`）；部署后重点人工确认：
   真实邮箱客户端 HTML 渲染（AJ QA 需人工确认项）、真实多代理切换/冷却日志（AM-1 QA 需人工确认项）。
 
