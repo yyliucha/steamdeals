@@ -33,6 +33,11 @@
 | **AE** | 版本检测按服务器 IP 选镜像仓库（TCR/Hub） | [VERSION-SOURCE.md](VERSION-SOURCE.md) | 已发布 v1.18.0 | ✅ 已在对话给出 |
 | **AF** | 愿望单/标记操作后列表不刷新（搜索缓存未失效） | [FRONTEND-STALE-LIST.md](FRONTEND-STALE-LIST.md) | 已发布 v1.18.0 | ✅ 已在对话给出 |
 | **AG** | 后台平台链接抽屉 + 游戏名点击复制（后台/前台） | [ADMIN-PLATFORM-LINKS.md](ADMIN-PLATFORM-LINKS.md) | 已发布 v1.18.0 | ✅ 已在对话给出 |
+| **AH** | 用户彻底删除（硬删除 + 最近删除审计） | [USER-LIFECYCLE.md](USER-LIFECYCLE.md) | 待开发 | ✅ 已在对话给出 |
+| **AI** | 邮件模板化 + HTML 邮件 + 发送记录 | [USER-LIFECYCLE.md](USER-LIFECYCLE.md) | 待开发 | ✅ 已在对话给出 |
+| **AJ** | 账号变更通知（7 类操作 / 8 类邮件） | [USER-LIFECYCLE.md](USER-LIFECYCLE.md) | 依赖阻塞（AI、AH） | ✅ 已在对话给出 |
+| **AK** | 密码系统重设计（AK-1 策略/哈希、AK-2 登录防护、AK-3 账号流程） | [AUTH-REDESIGN.md](AUTH-REDESIGN.md) | AK-1 待开发；AK-2/3 依赖阻塞 | ✅ 规格自包含（按 §8 顺序派发） |
+| **AL** | 登录 / 注册 / 改密页面 | [AUTH-REDESIGN.md](AUTH-REDESIGN.md) | 依赖阻塞（AK-3） | ✅ 规格自包含（按 §8 顺序派发） |
 | **F** | Steam 价格同步优化（缩量 / 热点优先） | ❌ 无独立规格（计划写在 [TODO.md](TODO.md) F 段） | 等排期 | ❌ 未给 |
 | **C1** | heat 逐 appid 全 `success:false` | ❌ 无规格（[TODO.md](TODO.md) C1） | 待探测 | ❌ 未给 |
 
@@ -48,4 +53,6 @@
 2. **C1**（heat 全失败）只有 TODO 一行，没有规格、没有探测结论；
 3. **Y** 原先只有 TODO，现并入 AB 规格 §3-F；
 4. **AA** 缺所有者输入（`wishlist_add_failed` 日志），因此还没有开发描述；**AC / AE** 的决策已于 2026-11-06 拿到，已转「待开发」并给出开发描述；
-5. [TODO.md](TODO.md) 的历史段落存在**重复字母**（K/M/N/O/P 各出现两次）、A 段停留在 v1.4.6，扫描时容易被误导。
+5. [TODO.md](TODO.md) 的历史段落存在**重复字母**（K/M/N/O/P 各出现两次）、A 段停留在 v1.4.6，扫描时容易被误导；
+6. **AH–AL** 五条已入 TODO（2026-11-06）：用户生命周期 3 条见 [USER-LIFECYCLE.md](USER-LIFECYCLE.md)，密码系统与页面 2 条见 [AUTH-REDESIGN.md](AUTH-REDESIGN.md)；
+   AK/AL 未单独给开发描述——所有者明确"按规格 §8 顺序直接派发"。
