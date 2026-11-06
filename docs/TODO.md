@@ -404,7 +404,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## Z. 手机端适配修复（vw 逃逸 + 安装提示 + 后台卡片化）
 
-**状态：已实现，待发版（2026-11-06）**（见 [MOBILE-FIX.md](MOBILE-FIX.md)）；红米 + 小米浏览器真机验收待部署后执行。
+**状态：已实现并发布 v1.16.2（2026-11-06）**（见 [MOBILE-FIX.md](MOBILE-FIX.md)）；红米 + 小米浏览器真机验收待部署后执行。
 
 - **真机证据**（红米 K100 Pro Max + 小米自带浏览器）：`?debug=1` 显示 `innerWidth 980 / screen.width 400 /
   DPR 3 / isMobile true / desktopMode true`，UA 为桌面 `X11; Linux x86_64` —— 浏览器忽略 viewport meta，按 980 排版。

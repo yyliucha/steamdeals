@@ -1,6 +1,6 @@
-# 手机端适配修复（已实现，待发版）
+# 手机端适配修复（已发布 v1.16.2）
 
-> 状态：**已实现，待发版（2026-11-06）**；已提交 main，等「构建 vX.Y.Z」指令。
+> 状态：**已实现并发布 v1.16.2（2026-11-06）**；tag `v1.16.2` 已推送，镜像构建见 CI。
 > 真机验收（红米 K100 Pro Max + 小米自带浏览器）需部署后在手机上执行，见 §5。
 > 关联：[MOBILE-PWA.md](MOBILE-PWA.md)（PWA 已发布 v1.16.0）、[MOBILE-VIEWPORT.md](MOBILE-VIEWPORT.md)（真机视口，v1.10.0）、
 > [WEB.md](WEB.md)、[TODO.md](TODO.md)。
