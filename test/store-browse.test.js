@@ -1,7 +1,13 @@
 // GetItems 批量接口：请求体、字段映射、分批与失败收集（用假 fetch，不发真实请求）。
+// AD 批（docs/SEARCH-I18N.md）：搜索中英文 + 平台中文别名 + 空格/全角归一化（真 PGlite + 真 HTTP 后台搜索）。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { openStore } from '../src/store/index.js';
+import * as db from '../src/store/pg.js';
+import { startApiServer } from '../src/server.js';
 import { buildBody, mapStoreItem, fetchStoreItems, CHUNK } from '../src/adapters/store-browse.js';
+
+process.env.CAPTCHA_ENABLED = '0';
 
 function jsonResponse(body, status = 200) {
   return {
@@ -173,4 +179,89 @@ test('throwOnFatal：405/429/403 直接抛出，交回调用方中止回填', as
   const r = await fetchStoreItems([730, 570], { key: 'k', fetchImpl });
   assert.deepEqual(r.failed, [730, 570]);
   assert.equal(r.items.length, 0);
+});
+
+// ---------------------------------------------------------------- AD 批：搜索中英文（docs/SEARCH-I18N.md §5 验收）
+// 守护的约束：① 中文能命中 name 与平台别名；② 英文仍能命中；③ 空格/全角空格归一化后结果一致；
+// ④ 后台「游戏管理」搜索同口径（同一 helper 组装 SQL）。
+
+async function searchSetup() {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  await q("insert into platforms (code, name, kind) values ('steam','Steam 国区','official') on conflict do nothing");
+  const seed = async (appid, name, nameEn) => {
+    await q('insert into games (steam_appid, name, name_en, is_free) values ($1,$2,$3,false)', [appid, name, nameEn]);
+    await q("insert into daily_prices (game_id, platform_code, region, day, min_price_cents, currency) select id,'steam','cn',current_date,1000,'CNY' from games where steam_appid = $1", [appid]);
+    return (await q('select id from games where steam_appid = $1', [appid])).rows[0].id;
+  };
+  const g1 = await seed(6001, '英雄连3', 'Company of Heroes 3');
+  const g2 = await seed(6002, 'Company of Heroes 2', null); // name_en 为空、别名才有中文
+  const g3 = await seed(6003, 'Counter-Strike 2', 'CS2');
+  await q("insert into game_aliases (game_id, platform_code, platform_title, platform_product_id) values ($1,'steam','英雄连2','sku-coh2'), ($2,'steam','反恐精英 2','sku-cs2')", [g2, g3]);
+  return { store, q };
+}
+
+test('AD：中文命中 name 与平台别名，英文命中 name/name_en 回归', async () => {
+  const { store, q } = await searchSetup();
+  try {
+    const zh = await db.gameSearch(q, { region: 'cn', keyword: '英雄连', page: 1, pageSize: 20 });
+    assert.equal(zh.total, 2, '搜「英雄连」应命中 name 的英雄连3 与别名命中的 CoH2');
+    assert.deepEqual(zh.rows.map((r) => r.steam_appid).sort(), [6001, 6002]);
+
+    const en = await db.gameSearch(q, { region: 'cn', keyword: 'company of heroes', page: 1, pageSize: 20 });
+    assert.equal(en.total, 2, '英文关键词（含空格）仍能命中');
+    assert.deepEqual(en.rows.map((r) => r.steam_appid).sort(), [6001, 6002]);
+
+    const aliasZh = await db.gameSearch(q, { region: 'cn', keyword: '反恐精英', page: 1, pageSize: 20 });
+    assert.equal(aliasZh.total, 1, '纯别名命中的游戏也能搜到');
+    assert.equal(aliasZh.rows[0].steam_appid, 6003);
+  } finally {
+    await store.close();
+  }
+});
+
+test('AD：空格与全角空格归一化后结果一致；纯数字按 AppID 命中', async () => {
+  const { store, q } = await searchSetup();
+  try {
+    const plain = await db.gameSearch(q, { region: 'cn', keyword: '英雄连3', page: 1, pageSize: 20 });
+    const spaced = await db.gameSearch(q, { region: 'cn', keyword: '英雄连 3', page: 1, pageSize: 20 });
+    const fullWidth = await db.gameSearch(q, { region: 'cn', keyword: '英雄连　3', page: 1, pageSize: 20 });
+    assert.deepEqual(
+      [plain, spaced, fullWidth].map((r) => r.rows.map((x) => x.steam_appid).sort()),
+      [[6001], [6001], [6001]],
+      '带空格 / 全角空格 / 不带空格的结果一致',
+    );
+
+    const byAppid = await db.gameSearch(q, { region: 'cn', keyword: '6003', page: 1, pageSize: 20 });
+    assert.equal(byAppid.total, 1, '纯数字关键词按 AppID 精确命中');
+    assert.equal(byAppid.rows[0].steam_appid, 6003);
+  } finally {
+    await store.close();
+  }
+});
+
+test('AD：后台「游戏管理」搜索同口径（HTTP 层验证 §5.4）', async () => {
+  const { store, q } = await searchSetup();
+  await db.createUser(q, { username: 'admin', password: 'admin123456', role: 'admin' });
+  const srv = await startApiServer({ query: q, port: 0, host: '127.0.0.1' });
+  const base = `http://127.0.0.1:${srv.port}`;
+  try {
+    const login = await fetch(`${base}/api/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin123456' }),
+    });
+    const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0];
+    const res = await fetch(`${base}/api/admin/games?q=${encodeURIComponent('英雄连2')}&page=1&pageSize=10`, {
+      headers: { cookie },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.total, 1, '后台搜索也命中平台别名');
+    assert.equal(body.games[0].steam_appid, 6002);
+  } finally {
+    await srv.close();
+    await store.close();
+  }
 });

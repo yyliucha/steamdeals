@@ -1932,8 +1932,9 @@ async function cmdRename() {
     const rows = await withStore((store) =>
       store.query(
         'select g.steam_appid from games g where g.steam_appid is not null and not g.deleted ' +
-          "and (g.name is null or g.name = '' " +
-          "     or ((g.name_en is null or g.name_en = '') and g.name !~ '[一-龥]')) " +
+          // AD 批（SEARCH-I18N.md 决策 1）：放开候选——name 不含中文的都尝试补中文名
+          // （upsertGameMeta 的覆盖保护仍在：人工维护的名字不会被冲掉，没有简中的不覆盖）。
+          "and (g.name is null or g.name = '' or g.name !~ '[一-龥]') " +
           "and (g.backfill_at is null or g.backfill_at < now() - interval '1 day') " +
           'order by g.id limit $1',
         [size],

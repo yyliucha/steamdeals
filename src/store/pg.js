@@ -998,6 +998,23 @@ export async function gameOverview(q, { region = 'cn', limit = 200 } = {}) {
 }
 
 /**
+ * 关键词搜索条件（AD 批 docs/SEARCH-I18N.md §3-A/B）：
+ * name / name_en / game_aliases.platform_title 三源命中，避免 JOIN 重复行（exists 子查询）；
+ * 关键词与字段两侧都做归一化（去半角/全角空格、统一小写）后再包含匹配——
+ * 当前 like '%kw%' 本来就不走索引（198k 行实测约 114ms），可接受。
+ * appidAsInt：纯数字关键词按 AppID 精确匹配；appidAsText：任意关键词安全比较（不抛 int 转换错）。
+ */
+export function gameKeywordSql(kwParam, { appidAsInt = false, appidAsText = false } = {}) {
+  const kw = `replace(replace(lower(${kwParam}), ' ', ''), '　', '')`;
+  const f = (col) => `replace(replace(lower(coalesce(${col}, '')), ' ', ''), '　', '')`;
+  const appid = appidAsInt ? ` or g.steam_appid = ${kwParam}::int` : appidAsText ? ` or cast(g.steam_appid as text) = ${kwParam}` : '';
+  return (
+    `(${kw} = '' or ${f('g.name')} like '%' || ${kw} || '%' or ${f('g.name_en')} like '%' || ${kw} || '%' ` +
+    `or exists (select 1 from game_aliases a where a.game_id = g.id and ${f('a.platform_title')} like '%' || ${kw} || '%')${appid})`
+  );
+}
+
+/**
  * 服务端搜索 + 分页 + 排序（前台列表用）。
  * 返回 { rows, total, page, pageSize, pages }。
  * 关键词在前端只过滤页面内数据的时代已经结束：现在能搜全库。
@@ -1024,13 +1041,9 @@ export async function gameSearch(
   const conds = [
     'exists (select 1 from daily_prices d where d.game_id = g.id and d.region = $1)',
     'not g.deleted',
-    // 纯数字关键词按 AppID 精确匹配（走索引）；否则按名称模糊匹配。
-    // 之前 cast(g.steam_appid as text) = $2 会让每行做一次 cast，永远用不上索引。
-    /^\d{1,10}$/.test(kw)
-      ? "($2 = '' or lower(coalesce(g.name, '')) like lower('%' || $2 || '%') " +
-        "or lower(coalesce(g.name_en, '')) like lower('%' || $2 || '%') or g.steam_appid = $2::int)"
-      : "($2 = '' or lower(coalesce(g.name, '')) like lower('%' || $2 || '%') " +
-        "or lower(coalesce(g.name_en, '')) like lower('%' || $2 || '%'))",
+    // AD 批（SEARCH-I18N.md）：关键词条件收敛到 gameKeywordSql（name/name_en/平台别名 + 空格归一化）。
+    // 纯数字关键词按 AppID 精确匹配（走索引）；否则只按名称三源模糊匹配。
+    /^\d{1,10}$/.test(kw) ? gameKeywordSql('$2', { appidAsInt: true }) : gameKeywordSql('$2'),
   ];
   // 成人内容展示策略（docs/STEAM-SYNC-STATUS-AND-RATING.md §5.2）：
   // hide=前台不展示（默认），badge/show 不过滤（展示方式由前端角标决定）。只做平台标签映射，不做法律定性。

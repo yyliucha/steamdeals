@@ -1498,8 +1498,7 @@ export function createApiServer({
             ? " and exists (select 1 from offers po join platforms pp on pp.code = po.platform_code where po.game_id = g.id and po.platform_code = $" + index + ')'
             : '';
         const baseWhere =
-          "where ($1 = '' or lower(coalesce(g.name, '')) like lower('%' || $1 || '%') " +
-          "or lower(coalesce(g.name_en, '')) like lower('%' || $1 || '%') or cast(g.steam_appid as text) = $1)" +
+          'where ' + db.gameKeywordSql('$1', { appidAsText: true }) +
           deletedWhere + syncWhere + offersWhere + ratingWhere;
         const cnt = await q(
           'select count(*)::int as n from games g ' + baseWhere + platformCond(2),
