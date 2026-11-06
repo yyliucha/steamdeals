@@ -1,6 +1,6 @@
 # 添加愿望单失败：链路审计与修复（待排查确认）
 
-> 状态：**已审计，根因待所有者补充信息确认（2026-11-06）**。
+> 状态：**已审计；现象已补全（2026-11-06 13:38 截图），等一条 `adapter.steam.wishlist_add_failed` 日志定性**。
 > 关联：[STEAM-ACCOUNTS.md](STEAM-ACCOUNTS.md)（多账号与愿望单同步）、[WEB.md](WEB.md)、[TODO.md](TODO.md) 的 AA 条目。
 
 ## 1. 现象
@@ -55,16 +55,28 @@ POST /api/wishlist（server.js:1311）
 > §16 规格里写的是"已查证可用 Web API Key"，但**没有真机验证记录**；本次是第一次真实失败样本。
 > 结论必须以 `adapter.steam.wishlist_add_failed` 日志里的 `status` 与 `snippet` 为准。
 
-### 需要的日志（只读）
+### 需要的日志（只读，所有者执行）
+
+首选应用自带的日志读取（读 `/app/logs/app-*.jsonl`，不受 `docker logs` 轮转 / 容器重启影响）：
 
 ```bash
-docker logs steamdeals --since 3h 2>&1 | grep -E 'wishlist' | tail -20
+docker exec steamdeals node /app/src/cli.js logs --event wishlist --since 360 --limit 30
 ```
 
-看 `adapter.steam.wishlist_add_failed` 那一行的 `status=` 与 `snippet=`：
-- `status=401/403` → 假设 1 或 2（Key 不被接受 / 无效）；
-- `status=200` 且提示 `success:false` → 假设 3（Steam 拒绝写入）；
-- `status=429` → 假设 4。
+兜底（容器 stdout）：
+
+```bash
+docker logs steamdeals --since 6h 2>&1 | grep -E 'wishlist' | tail -30
+```
+
+判读 **三分支**（第三种最容易被漏掉）：
+
+| 日志形态 | 结论 | 下一步 |
+|---|---|---|
+| `adapter.steam.wishlist_add_failed` 且 `status=401/403` | 鉴权：Key 不被 `IWishlistService` 接受（假设 1）或 Key 无效/带空格（假设 2） | 用该账号 Key 手工打一次接口复核；再定是否改 `access_token` |
+| 同上，`status=200` 且 `snippet` 含 `success:false` | Steam 拒绝写入（假设 3：隐私设置 / 接口语义） | 查账号隐私设置与该 appid 商店页 |
+| 同上，`status=429` | 频率限制（假设 4） | 间隔重试即可，不改代码 |
+| **只有 `steam.wishlist_manual_add`、没有 `wishlist_add_failed`** | 失败发生在调用 Steam **之前**：`api_key_set` 为真但 `decryptSecret` 失败（`SECRET_KEY` 变过 / 密文损坏），或该账号未配 Key | 查 `steam_accounts.api_key_enc` 能否解密；这条路径**当前没有独立日志**（`steam.wishlist_manual_add` 的 `failed` 只记 steamId，不记 reason），属 §4-1 要补的观测缺口 |
 
 ## 4. 无论根因如何都要修的产品缺陷
 

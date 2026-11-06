@@ -443,9 +443,11 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 **状态：已记录，待排查（2026-11-06 所有者反馈）**。本条只登记现象与排查线索，**不改代码**；
 按所有者要求，先处理「Steam 状态判定跑不起来」那个问题，本条排在其后。
 
-- **现象**：前端「添加愿望单」操作失败（具体表现待补：是报错弹窗、静默无反应，还是加入了但没同步到 Steam）。
-  **已出审计文档**：[WISHLIST-FIX.md](WISHLIST-FIX.md)——链路、5 条候选根因（按可能性排序）、6 项无论根因都要修的产品缺陷、
-  需要所有者补充的 4 条信息。根因确认后再出开发描述。
+- **现象（2026-11-06 13:38 已补全）**：多选弹窗勾选 Steam 账号后提交 → 游戏进了本站「愿望单」，但**没有归属到该 Steam 账号**；
+  前端提示「已加入本站愿望单；76561198268202591 推送失败」；后台确认该账号**已配置 API Key**。
+  即：本站 `user_wishlist` 写入成功，`pushWishlistItem()` 失败。
+  **已出审计文档**：[WISHLIST-FIX.md](WISHLIST-FIX.md)——链路、4 条候选根因、6 项无论根因都要修的产品缺陷。
+  日志一到即可定性并出开发描述。
 - **待补信息（下次排查先问）**：
   1. 操作路径：首页卡片「愿望单」按钮 / 详情页 / 「心愿单」页？
   2. 界面表现：有无错误提示？文案是什么？
@@ -458,14 +460,24 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
     未文档化接口，需要该账号自配 API Key；失败只记日志、每日同步对账兜底）；
   - 存储：`user_wishlist` 表（`src/steam-login.js:63`），并联动 `watchlist` 自动到价提醒。
 - **排查步骤（下次执行）**：
-  1. 后台「运行日志」搜 `wishlist`，看 `api.wishlist_*` / `adapter.steam.wishlist_*_failed`；
+  1. 只读跑 `docker exec steamdeals node /app/src/cli.js logs --event wishlist --since 360 --limit 30`，
+     取 `adapter.steam.wishlist_add_failed` 的 `status` / `snippet`；
   2. 看接口返回码（400 参数 / 403 权限 / 409 重复 / 500 内部错误）；
   3. 确认账号是否配置 API Key、Steam OpenID 是否仍有效；
-  4. 区分「站内入库失败」与「入库成功但推 Steam 失败」——两者用户感知相似但根因不同。
+  4. 区分「站内入库失败」与「入库成功但推 Steam 失败」——两者用户感知相似但根因不同；
+  5. **三种日志形态的定性**（详见 [WISHLIST-FIX.md](WISHLIST-FIX.md) §3）：`401/403` → 鉴权（Key 不被接受/无效）；
+     `200` + `success:false` → Steam 拒绝；**只有 `steam.wishlist_manual_add`、没有 `add_failed`** → 失败发生在调用 Steam
+     之前（解密失败 / 未配 Key），这条路径当前没有独立日志。
 
 ## AB. ~~待开发：Steam 状态判定整轮静默不写库（JSON 取错）~~ → **已发布 v1.16.4（2026-11-06）**
 
-**状态：已发布 v1.16.4（2026-11-06）**。规格见 [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md)。
+**状态：已发布 v1.16.4（2026-11-06），生产验证通过。** 规格见 [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md)。
+
+- **生产验证（2026-11-06 15:18，服务器 1.16.4）**：手动跑 `steam-status --limit 5 --rate 3000` →
+  `steam-status.done { wrote: 5, skipped: 0, failed: 0, requests: 5, ok: 5 }`；
+  库内复查 `steam_checked_at > now() - interval '10 minutes'` → `[ { st: 'ok', n: 5 } ]`，
+  证明写入真实落库，不再"跑满不写"。
+- **未验证项**：调度器整轮（`--limit 6000`）尚未开始——被 `steam-prices` 单槽占用（见 AC4/AC5）。
 
 - **现象**：`steam-status` 12:39 启动、请求持续 200 成功，但「近 24h 判定 = 0」、`max(steam_checked_at)=11-04`，
   抽查 appid 全是 null，且**没有一条 `steam-status.failed`**——请求成功但一条都没写库。
@@ -490,7 +502,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 **依赖：** AC6、AC8 原本依赖 AB——**AB 已随 v1.16.4 发布（2026-11-06），依赖已解除**，
 可以基于 1.16.4 起的 `steam-status` 日志与数据做验证；其余 AC1–AC5、AC7、AC9–AC11 本就不依赖。
 
-**状态：排查中（2026-11-06）**。总表与证据见 [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md)；
+**状态：待开发（2026-11-06 所有者确认：4 条链路全做，按 AC-1 → AC-4 顺序，一次一批）**。总表与证据见 [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md)；
 当前"完全没同步"的直接原因是 AB 批（[STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md)），以下是不依赖 AB 的独立缺口：
 
 - **AC1** 启动校验"该有但没有"的任务（缺 `STEAM_API_KEY` / 被 `*_ENABLED=0` 关掉），后台显式提示，不要静默消失。
@@ -507,7 +519,18 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **AC10** 所有数据任务统一写 `sync_runs`，后台「同步记录」可见每轮结果。
 - **AC11** 后台加「任务健康」面板：上次运行/耗时/结果/失败原因/下次时间/是否在跑。
 
-> 待所有者回答 5 个问题（见 SYNC-FAILURE-MODES.md §5）后确定优先级。
+> **已确认（2026-11-06）**：5 个问题已答，AC 从「待决策」转「待开发」，按下列 4 批推进（**一次只做一批**：
+> 做完一批把该批状态改成 `已实现待发版`、调质检，再开下一批；**AC-1 先做**）：
+>
+> | 批次 | 包含 | 状态 | 对应链路 |
+> |---|---|---|---|
+> | **AC-1 观测批** | AC1、AC3、AC5、AC10、AC11 | **待开发** | ① 后台状态一直「未探测」 |
+> | **AC-2 价格批** | AC8（已确认：判 ok 时顺带写 offer + 复核「已同步」口径） | 依赖阻塞（AC-1） | ② 列表里没价格 |
+> | **AC-3 吞吐批** | AC9（已确认：新游戏优先 + 提高 backfill 上限）、AC4 | 依赖阻塞（AC-2） | ③ 新游戏收录太慢 |
+> | **AC-4 可靠性批** | AC2、AC6、AC7 | 依赖阻塞（AC-3） | 剩余项（未单独决策，按原描述做） |
+>
+> 第 ④ 条链路（账号库 / 愿望单不更新）不在 AC1–AC11：愿望单推送见本文件的 **AA** 条目（等一条日志），
+> 账号库同步若还有问题再单独立项。
 
 ### 基于 v1.16.4 日志可验证的条目（2026-11-06 起）
 
@@ -534,24 +557,26 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **验收**：搜「英雄连」命中 CoH3、搜英文仍命中、带空格与不带空格结果一致、后台搜索同样生效、耗时不超过 2 倍。
 - **已确认（2026-11-06）**：放开 `rename` 给不含中文名的游戏补中文名；搜索必须命中平台别名；不做人工别名字段、不做拼音搜索。
 
-## AE. 待决策：版本检测按服务器 IP 选择镜像仓库（TCR / Docker Hub）
+## AE. 待开发：版本检测按服务器 IP 选择镜像仓库（TCR / Docker Hub）
 
-**状态：待决策**（1 个问题待所有者确认，见规格 §6）
+**状态：待开发（2026-11-06 已确认：允许第三方 IP 归属接口，采用 ipinfo.io）**
 **依赖：** 无
 **解锁：** 无
 **规格**：[VERSION-SOURCE.md](VERSION-SOURCE.md)
+**实测（2026-11-06，规格 §6.1）**：TCR 匿名列 tag 需先取 token（首次 401 是标准 challenge，可签发）；
+两个仓库的 tag 都是 `X.Y.Z`、**无 `v` 前缀**；Docker Hub 在大陆超时；`ip-api.com` 不可用（HTTPS 403 / HTTP 超时）。
 
 - **现状**：`src/version.js` 只查 `api.github.com`（release → tags，缓存 6h）。大陆服务器经常超时/限流，
   徽标停在旧版本；且徽标说"有新版"时，用户实际拉镜像的仓库（TCR / Docker Hub）可能还没同步。
 - **目标**：按服务器网络位置自动选源，**不做设置项**、代码硬编码：
   大陆/香港 → 优先 TCR；其他 → 优先 Docker Hub；首选失败回退另一个；两者都失败回退 GitHub。
-- **方案**：`detectRegion()`（IP 归属，缓存 24h）→ `checkRegistryLatest()`（Hub 走匿名 token，TCR 走匿名
-  tags/list，过滤 `^v\d+\.\d+\.\d+$` 取最大）→ 顺序选择；结果带 `source`/`region`，前端本批不改。
-- **待确认**：允许调用第三方 IP 归属接口（`ip-api.com`）吗？
-  - 允许（推荐）：地理判定准，2s 超时 + 24h 缓存 + 可降级；
-  - 不允许：改为纯连通性探测（比较两个 registry 响应时间，快者优先），不依赖第三方 IP 服务。
-- **风险**：TCR 个人版匿名 `tags/list` 可能 401 → 代码按"401 即回退 Hub"实现，线上实测后再定最终策略。
-- **验收**：CN→TCR、US→Hub、TCR 401→回退、双失败→GitHub、geo 超时不阻塞、缓存生效、`npm test` 全绿。
+- **方案**：`detectRegion()`（IP 归属，缓存 24h）→ `checkRegistryLatest()`（Hub 走匿名 token；TCR 先取匿名
+  token 再列 tags/list，过滤 `^\d+\.\d+\.\d+$` 取最大——两个仓库都没有 `v` 前缀）→ 顺序选择；结果带 `source`/`region`，前端本批不改。
+- **已确认（2026-11-06）**：允许调用第三方 IP 归属接口——**用 `ipinfo.io`**（`ip-api.com` 实测不可用：HTTPS 403、HTTP 超时）；
+  降级策略不变（2s 超时 + 24h 缓存 + 失败转双探）。
+- **风险（实测已消解）**：TCR 首次 401 只是标准 Bearer challenge，匿名 token 可签发；按 token 流程实现即可，
+  不能按"401 即回退 Hub"（大陆到 Hub 不通，见规格 §6.1）。
+- **验收**：CN→TCR、US→Hub、TCR 401→取 token 后成功（不直接回退）、双失败→GitHub、geo 超时不阻塞、无 v 前缀的 tag 能解析、缓存生效、`npm test` 全绿。
 
 ## AF. 待开发：愿望单/标记操作后列表不刷新（搜索缓存未失效）
 

@@ -25,12 +25,12 @@
 
 | 编号 | 主题 | 规格 | 状态 | 开发描述 |
 |---|---|---|---|---|
-| **AB** | Steam 状态判定整轮静默不写库（JSON 取错） | [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md) | 已发布 v1.16.4 | ✅ 已在对话给出 |
+| **AB** | Steam 状态判定整轮静默不写库（JSON 取错） | [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md) | 已发布 v1.16.4 + **生产验证通过**（wrote=5/ok=5） | ✅ 已在对话给出 |
 | **Y** | 补 `steamStatus.initialDelaySec` 设置项 | 并入 [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md) §3-F | 已发布 v1.16.4（随 AB） | 随 AB |
 | **AD** | 搜索支持中英文（含平台中文别名） | [SEARCH-I18N.md](SEARCH-I18N.md) | 已发布 v1.17.0 | ✅ 已在对话给出 |
 | **AA** | 添加愿望单推送失败 | [WISHLIST-FIX.md](WISHLIST-FIX.md) | 待排查（等 `wishlist_add_failed` 日志） | ❌ 等根因 |
-| **AC** | 同步不可达的未保证项（AC1–AC11） | [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) | 待决策（§5 的 Q1–Q5 未答） | ❌ 待决策 |
-| **AE** | 版本检测按服务器 IP 选镜像仓库（TCR/Hub） | [VERSION-SOURCE.md](VERSION-SOURCE.md) | 待决策（1 问：是否允许 IP 归属接口） | ❌ 待决策 |
+| **AC** | 同步不可达的未保证项（AC1–AC11） | [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) | 待开发（拆 AC-1→AC-4，AC-1 观测批先做） | ✅ 已在对话给出 |
+| **AE** | 版本检测按服务器 IP 选镜像仓库（TCR/Hub） | [VERSION-SOURCE.md](VERSION-SOURCE.md) | 待开发（允许 IP 归属接口，用 ipinfo.io） | ✅ 已在对话给出 |
 | **AF** | 愿望单/标记操作后列表不刷新（搜索缓存未失效） | [FRONTEND-STALE-LIST.md](FRONTEND-STALE-LIST.md) | 待开发（根因已确认） | ✅ 已在对话给出 |
 | **F** | Steam 价格同步优化（缩量 / 热点优先） | ❌ 无独立规格（计划写在 [TODO.md](TODO.md) F 段） | 等排期 | ❌ 未给 |
 | **C1** | heat 逐 appid 全 `success:false` | ❌ 无规格（[TODO.md](TODO.md) C1） | 待探测 | ❌ 未给 |
@@ -46,5 +46,5 @@
 1. **F**（价格同步优化）只有 TODO 里的计划，没有独立规格、没有开发描述；
 2. **C1**（heat 全失败）只有 TODO 一行，没有规格、没有探测结论；
 3. **Y** 原先只有 TODO，现并入 AB 规格 §3-F；
-4. **AA / AC** 缺所有者输入（日志 / 决策），因此还没有开发描述；
+4. **AA** 缺所有者输入（`wishlist_add_failed` 日志），因此还没有开发描述；**AC / AE** 的决策已于 2026-11-06 拿到，已转「待开发」并给出开发描述；
 5. [TODO.md](TODO.md) 的历史段落存在**重复字母**（K/M/N/O/P 各出现两次）、A 段停留在 v1.4.6，扫描时容易被误导。
