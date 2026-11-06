@@ -188,6 +188,13 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
+- **待发版：AH 批「用户彻底删除」**（2026-11-06 已提交 main，等「构建 vX.Y.Z」指令）：
+  `DELETE /api/admin/users/:username`（confirmUsername 精确匹配、删自己 400、最后一个可用管理员 409、
+  单事务先清无外键的 `steam_games`/`steam_wishlist` 再删 `users`、审计落 `admin_user_deletions` 脱敏快照）+
+  「最近删除」审计表（按用户名模糊搜索）；前端删除按钮/确认弹窗/最近删除表。通知邮件随 AJ 批接入。
+  规格见 [USER-LIFECYCLE.md](USER-LIFECYCLE.md)。注意：`admin_user_deletions` 建表随 `db.migrate` 幂等执行，
+  部署无需手工 SQL。
+
 - **v1.18.0 已发布**（tag `v1.18.0`）：AE/AF/AG/AC-1 四批——版本徽标按服务器 IP 选镜像仓库
   （ipinfo.io 定位 → 大陆/香港优先 TCR、其他优先 Hub，401 换 token、双失败回退 GitHub，结果带 source/region）；
   搜索态写操作后列表立刻刷新（先失效 30 秒搜索缓存）；后台「游戏管理」平台链接抽屉（`/api/admin/games/:id/links`

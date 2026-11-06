@@ -2,6 +2,24 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 新增
+
+- **用户彻底删除（AH 批，docs/USER-LIFECYCLE.md §3.2/§4.1/§5.1）**：
+  `DELETE /api/admin/users/:username`（`confirmUsername` 必填精确匹配）——删自己 400、最后一个可用管理员 409、
+  不存在 404；单事务先清 `steam_games`/`steam_wishlist`（两张表无外键）再删 `users`（其余级联，被删用户会话立即失效）；
+  审计落 `admin_user_deletions`（邮箱打码、关联计数、操作者快照、可选原因，不含密码/Key/token）；
+  删除后用户名可立即重新注册。前端用户表加「删除」（自己那行不渲染、最后一个可用管理员置灰）+
+  确认弹窗（列出会话/Steam 账号/愿望单与标记，输入用户名才可提交，可选原因只进审计）+
+  「最近删除」只读审计表（按用户名模糊搜索，`GET /api/admin/users/deletions?q=`）。
+  `listUsers` 附带 `sessions`/`steam_accounts` 计数供弹窗展示。**通知邮件随 AJ 批接入**（本批先不含）。
+
+### 测试
+
+- 新增 `test/admin-user-delete.test.js`（4 项）接入主链：护栏四态、级联清理 + 手动清无外键表 + 审计脱敏、
+  删除后可重新注册 + 列表计数、最近删除模糊搜索（ilike/limit）。
+
 ## [1.18.0] - 2026-11-06
 
 ### 新增

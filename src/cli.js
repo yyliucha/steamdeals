@@ -1225,7 +1225,11 @@ async function cmdUser() {
     return;
   }
   if (sub === 'list') {
-    const users = await withStore((store) => db.listUsers((sql, p) => store.query(sql, p)));
+    // listUsers 附带 sessions / steam_accounts 计数（AH 批），老库需先确保 Steam 表存在
+    const users = await withStore(async (store) => {
+      await (await import('./steam-login.js')).ensureSteamSchemaOnce((sql, p) => store.query(sql, p));
+      return db.listUsers((sql, p) => store.query(sql, p));
+    });
     if (!users.length) {
       console.log('还没有用户。用 node src/cli.js user add <用户名> --admin 创建管理员。');
       return;

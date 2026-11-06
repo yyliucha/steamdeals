@@ -1742,6 +1742,29 @@ export function createApiServer({
       }
 
       const userMatch = path.match(/^\/api\/admin\/users\/([^/]+)$/);
+      if (userMatch && req.method === 'DELETE') {
+        if (!requireAdmin()) return;
+        const body = await readBody(req);
+        const username = decodeURIComponent(userMatch[1]);
+        const result = await db.deleteUserAudited(q, {
+          username,
+          confirmUsername: String(body.confirmUsername ?? ''),
+          operator: user.username,
+          operatorId: user.id,
+          reason: String(body.reason ?? '').trim() || null,
+        });
+        if (!result.ok) return json(res, result.status, { error: result.error });
+        logger?.info('admin.user_deleted', {
+          username,
+          role: result.deleted.role ?? null,
+          steamAccounts: result.deleted.steamAccounts,
+          sessions: result.deleted.sessions,
+          by: user.username,
+          reason: String(body.reason ?? '').trim() || null,
+        });
+        // AH 批不含通知（AJ 接入后这里改为 notifyUserAction 异步发送）
+        return json(res, 200, { ok: true, deleted: result.deleted });
+      }
       if (userMatch && req.method === 'PATCH') {
         if (!requireAdmin()) return;
         const body = await readBody(req);
@@ -2240,6 +2263,14 @@ export function createApiServer({
       if (path === '/api/admin/users' && req.method === 'GET') {
         if (!requireAdmin()) return;
         return json(res, 200, { users: await db.listUsers(q) });
+      }
+
+      // 最近删除审计（docs/USER-LIFECYCLE.md §4.5，AH 批）：只读，按用户名模糊搜索
+      if (path === '/api/admin/users/deletions' && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const search = String(url.searchParams.get('q') ?? '').trim().slice(0, 80);
+        const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 50) || 50, 1), 200);
+        return json(res, 200, { deletions: await db.listUserDeletions(q, { search, limit }) });
       }
 
       if (path === '/api/admin/views' && req.method === 'GET') {
