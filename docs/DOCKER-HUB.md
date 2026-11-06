@@ -29,6 +29,9 @@ ccr.ccs.tencentyun.com/tcb-100003189690-pljp/postgres:15-alpine
 仓库是**公开**的，用户不需要 `docker login`。
 TCR 个人版只支持 amd64；Docker Hub 仍保留 amd64 + arm64。
 
+> 后台版本徽标（`/api/admin/version`）自 v1.17.0 起按**服务器 IP** 自动选源：大陆/香港优先 TCR，
+> 其他地区优先 Docker Hub，首选失败回退另一仓库、再回退 GitHub（AE 批，规格 [VERSION-SOURCE.md](VERSION-SOURCE.md)）。
+
 镜像由 GitHub Actions 的 `docker-tcr` 工作流推送。首次使用前需要在仓库配置：
 
 | Secret | 值 |

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows } from '../src/scheduler.js';
+import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs } from '../src/scheduler.js';
 
 test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），默认 3，非法回落默认', () => {
   assert.equal(lightConcurrency({}), 3);
@@ -11,6 +11,59 @@ test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），�
   assert.equal(lightConcurrency({ SCHEDULER_LIGHT_CONCURRENCY: '0' }), 1, '下限 1');
   assert.equal(lightConcurrency({ SCHEDULER_LIGHT_CONCURRENCY: '99' }), 8, '上限 8');
   assert.equal(lightConcurrency({ SCHEDULER_LIGHT_CONCURRENCY: 'abc' }), 3, '非法值回落默认');
+});
+
+// ---------------------------------------------------------------- AC-1 观测批（docs/SYNC-FAILURE-MODES.md）
+
+const FULL_ENV = {
+  STEAM_ENABLED: '1',
+  STEAM_API_KEY: '0123456789ABCDEF0123456789ABCDEF',
+  SONKWO_ENABLED: '1',
+  ITAD_ENABLED: '1',
+  GOG_ENABLED: '1',
+  HUMBLE_ENABLED: '1',
+  DISCOVER_ENABLED: '1',
+  BACKUP_ENABLED: '1',
+  PRUNE_ENABLED: '1',
+  LOGS_PRUNE_ENABLED: '1',
+  ALERTS_ENABLED: '1',
+  IMAGES_ENABLED: '1',
+  REPORT_ENABLED: '0',
+};
+
+test('AC1：auditJobs——缺 Key 提示 catalog/steam-accounts，被 *_ENABLED=0 关掉的任务逐条提示，配置齐全为空', () => {
+  const missingKey = auditJobs({ ...FULL_ENV, STEAM_API_KEY: '' });
+  assert.ok(missingKey.some((w) => w.name === 'catalog' && /STEAM_API_KEY/.test(w.reason)), '缺 Key 要提示 catalog');
+  assert.ok(missingKey.some((w) => w.name === 'steam-accounts' && /STEAM_API_KEY/.test(w.reason)), '缺 Key 要提示 steam-accounts');
+
+  const disabled = auditJobs({ ...FULL_ENV, STEAM_ENABLED: '0', SONKWO_ENABLED: '0' });
+  assert.ok(disabled.some((w) => w.name === 'heat' && w.reason === 'STEAM_ENABLED=0'));
+  assert.ok(disabled.some((w) => w.name === 'steam-prices' && w.reason === 'STEAM_ENABLED=0'));
+  assert.ok(disabled.some((w) => w.name === 'sonkwo' && w.reason === 'SONKWO_ENABLED=0'));
+
+  assert.deepEqual(auditJobs(FULL_ENV), [], '配置齐全时不应有警告');
+});
+
+test('AC11：状态文件带健康面板字段（耗时/结果/失败原因）与 AC5 排队信息', () => {
+  const file = join(tmpdir(), `scheduler-status-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
+  const jobs = jobsFromEnv({});
+  const lastRunMs = new Map([['heat', Date.now() - 1000]]);
+  const lastOutcome = new Map([['heat', { elapsedMs: 1234, result: 'failed', error: 'exit code 1' }]]);
+  const waitingSince = new Map([['steam-status', { at: Date.now() - 5000, occupiedBy: 'steam-prices' }]]);
+  writeStatusFile(jobs, { lastRunMs, health: new Map(), running: new Set(), tickMs: 60000, lastOutcome, waitingSince, file });
+  try {
+    const payload = JSON.parse(readFileSync(file, 'utf8'));
+    const heat = payload.jobs.find((j) => j.name === 'heat');
+    assert.equal(heat.lastElapsedMs, 1234);
+    assert.equal(heat.lastResult, 'failed');
+    assert.equal(heat.lastError, 'exit code 1');
+    assert.equal(heat.waitingFor, null, '没在排队的任务不写 waitingFor');
+    const status = payload.jobs.find((j) => j.name === 'steam-status');
+    assert.equal(status.waitingFor.occupiedBy, 'steam-prices');
+    assert.ok(status.waitingFor.since);
+  } finally {
+    rmSync(file, { force: true });
+  }
 });
 
 test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清理、gog / humble / discover / backup / alerts / images），各自间隔', () => {

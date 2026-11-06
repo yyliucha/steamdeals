@@ -2170,6 +2170,23 @@ export async function setSteamStatus(q, {
   return r.rows[0] ?? null;
 }
 
+/**
+ * AG 批（docs/ADMIN-PLATFORM-LINKS.md §3-A）：单游戏全部平台链接（仅 http/https，过滤 javascript: 等脏数据），
+ * 按平台名 / 区服 / 最近更新排序；同平台多区服各一行。
+ */
+export async function adminGameLinks(q, { gameId }) {
+  const r = await q(
+    `select o.platform_code, p.name as platform_name, o.region, o.currency,
+            o.price_cents, o.original_cents, o.discount_pct, o.in_stock,
+            o.buy_url, o.last_seen_at
+       from offers o join platforms p on p.code = o.platform_code
+      where o.game_id = $1 and o.buy_url ~ '^https?://'
+      order by p.name, o.region, o.last_seen_at desc`,
+    [gameId],
+  );
+  return r.rows;
+}
+
 /** 已删除（回收站）的游戏列表，按删除时间倒序。 */
 export async function listDeletedGames(q, { limit = 200 } = {}) {
   const r = await q(

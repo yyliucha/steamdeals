@@ -221,7 +221,11 @@ POST /api/setup/complete
   `sync=pending/done` 为新口径（[STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §4：
   pending = 从未探测或 `ok` 缺简介；done = `ok` 且有简介）；`status=<ok|free|coming_soon|region_locked|no_price|not_found|pending|synced|other>`
   按六态分项筛选（后台指标卡点击用）；`rating=<adult|mature|none>` 内容分级筛选（§13，可与搜索/平台/状态叠加）；
-  行带 `steam_status` / `required_age` / `adult_flag` / `mature_flag` / `steam_checked_at`
+  行带 `steam_status` / `required_age` / `adult_flag` / `mature_flag` / `steam_checked_at` / `link_count`
+  （AG 批起：`link_count` 只计数 http(s) 链接，完整清单按需走下方 `/links` 接口）
+- `GET /api/admin/games/:id/links` → `{ game: { id, steam_appid, name, name_en }, links: [...] }`（AG 批，
+  后台链接抽屉按需加载）：只返回 `buy_url ~ '^https?://'` 的报价行（平台名/区服/价格/折扣/库存/链接/最后更新），
+  按平台名、区服、更新时间排序；游戏不存在 404；非管理员 403
 - `GET /api/admin/games/stats` → `pending` / `synced` 新口径 + 六态分项（`pendingProbe` / `free` / `comingSoon` /
   `regionLocked` / `noPrice` / `notFound` / `other`，分项之和 = 有 appid 数）+ `adult` / `mature` 分级计数
   （成人 + 成熟 + 未标注 = 未删除总数）
@@ -241,7 +245,9 @@ POST /api/setup/complete
 - `POST /api/admin/rename` → 同上参数，启动"机器英文名 → 中文名"重写；`/stop`、`/status` 同三件套
 - `POST /api/admin/heat` → 启动热度回填（`{ limit, batch, sleep }`）；`/stop`、`/status` 同三件套
 - `GET /api/admin/sync/status` → 当前运行任务、输出尾巴、最近记录、调度器计划（`schedule.jobs` 里带
-  `lastRunAt` / `nextRunAt` / `failures` / `openUntil`，控制台的任务表直接读它）
+  `lastRunAt` / `nextRunAt` / `failures` / `openUntil` / `lastElapsedMs` / `lastResult` / `lastError` / `waitingFor`
+  ——AC-1 批任务健康面板字段），另带 `warnings`：该有但没有的任务（缺 `STEAM_API_KEY` 或 `*_ENABLED=0`），
+  后台「同步与回填」页显式提示
 
 封面图走 `/img/steam/<appid>/<size>`：先查内存热缓存，再查本地文件（`data/images`），
 都没有才经代理取 CDN 并落盘；之后一直读本地文件，不再出网。

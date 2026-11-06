@@ -1,6 +1,6 @@
 # 版本检测：按服务器网络位置选择镜像仓库（已确认待开发）
 
-> 状态：**已确认待开发（2026-11-06）**：允许第三方 IP 归属接口，**采用 `ipinfo.io`**（`ip-api.com` 实测不可用）。
+> 状态：**已实现待发版（2026-11-06，待质检）**：允许第三方 IP 归属接口，**采用 `ipinfo.io`**（`ip-api.com` 实测不可用）。
 > 同日补实测：TCR 匿名列 tag 要先取 token、两个仓库的 tag 都**没有 `v` 前缀**、Docker Hub 在大陆**超时**——
 > 见 §6.1，§3 的实现细节已按实测改写。
 > 关联：[DEPLOY.md](DEPLOY.md)（镜像与仓库）、[DOCKER-HUB.md](DOCKER-HUB.md)（TCR 与 Hub 双源）、[TODO.md](TODO.md) 的 AE 条目。

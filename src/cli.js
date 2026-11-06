@@ -2526,10 +2526,28 @@ async function main() {
     if (target === 'humble') return runSyncTracked('humble', cmdSyncHumble);
     throw new Error('用法: node src/cli.js sync all|steam|steam-prices|steamall|catalog|sonkwo|itad|gog|humble');
   }
-  if (command === 'steam-accounts') return runSyncTracked('steam-accounts', cmdSteamAccounts);
+  // AC-1（docs/SYNC-FAILURE-MODES.md AC10/AC3）：所有数据任务统一写 sync_runs + fetch_runs，
+  // 后台「同步记录」可见每轮结果（此前只有 sync 系 / steam-accounts / steam-status 有）
+  const TRACKED_COMMANDS = {
+    'steam-accounts': cmdSteamAccounts,
+    'steam-status': cmdSteamStatus,
+    heat: cmdHeat,
+    rename: cmdRename,
+    backfill: cmdBackfill,
+    discover: cmdDiscover,
+    images: cmdImages,
+    backup: cmdBackup,
+    prune: cmdPrune,
+    alerts: cmdAlerts,
+    report: cmdReport,
+  };
+  if (TRACKED_COMMANDS[command]) {
+    if (command === 'images' && args[1] !== 'pull') return commands.images();
+    return runSyncTracked(command, TRACKED_COMMANDS[command]);
+  }
   if (command === 'steam-claim') return cmdSteamClaim();
-  // AB 批 §3-E：steam-status 每轮写 sync_runs（后台「同步记录」可观测），fetch_runs 顺带留痕
-  if (command === 'steam-status') return runSyncTracked('steam-status', cmdSteamStatus);
+  // 日志清理（调度器 logs prune）同样留痕；人工查日志不写
+  if (command === 'logs' && args[1] === 'prune') return runSyncTracked('logs', cmdLogs);
   const fn = commands[command];
   if (!fn) {
     console.log(`用法: node src/cli.js <命令>

@@ -302,10 +302,50 @@ export function describeSchedule(jobs) {
 }
 
 /**
+ * AC1（docs/SYNC-FAILURE-MODES.md AC1）：该有但没有的任务——缺 `STEAM_API_KEY`（catalog/steam-accounts）
+ * 或被 `*_ENABLED=0` 显式关闭的任务。返回警告清单，后台「同步与回填」页显式提示，不静默消失。
+ */
+export function auditJobs(env = process.env) {
+  const jobs = jobsFromEnv(env);
+  const present = new Set(jobs.map((j) => j.name));
+  const warnings = [];
+  const hasKey = String(env.STEAM_API_KEY ?? '').trim().length > 10;
+  if (!hasKey) {
+    if (!present.has('catalog')) warnings.push({ name: 'catalog', reason: 'STEAM_API_KEY 未配置' });
+    if (!present.has('steam-accounts')) warnings.push({ name: 'steam-accounts', reason: 'STEAM_API_KEY 未配置' });
+  }
+  const switches = [
+    ['steam-prices', 'STEAM_ENABLED'],
+    ['heat', 'STEAM_ENABLED'],
+    ['steam-status', 'STEAM_ENABLED'],
+    ['rename', 'STEAM_ENABLED'],
+    ['backfill', 'STEAM_ENABLED'],
+    ['sonkwo', 'SONKWO_ENABLED'],
+    ['itad', 'ITAD_ENABLED'],
+    ['gog', 'GOG_ENABLED'],
+    ['humble', 'HUMBLE_ENABLED'],
+    ['discover', 'DISCOVER_ENABLED'],
+    ['backup', 'BACKUP_ENABLED'],
+    ['prune', 'PRUNE_ENABLED'],
+    ['logs', 'LOGS_PRUNE_ENABLED'],
+    ['alerts', 'ALERTS_ENABLED'],
+    ['images', 'IMAGES_ENABLED'],
+  ];
+  for (const [name, envName] of switches) {
+    if (!present.has(name) && String(env[envName] ?? '') === '0') warnings.push({ name, reason: `${envName}=0` });
+  }
+  // report 的开关还有第二道条件：配置了提醒通道才出现
+  if (!present.has('report') && String(env.REPORT_ENABLED ?? '') !== '0') {
+    warnings.push({ name: 'report', reason: '未配置提醒通道' });
+  }
+  return warnings;
+}
+
+/**
  * 把调度器状态写到文件，Web 进程读它来展示「定时任务 / 下次运行」。
  * 跨进程通信不值得上 IPC：一个小 JSON 足够，读不到就当没有。
  */
-export function writeStatusFile(jobs, { lastRunMs, health, running, tickMs = 60000, file = process.env.SCHEDULER_STATUS_FILE || 'data/scheduler-status.json' } = {}) {
+export function writeStatusFile(jobs, { lastRunMs, health, running, tickMs = 60000, lastOutcome = null, waitingSince = null, file = process.env.SCHEDULER_STATUS_FILE || 'data/scheduler-status.json' } = {}) {
   try {
     const now = Date.now();
     const payload = {
@@ -314,6 +354,8 @@ export function writeStatusFile(jobs, { lastRunMs, health, running, tickMs = 600
       jobs: jobs.map((j) => {
         const last = lastRunMs?.get?.(j.name) ?? null;
         const h = health?.get?.(j.name) ?? {};
+        const outcome = lastOutcome?.get?.(j.name) ?? null;
+        const waiting = waitingSince?.get?.(j.name) ?? null;
         return {
           name: j.name,
           intervalMin: j.intervalMin,
@@ -324,6 +366,12 @@ export function writeStatusFile(jobs, { lastRunMs, health, running, tickMs = 600
           running: Boolean(running?.has?.(j.name)),
           failures: Number(h.failures ?? 0),
           openUntil: h.openUntil ? new Date(h.openUntil).toISOString() : null,
+          // AC11（docs/SYNC-FAILURE-MODES.md）：任务健康面板字段
+          lastElapsedMs: outcome ? outcome.elapsedMs : null,
+          lastResult: outcome ? outcome.result : null,
+          lastError: outcome ? outcome.error : null,
+          // AC5：重任务排队等待（被谁占用、从何时开始等）
+          waitingFor: waiting ? { occupiedBy: waiting.occupiedBy, since: new Date(waiting.at).toISOString() } : null,
         };
       }),
     };
@@ -461,6 +509,9 @@ export async function main() {
     }
     const health = new Map(); // job.name -> { failures, openUntil }
     const running = new Set();
+    const startedAt = new Map(); // job.name -> 本次启动毫秒（AC11 耗时）
+    const lastOutcome = new Map(); // job.name -> { elapsedMs, result, error }（AC11 健康面板）
+    const waitingSince = new Map(); // job.name -> { at, occupiedBy }（AC5 重任务排队可观测）
     let heavySlot = null; // 正在跑的 Steam 重任务名（全局单槽，X 批 P0-1：串行但不阻塞 tick）
     const lightMax = lightConcurrency(process.env);
     // chart 后续任务串行链：避免多个 chart 子进程并发写 out/
@@ -470,7 +521,15 @@ export async function main() {
     const completeJob = (job, code) => {
       running.delete(job.name);
       lastRunMs.set(job.name, Date.now());
-      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS });
+      const started = startedAt.get(job.name) ?? Date.now();
+      startedAt.delete(job.name);
+      lastOutcome.set(job.name, {
+        elapsedMs: Date.now() - started,
+        result: code === 0 ? 'ok' : 'failed',
+        error: code === 0 ? null : `exit code ${code}`,
+      });
+      waitingSince.delete(job.name);
+      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, lastOutcome, waitingSince });
       const followUp = followUpArgs(job.name, code, process.env);
       if (followUp && !stopping) {
         followUpChain = followUpChain
@@ -513,6 +572,7 @@ export async function main() {
         return;
       }
       running.add(job.name);
+      startedAt.set(job.name, Date.now());
       runJob(job)
         .then(({ code }) => completeJob(job, code))
         .catch((err) => {
@@ -529,6 +589,12 @@ export async function main() {
     const launchHeavy = (job) => {
       heavySlot = job.name;
       running.add(job.name);
+      startedAt.set(job.name, Date.now());
+      const waiting = waitingSince.get(job.name);
+      if (waiting) {
+        waitingSince.delete(job.name);
+        logger.info('scheduler.job_wait_end', { job: job.name, waitedMs: Date.now() - waiting.at, occupiedBy: waiting.occupiedBy });
+      }
       runJob(job)
         .then(({ code }) => completeJob(job, code))
         .catch((err) => {
@@ -582,11 +648,22 @@ export async function main() {
       // 2) Steam 重任务：非阻塞发射 + 全局单槽（heavySlot 被占时本 tick 不再派发新的）。
       for (const job of plan.heavy) {
         if (stopping) break;
-        if (heavySlot) break;
+        if (heavySlot) {
+          // AC5：被正在跑的重任务占槽——只在进入排队时记一次，面板可看到占用者与等待时长
+          if (!waitingSince.has(job.name)) {
+            waitingSince.set(job.name, { at: now, occupiedBy: heavySlot });
+            logger.info('scheduler.job_wait_slot', { job: job.name, occupiedBy: heavySlot });
+          }
+          break;
+        }
 
         // 后台手动回填/同步也写 sync_runs；让 Steam 重任务等它结束再执行，避免并行冲击 Steam。
         const activeSync = await db.runningSyncRun(q).catch(() => null);
         if (activeSync) {
+          if (!waitingSince.has(job.name)) {
+            waitingSince.set(job.name, { at: now, occupiedBy: activeSync.mode });
+            logger.info('scheduler.job_wait_slot', { job: job.name, occupiedBy: activeSync.mode, runId: activeSync.id });
+          }
           logger.info('scheduler.job_deferred_busy', { job: job.name, runId: activeSync.id, mode: activeSync.mode });
           continue;
         }
@@ -594,6 +671,7 @@ export async function main() {
         const state = health.get(job.name) ?? { failures: 0, openUntil: null };
         if (isCircuited(state, now)) {
           // 熔断期内不再打目标站：持续 403 时继续重试只会更快被封
+          waitingSince.delete(job.name);
           logger.warn('scheduler.circuit_skip', {
             job: job.name,
             failures: state.failures,
@@ -608,7 +686,7 @@ export async function main() {
       if (stopping) break;
       // P2（X 批）：状态文件每个 tick 都写一次，updatedAt 才能反映调度器存活
       // （此前只在启动与任务完成时写，长任务运行期间看起来像卡死）。
-      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS });
+      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, lastOutcome, waitingSince });
       await sleepInterruptible(TICK_MS);
     }
 

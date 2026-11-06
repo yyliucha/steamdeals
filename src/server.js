@@ -28,6 +28,7 @@ import { sessionCookie } from './session-cookie.js';
 import { handleSettingsRoutes } from './settings-routes.js';
 import { appealEmailFrom } from './appeal.js';
 import { ensureSteamSchemaOnce } from './steam-login.js';
+import { auditJobs as auditSchedulerJobs } from './scheduler.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -1512,13 +1513,25 @@ export function createApiServer({
           '(select min(o.price_cents) from offers o where o.game_id = g.id and o.platform_code = \'steam\' and o.in_stock) as steam_price, ' +
           // 平台列：这款游戏当前有报价的渠道（多个用数组，前端渲染成多个标签）
           '(select coalesce(array_agg(distinct p.name), \'{}\') from offers o2 join platforms p on p.code = o2.platform_code where o2.game_id = g.id) as platform_names, ' +
-          '(select coalesce(array_agg(distinct o3.platform_code), \'{}\') from offers o3 where o3.game_id = g.id) as platform_codes ' +
+          '(select coalesce(array_agg(distinct o3.platform_code), \'{}\') from offers o3 where o3.game_id = g.id) as platform_codes, ' +
+          // AG 批（docs/ADMIN-PLATFORM-LINKS.md）：列表只带数量，完整链接按需从 /links 接口取
+          "(select count(*)::int from offers o4 where o4.game_id = g.id and o4.buy_url ~ '^https?://') as link_count " +
           'from games g ' + baseWhere + platformCond(4) + ' ' +
           'order by g.updated_at desc nulls last, g.id desc limit $2 offset $3',
           platform ? [kw, pageSize, offset, platform] : [kw, pageSize, offset],
         );
         const total = cnt.rows[0]?.n ?? 0;
         return json(res, 200, { total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), games: rows.rows });
+      }
+
+      // ---- 管理员：单游戏全部平台链接（AG 批 docs/ADMIN-PLATFORM-LINKS.md §3-A，仅 http/https）----
+      const linkMatch = path.match(/^\/api\/admin\/games\/(\d+)\/links$/);
+      if (linkMatch && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const gameId = Number(linkMatch[1]);
+        const g = await q('select id, steam_appid, name, name_en from games where id = $1 and not deleted', [gameId]);
+        if (!g.rows[0]) return json(res, 404, { error: '没有该游戏' });
+        return json(res, 200, { game: g.rows[0], links: await db.adminGameLinks(q, { gameId }) });
       }
 
       // ---- 管理员：回收站（逻辑删除的游戏）----
@@ -1584,6 +1597,8 @@ export function createApiServer({
             checkedAt: new Date().toISOString(),
             error: null,
             repo: repo ?? null,
+            source: null,
+            region: null,
           });
         }
         return json(res, 200, await versionInfo({ current: VERSION, repo, logger, force }));
@@ -1820,6 +1835,8 @@ export function createApiServer({
           output: syncOutput.slice(-6000),
           last: last[0] ?? null,
           schedule,
+          // AC1（docs/SYNC-FAILURE-MODES.md）：该有但没有的任务，后台显式提示（缺 Key / 被 *_ENABLED=0 关闭）
+          warnings: auditSchedulerJobs(process.env),
         });
       }
 

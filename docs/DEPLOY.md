@@ -367,6 +367,8 @@ docker compose run --rm app diagnose
 | `RUN_MODE` | scheduler | `scheduler` 常驻；`once` 只 bootstrap 后退出；compose 用 `all` |
 | `LOG_DIR` / `OUT_DIR` | `logs` / `out` | 日志与静态页目录 |
 | `IMG_DIR` | `data/images` | 封面图缓存目录 |
+| `UPDATE_CHECK` | 1 | `0` = 版本徽标不出网只报当前版本 |
+| `UPDATE_REPO` | `yyliucha/steamdeals` | 徽标兜底检查的 GitHub 仓库；AE 批（[VERSION-SOURCE.md](VERSION-SOURCE.md)）起徽标先按**服务器 IP** 选 TCR / Docker Hub，两个仓库都失败才回退 GitHub——大陆/香港优先 TCR，其他地区优先 Docker Hub |
 
 ### 业务设置
 
