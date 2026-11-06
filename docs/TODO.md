@@ -638,7 +638,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AI. 待开发：邮件模板化 + HTML 邮件 + 发送记录
 
-**状态：已实现待发版（2026-11-06）**
+**状态：质检通过（2026-11-06，4570d81；QA 报告 docs/QA-USER-LIFECYCLE-AI.md）**
 **依赖：** 无
 **解锁：** AJ
 **规格**：[USER-LIFECYCLE.md](USER-LIFECYCLE.md) §3.1 / §3.3 / §4.3 / §4.4 / §5.2 / §8 验收 8–10、15
