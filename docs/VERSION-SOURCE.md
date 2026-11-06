@@ -12,7 +12,7 @@
 ```
 checkLatest() → https://api.github.com/repos/yyliucha/steamdeals/releases/latest
              → 失败则 /tags?per_page=100，取最大语义化版本
-缓存 6 小时；/api/version?force=1 可强刷
+缓存 6 小时；/api/admin/version?force=1 可强刷
 ```
 
 问题：
@@ -81,7 +81,7 @@ return await checkLatestGitHub()   // 现有实现
 
 ### D. 接口与前端
 
-`GET /api/version` 返回增加 `source` / `region` 两个字段（向后兼容，不加不删）。
+`GET /api/admin/version`（管理员，前端 `Console.vue:73` 调用）返回增加 `source` / `region` 两个字段（向后兼容，不加不删）。
 前端 `Console.vue` **本批不改**（徽标文案保持），来源只进日志；若后续需要在徽标上标注，再单独提。
 
 ## 4. 影响面
@@ -89,7 +89,7 @@ return await checkLatestGitHub()   // 现有实现
 | 文件 | 改动 |
 |---|---|
 | `src/version.js` | 新增 `detectRegion()`、`checkRegistryLatest()`、`pickSourceOrder()`；`versionInfo()` 串联；缓存与日志 |
-| `src/server.js` | `/api/version` 透传 `source`/`region`（字段可选） |
+| `src/server.js` | `/api/admin/version` 透传 `source`/`region`（字段可选） |
 | `test/version.test.js` | 新增：CN→先 TCR、global→先 Hub、TCR 401→取 token→成功、token 也失败→回退、两者失败→GitHub、tags 过滤（无 v 前缀）与取最大、缓存不重复请求 |
 | `docs/DEPLOY.md` / `DOCKER-HUB.md` | 补一句"徽标按 IP 选源"的说明 |
 
@@ -100,7 +100,7 @@ return await checkLatestGitHub()   // 现有实现
 3. 模拟 TCR 首次 401：**先取匿名 token 再重试并成功**（不允许把 401 直接判失败）；token 服务也失败时才回退 Docker Hub，日志有 `update.registry_failed`；
 4. 模拟两者都超时：回退 GitHub，徽标行为与现在一致（不回归）；
 5. 模拟 geo 接口超时：不阻塞，按"两个都探、先成功者"返回；
-6. 缓存生效：6 小时内连续调用 `/api/version` 只打一次仓库接口（用桩计数断言）；
+6. 缓存生效：6 小时内连续调用 `/api/admin/version` 只打一次仓库接口（用桩计数断言）；
 7. `npm test` 全绿（`test/version.test.js` 覆盖第 1–6 条）、`npm run scan`。
 
 ## 6. 风险与决策

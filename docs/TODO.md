@@ -1,6 +1,6 @@
 # 待办总览（未完成事项清单）
 
-> 最后更新：2026-11-06。这是**当前所有未完成事项**的总清单，接手会话先看这个，再看
+> 最后更新：2026-11-06 15:30（并入 AG 批、部署自检脚本、AD 待部署验收、AB 部署侧待办）。这是**当前所有未完成事项**的总清单，接手会话先看这个，再看
 > [REQUIREMENTS-INDEX.md](REQUIREMENTS-INDEX.md)（**需求批次总账**：规格 + 状态 + 是否已有开发描述）、
 > [DELIVERY.md](DELIVERY.md)（流程/发版）与 [UI-FIXES.md](UI-FIXES.md)（界面缺陷细节）。
 > 完成一项就把标题改成 ~~删除线~~ 并标注完成版本。
@@ -60,6 +60,9 @@
   **不得自行打 tag / 触发 CI 构建**。
 - **服务器操作由部署人员执行**（硬规则 4）：开发侧不碰服务器。
 - 新功能必须同步进调度器（硬规则 3），人工命令只作调试手段。
+- **部署后先跑一键自检**：[DEPLOY.md](DEPLOY.md) 末尾「发布后自检（一键）」把脚本落到项目目录 `scripts/check-deploy.sh`
+  （未跟踪），覆盖容器/镜像版本/调度任务/429 计数/数据概况/API 冒烟；发布内容涉及同步链路时再加 `--write`
+  （真实写 3 条 `steam-status`）。
 
 ## F. 待实施：Steam 价格同步优化（方案已定，2026-11-02，等排期）
 
@@ -478,6 +481,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   库内复查 `steam_checked_at > now() - interval '10 minutes'` → `[ { st: 'ok', n: 5 } ]`，
   证明写入真实落库，不再"跑满不写"。
 - **未验证项**：调度器整轮（`--limit 6000`）尚未开始——被 `steam-prices` 单槽占用（见 AC4/AC5）。
+- **部署侧待办（2026-11-06）**：`steamStatus.limit` 的库内值若仍是 **12000**，要在「系统设置 → 数据源」改成 **6000**
+  （代码默认已改，但 DB 值会覆盖默认，见 [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md) §3-G/§7-1）；
+  改完用「发布后自检」脚本第 6 项看「近24h判定」是否接近 6000。
 
 - **现象**：`steam-status` 12:39 启动、请求持续 200 成功，但「近 24h 判定 = 0」、`max(steam_checked_at)=11-04`，
   抽查 appid 全是 null，且**没有一条 `steam-status.failed`**——请求成功但一条都没写库。
@@ -547,6 +553,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 **状态：已发布 v1.17.0（2026-11-06）**。规格见 [SEARCH-I18N.md](SEARCH-I18N.md)。
 
+- **待部署验收（2026-11-06 15:31 实测）**：`https://sd.yyliucha.cn/api/site` 仍返回 `"version":"1.16.4"` → v1.17.0
+  **已发布未部署**；升级后按规格验收：搜「英雄连」命中 CoH3、英文仍命中、带/不带空格结果一致、后台搜索同样生效。
+
 - **现象**：前台用中文搜不到（如搜「英雄连」找不到 `Company of Heroes 3`），英文可搜到；卡片标题本身显示英文。
 - **根因**：① `pg.js:1030-1033` / `server.js:1501-1502` 的搜索只匹配 `games.name` 与 `name_en`，
   **不匹配 `game_aliases.platform_title`**（杉果等平台的中文标题）；② `upsertGameMeta` 只有在 Steam 返回中文名时才
@@ -593,3 +602,22 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   在每个写操作成功后、`loadGames` 之前调用；覆盖愿望单加/删、感兴趣/不感兴趣/已拥有、取消提醒。
 - **验收**：搜索态下加/删愿望单卡片立刻变化；无搜索词行为不变；**缓存能力保留**（无写操作时二次搜索仍走缓存）；
   `npm test` + `frontend:build`。
+
+## AG. 待开发：后台平台链接抽屉 + 游戏名点击复制（后台与前台）
+
+**状态：待开发**
+**依赖：** 无
+**解锁：** 无
+**规格**：[ADMIN-PLATFORM-LINKS.md](ADMIN-PLATFORM-LINKS.md)
+
+- **需求（设计向）**：不是把链接塞进单元格，而是加一个**入口列**（显示 `N 个`），点击开**抽屉**列出该游戏
+  所有平台链接（可逐条打开）；同时后台游戏名**点击复制**，前台也要能复制游戏名。
+- **方案**：
+  - 新增 `GET /api/admin/games/:id/links`（仅管理员，`buy_url ~ '^https?://'` 过滤脏数据）；
+  - 列表接口只加 `link_count`，链接按需加载，避免列表变重；
+  - 前端 `AdminModules.vue`：链接列 + el-drawer（手机全屏）+ 名称/AppID 复制按钮；
+  - 新增 `frontend/src/utils/clipboard.js`（clipboard API + `execCommand` 降级，HTTP 环境也能用）；
+  - `Home.vue` 卡片标题、详情标题加复制图标（`@click.stop`，不触发打开详情）。
+- **默认**：抽屉而不是独立页；前台点图标复制（点标题仍打开详情）；ITAD 不算购买渠道；抽屉显示价格与最后更新时间。
+- **验收**：数量与抽屉内容一致、同平台多区服都显示、`javascript:` 不渲染、后台复制不触发其他动作、
+  前台复制不打开详情、手机抽屉全屏、`npm test` + `frontend:build` + `scan`。

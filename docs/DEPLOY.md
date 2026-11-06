@@ -455,3 +455,80 @@ docker compose exec -T db pg_dump -U steamdeals steamdeals > backup-$(date +%F).
 - 容器以 `node` 用户（非 root）运行。
 - 日志自动脱敏：`apiKey`/`token`/`cookie` 记作 `***`；`DATABASE_URL` 只保留 host 与库名。
 - 不要把 `.env` 提交到仓库（`.dockerignore` 与 `.gitignore` 都已排除）。
+
+## 发布后自检（一键）
+
+每次升级后跑同一条命令；第一次会把脚本落到 **项目目录里的 `scripts/check-deploy.sh`**（和代码放一起，git status 会显示为未跟踪文件，需要版本化时让开发会话提交即可），之后直接执行它。
+
+> 放在项目目录而不是 `~/`：换服务器、备份项目时脚本跟着走；升级 `git pull` 也不会覆盖它（未跟踪）。
+
+```bash
+mkdir -p ~/steamdeals/scripts
+cat > ~/steamdeals/scripts/check-deploy.sh <<'SCRIPT'
+#!/usr/bin/env bash
+# SteamDeals 发布后自检：默认只读；带 --write 时额外验证一次 steam-status 真实写入。
+C=steamdeals
+say() { printf '\n=== %s ===\n' "$1"; }
+
+say "1. 容器 / 镜像 / 启动时长"
+docker ps --format '{{.Names}}\t{{.Status}}\t{{.Image}}' | grep -E 'steamdeals|nginx|postgres' || true
+
+say "2. 版本核对（镜像 tag vs 容器内 package.json）"
+docker inspect -f '{{.Config.Image}}' "$C"
+docker exec "$C" node -p "require('/app/package.json').version"
+
+say "3. 调度器启动（任务清单，截断）"
+docker logs "$C" 2>&1 | grep 'scheduler.start' | tail -1 | cut -c1-260
+
+say "4. 最近 10 条任务结果"
+docker logs "$C" 2>&1 | grep -E 'scheduler\.job_(done|failed)' | tail -10
+
+say "5. 24 小时内 429 次数"
+docker logs "$C" 2>&1 | grep -c '命中 Steam 429' || true
+
+say "6. 数据概况"
+docker exec -i "$C" sh -c 'cat > /tmp/sd-check.mjs' <<'MJS'
+import { openStore } from '/app/src/store/index.js';
+const s = await openStore(process.env.DATABASE_URL, {});
+const q = (sql) => s.query(sql);
+const one = async (sql) => (await q(sql)).rows[0];
+console.log('games:', await one(`select count(*)::int total,
+  count(*) filter (where steam_status is null)::int null_status,
+  count(*) filter (where steam_status = 'ok')::int ok
+  from games where not deleted`));
+console.log('国区有报价:', await one(`select count(distinct game_id)::int n from offers where platform_code = 'steam'`));
+console.log('近24h判定:', await one(`select count(*)::int n from games where steam_checked_at > now() - interval '24 hours'`));
+console.log('sync_runs:', (await q(`select mode, status, started_at, finished_at from sync_runs order by id desc limit 5`)).rows);
+await s.close();
+MJS
+docker exec "$C" node /tmp/sd-check.mjs
+docker exec "$C" rm -f /tmp/sd-check.mjs
+
+say "7. API 冒烟"
+P=$(docker exec "$C" sh -c 'printf %s "${WEB_PORT:-${PORT:-8080}}"')
+docker exec "$C" node -e "fetch('http://127.0.0.1:$P/api/site').then(r=>r.json()).then(j=>console.log('api/site ok, version=', j.version)).catch(e=>console.log('api/site FAIL', e.message))"
+docker exec "$C" node -e "fetch('http://127.0.0.1:$P/api/games/search',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({page:1,pageSize:1,region:'cn'})}).then(r=>r.json()).then(j=>console.log('api/search ok, total=', j.total)).catch(e=>console.log('api/search FAIL', e.message))"
+
+if [ "${1:-}" = "--write" ]; then
+  say "8. 状态写入验证（写 3 条，略慢）"
+  docker exec "$C" node /app/src/cli.js steam-status --limit 3 --rate 3000 2>&1 | tail -4
+fi
+
+say "完成"
+SCRIPT
+chmod +x ~/steamdeals/scripts/check-deploy.sh && ~/steamdeals/scripts/check-deploy.sh
+```
+
+**什么时候加 `--write`**：发布内容碰到同步链路（`steam-status`、`ingest`、`store/pg.js` 的写入）时加，
+它会真实写 3 条并打印 `完成：写入 3 款…`；纯前端/文档类发布不用加。
+
+**判读基线**：
+
+| 项 | 正常表现 |
+|---|---|
+| 2 | image tag 与 package.json 版本一致 |
+| 3 | `jobs=[…]` 含 `catalog`、`steam-accounts`（缺 = 没配 `STEAM_API_KEY`） |
+| 5 | 计数为 0 或偶发个位数；连续增长说明配额被占满 |
+| 6 | `近24h判定` 接近当天的 `steamStatus.limit`；`sync_runs` 有 `steam-status` 行 |
+| 7 | 两个 `ok` |
+| 8（--write） | `完成：写入 3 款`，`wrote` > 0 |
