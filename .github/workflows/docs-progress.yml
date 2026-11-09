@@ -1,0 +1,29 @@
+# README 开发进度摘要防漂移校验（AS 批，docs/TODO-PROGRESS.md §7）
+# 只校验 docs/TODO.md 与 README 的标记块是否一致；不构建、不发布镜像。
+name: docs-progress
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/TODO.md'
+      - 'README.md'
+      - 'scripts/todo-progress.js'
+      - 'test/todo-progress.test.js'
+  pull_request:
+    paths:
+      - 'docs/TODO.md'
+      - 'README.md'
+      - 'scripts/todo-progress.js'
+      - 'test/todo-progress.test.js'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 校验 README 开发进度块与 docs/TODO.md 一致
+        run: node scripts/todo-progress.js --check

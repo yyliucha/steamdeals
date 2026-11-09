@@ -123,6 +123,7 @@ git status --short; git log --oneline -5; node -p "require('./package.json').ver
 
 - **必改 `docs/TODO.md`**：本批条目的 `**状态：…**` 改成 `已实现待发版`（打回后改回 `开发中`），并补提交哈希；
   状态词只能用 `待开发 / 开发中 / 已实现待发版 / 待质检 / 质检通过 / 质检打回 / 已发布 vX.Y.Z / 待排查 / 待决策 / 已过时`。
+- **README 进度摘要**：改完 TODO 状态后运行 `npm run todo:progress`（CI `docs-progress` 会校验）；规则见 [docs/TODO-PROGRESS.md](../../../docs/TODO-PROGRESS.md)。
 - **解锁下游**：扫一遍 TODO，把 `依赖：` 指向本条的条目从 `依赖阻塞` 改成 `待开发`，并在汇报里给 `🔓 解锁` 行。
 - **必改 `docs/REQUIREMENTS-INDEX.md`**：该编号那一行的状态跟着改（新增批次时加行）。
 - **必改** `docs/PROJECT-OVERVIEW.md`：功能与代码落点表、模块职责、验证记录；不允许"代码新、文档旧"。

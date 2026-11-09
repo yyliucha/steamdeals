@@ -37,7 +37,8 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
 - **输入来自待办清单（2026-11-06 所有者要求）**：开发者说"做完了"时必须给出 **TODO 编号**；
   质检按该编号在 [docs/TODO.md](../../../docs/TODO.md) 找到条目与规格，不接受"你去看我提交"这种转述。
 - **检查完必须回写状态**：把该条目从 `待质检` 改成 `质检通过` 或 `质检打回`（打回时在条目里写一句打回摘要），
-  并在 `docs/REQUIREMENTS-INDEX.md` 同步；**质检不写 `已发布`**（那是发版后的事）。
+  并在 `docs/REQUIREMENTS-INDEX.md` 同步；**质检不写 `已发布`**（那是发版后的事）。回写状态后运行 `npm run todo:progress`
+  （README「开发进度」块由 CI `docs-progress` 校验，规则见 [docs/TODO-PROGRESS.md](../../../docs/TODO-PROGRESS.md)）。
 - **并发写 TODO（2026-11-06 所有者要求）**：回写状态前先探测占用（`git status --short` + `LastWriteTime`
   2 分钟内被改过 + `.git/index.lock`）；**发现被占用立即停手**——不改 TODO / INDEX、不提交，把"想改哪个编号、
   证据（mtime / 最近提交）、疑似占用方"报给所有者，**由人工决定**怎么处理；所有者确认可写后再重读两份文件全文、
