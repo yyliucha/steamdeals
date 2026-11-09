@@ -1370,18 +1370,31 @@ export async function createUser(q, { username, password, role = 'user', email =
 }
 
 export async function findUserByName(q, username) {
-  const r = await q('select id, username, password_hash, role, disabled, email from users where username = $1', [username]);
+  const r = await q(
+    'select id, username, password_hash, role, disabled, email, failed_login_count, locked_until, must_change_password, weak_password from users where username = $1',
+    [username],
+  );
   return r.rows[0] ?? null;
 }
 
 export async function listUsers(q) {
   const r = await q(
     'select u.id, u.username, u.display_name, u.email, u.email_verified, u.steam_id, u.role, u.disabled, u.created_at, u.last_login_at, ' +
+      'u.must_change_password, u.weak_password, u.locked_until, u.failed_login_count, ' +
       '(select count(*)::int from sessions s where s.user_id = u.id) as sessions, ' +
       '(select count(*)::int from steam_accounts a where a.user_id = u.id) as steam_accounts ' +
       'from users u order by u.id',
   );
   return r.rows;
+}
+
+/** 管理员解锁（AK-2，docs/AUTH-REDESIGN.md §4.4）：清零失败计数与锁定。 */
+export async function unlockUser(q, { username }) {
+  const r = await q(
+    'update users set failed_login_count = 0, locked_until = null where username = $1 returning id, username, failed_login_count, locked_until',
+    [username],
+  );
+  return r.rows[0] ?? null;
 }
 
 export async function setUserRole(q, { username, role }) {
@@ -1571,7 +1584,7 @@ export async function createSession(q, { userId, days = 7 }) {
 export async function userBySession(q, token) {
   if (!token) return null;
   const r = await q(
-    `select u.id, u.username, u.role, s.expires_at
+    `select u.id, u.username, u.role, u.must_change_password, s.expires_at
        from sessions s join users u on u.id = s.user_id
       where s.token = $1 and s.expires_at > now()`,
     [token],

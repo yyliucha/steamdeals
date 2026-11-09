@@ -54,6 +54,13 @@ const DEVICE_COOKIE = 'gp_device';
 const mailTestCooldown = new Map();
 // AK-1（docs/AUTH-REDESIGN.md §4.1）：/api/password/check 匿名限流计数（每 IP 每分钟 30 次，内存态）
 const passwordCheckHits = new Map();
+// AK-2（docs/AUTH-REDESIGN.md §4.3）：登录 IP 限速（同 IP 15 分钟失败 ≥20 次 → 429，内存计数、重启清零）
+const loginIpFails = new Map(); // ip -> { count, windowStart }
+
+/** 测试用：清零登录 IP 限速计数（模块级 Map 跨测试共享）。 */
+export function resetLoginThrottleForTest() {
+  loginIpFails.clear();
+}
 
 // 单款价格历史 CSV 默认关闭：线上暂不对外提供（避免被试探出导出能力）；HISTORY_CSV_ENABLED=1 才放行
 const historyCsvEnabled = () => process.env.HISTORY_CSV_ENABLED === '1';
@@ -773,41 +780,88 @@ export function createApiServer({
 
       if (path === '/api/login' && req.method === 'POST') {
         const body = await readBody(req);
+        const username = String(body.username ?? '').trim();
+        const password = String(body.password ?? '');
         // 验证码校验放在密码之前：没通过就不会消耗一次密码尝试，也不会泄露账号是否存在
         if (captcha.enabled()) {
           const okCaptcha = await captcha.verify(q, body.captchaToken, body.captchaAnswer);
           if (!okCaptcha) {
-            logger?.warn('api.login_captcha_failed', { ip, username: String(body.username ?? '').slice(0, 32) });
+            logger?.warn('api.login_captcha_failed', { ip, username: username.slice(0, 32) });
             return json(res, 400, { error: '验证码错误或已过期，请重新输入' });
           }
         }
-        const found = await db.findUserByName(q, String(body.username ?? ''));
-        if (!found || found.disabled || !db.verifyPassword(String(body.password ?? ''), found.password_hash)) {
-          logger?.warn('api.login_failed', { username: String(body.username ?? '').slice(0, 32), disabled: Boolean(found?.disabled) });
-          return json(res, 401, { error: found?.disabled ? '账号已被禁用' : '用户名或密码错误' });
+        // AK-2（docs/AUTH-REDESIGN.md §4.3）：IP 限速——同 IP 15 分钟失败 ≥20 次 → 429，不再消耗账号尝试次数
+        const now = Date.now();
+        const ipEntry = loginIpFails.get(ip) ?? { count: 0, windowStart: now };
+        if (now - ipEntry.windowStart >= 15 * 60_000) {
+          ipEntry.count = 0;
+          ipEntry.windowStart = now;
         }
-        const sessionToken = await db.createSession(q, { userId: found.id });
-        // AK-1（docs/AUTH-REDESIGN.md §4.2/决策 3）：旧哈希静默升级 + 弱密码评估落库（不强制改密）
+        if (ipEntry.count >= 20) {
+          const retryAfterSec = Math.ceil((ipEntry.windowStart + 15 * 60_000 - now) / 1000);
+          logger?.warn('auth.ip_throttled', { ip, count: ipEntry.count });
+          return json(res, 429, { error: '尝试次数过多，请稍后再试', retryAfterSec });
+        }
+        loginIpFails.set(ip, ipEntry);
+
+        const found = await db.findUserByName(q, username);
+        // 账号锁定：5 次失败锁 15 分钟（锁定期内即使密码正确也先 429）
+        if (found && found.locked_until && Date.parse(found.locked_until) > now) {
+          logger?.warn('auth.login_rejected_locked', { username });
+          return json(res, 429, {
+            error: '尝试次数过多，请稍后再试',
+            lockedUntil: found.locked_until,
+            retryAfterSec: Math.max(1, Math.ceil((Date.parse(found.locked_until) - now) / 1000)),
+          });
+        }
+        if (!found || found.disabled || !db.verifyPassword(password, found.password_hash)) {
+          // 统一 401「用户名或密码错误」：不再暴露账号是否存在/是否被禁用（验收 11）；原因只进日志
+          const reason = !found ? 'unknown' : found.disabled ? 'disabled' : 'bad_password';
+          let attempts = 0;
+          if (found && !found.disabled) {
+            const updated = await q('update users set failed_login_count = failed_login_count + 1 where id = $1 returning failed_login_count', [
+              found.id,
+            ]);
+            attempts = Number(updated.rows[0]?.failed_login_count ?? 0);
+            if (attempts >= 5) {
+              const locked = await q("update users set locked_until = now() + interval '15 minutes' where id = $1 returning locked_until", [
+                found.id,
+              ]);
+              logger?.warn('auth.login_locked', { username, until: locked.rows[0]?.locked_until });
+            }
+          }
+          ipEntry.count += 1;
+          loginIpFails.set(ip, ipEntry);
+          logger?.warn('auth.login_failed', { username: username.slice(0, 32), reason, attempts });
+          return json(res, 401, { error: '用户名或密码错误' });
+        }
+        // 成功：清零失败计数与锁定（验收 3「成功一次清零」）
+        await q('update users set failed_login_count = 0, locked_until = null where id = $1', [found.id]);
+        // AK-1：旧哈希静默升级 + 弱密码评估落库（不强制改密）
         let rehashed = false;
         if (db.passwordNeedsRehash(found.password_hash)) {
-          await q('update users set password_hash = $1, password_updated_at = now() where id = $2', [
-            db.hashPassword(String(body.password ?? '')),
-            found.id,
-          ]);
+          await q('update users set password_hash = $1, password_updated_at = now() where id = $2', [db.hashPassword(password), found.id]);
           rehashed = true;
           logger?.info('auth.password_rehashed', { userId: found.id });
         }
-        const weak = passwordPolicy.evaluatePassword(String(body.password ?? ''), {
-          username: found.username,
-          email: found.email ?? '',
-        });
+        const weak = passwordPolicy.evaluatePassword(password, { username: found.username, email: found.email ?? '' });
         await q('update users set weak_password = $1 where id = $2', [!weak.ok, found.id]);
-        logger?.info('api.login', { userId: found.id, username: found.username, rehashed, weak: !weak.ok });
+        // 记住我：勾选 30 天，不勾 7 天（决策）
+        const days = body.rememberMe ? 30 : 7;
+        const sessionToken = await db.createSession(q, { userId: found.id, days });
+        logger?.info('auth.login_ok', { userId: found.id, username: found.username, rehashed, weak: !weak.ok, days });
         return json(
           res,
           200,
-          { user: { id: found.id, username: found.username, role: found.role } },
-          { 'set-cookie': sessionCookie(req, sessionToken, 604800) },
+          {
+            user: {
+              id: found.id,
+              username: found.username,
+              role: found.role,
+              mustChangePassword: Boolean(found.must_change_password),
+            },
+          },
+          { 'set-cookie': sessionCookie(req, sessionToken, days * 86400) },
         );
       }
 
@@ -843,7 +897,9 @@ export function createApiServer({
       if (path === '/api/me' && req.method === 'GET') {
         const prefs = user ? await db.getPrefs(q, user.id) : null;
         return json(res, 200, {
-          user: user ? { id: user.id, username: user.username, role: user.role } : null,
+          user: user
+            ? { id: user.id, username: user.username, role: user.role, mustChangePassword: Boolean(user.must_change_password) }
+            : null,
           prefs,
           // 站点时区（系统设置里的「时区」）：前端用它格式化时间，而不是浏览器本地时区
           timezone: process.env.TZ || 'Asia/Shanghai',
@@ -1919,6 +1975,17 @@ export function createApiServer({
           contactEmail: appealEmail(),
         });
         return json(res, 200, { ok: true, notify: { status: notifyResult.status, error: notifyResult.error ?? null } });
+      }
+
+      // AK-2（docs/AUTH-REDESIGN.md §4.4）：管理员解锁——清零失败计数与锁定
+      const unlockMatch = path.match(/^\/api\/admin\/users\/([^/]+)\/unlock$/);
+      if (unlockMatch && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const username = decodeURIComponent(unlockMatch[1]);
+        const row = await db.unlockUser(q, { username });
+        if (!row) return json(res, 404, { error: '没有该用户' });
+        logger?.info('admin.user_unlocked', { username, by: user.username });
+        return json(res, 200, { user: row });
       }
 
       // ---- 管理员：禁用游戏 / 编辑说明 / 触发 Steam 同步 ----
