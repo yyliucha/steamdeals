@@ -180,12 +180,18 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-09 更新，v2.2.0 已发布：AQ 列表排序 + C1/AN 修复）
+### 当前状态（2026-11-09 更新，v2.3.0 已发布：AS 批——README 开发进度摘要）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 > **会话分工（2026-11-09）**：可直接开发的功能（AR、AO、AP、可选 F）见
 > [HANDOVER-DEV-2026-11-09.md](HANDOVER-DEV-2026-11-09.md)；运维排查结论见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) 与 TODO C 段。
 
+- **v2.3.0 已发布**（tag `v2.3.0`）：AS 批——README「开发进度」自动摘要（`scripts/todo-progress.js` 生成 +
+  `npm run todo:progress`/`todo:progress:check` + CI `docs-progress` 防漂移）+ README 过期项修正。
+  纯文档/脚本/CI，无运行行为变化。验证：`npm test` 全绿、`frontend:build`、`scan` 干净、`todo:progress:check` 一致；
+  质检：AS ✅ 放行（[QA-TODO-PROGRESS-AS.md](QA-TODO-PROGRESS-AS.md)）。
+  CI：docker-hub / docker-tcr 待 tag 后记录。
+  **服务器部署待执行**（升级到 `2.3.0`）；部署后确认 GitHub 首页 README 进度块与 TODO 一致即可。
 - **v2.2.1 已发布**（tag `v2.2.1`）：F 批 Steam 价格同步优化——请求间隔 1100→1600ms（回到 200 次/5 分钟配额内）；
   选取改热点优先（近 90 天访问 / 用户标记 / 热度≥1 每天刷）+ 冷门降频（最近快照超 3 天才刷）；
   阈值 `STEAM_PRICES_HOT_HEAT_MIN` / `STEAM_PRICES_COLD_DAYS` 可调。验证：`npm test` 全链全绿 + `frontend:build` + `scan`；

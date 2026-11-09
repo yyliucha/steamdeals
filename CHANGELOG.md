@@ -2,6 +2,28 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.3.0] - 2026-11-09
+
+AS 批：README 开发进度摘要（自动生成）+ docs-progress CI 防漂移 + README 过期项修正。
+
+### 新增
+
+- **README「开发进度」自动摘要**：`docs/TODO.md` 仍是唯一排期来源，`scripts/todo-progress.js`
+  解析每条目的状态行，生成 README 标记块（当前版本 / 进行中 / 接下来 / 最近 5 个完成 + 计数）；
+  未知状态进「待分类」不静默丢失；生成不含时间戳、可重复生成。
+- **本地命令**：`npm run todo:progress`（生成）/ `npm run todo:progress:check`（校验）。
+- **CI `docs-progress`**：README 与 TODO 不一致时变红并提示命令，只在相关文件变更时运行，不触发镜像构建。
+
+### 修复
+
+- **README 过期描述**：Docker 部署行改「已发布镜像」；多区服两处口径统一为「同屏并排」；
+  删除过期「路线图」段（已完成项不再挂 `[ ]`），未排期产品项迁入 `docs/ROADMAP.md`。
+
+### 测试
+
+- 新增 `test/todo-progress.test.js`（8 项：分类顺序、最近 5 个、待分类兜底、标记替换、幂等、check 语义），
+  接入 `npm test` 主链。
+
 ## [2.2.1] - 2026-11-09
 
 Steam 价格同步优化（F 批）：限速收紧 + 热点优先 / 冷门降频。
