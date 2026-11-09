@@ -414,7 +414,8 @@ async function cmdSyncSteamAll() {
         "and not g.deleted " +
         "and (g.backfill_at is null or g.backfill_at < now() - interval '1 day') " +
         "and (g.description is null or g.description = '' or not exists (select 1 from offers o where o.game_id = g.id and o.platform_code = 'steam')) " +
-        "order by g.id limit $1",
+        // AC-3/AC9：新游戏优先（按收录时间倒序）
+        "order by g.created_at desc nulls last, g.id desc limit $1",
       [limit],
     );
     return r.rows;
@@ -1801,7 +1802,8 @@ async function cmdBackfill() {
           // 10000 条进度其实只是同一批游戏跑了 100 遍。
           "and (g.backfill_at is null or g.backfill_at < now() - interval '1 day') " +
           "and (g.description is null or g.description = '' or not exists (select 1 from offers o where o.game_id = g.id and o.platform_code = 'steam')) " +
-          'order by g.id limit $1',
+          // AC-3/AC9（docs/SYNC-FAILURE-MODES.md）：新游戏优先入回填队列（按收录时间倒序），不再按 id 排队数周
+          'order by g.created_at desc nulls last, g.id desc limit $1',
         [size],
       ),
     );

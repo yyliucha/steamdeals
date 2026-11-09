@@ -78,7 +78,8 @@ export function jobsFromEnv(env = process.env) {
       name: 'backfill',
       // 每周增量回填：给目录里新进的游戏补元数据/说明/价格（GetItems + appdetails 回退）。
       // 选择条件自带收敛（有说明+报价的跳过），没活时秒退；与其它 Steam 任务串行不抢限流。
-      args: ['backfill', '--limit', String(num(env.STEAM_BACKFILL_LIMIT, 20000)), '--batch', '100', '--sleep', '3000'],
+      // AC-3/AC9（2026-11-09）：上限从每周 2 万提高到 5 万，且队列按收录时间新游戏优先。
+      args: ['backfill', '--limit', String(num(env.STEAM_BACKFILL_LIMIT, 50000)), '--batch', '100', '--sleep', '3000'],
       intervalMin: num(env.STEAM_BACKFILL_INTERVAL_MIN, 10080),
       initialDelaySec: num(env.STEAM_BACKFILL_INITIAL_DELAY_SEC, 10800),
       enabled: env.STEAM_ENABLED !== '0',
@@ -301,6 +302,61 @@ export function describeSchedule(jobs) {
   return jobs.map((j) => `${j.name} 每 ${j.intervalMin} 分钟（首轮 ${j.initialDelaySec}s 后）`).join('；');
 }
 
+// ---------------------------------------------------------------- AC-4：每日 Steam 配额预算
+
+/**
+ * AC-4（docs/SYNC-FAILURE-MODES.md AC4）：四任务的每日串行总时长估算（分钟）。
+ * 口径与任务实现一致：
+ *  - steam-prices：每 30 款一批约 1.1s（batchSize=30/rateLimitMs=1100，cmd 内固定）；
+ *  - heat：每款约 1.7s（scheduler 里 --sleep 1700 固定）；
+ *  - steam-status：每款平均 2 次请求 × rate；
+ *  - backfill：每 100 款一批 GetItems 间隔 3s + 每批最多 10 个单条回退（各 0.4s），
+ *    并按 intervalMin 折算成每日分摊（每周跑一次 → 除以 7）。
+ */
+export function steamDailyBudgetMinutes(env = process.env) {
+  const priceMin = (num(env.STEAM_PRICE_LIMIT, 200000) / 30) * 1.1 / 60;
+  const heatMin = num(env.STEAM_HEAT_LIMIT, 20000) * 1.7 / 60;
+  const statusMin = num(env.STEAM_STATUS_LIMIT, 6000) * 2 * (num(env.STEAM_STATUS_RATE_MS, 1500) / 60000);
+  const backfillLimit = num(env.STEAM_BACKFILL_LIMIT, 50000);
+  const backfillRoundMin = (backfillLimit / 100) * 3 / 60 + (backfillLimit / 100) * 10 * 0.4 / 60;
+  const backfillDailyMin = backfillRoundMin / Math.max(1, num(env.STEAM_BACKFILL_INTERVAL_MIN, 10080) / 1440);
+  return {
+    priceMin,
+    heatMin,
+    statusMin,
+    backfillRoundMin,
+    backfillDailyMin,
+    total: priceMin + heatMin + statusMin + backfillDailyMin,
+  };
+}
+
+/**
+ * AC-4：总时长超过 24 小时（1440 分钟）时自动降频——只缩 steam-status 的每日限额
+ * （唯一可调的大项），把总量压回预算内并记 `scheduler.budget_exceeded` 告警。
+ * 返回 { jobs, budget, adjusted }，jobs 是调整后的副本。
+ */
+export function applySteamBudget(jobs, env = process.env, logger = null) {
+  const budget = steamDailyBudgetMinutes(env);
+  if (budget.total <= 1440) return { jobs, budget, adjusted: false };
+  const others = budget.priceMin + budget.heatMin + budget.backfillDailyMin;
+  const statusTargetMin = Math.max(120, 1440 - others); // 至少给 status 留 2 小时
+  const statusPerGameMin = 2 * (num(env.STEAM_STATUS_RATE_MS, 1500) / 60000);
+  const newLimit = Math.max(500, Math.floor(statusTargetMin / statusPerGameMin));
+  const adjusted = jobs.map((j) => {
+    if (j.name !== 'steam-status') return j;
+    const args = [...j.args];
+    const idx = args.indexOf('--limit');
+    if (idx >= 0) args[idx + 1] = String(newLimit);
+    return { ...j, args };
+  });
+  logger?.warn?.('scheduler.budget_exceeded', {
+    totalMin: Math.round(budget.total),
+    targetMin: 1440,
+    adjustedSteamStatusLimit: newLimit,
+  });
+  return { jobs: adjusted, budget, adjusted: true };
+}
+
 /**
  * AC1（docs/SYNC-FAILURE-MODES.md AC1）：该有但没有的任务——缺 `STEAM_API_KEY`（catalog/steam-accounts）
  * 或被 `*_ENABLED=0` 显式关闭的任务。返回警告清单，后台「同步与回填」页显式提示，不静默消失。
@@ -492,6 +548,9 @@ export async function main() {
     await settings.hydrateSettings({ store, logger });
     await store.setTimezone?.(process.env.TZ); // 时区设置水合后立即生效
     let jobs = jobsFromEnv();
+    // AC-4（docs/SYNC-FAILURE-MODES.md AC4）：每日 Steam 配额预算——超 24h 自动缩 steam-status 并告警
+    const budget = applySteamBudget(jobs, process.env, logger);
+    jobs = budget.jobs;
     let lastRevision = await settings.getRevision(q);
     let circuitThreshold = num(process.env.CIRCUIT_THRESHOLD, CIRCUIT.threshold);
     let circuitCooldownMs = num(process.env.CIRCUIT_COOLDOWN_MIN, CIRCUIT.cooldownMs / 60_000) * 60_000;
@@ -626,6 +685,7 @@ export async function main() {
         await settings.hydrateSettings({ store, logger });
         await store.setTimezone?.(process.env.TZ);
         jobs = jobsFromEnv();
+        jobs = applySteamBudget(jobs, process.env, logger).jobs; // AC-4：设置变更后同样过预算
         circuitThreshold = num(process.env.CIRCUIT_THRESHOLD, CIRCUIT.threshold);
         circuitCooldownMs = num(process.env.CIRCUIT_COOLDOWN_MIN, CIRCUIT.cooldownMs / 60_000) * 60_000;
         lastRevision = revision;

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs } from '../src/scheduler.js';
+import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget } from '../src/scheduler.js';
 
 test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），默认 3，非法回落默认', () => {
   assert.equal(lightConcurrency({}), 3);
@@ -95,7 +95,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.deepEqual(args('heat'), ['heat', '--limit', '20000', '--sleep', '1700']);
   assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '6000', '--rate', '1500']);
   assert.deepEqual(args('rename'), ['rename', '--limit', '200000', '--batch', '100', '--sleep', '1500']);
-  assert.deepEqual(args('backfill'), ['backfill', '--limit', '20000', '--batch', '100', '--sleep', '3000']);
+  assert.deepEqual(args('backfill'), ['backfill', '--limit', '50000', '--batch', '100', '--sleep', '3000'], 'AC-3/AC9：回填默认上限 5 万');
   assert.deepEqual(args('prune'), ['prune']);
 });
 
@@ -412,4 +412,31 @@ test('X 批：重启后 lastRunMs 从 sync_runs 恢复，坏行跳过', () => {
   assert.equal(due.length, 0, '恢复的任务没有到点不重跑');
   const due2 = dueJobs(jobs, { nowMs: Date.parse('2026-11-05T04:00:00Z') + 1440 * 60_000, startedMs: 0, lastRunMs: map });
   assert.equal(due2.length, 1, '到间隔后才重跑');
+});
+
+test('AC-4：默认配置的每日预算 <24h（不降频）；超预算时自动缩 steam-status 并告警', () => {
+  const b = steamDailyBudgetMinutes({});
+  assert.ok(b.total > 0);
+  assert.ok(b.total <= 1440, '默认四任务总量在预算内（' + Math.round(b.total) + ' 分钟）');
+  // 超预算：把 heat 拉到 4 万（约 18.9h，加价格/回填/状态后超过 24h），自动缩 steam-status 回到预算内
+  const env = { STEAM_HEAT_LIMIT: '40000', STEAM_STATUS_LIMIT: '6000', STEAM_STATUS_RATE_MS: '1500' };
+  const events = [];
+  const logger = { warn: (e, f) => events.push([e, f]) };
+  const { jobs, budget, adjusted } = applySteamBudget(jobsFromEnv(env), env, logger);
+  assert.equal(adjusted, true);
+  const status = jobs.find((j) => j.name === 'steam-status');
+  const limitIdx = status.args.indexOf('--limit');
+  const newLimit = Number(status.args[limitIdx + 1]);
+  assert.ok(newLimit < 6000, 'steam-status 被降频（' + newLimit + '）');
+  const after = steamDailyBudgetMinutes({ ...env, STEAM_STATUS_LIMIT: String(newLimit) });
+  assert.ok(after.total <= 1440, '调整后回到预算内（' + Math.round(after.total) + ' 分钟）');
+  assert.ok(events.some(([e]) => e === 'scheduler.budget_exceeded'), '告警日志');
+});
+
+test('AC-9：回填候选新游戏优先（created_at 倒序）+ 默认上限提到 5 万（静态断言）', () => {
+  const cli = readFileSync(new URL('../src/cli.js', import.meta.url), 'utf8');
+  assert.match(cli, /order by g\.created_at desc nulls last, g\.id desc limit/, '回填按收录时间倒序');
+  assert.equal((cli.match(/order by g\.created_at desc nulls last, g\.id desc limit/g) || []).length, 2, 'backfill 与 steamall 两处');
+  const sched = readFileSync(new URL('../src/scheduler.js', import.meta.url), 'utf8');
+  assert.match(sched, /STEAM_BACKFILL_LIMIT, 50000/, '回填默认上限 5 万');
 });
