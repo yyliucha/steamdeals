@@ -4,6 +4,7 @@
 // AB 批（docs/STEAM-STATUS-FIX.md）：runSteamStatusRound 把 steam-status 一轮收敛到这里，
 // fetchJsonImpl 可注入，测试能离线验证"取值 .json / 不写库 / 429 收轮"。
 import * as db from './store/pg.js';
+import { ingestOffers } from './ingest.js';
 import { classifySteamStatus } from './adapters/steam.js';
 import { classifyContentRating, normalizeOfficial } from './adapters/steam-meta.js';
 
@@ -31,7 +32,7 @@ export function entryFromMeta(item) {
  * 返回 { status, rating, wroteStatus }：status 为 null 表示本次判定不了；
  * wroteStatus 只有「状态真写进库且 UPDATE 命中行」才为 true（AB 批 §3-B：写入不可静默）。
  */
-export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = null, meta = null }) {
+export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = null, meta = null, logger = null }) {
   // 没有任何 appdetails 条目 → 判定不了状态（如只有 GetItems、字段不全的路径）
   const status = cnEntry == null && hkEntry == null ? null : classifySteamStatus(cnEntry, hkEntry);
   const requiredAge = meta?.requiredAge ?? null;
@@ -43,7 +44,7 @@ export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = nu
 
   if (status == null && !hasRating) {
     // 什么都没拿到：不写库（GetItems 且无分级字段的路径）
-    return { status, rating, wroteStatus: false };
+    return { status, rating, wroteStatus: false, offerWritten: false };
   }
   const row = await db.setSteamStatus(q, {
     steamAppid: appid,
@@ -55,7 +56,39 @@ export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = nu
     matureFlag: hasRating ? rating.matureFlag : null,
   });
   // setSteamStatus 未命中（appid 不在库）返回 null：不得算写成功（AB 批 §3-B）
-  return { status, rating, wroteStatus: status != null && row != null };
+  const wroteStatus = status != null && row != null;
+  // AC-2（docs/SYNC-FAILURE-MODES.md AC8，2026-11-09 确认）：判定 ok（国区有价）时顺带写首次 offer——
+  // 与状态共用同一次 appdetails 响应，不额外消耗配额；免费/锁区/未发售不写价。
+  let offerWritten = false;
+  if (wroteStatus && status === 'ok' && meta?.priceOverview && meta.priceOverview.final != null) {
+    const offer = {
+      platformCode: 'steam',
+      platformProductId: String(appid),
+      steamAppid: Number(appid),
+      title: meta.nameZh ?? meta.nameEn ?? String(appid),
+      productType: 'official_direct',
+      region: 'cn',
+      currency: meta.priceOverview.currency ?? 'CNY',
+      priceCents: Math.round(meta.priceOverview.final),
+      originalCents: Math.round(meta.priceOverview.initial ?? meta.priceOverview.final),
+      discountPct: Number(meta.priceOverview.discountPercent ?? 0),
+      inStock: true,
+      buyUrl: `https://store.steampowered.com/app/${appid}/`,
+      meta: {},
+    };
+    try {
+      const st = await ingestOffers(
+        { query: q },
+        { platform: { code: 'steam', name: 'Steam 国区', kind: 'official' }, offers: [offer], logger },
+      );
+      offerWritten = (st.inserted ?? 0) + (st.updated ?? 0) > 0;
+      if (offerWritten) logger?.info?.('steam-status.offer_written', { appid, priceCents: offer.priceCents });
+    } catch (err) {
+      // offer 写失败不影响状态与分级结果；下轮 steam-prices/backfill 仍会再试
+      logger?.warn?.('steam-status.offer_failed', { appid, message: String(err?.message ?? err).slice(0, 160) });
+    }
+  }
+  return { status, rating, wroteStatus, offerWritten };
 }
 
 /**
@@ -78,6 +111,7 @@ export async function runSteamStatusRound(q, { limit = 6000, batch = 30, rateMs 
   let skipped = 0;
   let failed = 0;
   let requests = 0;
+  let offers = 0;
   let aborted429 = false;
   const counts = { ok: 0, free: 0, coming_soon: 0, region_locked: 0, no_price: 0, not_found: 0 };
 
@@ -127,11 +161,12 @@ export async function runSteamStatusRound(q, { limit = 6000, batch = 30, rateMs 
         if (rateMs) await sleep(rateMs);
         continue;
       }
-      const outcome = await applySteamDetails(q, { appid, cnEntry, hkEntry, meta });
+      const outcome = await applySteamDetails(q, { appid, cnEntry, hkEntry, meta, logger });
       attempted += 1;
       if (outcome.wroteStatus) {
         wrote += 1;
         if (outcome.status) counts[outcome.status] = (counts[outcome.status] ?? 0) + 1;
+        if (outcome.offerWritten) offers += 1;
       } else {
         skipped += 1;
         if (outcome.status == null) {
@@ -140,9 +175,9 @@ export async function runSteamStatusRound(q, { limit = 6000, batch = 30, rateMs 
           logger?.warn?.('steam-status.write_miss', { appid, status: outcome.status });
         }
       }
-      onProgress?.({ attempted, wrote, skipped, failed, counts });
+      onProgress?.({ attempted, wrote, skipped, failed, counts, offers });
     }
     if (aborted429) break;
   }
-  return { wrote, skipped, failed, requests, counts, aborted429, attempted };
+  return { wrote, skipped, failed, requests, counts, offers, aborted429, attempted };
 }

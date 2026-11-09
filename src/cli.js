@@ -2199,12 +2199,12 @@ async function cmdSteamStatus() {
       },
     }),
   );
-  const { wrote, skipped, failed, requests, counts } = result;
-  logger.info('steam-status.done', { wrote, skipped, failed, requests, ...counts, elapsedMs: Date.now() - startedMs });
+  const { wrote, skipped, failed, requests, counts, offers } = result;
+  logger.info('steam-status.done', { wrote, skipped, failed, requests, offers, ...counts, elapsedMs: Date.now() - startedMs });
   console.log(
-    `完成：写入 ${wrote} 款，跳过 ${skipped}，失败 ${failed}，分布 ${JSON.stringify(counts)}${result.aborted429 ? '（429 提前收轮）' : ''}`,
+    `完成：写入 ${wrote} 款，跳过 ${skipped}，失败 ${failed}，顺带写价 ${offers} 款，分布 ${JSON.stringify(counts)}${result.aborted429 ? '（429 提前收轮）' : ''}`,
   );
-  syncNote = `steam-status 写入 ${wrote} / 跳过 ${skipped} / 失败 ${failed}`;
+  syncNote = `steam-status 写入 ${wrote} / 跳过 ${skipped} / 失败 ${failed} / 写价 ${offers}`;
   // AB 批 §3-B：全部尝试都没有写进去 → 必须失败，不许静默通过
   if (wrote === 0 && result.attempted > 0) {
     throw new Error(

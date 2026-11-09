@@ -2251,10 +2251,11 @@ export async function adminGameStats(q) {
            count(*) filter (where g.steam_appid is not null)::int as with_appid,
            count(*) filter (where g.deleted)::int as deleted,
            count(*) filter (where exists (select 1 from offers o2 where o2.game_id = g.id))::int as with_offers,
-           -- 已同步：ok 且有简介（真正"该做的都做了"）
-           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'ok' and g.description is not null and g.description <> '')::int as synced,
-           -- 待同步：从未探测，或 ok 但缺简介
-           count(*) filter (where g.steam_appid is not null and not g.deleted and (g.steam_status is null or (g.steam_status = 'ok' and (g.description is null or g.description = ''))))::int as pending,
+           -- 已同步（AC-2，docs/SYNC-FAILURE-MODES.md AC8）：ok 且有报价——steam-status 判 ok 时顺带写首价，
+           -- 口径与用户感知一致（"已同步"就得有价格）；免费游戏无报价仍属正常（不算待同步）
+           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'ok' and g.is_free is not true and exists (select 1 from offers o2 where o2.game_id = g.id))::int as synced,
+           -- 待同步：从未探测，或 ok 但缺报价（非免费）
+           count(*) filter (where g.steam_appid is not null and not g.deleted and (g.steam_status is null or (g.steam_status = 'ok' and g.is_free is not true and not exists (select 1 from offers o2 where o2.game_id = g.id))))::int as pending,
            -- 六态分项（指标卡）
            count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status is null)::int as pending_probe,
            count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'free')::int as free,

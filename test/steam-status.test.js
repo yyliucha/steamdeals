@@ -90,16 +90,21 @@ test('迁移：加列幂等 + 免费批量置位 + 统计新口径', async () =>
     assert.deepEqual(candidates.map((c) => c.steamAppid).sort(), [1002], '免费不参与探测');
     assert.equal(candidates[0].id > 0, true);
 
-    // 统计口径：待同步 = 未探测 或 ok 缺简介
+    // 统计口径（AC-2 复核）：待同步 = 未探测 或 ok 缺报价；已同步 = ok + 有报价（免费不要求报价）
     await db.setSteamStatus(q, { steamAppid: 1002, status: 'ok', requiredAge: null, contentDescriptors: null, ageRatings: null });
     const s1 = await db.adminGameStats(q);
     assert.equal(s1.free, 2);
-    assert.equal(s1.pending, 1, 'ok 但缺简介 → 待同步');
+    assert.equal(s1.pending, 1, 'ok 但缺报价 → 待同步');
     assert.equal(s1.synced, 0);
-    await q("update games set description = '有简介' where steam_appid = 1002");
+    await q("insert into platforms (code, name, kind) values ('steam', 'Steam 国区', 'official') on conflict (code) do nothing");
+    const game = (await q("select id from games where steam_appid = 1002")).rows[0];
+    await q(
+      "insert into offers (game_id, platform_code, region, currency, price_cents, original_cents, discount_pct, in_stock, buy_url, product_type) values ($1, 'steam', 'cn', 'CNY', 6500, 10000, 35, true, 'https://store.steampowered.com/app/1002/', 'official_direct')",
+      [game.id],
+    );
     const s2 = await db.adminGameStats(q);
-    assert.equal(s2.pending, 0);
-    assert.equal(s2.synced, 1);
+    assert.equal(s2.pending, 0, 'ok + 有报价 → 不再待同步');
+    assert.equal(s2.synced, 1, '已同步 = ok + 有报价（AC8 口径）');
     assert.equal(s2.pendingProbe, 0);
     // 分项之和 = 有 appid 未删除总数
     const sum = s2.synced + s2.pendingProbe + s2.free + s2.comingSoon + s2.regionLocked + s2.noPrice + s2.notFound + s2.other;
@@ -334,6 +339,47 @@ test('runSteamStatusRound：取 .json、无条目不写库、4xx 继续、429 �
     const miss = (await q('select steam_status, steam_checked_at from games where steam_appid = 5002')).rows[0];
     assert.equal(miss.steam_status, null, '无条目的 appid 不写库不推游标');
     assert.equal(miss.steam_checked_at, null);
+  } finally {
+    await store.close();
+  }
+});
+
+test('AC-2/AC8：判定 ok（国区有价）→ 顺带写首次 offer；锁区/无价/免费不写价', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    await q("insert into games (steam_appid, name, is_free) values (6001, '有价A', false), (6002, '锁区B', false), (6003, '无价C', false), (6004, '免费D', true)");
+    // 有价 → 状态 ok + offer 落库
+    const metaOk = normalizeOfficial(6001, { name: '有价A', price_overview: { final: 6534, initial: 9900, currency: 'CNY', discount_percent: 34 } });
+    const okOut = await applySteamDetails(q, { appid: 6001, cnEntry: entryFromMeta(metaOk), meta: metaOk });
+    assert.equal(okOut.status, 'ok');
+    assert.equal(okOut.offerWritten, true, 'ok 顺带写价');
+    const offer = (await q("select price_cents, original_cents, discount_pct, currency, region from offers o join games g on g.id = o.game_id where g.steam_appid = 6001")).rows[0];
+    assert.equal(offer.price_cents, 6534, '价格用国区 final');
+    assert.equal(offer.original_cents, 9900);
+    assert.equal(offer.discount_pct, 34);
+    assert.equal(offer.currency, 'CNY');
+    assert.equal(offer.region, 'cn');
+    // 锁区（cn 无条目、hk 有价）→ 状态 region_locked，不写价
+    const metaHk = normalizeOfficial(6002, { name: '锁区B', price_overview: { final: 9900, currency: 'CNY' } });
+    const lockedOut = await applySteamDetails(q, { appid: 6002, cnEntry: null, hkEntry: entryFromMeta(metaHk), meta: metaHk });
+    assert.equal(lockedOut.status, 'region_locked');
+    assert.equal(lockedOut.offerWritten, false, '锁区不写价');
+    // ok 但无 price_overview（字段缺失）→ 不写价
+    const noPriceOut = await applySteamDetails(q, { appid: 6003, cnEntry: { success: true, data: { price_overview: { final: 1 } } }, meta: normalizeOfficial(6003, { name: '无价C' }) });
+    assert.equal(noPriceOut.status, 'ok');
+    assert.equal(noPriceOut.offerWritten, false, '没有价格信息不写价');
+    // 免费 → 状态 free，不写价
+    const freeOut = await applySteamDetails(q, { appid: 6004, cnEntry: { success: true, data: { is_free: true } }, meta: normalizeOfficial(6004, { name: '免费D', is_free: true }) });
+    assert.equal(freeOut.status, 'free');
+    assert.equal(freeOut.offerWritten, false);
+    // 只写了 6001 一条 offer
+    const total = (await q('select count(*)::int as n from offers')).rows[0].n;
+    assert.equal(total, 1, '只有 ok+有价的游戏写了 offer');
+    // 幂等：再跑一次不重复插入（fingerprint 相同 → unchanged）
+    await applySteamDetails(q, { appid: 6001, cnEntry: entryFromMeta(metaOk), meta: metaOk });
+    assert.equal((await q('select count(*)::int as n from offers')).rows[0].n, 1, '重复判定不重复写价');
   } finally {
     await store.close();
   }
