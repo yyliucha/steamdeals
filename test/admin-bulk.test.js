@@ -92,9 +92,10 @@ test('前端：11 个列表都接入了多选与批量工具条', () => {
   assert.equal(count(extras, '<BulkBar'), 2, 'AdminExtras 应有 2 个批量工具条');
   // 翻页清空：服务端分页靠 load 清、客户端分页靠 watch 页码清
   assert.match(modules, /sel\.reviews\.clear\(\)/, '翻页应清空选择');
-  // 审计页入口在「系统」下
-  assert.match(consoleVue, /id:'bulk-ops'/, 'Console 侧栏要有「批量操作记录」');
-  assert.match(consoleVue, /'bulk-ops'/, 'bulk-ops 必须登记为原生 section');
+  // 审计页入口（AT 批起）：批量操作记录并入「日志审计 / 操作日志」，旧书签 bulk-ops 映射到 op-logs&tab=bulk
+  assert.match(consoleVue, /id:'op-logs'/, 'Console 侧栏要有「操作日志」');
+  assert.match(consoleVue, /'bulk-ops': \{ section: 'op-logs', tab: 'bulk' \}/, '旧书签 bulk-ops 必须映射到 op-logs&tab=bulk（不 404）');
+  assert.ok(!consoleVue.includes('label:\'批量操作记录\''), '侧栏不再有「批量操作记录」菜单项');
 });
 
 test('鉴权：匿名 401、普通用户 403，且都没有副作用', async () => {

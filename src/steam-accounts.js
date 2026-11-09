@@ -11,67 +11,129 @@
 //   steam.claim / steam.claim_skip  认领与幂等跳过
 //   （steam.account_bound / steam.alias_set / sync.steam_accounts_done 由 server.js / cli.js 记录）
 import { fetchOwnedGames, fetchWishlist } from './steam-login.js';
+import { recordSteamLog } from './steam-log.js';
+
+/**
+ * 审计上下文（docs/ADMIN-CONSOLE-IA.md §5，AT 批）：动作落 steam_account_logs。
+ * 各写操作函数都接受可选 `log` 参数；不传时按 actor='self' 记录（用户自己操作的场景）。
+ * 写入吞异常——审计失败不能影响绑定/同步主流程。
+ */
+function logCtx(log) {
+  const l = log || {};
+  return {
+    actor: String(l.actor ?? 'self').slice(0, 200),
+    username: l.username != null ? String(l.username).slice(0, 200) : null,
+    userId: l.userId != null ? Number(l.userId) : null,
+    personaName: l.personaName != null ? String(l.personaName).slice(0, 200) : null,
+  };
+}
 
 /** 把拉到的游戏行写进 steam_games（upsert），并做差集删除：账号移出库的游戏必须消失。 */
-export async function syncAccountLibrary(q, { steamId, apiKey, fetchImpl = null, logger = null }) {
-  const games = await (fetchImpl ?? fetchOwnedGames)({ apiKey, steamId, logger });
-  for (const g of games) {
-    await q(
-      'insert into steam_games (steam_id, appid, name, playtime_minutes, last_played_at, synced_at) values ($1,$2,$3,$4,$5,now()) ' +
-        'on conflict (steam_id, appid) do update set name = excluded.name, playtime_minutes = excluded.playtime_minutes, last_played_at = excluded.last_played_at, synced_at = now()',
-      [steamId, g.appid, g.name ?? null, g.playtimeMinutes ?? 0, g.lastPlayedAt ?? null],
-    );
+export async function syncAccountLibrary(q, { steamId, apiKey, fetchImpl = null, logger = null, log = null }) {
+  const ctx = logCtx(log);
+  const started = Date.now();
+  try {
+    const games = await (fetchImpl ?? fetchOwnedGames)({ apiKey, steamId, logger });
+    for (const g of games) {
+      await q(
+        'insert into steam_games (steam_id, appid, name, playtime_minutes, last_played_at, synced_at) values ($1,$2,$3,$4,$5,now()) ' +
+          'on conflict (steam_id, appid) do update set name = excluded.name, playtime_minutes = excluded.playtime_minutes, last_played_at = excluded.last_played_at, synced_at = now()',
+        [steamId, g.appid, g.name ?? null, g.playtimeMinutes ?? 0, g.lastPlayedAt ?? null],
+      );
+    }
+    const appids = [...new Set(games.map((g) => Number(g.appid)).filter((n) => Number.isFinite(n) && n > 0))];
+    // 空集合也成立：appid = any('{}') 恒 false → 删掉该账号全部旧行。
+    const diff = await q('delete from steam_games where steam_id = $1 and not (appid = any($2::int[]))', [steamId, appids]);
+    const deleted = diff.rowCount ?? 0;
+    await recordSteamLog(q, {
+      action: 'sync-library',
+      steamId,
+      ...ctx,
+      result: 'ok',
+      detail: { added: appids.length, removed: deleted, total: appids.length },
+      elapsedMs: Date.now() - started,
+    });
+    logger?.info('steam.library_synced', { steamId, total: appids.length, diffDeleted: deleted });
+    return { total: appids.length, deleted };
+  } catch (err) {
+    await recordSteamLog(q, {
+      action: 'sync-library',
+      steamId,
+      ...ctx,
+      result: 'failed',
+      detail: { reason: String(err.message).slice(0, 160) },
+      elapsedMs: Date.now() - started,
+      error: String(err.message),
+    });
+    throw err;
   }
-  const appids = [...new Set(games.map((g) => Number(g.appid)).filter((n) => Number.isFinite(n) && n > 0))];
-  // 空集合也成立：appid = any('{}') 恒 false → 删掉该账号全部旧行。
-  const diff = await q('delete from steam_games where steam_id = $1 and not (appid = any($2::int[]))', [steamId, appids]);
-  const deleted = diff.rowCount ?? 0;
-  logger?.info('steam.library_synced', { steamId, total: appids.length, diffDeleted: deleted });
-  return { total: appids.length, deleted };
 }
 
 /** 把拉到的愿望单写进 steam_wishlist（upsert + 差集删除），并对账「愿望单→到价提醒」。 */
-export async function syncAccountWishlist(q, { steamId, apiKey, userId, fetchImpl = null, logger = null }) {
-  const items = await (fetchImpl ?? fetchWishlist)({ apiKey, steamId, logger });
-  for (const it of items) {
-    await q(
-      'insert into steam_wishlist (steam_id, appid, name, synced_at) values ($1,$2,$3,now()) ' +
-        'on conflict (steam_id, appid) do update set name = excluded.name, synced_at = now()',
-      [steamId, it.appid, it.name ?? null],
-    );
-  }
-  const appids = [...new Set(items.map((it) => Number(it.appid)).filter((n) => Number.isFinite(n) && n > 0))];
-  const diff = await q('delete from steam_wishlist where steam_id = $1 and not (appid = any($2::int[]))', [steamId, appids]);
-  const deleted = diff.rowCount ?? 0;
+export async function syncAccountWishlist(q, { steamId, apiKey, userId, fetchImpl = null, logger = null, log = null }) {
+  const ctx = logCtx(log);
+  const started = Date.now();
+  try {
+    const items = await (fetchImpl ?? fetchWishlist)({ apiKey, steamId, logger });
+    for (const it of items) {
+      await q(
+        'insert into steam_wishlist (steam_id, appid, name, synced_at) values ($1,$2,$3,now()) ' +
+          'on conflict (steam_id, appid) do update set name = excluded.name, synced_at = now()',
+        [steamId, it.appid, it.name ?? null],
+      );
+    }
+    const appids = [...new Set(items.map((it) => Number(it.appid)).filter((n) => Number.isFinite(n) && n > 0))];
+    const diff = await q('delete from steam_wishlist where steam_id = $1 and not (appid = any($2::int[]))', [steamId, appids]);
+    const deleted = diff.rowCount ?? 0;
 
-  // 愿望单 → 自动到价提醒：目标价为空 = 史低提醒；(game_id, region) 已存在时不覆盖（手动优先）。
-  // 目录里没有的 appid 自然不进 select，计入 skipped。
-  let watches = 0;
-  let skipped = 0;
-  if (appids.length) {
-    const seen = await q('select count(*)::int as n from games g where g.steam_appid = any($1::int[]) and not g.deleted', [appids]);
-    const hit = Number(seen.rows[0]?.n ?? 0);
-    skipped = appids.length - hit;
-    const ins = await q(
-      `insert into watchlist (game_id, region, target_cents, note, source)
-       select g.id, 'cn', null, 'Steam 愿望单', 'steam_wishlist'
-         from games g
-        where g.steam_appid = any($1::int[]) and not g.deleted
-       on conflict (game_id, region) do nothing`,
-      [appids],
-    );
-    watches = ins.rowCount ?? 0;
+    // 愿望单 → 自动到价提醒：目标价为空 = 史低提醒；(game_id, region) 已存在时不覆盖（手动优先）。
+    // 目录里没有的 appid 自然不进 select，计入 skipped。
+    let watches = 0;
+    let skipped = 0;
+    if (appids.length) {
+      const seen = await q('select count(*)::int as n from games g where g.steam_appid = any($1::int[]) and not g.deleted', [appids]);
+      const hit = Number(seen.rows[0]?.n ?? 0);
+      skipped = appids.length - hit;
+      const ins = await q(
+        `insert into watchlist (game_id, region, target_cents, note, source)
+         select g.id, 'cn', null, 'Steam 愿望单', 'steam_wishlist'
+           from games g
+          where g.steam_appid = any($1::int[]) and not g.deleted
+         on conflict (game_id, region) do nothing`,
+        [appids],
+      );
+      watches = ins.rowCount ?? 0;
+    }
+    const cleaned = await cleanupAutoWatches(q, userId);
+    await recordSteamLog(q, {
+      action: 'sync-wishlist',
+      steamId,
+      ...ctx,
+      result: 'ok',
+      detail: { added: appids.length, removed: deleted, total: appids.length, watches, catalogMiss: skipped },
+      elapsedMs: Date.now() - started,
+    });
+    logger?.info('steam.wishlist_synced', {
+      steamId,
+      total: appids.length,
+      diffDeleted: deleted,
+      watchesAdded: watches,
+      catalogMiss: skipped,
+      watchesCleaned: cleaned,
+    });
+    return { total: appids.length, deleted, watches, skipped, cleaned };
+  } catch (err) {
+    await recordSteamLog(q, {
+      action: 'sync-wishlist',
+      steamId,
+      ...ctx,
+      result: 'failed',
+      detail: { reason: String(err.message).slice(0, 160) },
+      elapsedMs: Date.now() - started,
+      error: String(err.message),
+    });
+    throw err;
   }
-  const cleaned = await cleanupAutoWatches(q, userId);
-  logger?.info('steam.wishlist_synced', {
-    steamId,
-    total: appids.length,
-    diffDeleted: deleted,
-    watchesAdded: watches,
-    catalogMiss: skipped,
-    watchesCleaned: cleaned,
-  });
-  return { total: appids.length, deleted, watches, skipped, cleaned };
 }
 
 /**
@@ -94,43 +156,91 @@ export async function cleanupAutoWatches(q, userId) {
 }
 
 /** 解绑：删库/愿望单/账号行（steam_sessions 已停用不清理），随后对账自动提醒。 */
-export async function unbindAccount(q, { steamId, userId, logger = null }) {
-  const games = await q('delete from steam_games where steam_id = $1', [steamId]);
-  const wishlist = await q('delete from steam_wishlist where steam_id = $1', [steamId]);
-  const account = await q('delete from steam_accounts where steam_id = $1 and user_id = $2', [steamId, userId]);
-  const removedAccount = account.rowCount ?? 0;
-  const cleaned = removedAccount > 0 ? await cleanupAutoWatches(q, userId) : 0;
-  logger?.info('steam.account_unbound', {
-    steamId,
-    userId,
-    gamesDeleted: games.rowCount ?? 0,
-    wishlistDeleted: wishlist.rowCount ?? 0,
-    watchesCleaned: cleaned,
-  });
-  return { removed: removedAccount, cleaned };
+export async function unbindAccount(q, { steamId, userId, logger = null, log = null }) {
+  const ctx = logCtx(log);
+  const started = Date.now();
+  try {
+    const games = await q('delete from steam_games where steam_id = $1', [steamId]);
+    const wishlist = await q('delete from steam_wishlist where steam_id = $1', [steamId]);
+    const account = await q('delete from steam_accounts where steam_id = $1 and user_id = $2', [steamId, userId]);
+    const removedAccount = account.rowCount ?? 0;
+    const cleaned = removedAccount > 0 ? await cleanupAutoWatches(q, userId) : 0;
+    await recordSteamLog(q, {
+      action: 'unbind',
+      steamId,
+      ...ctx,
+      result: 'ok',
+      detail: { gamesRemoved: games.rowCount ?? 0, wishlistRemoved: wishlist.rowCount ?? 0, watchesCleaned: cleaned },
+      elapsedMs: Date.now() - started,
+    });
+    logger?.info('steam.account_unbound', {
+      steamId,
+      userId,
+      gamesDeleted: games.rowCount ?? 0,
+      wishlistDeleted: wishlist.rowCount ?? 0,
+      watchesCleaned: cleaned,
+    });
+    return { removed: removedAccount, cleaned };
+  } catch (err) {
+    await recordSteamLog(q, {
+      action: 'unbind',
+      steamId,
+      ...ctx,
+      result: 'failed',
+      detail: { reason: String(err.message).slice(0, 160) },
+      elapsedMs: Date.now() - started,
+      error: String(err.message),
+    });
+    throw err;
+  }
 }
 
 /** 认领未归属账号：写入当前用户 user_id；幂等（已归属同人不报错）。 */
-export async function claimAccount(q, { username, steamId, logger = null }) {
-  const user = await q('select id, username from users where username = $1', [username]);
-  const target = user.rows[0];
-  if (!target) throw new Error('没有该用户：' + username);
-  const account = await q('select user_id, persona_name from steam_accounts where steam_id = $1', [steamId]);
-  const row = account.rows[0];
-  if (!row) throw new Error('没有该 Steam 账号：' + steamId);
-  if (row.user_id != null && Number(row.user_id) !== Number(target.id)) {
-    throw new Error(`该 Steam 账号已归属用户 #${row.user_id}，请先解绑`);
+export async function claimAccount(q, { username, steamId, logger = null, log = null }) {
+  const ctx = logCtx(log);
+  const started = Date.now();
+  try {
+    const user = await q('select id, username from users where username = $1', [username]);
+    const target = user.rows[0];
+    if (!target) throw new Error('没有该用户：' + username);
+    const account = await q('select user_id, persona_name from steam_accounts where steam_id = $1', [steamId]);
+    const row = account.rows[0];
+    if (!row) throw new Error('没有该 Steam 账号：' + steamId);
+    if (row.user_id != null && Number(row.user_id) !== Number(target.id)) {
+      throw new Error(`该 Steam 账号已归属用户 #${row.user_id}，请先解绑`);
+    }
+    if (row.user_id != null) {
+      logger?.info('steam.claim_skip', { steamId, username, reason: 'already_owned' });
+      return { claimed: false, steamId, userId: target.id, personaName: row.persona_name };
+    }
+    await q('update steam_accounts set user_id = $1, last_login_at = now() where steam_id = $2 and user_id is null', [
+      target.id,
+      steamId,
+    ]);
+    await recordSteamLog(q, {
+      action: 'claim',
+      steamId,
+      ...ctx,
+      userId: target.id,
+      username,
+      personaName: row.persona_name,
+      result: 'ok',
+      elapsedMs: Date.now() - started,
+    });
+    logger?.info('steam.claim', { steamId, username, userId: target.id });
+    return { claimed: true, steamId, userId: target.id, personaName: row.persona_name };
+  } catch (err) {
+    await recordSteamLog(q, {
+      action: 'claim',
+      steamId,
+      ...ctx,
+      result: 'failed',
+      detail: { reason: String(err.message).slice(0, 160) },
+      elapsedMs: Date.now() - started,
+      error: String(err.message),
+    });
+    throw err;
   }
-  if (row.user_id != null) {
-    logger?.info('steam.claim_skip', { steamId, username, reason: 'already_owned' });
-    return { claimed: false, steamId, userId: target.id, personaName: row.persona_name };
-  }
-  await q('update steam_accounts set user_id = $1, last_login_at = now() where steam_id = $2 and user_id is null', [
-    target.id,
-    steamId,
-  ]);
-  logger?.info('steam.claim', { steamId, username, userId: target.id });
-  return { claimed: true, steamId, userId: target.id, personaName: row.persona_name };
 }
 
 /** 当前用户绑定的账号列表（含游戏数/类型未知数/愿望单数/最近同步/是否已配 API Key；type_unknown 仅日志/诊断用）。 */
@@ -164,10 +274,10 @@ export async function listUnownedAccounts(q) {
   return r.rows;
 }
 
-/** 所有已归属账号（调度器每日批量同步用），含 user_id 便于对账自动提醒。 */
+/** 所有已归属账号（调度器每日批量同步用），含 user_id 便于对账自动提醒、username 作审计快照。 */
 export async function listAllBoundAccounts(q) {
   const r = await q(
-    'select a.steam_id, a.user_id, a.persona_name from steam_accounts a where a.user_id is not null order by a.steam_id',
+    'select a.steam_id, a.user_id, a.persona_name, u.username from steam_accounts a left join users u on u.id = a.user_id where a.user_id is not null order by a.steam_id',
   );
   return r.rows;
 }
@@ -310,6 +420,29 @@ export async function accountsWithWishlistAppid(q, { userId, appid }) {
 }
 
 /** 写入/清空账号自配 API Key（密文由调用方加密；null 清空）。 */
-export async function setAccountApiKey(q, { steamId, apiKeyEnc }) {
-  await q('update steam_accounts set api_key_enc = $1 where steam_id = $2', [apiKeyEnc ?? null, steamId]);
+export async function setAccountApiKey(q, { steamId, apiKeyEnc, log = null }) {
+  const ctx = logCtx(log);
+  const started = Date.now();
+  try {
+    await q('update steam_accounts set api_key_enc = $1 where steam_id = $2', [apiKeyEnc ?? null, steamId]);
+    await recordSteamLog(q, {
+      action: 'api-key',
+      steamId,
+      ...ctx,
+      result: 'ok',
+      detail: { set: apiKeyEnc != null },
+      elapsedMs: Date.now() - started,
+    });
+  } catch (err) {
+    await recordSteamLog(q, {
+      action: 'api-key',
+      steamId,
+      ...ctx,
+      result: 'failed',
+      detail: { reason: String(err.message).slice(0, 160) },
+      elapsedMs: Date.now() - started,
+      error: String(err.message),
+    });
+    throw err;
+  }
 }

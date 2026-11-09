@@ -69,6 +69,27 @@ export async function ensureSteamSchema(store) {
     ');',
   ].join('\n'));
   await exec('create index if not exists user_wishlist_user on user_wishlist (user_id)');
+  // Steam 账号操作审计（docs/ADMIN-CONSOLE-IA.md §5，AT 批）：
+  // 7 类动作（bind/unbind/claim/sync-library/sync-wishlist/api-key/delete-cascade）。
+  // user_id 故意不挂外键——用户被删后这条证据要留下；保留 180 天，由 prune 任务清理。
+  await exec([
+    'create table if not exists steam_account_logs (',
+    '  id           bigserial primary key,',
+    '  created_at   timestamptz not null default now(),',
+    "  action       text not null,          -- bind | unbind | claim | sync-library | sync-wishlist | api-key | delete-cascade",
+    '  steam_id     text not null,',
+    '  persona_name text,                   -- 动作发生时的昵称快照',
+    '  user_id      integer,                -- 故意不挂外键：用户被删后这条证据要留下',
+    '  username     text,                   -- 归属用户名快照',
+    "  actor        text not null,          -- 'admin:xxx' | 'scheduler' | 'self'",
+    "  result       text not null,          -- ok | failed",
+    '  detail       jsonb,                  -- { added,removed,total } / { httpStatus, reason }',
+    '  elapsed_ms   integer,',
+    '  error        text                    -- 截断 200 字符',
+    ');',
+  ].join('\n'));
+  await exec('create index if not exists steam_logs_time on steam_account_logs (created_at desc)');
+  await exec('create index if not exists steam_logs_steam on steam_account_logs (steam_id, created_at desc)');
 }
 
 // 按「查询函数」维度懒建表：同一进程里可能有多个 store（测试每个用例新建 PGlite），

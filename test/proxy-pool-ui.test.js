@@ -48,7 +48,7 @@ test('验收 9：健康状态表——列齐全、状态映射（正常/冷却�
 test('验收 9：刷新时机——分组展开且页面可见时每 10 秒自动刷新；保存后立即刷新一次', () => {
   assert.match(src, /proxyTick%10===0/, '每 10 秒一次（1 秒 tick × 10）');
   assert.match(src, /document\.hidden/, '页面不可见时不刷');
-  assert.match(src, /expandedSettings\.value\|\|\[\]\)\.includes\('network'\)/, '只在网络分组展开时刷');
+  assert.match(src, /activeSettingsTab\.value==='network'/, '只在网络 tab 打开时刷（AT 批：设置折叠改 tab）');
   assert.match(src, /startProxyTimer\(\)/, '定时器随组件挂载启动');
   assert.match(src, /clearInterval\(proxyTimer\)/, '卸载时清理定时器');
   assert.match(src, /ElMessage\.success\(`已保存/, '保存成功后');

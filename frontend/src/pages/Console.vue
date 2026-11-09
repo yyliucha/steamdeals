@@ -17,6 +17,7 @@
     <main class="admin-content">
       <header class="admin-header"><div><div class="admin-crumb">管理中心 <span>/</span> {{ selectedItem?.group }}</div><h1>{{ selectedItem?.label }}</h1><p>{{ selectedItem?.description }}</p></div><div class="header-actions"><span class="header-version" :title="versionTitle" @click="loadVersion(true)">v{{ verInfo.current || '—' }}<em v-if="verInfo.updateAvailable && verInfo.latest"> ↑ 新版 v{{ String(verInfo.latest).replace(/^v/i, '') }} 可用</em></span><el-button text class="theme-btn" :title="themeMode === 'dark' ? '切换亮色' : '切换暗色'" @click="toggleTheme">{{ themeMode === 'dark' ? '🌞' : '🌙' }}</el-button></div></header>
       <AdminModules v-if="nativeSections.includes(selected)" :section="selected" />
+      <AdminLogs v-else-if="selected === 'op-logs'" />
       <AdminExtras v-else :section="selected" :me="user" />
     </main>
   </div>
@@ -29,6 +30,7 @@ import { ArrowRight, Search } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import AdminModules from './AdminModules.vue';
 import AdminExtras from './AdminExtras.vue';
+import AdminLogs from './AdminLogs.vue';
 import { useTheme } from '../composables/useTheme.js';
 import { fmtDateTime } from '../utils/siteTime.js';
 import { requestLeave, bypassNextGuard, hasDirtySources } from '../composables/useUnsavedGuard.js';
@@ -43,16 +45,33 @@ function toggleTheme(){
     fetch('/api/prefs', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ theme: m }) }).catch(() => {});
   }
 }
-const nativeSections=['games','visitors','announcements','settings','stats','bulk-ops'];
+const nativeSections=['games','visitors','announcements','settings','stats'];
+// AT 批（docs/ADMIN-CONSOLE-IA.md §3）：侧栏删「批量操作记录」「运行日志」，新增「日志审计 / 操作日志」；
+// 旧书签 ?section=bulk-ops / ?section=sync 自动落到 op-logs 对应 tab，不 404（§7.4 验收 11）。
 const groups=[
   {name:'内容运营',items:[{id:'games',label:'游戏管理',glyph:'▦',description:'维护游戏目录、采集计划与数据回填'},{id:'recycle',label:'回收站',glyph:'▤',description:'查看并恢复已删除的游戏'},{id:'announcements',label:'站点通知',glyph:'▱',description:'发布和管理网站公告'}]},
   {name:'访问与安全',items:[{id:'visitors',label:'访问记录',glyph:'◉',description:'流量、异常请求和访问控制'}]},
-  {name:'账号与服务',items:[{id:'users',label:'用户管理',glyph:'♙',description:'管理账号、角色与登录权限'},{id:'steam',label:'Steam 账号',glyph:'◈',description:'绑定多个 Steam 账号，同步游戏库与愿望单'},{id:'mail',label:'邮件服务',glyph:'✉',description:'配置 SMTP、测试邮件和发送记录'}]},
-  {name:'系统',items:[{id:'settings',label:'系统设置',glyph:'⚙',description:'数据源、网络代理与提醒配置'},{id:'stats',label:'数据统计',glyph:'▥',description:'价格变化、缓存、备份与访问排行'},{id:'bulk-ops',label:'批量操作记录',glyph:'☰',description:'后台批量操作的审计：谁、何时、对哪个列表、成功/失败多少'},{id:'sync',label:'运行日志',glyph:'≋',description:'查看服务实时输出和同步记录'}]},
+  {name:'账号与服务',items:[{id:'users',label:'用户管理',glyph:'♙',description:'管理账号、角色与登录权限'},{id:'steam',label:'Steam 账号',glyph:'◈',description:'绑定多个 Steam 账号，同步游戏库与愿望单'},{id:'mail',label:'邮件服务',glyph:'✉',description:'配置 SMTP、邮件模板与发送测试'}]},
+  {name:'日志审计',items:[{id:'op-logs',label:'操作日志',glyph:'☰',description:'用户删除 / 批量操作 / Steam 账号 / 邮件发送 / 运行与同步的审计记录'}]},
+  {name:'系统',items:[{id:'settings',label:'系统设置',glyph:'⚙',description:'数据源、网络代理与提醒配置'},{id:'stats',label:'数据统计',glyph:'▥',description:'价格变化、缓存、备份与访问排行'}]},
 ];
+// 旧书签映射：bulk-ops → op-logs&tab=bulk；sync → op-logs&tab=run（mail&tab=records 在 AdminExtras 内处理）
+const LEGACY_SECTION = { 'bulk-ops': { section: 'op-logs', tab: 'bulk' }, sync: { section: 'op-logs', tab: 'run' } };
 const selected=ref(String(route.query.section||'games'));
 // URL 里的 section 变化（如指标卡「已删除」跳转回收站）时同步选中态
-watch(()=>route.query.section,(v)=>{if(v&&groups.some(g=>g.items.some(i=>i.id===v)))selected.value=v;});
+watch(()=>route.query.section,(v)=>{
+  const id=String(v??'');
+  if(id==='mail'&&route.query.tab==='records'){ // 旧书签 mail 发送记录 → 操作日志 · 邮件发送
+    router.replace({path:'/console',query:{section:'op-logs',tab:'mail'}}).catch(()=>{});
+    return;
+  }
+  if(LEGACY_SECTION[id]){
+    selected.value=LEGACY_SECTION[id].section;
+    router.replace({path:'/console',query:{section:LEGACY_SECTION[id].section,tab:LEGACY_SECTION[id].tab}}).catch(()=>{});
+    return;
+  }
+  if(id&&groups.some(g=>g.items.some(i=>i.id===id)))selected.value=id;
+});
 const selectedItem=computed(()=>groups.flatMap(g=>g.items.map(i=>({...i,group:g.name}))).find(i=>i.id===selected.value)||groups[0].items[0]);
 const visibleGroups=computed(()=>{const q=filter.value.trim().toLocaleLowerCase();return groups.map(g=>({...g,items:g.items.filter(i=>!q||`${i.label} ${i.description} ${g.name}`.toLocaleLowerCase().includes(q))})).filter(g=>g.items.length);});
 // AN 批（docs/UNSAVED-GUARD.md §4.3）：切菜单前先过离开确认——不要先改 selected 再拦
@@ -85,7 +104,12 @@ async function loadVersion(force){
   finally{versionLoading.value=false;}
 }
 
-onMounted(async()=>{try{const valid=groups.some(g=>g.items.some(i=>i.id===selected.value));if(!valid)selected.value='games';const res=await fetch('/api/me',{credentials:'same-origin'});const data=await res.json();user.value=data.user||null;if(user.value?.must_change_password){ElMessage.warning('请先修改初始密码');bypassNextGuard();router.replace('/change-password?forced=1');return;}if(user.value?.role!=='admin'){ElMessage.warning('此页面需要管理员账号登录');bypassNextGuard();router.replace('/');return;}const st=data.prefs?.theme;if(st==='light'||st==='dark'){if(theme.storedMode()!==st)theme.set(st);}else if(theme.storedMode()){fetch('/api/prefs',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({theme:theme.storedMode()})}).catch(()=>{});}}catch{ElMessage.error('无法验证管理员身份');bypassNextGuard();router.replace('/');return;}loadVersion(false);});
+onMounted(async()=>{try{
+  // 旧书签映射也要在直开时生效（watch 不触发首帧）
+  const legacy=LEGACY_SECTION[selected.value];
+  if(legacy){selected.value=legacy.section;router.replace({path:'/console',query:{...legacy}}).catch(()=>{});}
+  else if(selected.value==='mail'&&route.query.tab==='records'){router.replace({path:'/console',query:{section:'op-logs',tab:'mail'}}).catch(()=>{});}
+  const valid=groups.some(g=>g.items.some(i=>i.id===selected.value));if(!valid)selected.value='games';const res=await fetch('/api/me',{credentials:'same-origin'});const data=await res.json();user.value=data.user||null;if(user.value?.must_change_password){ElMessage.warning('请先修改初始密码');bypassNextGuard();router.replace('/change-password?forced=1');return;}if(user.value?.role!=='admin'){ElMessage.warning('此页面需要管理员账号登录');bypassNextGuard();router.replace('/');return;}const st=data.prefs?.theme;if(st==='light'||st==='dark'){if(theme.storedMode()!==st)theme.set(st);}else if(theme.storedMode()){fetch('/api/prefs',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({theme:theme.storedMode()})}).catch(()=>{});}}catch{ElMessage.error('无法验证管理员身份');bypassNextGuard();router.replace('/');return;}loadVersion(false);});
 </script>
 
 <style scoped>

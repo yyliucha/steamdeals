@@ -797,6 +797,26 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   替换旧「路线图」段、修正 README 过期项；加轻量 `docs-progress` workflow。**纯脚本 + 文档 + CI，不改业务代码**。
 - **验收**：见规格 §10。
 
+## AT. 待开发：后台信息架构改版（新增改抽屉 / 操作日志合并 5 tab / 邮件与设置 tab / 价格走势线图）
+
+**状态：已实现待发版（2026-11-09）**
+**依赖：** 无
+**解锁：** 无（下期「账号操作审计」等本批落地后另立项）
+**规格**：[ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md)；原型 [design/admin-console-ia.html](design/admin-console-ia.html)
+
+- **需求（2026-11-09 所有者 8 条）**：① 新建用户改右侧抽屉（不跳页），用户管理页只留列表；② 新菜单「操作日志」，
+  一页 tab 收拢全站日志（用户删除 / 批量操作 / Steam 账号 / 邮件发送 / 运行与同步）；③ 新建通知同样改抽屉；
+  ④ 访问记录不动；⑤ Steam 账号加日志（落操作日志）；⑥ 邮件服务拆 tab；⑦ 系统设置折叠改 tab；
+  ⑧ 价格变化删底部「近 7 天变化」表，改成悬停「变化」弹近 7 天线图。
+- **已确认（2026-11-09）**：账号操作审计本期不做；邮件发送记录搬进操作日志（单一入口）；
+  实时输出进「运行与同步」tab；Steam 日志 7 类动作 + 保留 180 天；「新页面」= 右侧抽屉浮层（不跳页）。
+- **落地内容（已实现待发版）**：`Console.vue` 加「日志审计」分组、删 `bulk-ops`/`sync` 并做旧书签映射；
+  新增 `AdminLogs.vue`（5 tab，懒加载+缓存，`?tab=` 直达）/ `UserCreateDrawer.vue` / `AnnouncementDrawer.vue` /
+  `PriceSparkline.vue`；新表 `steam_account_logs`（`steam-login.js` 建表）+ `src/steam-log.js` 读写 +
+  `steam-accounts.js` 5 处埋点 + 绑定/认领/删用户级联埋点 + `GET /api/admin/steam-logs`；
+  `/api/admin/reports/price` 去 `daily` 加 `series`（`dailyMinSeriesBatch` 一次查出）；保留期并入 `prune`（`--steam-days`）。
+- **验收**：见规格 §11 的 1–14。
+
 
 
 

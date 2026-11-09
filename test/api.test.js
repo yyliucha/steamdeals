@@ -239,7 +239,11 @@ test('价格变动报表：快照带前价，涨跌榜与统计正确', async ()
     assert.equal(rep.topDrops[0].steam_appid, 413150);
     // setup 里 daily_prices 记录 4800，现价 3000 低于它 → 算新史低
     assert.equal(rep.newLows, 1, '降价到历史最低以下算新史低');
-    assert.ok(Array.isArray(repBody.daily), '按天趋势要返回数组');
+    // AT 批（docs/ADMIN-CONSOLE-IA.md §6）：去 daily、加 series——报告里出现的 game_id 一次查出近 N 天序列
+    assert.equal('daily' in repBody, false, 'daily 已移除');
+    assert.ok(repBody.series && typeof repBody.series === 'object', 'series 以对象返回（按 game_id 索引）');
+    const gid = rep.topDrops[0].game_id;
+    assert.ok(Array.isArray(repBody.series[String(gid)]), '报告内游戏的 7 天序列是数组（悬停线图数据源）');
 
     // CSV 导出
     const csv = await fetch(`${base}/api/admin/reports/price.csv?hours=24`, { headers: { cookie: admin.cookie } });

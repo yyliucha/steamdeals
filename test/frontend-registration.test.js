@@ -9,11 +9,11 @@ const mainJs = readFileSync(fileURLToPath(new URL('../frontend/src/main.js', imp
 const serverJs = readFileSync(fileURLToPath(new URL('../src/server.js', import.meta.url)), 'utf8');
 const adminUiJs = readFileSync(fileURLToPath(new URL('../frontend/src/admin-ui.js', import.meta.url)), 'utf8');
 
-test('main.js 注册了抽屉/角标/复选框（移动端筛选、通知抽屉、愿望单勾选依赖）', () => {
-  for (const token of ['ElDrawer', 'ElBadge', 'ElCheckboxGroup', 'ElCheckbox']) {
+test('main.js 注册了抽屉/角标/复选框/气泡（移动端筛选、通知抽屉、愿望单勾选、价格悬停线图依赖）', () => {
+  for (const token of ['ElDrawer', 'ElBadge', 'ElCheckboxGroup', 'ElCheckbox', 'ElPopover']) {
     assert.match(mainJs, new RegExp(token), `main.js 应引用 ${token}`);
   }
-  for (const css of ['drawer/style/css', 'badge/style/css', 'checkbox/style/css']) {
+  for (const css of ['drawer/style/css', 'badge/style/css', 'checkbox/style/css', 'popover/style/css']) {
     assert.match(mainJs, new RegExp(css.replace(/\//g, '\\/')), `main.js 应加载样式 ${css}`);
   }
 });

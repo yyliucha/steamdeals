@@ -1192,11 +1192,13 @@ async function cmdSteamAccounts() {
     accounts = await mod.listAllBoundAccounts(q);
     for (let i = 0; i < accounts.length; i += 1) {
       const account = accounts[i];
+      // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：调度器批量同步落审计（actor=scheduler；失败也不中断）
+      const log = { actor: 'scheduler', userId: account.user_id, username: account.username ?? null, personaName: account.persona_name ?? null };
       try {
-        await mod.syncAccountLibrary(q, { steamId: account.steam_id, apiKey, logger });
+        await mod.syncAccountLibrary(q, { steamId: account.steam_id, apiKey, logger, log });
         // 库同步后补全目录类型（GetOwnedGames 不带类型字段，类型未知数靠 app_type；只挑缺失的，天然收敛）
         await mod.backfillOwnedAppTypes(q, { steamId: account.steam_id, apiKey, logger });
-        await mod.syncAccountWishlist(q, { steamId: account.steam_id, apiKey, userId: account.user_id, logger });
+        await mod.syncAccountWishlist(q, { steamId: account.steam_id, apiKey, userId: account.user_id, logger, log });
         ok += 1;
       } catch (err) {
         failed += 1;
@@ -1219,7 +1221,7 @@ async function cmdSteamClaim() {
   }
   const mod = await import('./steam-accounts.js');
   const result = await withStore((store) =>
-    mod.claimAccount((sql, p) => store.query(sql, p), { username, steamId, logger }),
+    mod.claimAccount((sql, p) => store.query(sql, p), { username, steamId, logger, log: { actor: 'scheduler' } }),
   );
   console.log(result.claimed ? `已认领：${steamId} → ${username}` : `无需处理：${steamId} 已归属 ${username}`);
 }
@@ -2051,19 +2053,20 @@ async function cmdRename() {
   console.log(`完成：处理 ${done} 款，写入元数据 ${stored} 条（其中带回中文名 ${renamed} 款），单条回退 ${fallback}，失败 ${failed}`);
 }
 
-// 定期清理：访问记录/采集与任务记录/验证码（默认由调度器每周跑一次）
+// 定期清理：访问记录/采集与任务记录/验证码/Steam 账号日志（默认由调度器每周跑一次）
 async function cmdPrune() {
   const visitorDays = Math.max(1, Number(flag('visitor-days', '180')) || 180);
   const runDays = Math.max(1, Number(flag('run-days', '90')) || 90);
   const emailDays = Math.max(1, Number(flag('email-days', '7')) || 7);
+  const steamDays = Math.max(1, Number(flag('steam-days', '180')) || 180);
   const result = await withStore((store) =>
-    db.purgeOldRows((sql, p) => store.query(sql, p), { visitorDays, runDays, emailDays }),
+    db.purgeOldRows((sql, p) => store.query(sql, p), { visitorDays, runDays, emailDays, steamDays }),
   );
   console.log(
-    `清理完成：访问记录 ${result.visitorLogs} 条、采集记录 ${result.fetchRuns} 条、任务记录 ${result.syncRuns} 条、验证码 ${result.emailCodes} 条` +
-      `（保留：访问 ${visitorDays} 天 / 采集与任务 ${runDays} 天 / 验证码 ${emailDays} 天）`,
+    `清理完成：访问记录 ${result.visitorLogs} 条、采集记录 ${result.fetchRuns} 条、任务记录 ${result.syncRuns} 条、验证码 ${result.emailCodes} 条、Steam 账号日志 ${result.steamAccountLogs} 条` +
+      `（保留：访问 ${visitorDays} 天 / 采集与任务 ${runDays} 天 / 验证码 ${emailDays} 天 / Steam 日志 ${steamDays} 天）`,
   );
-  logger.info('maintenance.cleanup', { ...result, visitorDays, runDays, emailDays });
+  logger.info('maintenance.cleanup', { ...result, visitorDays, runDays, emailDays, steamDays });
 }
 
 // 热度回填：appdetails 的 recommendations（评测数）+ release_date，给 games 落 heat。

@@ -1,5 +1,5 @@
 import { createApp } from 'vue';
-import { ElAlert, ElBadge, ElButton, ElCheckbox, ElCheckboxGroup, ElConfigProvider, ElDialog, ElDrawer, ElEmpty, ElForm, ElFormItem, ElIcon, ElInput, ElOption, ElPagination, ElProgress, ElSelect, ElSkeleton, ElSwitch, ElTag } from 'element-plus';
+import { ElAlert, ElBadge, ElButton, ElCheckbox, ElCheckboxGroup, ElConfigProvider, ElDialog, ElDrawer, ElEmpty, ElForm, ElFormItem, ElIcon, ElInput, ElOption, ElPagination, ElPopover, ElProgress, ElSelect, ElSkeleton, ElSwitch, ElTag } from 'element-plus';
 import 'element-plus/es/components/alert/style/css';
 import 'element-plus/es/components/badge/style/css';
 import 'element-plus/es/components/button/style/css';
@@ -14,6 +14,7 @@ import 'element-plus/es/components/input/style/css';
 import 'element-plus/es/components/message/style/css';
 import 'element-plus/es/components/option/style/css';
 import 'element-plus/es/components/pagination/style/css';
+import 'element-plus/es/components/popover/style/css';
 import 'element-plus/es/components/progress/style/css';
 import 'element-plus/es/components/select/style/css';
 import 'element-plus/es/components/skeleton/style/css';
@@ -50,7 +51,7 @@ window.addEventListener('resize', function () {
 });
 
 const app = createApp(App);
-for (const component of [ElAlert, ElBadge, ElButton, ElCheckbox, ElCheckboxGroup, ElConfigProvider, ElDialog, ElDrawer, ElEmpty, ElForm, ElFormItem, ElIcon, ElInput, ElOption, ElPagination, ElProgress, ElSelect, ElSkeleton, ElSwitch, ElTag]) app.use(component);
+for (const component of [ElAlert, ElBadge, ElButton, ElCheckbox, ElCheckboxGroup, ElConfigProvider, ElDialog, ElDrawer, ElEmpty, ElForm, ElFormItem, ElIcon, ElInput, ElOption, ElPagination, ElPopover, ElProgress, ElSelect, ElSkeleton, ElSwitch, ElTag]) app.use(component);
 let adminUiReady = false;
 router.beforeEach(async (to) => {
   if (to.path === '/console' && !adminUiReady) {

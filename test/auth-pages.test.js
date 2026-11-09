@@ -15,6 +15,7 @@ const login = read('../frontend/src/pages/LoginPage.vue');
 const register = read('../frontend/src/pages/RegisterPage.vue');
 const changePwd = read('../frontend/src/pages/ChangePasswordPage.vue');
 const adminExtras = read('../frontend/src/pages/AdminExtras.vue');
+const userCreateDrawer = read('../frontend/src/components/UserCreateDrawer.vue');
 const mainJs = read('../frontend/src/main.js');
 const siteServer = read('../src/server.js');
 
@@ -66,12 +67,13 @@ test('改密页：forced 提示不可关闭、当前密码、成功后提示其�
 });
 
 test('后台：随机生成 + 临时密码弹窗（只显示一次）+ 重置留空生成临时密码（§5.5）', () => {
-  assert.match(adminExtras, /随机生成/, '随机生成按钮');
+  assert.match(userCreateDrawer, /随机生成/, '随机生成按钮（建号抽屉内，AT 批搬移）');
+  assert.match(userCreateDrawer, /留空自动生成临时密码/, '建号留空提示（抽屉内）');
   assert.match(adminExtras, /tempPwdDialog/, '临时密码弹窗');
   assert.match(adminExtras, /showTempPassword/, '展示临时密码');
   assert.match(adminExtras, /copyTempPassword/, '复制临时密码');
   assert.match(adminExtras, /仅显示一次/, '只显示一次提示');
-  assert.match(adminExtras, /留空自动生成临时密码/, '建号留空提示');
+  assert.match(userCreateDrawer, /tempPassword/, '抽屉内一次性展示临时密码');
   assert.match(adminExtras, /inputPattern:\/\^\$\|\^\.\{12,200\}\$/, '重置留空生成临时密码（校验放行空值）');
 });
 

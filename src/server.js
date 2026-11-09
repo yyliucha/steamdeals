@@ -1229,6 +1229,7 @@ export function createApiServer({
       // ---- Steam 多账号绑定 / 游戏库 / 愿望单（身份由站点会话决定，steam_sessions 已停用）----
       const steamMod = await import('./steam-login.js');
       const steamAccountsMod = await import('./steam-accounts.js');
+      const steamLogMod = await import('./steam-log.js');
 
       const MAX_ACCOUNTS_PER_USER = 5;
 
@@ -1241,9 +1242,12 @@ export function createApiServer({
         return apiKey;
       };
 
-      // 当前登录用户对该账号的所有权检查：返回账号行，无权/不存在返回 null（响应已写出）
+      // 当前登录用户对该账号的所有权检查：返回账号行（含昵称/归属用户名快照，供审计），无权/不存在返回 null（响应已写出）
       const requireAccountOwner = async (steamId) => {
-        const found = await q('select steam_id, user_id from steam_accounts where steam_id = $1', [steamId]);
+        const found = await q(
+          'select a.steam_id, a.user_id, a.persona_name, u.username from steam_accounts a left join users u on u.id = a.user_id where a.steam_id = $1',
+          [steamId],
+        );
         const row = found.rows[0];
         if (!row) {
           json(res, 404, { error: '没有该 Steam 账号' });
@@ -1328,10 +1332,21 @@ export function createApiServer({
           [steamId, persona.personaName, persona.avatar, user.id],
         );
         logger?.info('steam.bind_ok', { steamId, userId: user.id, persona: persona.personaName ?? null });
+        // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：绑定落一条审计；同步类动作由 syncAccount* 各自记录。
+        await steamLogMod.recordSteamLog(q, {
+          action: 'bind',
+          steamId,
+          personaName: persona.personaName,
+          userId: user.id,
+          username: user.username,
+          actor: 'self',
+          result: 'ok',
+        });
+        const logCtx = { actor: 'self', userId: user.id, username: user.username, personaName: persona.personaName };
         // 5) 自动同步库 + 愿望单（失败只记日志，不阻断绑定）
         if (apiKey) {
           try {
-            await steamAccountsMod.syncAccountLibrary(q, { steamId, apiKey, logger });
+            await steamAccountsMod.syncAccountLibrary(q, { steamId, apiKey, logger, log: logCtx });
           } catch (err) {
             logger?.warn('steam.bind_library_failed', { steamId, message: String(err.message).slice(0, 160) });
           }
@@ -1341,7 +1356,7 @@ export function createApiServer({
             logger?.warn('steam.bind_types_failed', { steamId, message: String(err.message).slice(0, 160) });
           }
           try {
-            await steamAccountsMod.syncAccountWishlist(q, { steamId, apiKey, userId: user.id, logger });
+            await steamAccountsMod.syncAccountWishlist(q, { steamId, apiKey, userId: user.id, logger, log: logCtx });
           } catch (err) {
             logger?.warn('steam.bind_wishlist_failed', { steamId, message: String(err.message).slice(0, 160) });
           }
@@ -1377,10 +1392,20 @@ export function createApiServer({
         // 认领（迁移）：管理员把未归属账号划到自己名下
         if (accountAction[2] === 'claim' && req.method === 'POST') {
           if (!requireAdmin()) return;
-          const found = await q('select user_id from steam_accounts where steam_id = $1', [steamId]);
+          const found = await q('select user_id, persona_name from steam_accounts where steam_id = $1', [steamId]);
           if (!found.rows[0]) return json(res, 404, { error: '没有该 Steam 账号' });
           if (found.rows[0].user_id != null) return json(res, 409, { error: '该账号已被认领' });
           await q('update steam_accounts set user_id = $1, last_login_at = now() where steam_id = $2 and user_id is null', [user.id, steamId]);
+          // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：认领落审计（失败吞异常，不影响认领）
+          await steamLogMod.recordSteamLog(q, {
+            action: 'claim',
+            steamId,
+            personaName: found.rows[0].persona_name,
+            userId: user.id,
+            username: user.username,
+            actor: `admin:${user.username}`,
+            result: 'ok',
+          });
           logger?.info('steam.claim', { steamId, userId: user.id, by: user.username });
           return json(res, 200, { ok: true });
         }
@@ -1390,7 +1415,12 @@ export function createApiServer({
           const apiKey = requireSteamApiKey();
           if (!apiKey) return;
           try {
-            const result = await steamAccountsMod.syncAccountLibrary(q, { steamId, apiKey, logger });
+            const result = await steamAccountsMod.syncAccountLibrary(q, {
+              steamId,
+              apiKey,
+              logger,
+              log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
+            });
             // 补全目录类型（类型未知数靠 app_type；只挑缺失的，天然收敛）
             const types = await steamAccountsMod.backfillOwnedAppTypes(q, { steamId, apiKey, logger });
             const stats = await steamAccountsMod.ownedTypeStats(q, steamId);
@@ -1405,7 +1435,13 @@ export function createApiServer({
           const apiKey = requireSteamApiKey();
           if (!apiKey) return;
           try {
-            const result = await steamAccountsMod.syncAccountWishlist(q, { steamId, apiKey, userId: user.id, logger });
+            const result = await steamAccountsMod.syncAccountWishlist(q, {
+              steamId,
+              apiKey,
+              userId: user.id,
+              logger,
+              log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
+            });
             return json(res, 200, result);
           } catch (err) {
             return json(res, 502, { error: '拉取愿望单失败：' + String(err.message).slice(0, 160) });
@@ -1440,10 +1476,18 @@ export function createApiServer({
         if (typeof body.apiKey === 'string' && body.apiKey.trim()) {
           const auth = await import('./email-auth.js');
           const enc = auth.encryptSecret(body.apiKey.trim(), auth.loadSecretKey());
-          await steamAccountsMod.setAccountApiKey(q, { steamId, apiKeyEnc: enc });
+          await steamAccountsMod.setAccountApiKey(q, {
+            steamId,
+            apiKeyEnc: enc,
+            log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
+          });
           apiKeyChanged = true;
         } else if (body.clearApiKey === true) {
-          await steamAccountsMod.setAccountApiKey(q, { steamId, apiKeyEnc: null });
+          await steamAccountsMod.setAccountApiKey(q, {
+            steamId,
+            apiKeyEnc: null,
+            log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
+          });
           apiKeyChanged = false;
         }
         const after = await q('select (api_key_enc is not null) as api_key_set from steam_accounts where steam_id = $1', [steamId]);
@@ -1456,7 +1500,12 @@ export function createApiServer({
         const steamId = decodeURIComponent(accountMatch[1]);
         const row = await requireAccountOwner(steamId);
         if (!row) return;
-        const result = await steamAccountsMod.unbindAccount(q, { steamId, userId: user.id, logger });
+        const result = await steamAccountsMod.unbindAccount(q, {
+          steamId,
+          userId: user.id,
+          logger,
+          log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
+        });
         return json(res, 200, result);
       }
 
@@ -2774,15 +2823,19 @@ export function createApiServer({
         return json(res, 200, { images: images.imageStats() });
       }
 
-      // ---- 管理员：价格变动报表（涨跌榜 + 按天趋势 + CSV 导出）----
+      // ---- 管理员：价格变动报表（涨跌榜 + 悬停线图序列 + CSV 导出）----
       if (path === '/api/admin/reports/price' && req.method === 'GET') {
         if (!requireAdmin()) return;
         const hours = Number(url.searchParams.get('hours') ?? 24);
         const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 100) || 100, 1), 500);
-        const days = Number(url.searchParams.get('days') ?? 7);
+        const days = Math.min(Math.max(Number(url.searchParams.get('days') ?? 7) || 7, 1), 30);
+        const report = await db.priceChanges(q, { hours, limit });
+        // AT 批（docs/ADMIN-CONSOLE-IA.md §6）：去 daily、加 series——
+        // 报告里出现的 game_id 一次查出近 N 天每日最低（官方渠道），悬停零额外请求。
+        const gameIds = [...(report.topDrops || []), ...(report.topRises || [])].map((r) => r.game_id);
         return json(res, 200, {
-          report: await db.priceChanges(q, { hours, limit }),
-          daily: await db.priceChangesByDay(q, { days }),
+          report,
+          series: await db.dailyMinSeriesBatch(q, { gameIds, days }),
         });
       }
 
@@ -3130,6 +3183,18 @@ export function createApiServer({
         const op = await db.getBulkOp(q, Number(bulkOpMatch[1]));
         if (!op) return json(res, 404, { error: '记录不存在' });
         return json(res, 200, { op });
+      }
+
+      // ---- 管理员：Steam 账号操作日志（docs/ADMIN-CONSOLE-IA.md §6，AT 批）----
+      // 参数 limit(≤500) / steamId / action / result / days(默认 30)；返回 { entries, total }。
+      if (path === '/api/admin/steam-logs' && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const limit = Number(url.searchParams.get('limit') ?? 100);
+        const steamId = String(url.searchParams.get('steamId') ?? '').trim() || null;
+        const action = String(url.searchParams.get('action') ?? '').trim() || null;
+        const result = String(url.searchParams.get('result') ?? '').trim() || null;
+        const days = Number(url.searchParams.get('days') ?? 30);
+        return json(res, 200, await steamLogMod.listSteamLogs(q, { limit, steamId, action, result, days }));
       }
 
       return json(res, 404, { error: 'not found' });

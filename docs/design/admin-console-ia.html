@@ -1,0 +1,862 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SteamDeals 管理控制台 · 信息架构改版原型</title>
+<style>
+:root{
+  --bg:#0f1524;--bg-2:#121a2e;--bg-glow:#1b2340;--panel:#161f33;--panel-2:#1a2440;
+  --border:#26334c;--border-2:#2c3a56;--fg:#e6eaf2;--fg-2:#c4cbd9;--fg-muted:#94a0b5;--fg-subtle:#6d7a90;
+  --brand:#8b82f5;--brand-2:#38d9f0;--brand-soft:#242347;--warn:#f0a34c;--warn-bg:#332a17;
+  --danger:#f0717e;--danger-bg:#331b1d;--success:#34c39b;
+  font-family:'DM Sans','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  color:var(--fg);background:var(--bg-2);
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:var(--bg-2);color:var(--fg);font-size:13px}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--brand);text-decoration:none}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:11.5px}
+.muted{color:var(--fg-muted)}
+/* ===== 外壳 ===== */
+.admin-shell{min-height:100vh;display:grid;grid-template-columns:248px minmax(0,1fr);background:var(--bg-2)}
+.admin-sidebar{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:24px 15px 17px;background:var(--panel);border-right:1px solid var(--border)}
+.admin-brand{display:flex;align-items:center;gap:11px;color:var(--fg);padding:0 10px 22px;font-size:17px;font-weight:800;letter-spacing:-.03em}
+.admin-brand small{display:block;color:var(--fg-muted);font-size:10px;font-weight:500;letter-spacing:.09em;margin-top:1px}
+.brand-mark{display:grid;place-items:center;width:37px;height:37px;background:linear-gradient(145deg,#8b82f5,#7a6ff0);border-radius:12px;color:#fff;font-size:18px;box-shadow:0 6px 16px #8b82f536}
+.admin-search{padding:0 3px 20px}
+.admin-search input{width:100%;height:34px;border-radius:10px;border:1px solid var(--border);background:var(--panel-2);padding:0 11px;outline:none;font-size:12px}
+.admin-search input::placeholder{color:var(--fg-subtle)}
+.admin-nav{display:flex;flex-direction:column;gap:4px;overflow:auto;flex:1;min-height:0}
+.nav-heading{padding:13px 11px 7px;color:var(--fg-muted);font-size:10px;font-weight:700;letter-spacing:.13em}
+.admin-nav button{display:flex;align-items:center;gap:11px;width:100%;padding:10px 11px;border:0;border-radius:9px;background:transparent;color:var(--fg-muted);text-align:left;font-size:13px;cursor:pointer;transition:.15s}
+.admin-nav button:hover{background:var(--panel-2);color:var(--brand)}
+.admin-nav button.active{background:var(--brand-soft);color:var(--brand);font-weight:650}
+.nav-glyph{width:21px;text-align:center;font-size:15px;flex:none}
+.nav-badge{margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.04em;color:#0f1524;background:var(--brand-2);border-radius:20px;padding:1px 7px}
+.nav-note{margin-left:auto;font-size:9.5px;color:var(--fg-subtle);border:1px dashed var(--border-2);border-radius:20px;padding:1px 6px}
+.nav-merged{margin:5px 10px 2px;font-size:10px;line-height:1.6;color:var(--fg-muted);border-left:2px solid var(--border-2);padding:1px 0 1px 8px}
+.admin-bottom{margin-top:auto;border-top:1px solid var(--border);padding:12px 7px 0;display:flex;flex-direction:column;gap:2px}
+.bottom-actions{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.user-tag{font-size:11px;color:var(--success);border:1px solid #34c39b55;background:#34c39b14;border-radius:6px;padding:1px 7px}
+.back-link{font-size:11.5px;color:var(--fg-muted);cursor:pointer}
+.admin-content{min-width:0;padding:30px clamp(18px,3vw,44px) 32px;display:flex;flex-direction:column;height:100vh;overflow:auto}
+.admin-header{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding-bottom:21px}
+.admin-crumb{font-size:11px;color:var(--fg-muted);margin:0 0 9px}
+.admin-crumb span{padding:0 7px;color:var(--fg-subtle)}
+.admin-header h1{font-size:24px;letter-spacing:-.04em;margin:0;color:var(--fg);font-weight:800}
+.admin-header p{font-size:12px;color:var(--fg-muted);margin:6px 0 0}
+.header-actions{display:flex;gap:8px;padding-top:18px;align-items:center;flex:none}
+.view{display:none;flex-direction:column;gap:14px;min-width:0}
+.view.on{display:flex}
+/* ===== 通用组件 ===== */
+.card{background:var(--panel);border:1px solid var(--border);border-radius:13px;padding:16px;min-width:0}
+.card.table{padding:0;overflow:hidden}
+.card h3{font-size:14px;margin:0;color:var(--fg)}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}
+.card-head.pad{padding:15px 15px 0;margin:0}
+.card-head p{font-size:11px;color:var(--fg-muted);margin:4px 0 0}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 13px;border-radius:8px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--fg-2);font-size:12.5px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--brand);color:var(--brand)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:650}
+.btn.primary:hover{background:#7a6ff0;color:#fff}
+.btn.plain{background:transparent}
+.btn.small{height:26px;padding:0 9px;font-size:11.5px}
+.btn.link{border:0;background:none;color:var(--brand);padding:0 4px;height:auto}
+.btn.danger{color:var(--danger);border-color:#f0717e44}
+.tabs{display:flex;gap:5px;border-bottom:1px solid var(--border);padding:0 2px 10px;flex-wrap:wrap;align-items:center}
+.tabs button{border:0;background:transparent;border-radius:8px;padding:8px 13px;color:var(--fg-muted);font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.tabs button.on{background:var(--brand-soft);color:var(--brand);font-weight:650}
+.tabs .count{font-size:10px;color:var(--fg-subtle);background:var(--panel-2);border-radius:20px;padding:1px 6px}
+.tabs button.on .count{color:var(--brand);background:#ffffff12}
+.tabpane{display:none}
+.tabpane.on{display:block}
+.toolbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:0 0 12px}
+.toolbar input,.toolbar select{height:30px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);padding:0 10px;font-size:12px;outline:none;min-width:150px}
+.toolbar .grow{flex:1}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;line-height:1.6;padding:0 7px;border-radius:6px;border:1px solid transparent;white-space:nowrap}
+.tag.ok{color:var(--success);background:#34c39b14;border-color:#34c39b44}
+.tag.warn{color:var(--warn);background:var(--warn-bg);border-color:#f0a34c44}
+.tag.danger{color:var(--danger);background:var(--danger-bg);border-color:#f0717e44}
+.tag.info{color:var(--fg-muted);background:var(--panel-2);border-color:var(--border-2)}
+.tag.brand{color:var(--brand);background:var(--brand-soft);border-color:#8b82f544}
+table.t{width:100%;border-collapse:collapse}
+table.t th{text-align:left;font-size:11px;font-weight:600;color:var(--fg-muted);padding:10px 13px;border-bottom:1px solid var(--border);white-space:nowrap;background:var(--panel)}
+table.t td{padding:11px 13px;border-bottom:1px solid var(--border);font-size:12.5px;color:var(--fg-2);vertical-align:middle}
+table.t tr:nth-child(even) td{background:#1a244066}
+table.t tr:hover td{background:#1f2a4a99}
+table.t td.num,table.t th.num{text-align:right}
+table.t .strong{color:var(--fg);font-weight:650}
+.pager{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 15px;color:var(--fg-muted);font-size:11px}
+.pager .pages{display:flex;gap:5px}
+.pager .pages span{min-width:24px;height:24px;display:grid;place-items:center;border:1px solid var(--border);border-radius:6px;font-size:11px}
+.pager .pages span.on{background:var(--brand-soft);color:var(--brand);border-color:var(--brand-soft)}
+.hint{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--fg-muted);background:var(--panel-2);border:1px dashed var(--border-2);border-radius:9px;padding:9px 12px}
+.hint b{color:var(--fg-2);font-weight:650}
+.hint .spacer{flex:1}
+/* 表单 */
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.field{display:flex;flex-direction:column;gap:7px;min-width:0}
+.field.full{grid-column:1/-1}
+.field label{font-size:11.5px;font-weight:650;color:var(--fg-2);display:flex;align-items:center;gap:8px}
+.field label .req{color:var(--danger)}
+.field input,.field select,.field textarea{width:100%;border-radius:9px;border:1px solid var(--border);background:var(--panel-2);padding:9px 11px;font-size:12.5px;outline:none}
+.field textarea{min-height:118px;resize:vertical;line-height:1.6}
+.field input::placeholder,.field textarea::placeholder{color:var(--fg-subtle)}
+.field .help{font-size:10.5px;color:var(--fg-muted);line-height:1.6}
+.inline{display:flex;gap:8px;align-items:center}
+.inline input{flex:1}
+.switch{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--fg-muted);cursor:pointer}
+.switch i{width:34px;height:18px;border-radius:20px;background:var(--success);position:relative;transition:.15s;flex:none}
+.switch i::after{content:'';position:absolute;top:2px;left:18px;width:14px;height:14px;border-radius:50%;background:#fff}
+.switch.off i{background:var(--border-2)}
+.switch.off i::after{left:2px}
+.radio-cards{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.radio-card{border:1px solid var(--border);border-radius:10px;padding:10px 12px;cursor:pointer;background:var(--panel-2)}
+.radio-card.on{border-color:var(--brand);background:var(--brand-soft)}
+.radio-card strong{display:block;font-size:12.5px;color:var(--fg)}
+.radio-card small{display:block;font-size:10.5px;color:var(--fg-muted);margin-top:3px}
+.form-foot{display:flex;justify-content:flex-end;gap:9px;padding-top:4px}
+.form-narrow{max-width:820px}
+.section-title{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--fg-muted);text-transform:uppercase;margin:2px 0 0}
+/* 用户列表 */
+.user-cell{display:flex;align-items:center;gap:9px}
+.avatar{width:26px;height:26px;border-radius:8px;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;font-size:11px;font-weight:700;flex:none}
+/* 公告 */
+.ann-list{display:flex;flex-direction:column;gap:10px}
+.ann{display:flex;align-items:flex-start;gap:14px;padding:15px 16px}
+.ann-badge{flex:none;border-radius:8px;padding:5px 8px;font-size:10px;color:var(--brand);background:var(--brand-soft);margin-top:2px}
+.ann-badge.warning{color:var(--warn);background:var(--warn-bg)}
+.ann-body{flex:1;min-width:0}
+.ann-body .head{display:flex;align-items:center;gap:9px}
+.ann-body .head h3{font-size:13.5px}
+.ann-body p{font-size:12px;color:var(--fg-muted);line-height:1.65;margin:7px 0 6px;overflow-wrap:anywhere}
+.ann-body small{font-size:10.5px;color:var(--fg-subtle)}
+.ann-actions{display:flex;gap:5px;flex:none}
+/* 设置 */
+.settings-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:sticky;top:0;z-index:3;background:var(--bg-2);padding:2px 0 10px}
+.settings-toolbar input{flex:0 1 380px;height:32px;border-radius:9px;border:1px solid var(--border);background:var(--panel-2);padding:0 11px;font-size:12px;outline:none}
+.settings-meta{font-size:10.5px;color:var(--fg-muted);margin:-4px 0 2px}
+.settings-meta .dirty{color:var(--warn);margin-left:8px}
+.setting-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:12px}
+.setting{border:1px solid var(--border);border-radius:9px;padding:11px;min-width:0;background:var(--panel-2)}
+.setting .head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.setting .head label{font-size:11.5px;font-weight:650;color:var(--fg-2)}
+.setting input,.setting select{width:100%;height:30px;border-radius:7px;border:1px solid var(--border);background:var(--panel);padding:0 9px;font-size:12px;outline:none}
+.setting .help{font-size:10px;color:var(--fg-muted);margin-top:6px;line-height:1.5}
+.src{font-size:9.5px;color:var(--fg-muted);border:1px solid var(--border-2);border-radius:20px;padding:0 6px;white-space:nowrap}
+/* 指标卡 + 图表 */
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.metric{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:13px 15px;display:flex;flex-direction:column;gap:8px}
+.metric span{font-size:11px;color:var(--fg-muted)}
+.metric strong{font-size:23px;letter-spacing:-.04em}
+.metric.green strong{color:var(--success)}
+.metric.red strong{color:var(--danger)}
+.report-head{display:flex;align-items:center;gap:8px}
+.report-head>div{flex:1}
+.report-head h2{font-size:15px;margin:0}
+.report-head p{font-size:11px;color:var(--fg-muted);margin:4px 0 0}
+.chg-cell{position:relative;cursor:help}
+.chg{font-weight:650;border-bottom:1px dotted var(--fg-subtle)}
+.chg.down{color:var(--success)}
+.chg.up{color:var(--danger)}
+.chg-pop{display:none;position:absolute;right:calc(100% + 14px);top:50%;transform:translateY(-38%);z-index:20;width:304px;background:var(--panel);border:1px solid var(--brand);border-radius:12px;padding:12px 13px 10px;box-shadow:0 18px 40px #00000066;text-align:left}
+.chg-pop::after{content:'';position:absolute;right:-6px;top:calc(38% - 5px);width:9px;height:9px;background:var(--panel);border-right:1px solid var(--brand);border-top:1px solid var(--brand);transform:rotate(45deg)}
+.chg-cell:hover .chg-pop,.chg-cell.force .chg-pop{display:block}
+.chg-pop .pop-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:2px}
+.chg-pop .pop-head strong{font-size:12px;color:var(--fg)}
+.chg-pop .pop-head span{font-size:10px;color:var(--fg-muted)}
+.chg-pop .pop-sub{font-size:10.5px;color:var(--fg-muted);margin:0 0 6px}
+.chg-pop svg{display:block;width:100%;height:82px}
+.chg-pop .pop-foot{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--border);padding-top:7px;margin-top:6px;font-size:10.5px;color:var(--fg-muted)}
+.chg-pop .pop-foot b{color:var(--fg);font-weight:650}
+.chg-pop .pop-foot .low{color:var(--success)}
+/* 日志 tab 内容 */
+.log-note{display:block;background:var(--brand-soft);border:1px solid #8b82f533;border-radius:10px;padding:10px 13px;font-size:11.5px;color:var(--fg-2);line-height:1.7;overflow-wrap:anywhere}
+.log-note b{color:var(--brand)}
+.log-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:13px 15px 11px;border-bottom:1px solid var(--border)}
+.log-toolbar input,.log-toolbar select{height:29px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);padding:0 9px;font-size:11.5px;outline:none}
+.log-toolbar .grow{flex:1}
+.console-box{background:#0c1220;border:1px solid var(--border);border-radius:9px;padding:11px 13px;font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.7;color:#9fb2cf;white-space:pre-wrap;max-height:180px;overflow:auto;margin:0 15px 15px}
+.sync-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.steam-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.subtabs{display:flex;gap:4px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:3px}
+.subtabs button{border:0;background:transparent;color:var(--fg-muted);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer}
+.subtabs button.on{background:var(--brand-soft);color:var(--brand)}
+/* 抽屉（新增/编辑浮层：不跳页） */
+.drawer-mask{position:fixed;inset:0;z-index:80;background:#05080f80;backdrop-filter:blur(1.5px);display:none}
+.drawer-mask.on{display:block}
+.drawer{position:absolute;right:0;top:0;bottom:0;width:min(560px,94vw);background:var(--panel);border-left:1px solid var(--border);box-shadow:-24px 0 60px #00000066;display:flex;flex-direction:column}
+.drawer.wide{width:min(660px,96vw)}
+.drawer-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:20px 22px 14px;border-bottom:1px solid var(--border)}
+.drawer-head h2{margin:0;font-size:18px;letter-spacing:-.03em}
+.drawer-head p{margin:6px 0 0;font-size:11.5px;color:var(--fg-muted)}
+.drawer-x{border:0;background:var(--panel-2);color:var(--fg-muted);width:28px;height:28px;border-radius:8px;cursor:pointer;flex:none;font-size:13px}
+.drawer-body{padding:18px 22px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:14px}
+.drawer-foot{display:flex;justify-content:flex-end;gap:9px;padding:14px 22px;border-top:1px solid var(--border);background:var(--panel)}
+@keyframes slidein{from{transform:translateX(24px);opacity:.6}to{transform:none;opacity:1}}
+.drawer-mask.on .drawer{animation:slidein .18s ease-out}
+/* 原型说明条 */
+.proto-tip{position:fixed;right:18px;bottom:18px;z-index:50;display:flex;align-items:center;gap:10px;background:#0b1020dd;border:1px solid var(--brand);border-radius:12px;padding:9px 12px;font-size:11.5px;color:var(--fg-2);backdrop-filter:blur(6px);box-shadow:0 12px 30px #00000055}
+.proto-tip b{color:var(--brand)}
+.proto-tip .kbd{border:1px solid var(--border-2);border-radius:5px;padding:0 5px;font-size:10px;color:var(--fg-muted)}
+body.shot .proto-tip{display:none}
+@media (max-width:1280px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<div class="admin-shell">
+  <aside class="admin-sidebar">
+    <a class="admin-brand" href="#users"><span class="brand-mark">S</span><span>SteamDeals<small>管理控制台</small></span></a>
+    <div class="admin-search"><input placeholder="搜索管理功能"></div>
+    <nav class="admin-nav">
+      <div class="nav-heading">内容运营</div>
+      <button data-view="games"><span class="nav-glyph">▦</span><span>游戏管理</span></button>
+      <button data-view="recycle"><span class="nav-glyph">▤</span><span>回收站</span></button>
+      <button data-view="announcements"><span class="nav-glyph">▱</span><span>站点通知</span></button>
+
+      <div class="nav-heading">访问与安全</div>
+      <button data-view="visitors"><span class="nav-glyph">◉</span><span>访问记录</span><span class="nav-note">不变</span></button>
+
+      <div class="nav-heading">账号与服务</div>
+      <button data-view="users"><span class="nav-glyph">♙</span><span>用户管理</span></button>
+      <button data-view="steam"><span class="nav-glyph">◈</span><span>Steam 账号</span></button>
+      <button data-view="mail"><span class="nav-glyph">✉</span><span>邮件服务</span></button>
+
+      <div class="nav-heading">日志审计</div>
+      <button data-view="op-logs"><span class="nav-glyph">☰</span><span>操作日志</span><span class="nav-badge">新</span></button>
+      <div class="nav-merged">「批量操作记录」「运行日志」「用户管理·最近删除」「邮件服务·发送记录」并入这里</div>
+
+      <div class="nav-heading">系统</div>
+      <button data-view="settings"><span class="nav-glyph">⚙</span><span>系统设置</span></button>
+      <button data-view="stats"><span class="nav-glyph">▥</span><span>数据统计</span></button>
+    </nav>
+    <div class="admin-bottom">
+      <div class="bottom-actions"><span class="user-tag">sunboxiang</span><span class="back-link">返回网站 ↗</span></div>
+    </div>
+  </aside>
+
+  <main class="admin-content">
+
+    <!-- ================= 用户管理（只留列表） ================= -->
+    <section class="view" id="view-users">
+      <header class="admin-header">
+        <div>
+          <div class="admin-crumb">管理中心 <span>/</span> 账号与服务</div>
+          <h1>用户管理</h1>
+          <p>管理账号、角色与登录权限</p>
+        </div>
+        <div class="header-actions">
+          <button class="btn" data-go="op-logs">操作日志 · 用户删除 ↗</button>
+          <button class="btn primary" data-drawer="new-user">＋ 新建用户</button>
+        </div>
+      </header>
+
+      <div class="hint"><b>本次改动</b>：顶部「新建用户」表单移出本页 → 独立页面（右上按钮进入）；「最近删除」列表移入「操作日志」。</div>
+
+      <div class="card table">
+        <div class="log-toolbar">
+          <input placeholder="搜索用户名 / 邮箱" style="min-width:220px">
+          <select><option>全部角色</option><option>管理员</option><option>普通用户</option></select>
+          <select><option>全部状态</option><option>正常</option><option>已禁用</option><option>已锁定</option></select>
+          <span class="grow"></span>
+          <button class="btn small">刷新列表</button>
+        </div>
+        <table class="t">
+          <thead>
+            <tr>
+              <th style="width:34px"><input type="checkbox"></th>
+              <th>用户名</th><th>显示名</th><th>邮箱</th><th>角色</th><th>状态</th><th>最近登录</th><th style="width:250px">管理操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><input type="checkbox"></td>
+              <td><div class="user-cell"><span class="avatar">S</span><span class="strong">sunboxiang</span></div></td>
+              <td>管理员</td>
+              <td>jacksunyx@outlook.com <span class="tag ok">已验证</span></td>
+              <td><span class="tag danger">管理员</span></td>
+              <td><span class="tag ok">正常</span></td>
+              <td class="muted">2026/11/06 09:27:13</td>
+              <td><button class="btn link">改名</button><button class="btn link">邮箱</button><button class="btn link">重置密码</button><button class="btn link danger">禁用</button></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox"></td>
+              <td><div class="user-cell"><span class="avatar">T</span><span class="strong">test_normal</span></div></td>
+              <td>—</td>
+              <td class="muted">未绑定</td>
+              <td><span class="tag info">普通用户</span></td>
+              <td><span class="tag ok">正常</span> <span class="tag danger">已锁定</span> <span class="tag warn">需改密</span> <button class="btn link">解锁</button></td>
+              <td class="muted">2026/11/09 09:12:40</td>
+              <td><button class="btn link">改名</button><button class="btn link">邮箱</button><button class="btn link">重置密码</button><button class="btn link danger">禁用</button><button class="btn link danger">删除</button></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox"></td>
+              <td><div class="user-cell"><span class="avatar">E</span><span class="strong">e2eqa_39359288</span></div></td>
+              <td>—</td>
+              <td>e2e_39359288@example.com <span class="tag warn">未验证</span></td>
+              <td><span class="tag info">普通用户</span></td>
+              <td><span class="tag ok">正常</span> <span class="tag danger">弱密码</span></td>
+              <td class="muted">2026/11/09 09:31:02</td>
+              <td><button class="btn link">改名</button><button class="btn link">邮箱</button><button class="btn link">验证</button><button class="btn link">重置密码</button><button class="btn link danger">禁用</button></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="pager"><span>共 3 条 · 已选 0 条</span><div class="pages"><span class="on">1</span></div></div>
+      </div>
+    </section>
+
+    <!-- ================= 站点通知（列表） ================= -->
+    <section class="view" id="view-announcements">
+      <header class="admin-header">
+        <div>
+          <div class="admin-crumb">管理中心 <span>/</span> 内容运营</div>
+          <h1>站点通知</h1>
+          <p>发布和管理网站公告</p>
+        </div>
+        <div class="header-actions"><button class="btn primary" data-drawer="new-ann">＋ 新建通知</button></div>
+      </header>
+
+      <div class="hint"><b>本次改动</b>：原页面顶部的「发布站点通知」表单移出 → 独立页面；本页只保留公告列表与批量操作。</div>
+
+      <div class="card" style="padding:14px 15px">
+        <div class="toolbar" style="padding:0">
+          <input placeholder="搜索标题 / 正文" style="min-width:230px">
+          <select><option>全部状态</option><option>启用</option><option>停用</option></select>
+          <select><option>全部级别</option><option>普通通知</option><option>提醒</option><option>重要</option></select>
+          <span class="grow"></span>
+          <span class="muted" style="font-size:11px">共 2 条</span>
+        </div>
+      </div>
+
+      <div class="ann-list">
+        <article class="card ann">
+          <input type="checkbox" style="margin-top:6px">
+          <div class="ann-badge">通知</div>
+          <div class="ann-body">
+            <div class="head"><h3>站点改版完成：前台与后台全面焕新</h3><span class="tag ok">启用</span></div>
+            <p>站点前端已完成改版：游戏列表、筛选、价格详情、登录以及后台管理页面都换成了新界面，网址和账号不变，后台入口仍是 /console。价格数据、历史低价的统计逻辑没有任何变化，采集照常进行。如果打开后页面显示不正常，请强制刷新一次（电脑 Ctrl+F5，手机清除浏览器缓存）再试。</p>
+            <small>立即生效 — 2026/11/05 00:00:00</small>
+          </div>
+          <div class="ann-actions"><button class="btn">编辑</button><button class="btn danger">删除</button></div>
+        </article>
+        <article class="card ann">
+          <input type="checkbox" style="margin-top:6px">
+          <div class="ann-badge">通知</div>
+          <div class="ann-body">
+            <div class="head"><h3>站点须知</h3><span class="tag ok">启用</span></div>
+            <p>站点打磨中，可能存在误封的情况，可以直接申诉。</p>
+            <small>2026/10/29 12:34:00 — 2026/11/05 17:22:00</small>
+          </div>
+          <div class="ann-actions"><button class="btn">编辑</button><button class="btn danger">删除</button></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ================= 操作日志（新菜单，tab 合并） ================= -->
+    <section class="view" id="view-op-logs">
+      <header class="admin-header">
+        <div>
+          <div class="admin-crumb">管理中心 <span>/</span> 日志审计</div>
+          <h1>操作日志</h1>
+          <p>全站审计与运行记录：用户删除、批量操作、Steam 账号、邮件发送、运行与同步</p>
+        </div>
+        <div class="header-actions"><button class="btn">刷新</button></div>
+      </header>
+
+      <div class="log-note"><b>合并说明</b>：原「用户管理 · 最近删除」「批量操作记录」菜单、「运行日志」菜单、「邮件服务 · 最近发送记录」都收进本页；
+        保留原有权限与数据来源，只是入口收敛成 tab；支持 <span class="mono">/console?section=op-logs&amp;tab=user-deletions</span> 直达。</div>
+
+      <div class="card" style="padding:14px 15px 6px">
+        <div class="tabs" id="logTabs">
+          <button class="on" data-tab="user-deletions">用户删除 <span class="count">≤200</span></button>
+          <button data-tab="bulk">批量操作 <span class="count">312</span></button>
+          <button data-tab="steam">Steam 账号 <span class="count">新</span></button>
+          <button data-tab="mail">邮件发送</button>
+          <button data-tab="run">运行与同步</button>
+        </div>
+      </div>
+
+      <!-- 用户删除 -->
+      <div class="card table tabpane on" data-pane="user-deletions">
+        <div class="log-toolbar">
+          <input placeholder="按用户名搜索" style="min-width:200px">
+          <input placeholder="开始日期">
+          <input placeholder="结束日期">
+          <span class="grow"></span>
+          <span class="muted" style="font-size:11px">只读审计 · 最多 200 条</span>
+          <button class="btn small">搜索</button>
+        </div>
+        <table class="t">
+          <thead><tr><th>用户名</th><th>角色</th><th>删除时间</th><th>操作者</th><th class="num">Steam 账号</th><th>原因</th></tr></thead>
+          <tbody>
+            <tr><td class="strong">e2eqa_39359288</td><td>普通用户</td><td class="muted">2026/11/09 09:31:36</td><td>sunboxiang</td><td class="num">0</td><td>删除测试数据</td></tr>
+            <tr><td class="strong">e2eqa_39312486</td><td>普通用户</td><td class="muted">2026/11/09 09:31:24</td><td>sunboxiang</td><td class="num">0</td><td>测试数据删除</td></tr>
+            <tr><td class="strong">test_normal</td><td>管理员</td><td class="muted">2026/11/09 09:31:19</td><td>sunboxiang</td><td class="num">0</td><td>测试数据删除</td></tr>
+            <tr><td class="strong">test.admin</td><td>普通用户</td><td class="muted">2026/11/09 09:31:13</td><td>sunboxiang</td><td class="num">0</td><td>测试数据删除</td></tr>
+          </tbody>
+        </table>
+        <div class="pager"><span>共 4 条</span><div class="pages"><span class="on">1</span></div></div>
+      </div>
+
+      <!-- 批量操作 -->
+      <div class="card table tabpane" data-pane="bulk">
+        <div class="log-toolbar">
+          <input placeholder="操作者 / 动作">
+          <select><option>全部列表</option><option>游戏</option><option>公告</option><option>访问</option><option>设备</option></select>
+          <span class="grow"></span>
+          <button class="btn small">刷新</button>
+        </div>
+        <table class="t">
+          <thead><tr><th>时间</th><th>操作者</th><th>列表</th><th>动作</th><th class="num">总数</th><th class="num">成功</th><th class="num">跳过</th><th class="num">失败</th><th class="num">耗时</th><th></th></tr></thead>
+          <tbody>
+            <tr><td class="muted">2026/11/09 09:32:10</td><td>sunboxiang</td><td>用户</td><td>禁用</td><td class="num">3</td><td class="num">3</td><td class="num">0</td><td class="num">0</td><td class="num">182 ms</td><td><button class="btn link">详情</button></td></tr>
+            <tr><td class="muted">2026/11/09 09:20:44</td><td>sunboxiang</td><td>游戏</td><td>禁用</td><td class="num">12</td><td class="num">12</td><td class="num">0</td><td class="num">0</td><td class="num">410 ms</td><td><button class="btn link">详情</button></td></tr>
+            <tr><td class="muted">2026/11/09 09:12:03</td><td>sunboxiang</td><td>异常审核</td><td>封 IP</td><td class="num">7</td><td class="num">6</td><td class="num">1</td><td class="num">0</td><td class="num">260 ms</td><td><button class="btn link">详情</button></td></tr>
+          </tbody>
+        </table>
+        <div class="pager"><span>共 312 条</span><div class="pages"><span class="on">1</span><span>2</span><span>3</span></div></div>
+      </div>
+
+
+      <!-- Steam 账号日志（新增） -->
+      <div class="card table tabpane" data-pane="steam">
+        <div class="log-toolbar">
+          <input placeholder="Steam ID / 用户名">
+          <select><option>全部动作</option><option>绑定</option><option>解绑</option><option>认领</option><option>同步游戏库</option><option>同步愿望单</option><option>更换 API Key</option></select>
+          <select><option>全部结果</option><option>成功</option><option>失败</option></select>
+          <span class="grow"></span>
+          <span class="muted" style="font-size:11px">保留 180 天</span>
+        </div>
+        <table class="t">
+          <thead><tr><th>时间</th><th>动作</th><th>Steam 账号</th><th>归属用户</th><th>操作者</th><th>结果</th><th>耗时</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td class="muted">2026/11/09 10:02:31</td><td><span class="tag brand">同步游戏库</span></td><td class="mono">76561198012345678</td><td>sunboxiang</td><td class="muted">调度器</td><td><span class="tag ok">成功</span></td><td class="num">8.4 s</td><td class="muted">新增 12 · 移除 0 · 共 486</td></tr>
+            <tr><td class="muted">2026/11/09 09:58:02</td><td><span class="tag brand">同步愿望单</span></td><td class="mono">76561198012345678</td><td>sunboxiang</td><td class="muted">调度器</td><td><span class="tag danger">失败</span></td><td class="num">1.2 s</td><td class="muted">Steam API 429（限流）</td></tr>
+            <tr><td class="muted">2026/11/09 09:41:55</td><td><span class="tag info">认领</span></td><td class="mono">76561198087654321</td><td>test_normal</td><td>sunboxiang</td><td><span class="tag ok">成功</span></td><td class="num">—</td><td class="muted">从未归属账号转移</td></tr>
+            <tr><td class="muted">2026/11/08 21:13:09</td><td><span class="tag danger">解绑</span></td><td class="mono">76561198011112222</td><td>test.admin</td><td>sunboxiang</td><td><span class="tag ok">成功</span></td><td class="num">—</td><td class="muted">连带清理 3 条愿望单提醒</td></tr>
+          </tbody>
+        </table>
+        <div class="pager"><span>共 4 条（原型示例数据）</span><div class="pages"><span class="on">1</span></div></div>
+      </div>
+
+      <!-- 邮件发送 -->
+      <div class="card table tabpane" data-pane="mail">
+        <div class="log-toolbar">
+          <div class="subtabs"><button class="on">通知</button><button>验证码</button></div>
+          <input placeholder="收件人 / 主题">
+          <span class="grow"></span>
+          <button class="btn small">刷新</button>
+        </div>
+        <table class="t">
+          <thead><tr><th>时间</th><th>收件人</th><th>类型</th><th>主题</th><th>结果</th><th>失败原因</th></tr></thead>
+          <tbody>
+            <tr><td class="muted">2026/11/09 09:31:30</td><td class="mono">j***@outlook.com</td><td>用户已删除</td><td>账号已被删除</td><td><span class="tag ok">已发送</span></td><td class="muted">—</td></tr>
+            <tr><td class="muted">2026/11/09 09:28:05</td><td class="mono">t***@example.com</td><td>密码已重置</td><td>你的登录密码已重置</td><td><span class="tag danger">失败</span></td><td class="muted">SMTP 550 mailbox unavailable</td></tr>
+          </tbody>
+        </table>
+        <div class="pager"><span>最多各 500 条</span><div class="pages"><span class="on">1</span></div></div>
+      </div>
+
+      <!-- 运行与同步 -->
+      <div class="card table tabpane" data-pane="run">
+        <div class="log-toolbar">
+          <select><option>全部任务</option><option>steam-prices</option><option>backfill</option><option>heat</option></select>
+          <span class="grow"></span>
+          <span class="switch" style="font-size:11px"><i></i>实时输出（10 秒刷新）</span>
+          <button class="btn small">刷新</button>
+        </div>
+        <table class="t">
+          <thead><tr><th>开始</th><th>任务</th><th>结束</th><th>结果</th><th class="num">耗时</th><th>输出尾巴</th></tr></thead>
+          <tbody>
+            <tr><td class="muted">2026/11/09 10:00:00</td><td class="strong mono">steam-prices</td><td class="muted">10:04:12</td><td><span class="tag ok">成功</span></td><td class="num">4m12s</td><td class="muted">updated 3120 · quota 1720</td></tr>
+            <tr><td class="muted">2026/11/09 09:55:00</td><td class="strong mono">heat</td><td class="muted">10:01:30</td><td><span class="tag danger">失败</span></td><td class="num">6m30s</td><td class="muted">entry_invalid ×200（fetchJson 契约）</td></tr>
+          </tbody>
+        </table>
+        <div class="console-box">[10:04:12] steam-prices.done { updated: 3120, skipped: 18, quotaUsed: 1720 }
+[10:04:12] scheduler.job_end { name: 'steam-prices', ok: true, elapsedMs: 252130 }
+[10:04:12] scheduler.next { name: 'heat', at: '2026-11-09T10:05:00+08:00' }</div>
+      </div>
+    </section>
+
+    <!-- ================= Steam 账号（保留页面 + 日志入口） ================= -->
+    <section class="view" id="view-steam">
+      <header class="admin-header">
+        <div>
+          <div class="admin-crumb">管理中心 <span>/</span> 账号与服务</div>
+          <h1>Steam 账号</h1>
+          <p>绑定多个 Steam 账号，同步游戏库与愿望单</p>
+        </div>
+        <div class="header-actions"><button class="btn" data-go="op-logs">查看操作日志 ↗</button><button class="btn primary">＋ 绑定账号</button></div>
+      </header>
+      <div class="hint"><b>本次改动</b>：页面结构不变，新增「操作日志」入口与每行「日志」链接；绑定 / 解绑 / 认领 / 同步 / 换 Key 全部落到「操作日志 · Steam 账号」。</div>
+      <div class="card table">
+        <div class="log-toolbar"><input placeholder="搜索 Steam ID / 昵称" style="min-width:220px"><select><option>全部归属</option><option>已归属</option><option>未归属</option></select><span class="grow"></span><button class="btn small">同步全部</button><button class="btn small">刷新</button></div>
+        <table class="t">
+          <thead><tr><th>Steam 账号</th><th>归属用户</th><th>游戏库</th><th>愿望单</th><th>最近同步</th><th>状态</th><th style="width:190px">操作</th></tr></thead>
+          <tbody>
+            <tr><td><div class="user-cell"><img alt="" style="width:26px;height:26px;border-radius:8px;background:var(--panel-2)"><span class="strong">sunboxiang</span><small class="muted mono" style="display:block">76561198012345678</small></div></td><td>sunboxiang</td><td class="num">486</td><td class="num">32</td><td class="muted">2026/11/09 10:02:31</td><td><span class="tag ok">正常</span></td><td><button class="btn link">同步</button><button class="btn link">日志</button><button class="btn link danger">解绑</button></td></tr>
+            <tr><td><div class="user-cell"><img alt="" style="width:26px;height:26px;border-radius:8px;background:var(--panel-2)"><span class="strong">76561198087654321</span><small class="muted mono" style="display:block">未归属</small></div></td><td class="muted">—</td><td class="num">0</td><td class="num">0</td><td class="muted">—</td><td><span class="tag warn">待认领</span></td><td><button class="btn link">认领</button><button class="btn link">日志</button></td></tr>
+          </tbody>
+        </table>
+        <div class="pager"><span>共 2 条</span><div class="pages"><span class="on">1</span></div></div>
+      </div>
+    </section>
+
+    <!-- ================= 邮件服务（改 tabs） ================= -->
+    <section class="view" id="view-mail">
+      <header class="admin-header">
+        <div>
+          <div class="admin-crumb">管理中心 <span>/</span> 账号与服务</div>
+          <h1>邮件服务</h1>
+          <p>SMTP 配置、9 类邮件模板与发送测试</p>
+        </div>
+        <div class="header-actions"><button class="btn">查看发送记录 ↗</button></div>
+      </header>
+
+      <div class="card" style="padding:14px 15px 6px">
+        <div class="tabs" id="mailTabs">
+          <button class="on" data-tab="smtp">邮件配置</button>
+          <button data-tab="tpl">邮件模板 <span class="count">9</span></button>
+          <button data-tab="test">发送测试</button>
+        </div>
+      </div>
+
+      <div class="card tabpane on" data-pane="smtp">
+        <div class="card-head"><div><h3>SMTP 与收件人</h3><p>保存后立即生效（调度器约 15 秒内读取新值）；密钥不会回显。</p></div><button class="btn primary">保存配置</button></div>
+        <div class="form-grid">
+          <div class="field"><label>SMTP 主机</label><input value="smtp.qq.com"></div>
+          <div class="field"><label>端口</label><input value="587"></div>
+          <div class="field"><label>加密方式</label><select><option>STARTTLS</option><option>SSL</option><option>无</option></select></div>
+          <div class="field"><label>用户名</label><input value="no-reply@yyliucha.cn"></div>
+          <div class="field"><label>密码 / 授权码 <span class="src">已保存</span></label><div class="inline"><input type="password" value="********"><button class="btn">查看</button></div></div>
+          <div class="field"><label>发件人</label><input value="SteamDeals &lt;no-reply@yyliucha.cn&gt;"></div>
+          <div class="field"><label>管理员收件人</label><input value="jacksunyx@outlook.com"></div>
+          <div class="field"><label>申诉邮箱</label><input value="appeal@yyliucha.cn"></div>
+        </div>
+      </div>
+
+      <div class="card tabpane" data-pane="tpl">
+        <div class="card-head"><div><h3>邮件模板</h3><p>9 个事件可编辑、启停、预览、发测试；统一页脚由系统追加。</p></div>
+          <div class="inline"><select><option>账号已创建</option><option>密码已重置</option><option>账号已禁用</option><option>验证码</option></select><button class="btn">预览</button><button class="btn">恢复默认</button></div>
+        </div>
+        <div class="form-grid">
+          <div class="field full"><label>主题</label><input value="你的 SteamDeals 账号已创建"></div>
+          <div class="field full"><label>正文（HTML）</label><textarea style="min-height:190px">&lt;p&gt;你好 {{displayName}}，管理员已为你创建账号。&lt;/p&gt;&lt;p&gt;用户名：&lt;b&gt;{{username}}&lt;/b&gt;&lt;/p&gt;</textarea></div>
+        </div>
+        <div class="form-foot"><button class="btn">发测试</button><button class="btn primary">保存模板</button></div>
+      </div>
+
+      <div class="card tabpane" data-pane="test">
+        <div class="card-head"><div><h3>发送测试邮件</h3><p>走与真实通知相同的发送路径，并写入操作日志。</p></div></div>
+        <div class="form-grid" style="max-width:760px">
+          <div class="field"><label>收件人</label><input value="jacksunyx@outlook.com"></div>
+          <div class="field"><label>模板</label><select><option>纯文本测试</option><option>账号已创建</option><option>验证码</option></select></div>
+        </div>
+        <div class="form-foot" style="justify-content:flex-start"><button class="btn primary">发送测试</button></div>
+        <div class="hint" style="margin-top:12px">发送结果会记在「操作日志 · 邮件发送」，失败原因可复制。</div>
+      </div>
+    </section>
+
+    <!-- ================= 系统设置（改 tabs） ================= -->
+    <section class="view" id="view-settings">
+      <header class="admin-header">
+        <div>
+          <div class="admin-crumb">管理中心 <span>/</span> 系统</div>
+          <h1>系统设置</h1>
+          <p>数据源、站点策略、登录、提醒与网络代理</p>
+        </div>
+        <div class="header-actions"><button class="btn">重新加载</button><button class="btn primary">保存设置</button></div>
+      </header>
+
+      <div class="settings-meta">版本 2.2.1 · 配置修订 37 · 保存后调度器约 15 秒内生效 <span class="dirty">● 有未保存的修改</span></div>
+
+      <div class="card" style="padding:14px 15px 6px">
+        <div class="tabs" id="setTabs">
+          <button class="on" data-tab="sources">数据源与采集 <span class="count">14</span></button>
+          <button data-tab="site">站点与内容 <span class="count">7</span></button>
+          <button data-tab="auth">账号与登录 <span class="count">5</span></button>
+          <button data-tab="alerts">通知与提醒 <span class="count">8</span></button>
+          <button data-tab="network">网络与代理 <span class="count">4</span></button>
+          <button data-tab="advanced">高级 <span class="count">6</span></button>
+        </div>
+      </div>
+
+      <div class="card tabpane on" data-pane="sources">
+        <div class="card-head"><div><h3>数据源与采集</h3><p>开关、间隔、API Key 与区服；标「数据库」的项可在此页改。</p></div></div>
+        <div class="setting-grid">
+          <div class="setting"><div class="head"><label>价格采集间隔（分钟）</label><span class="src">数据库</span></div><input value="30"><div class="help">Steam 配额 200 次 / 5 分钟，改小会挤占其它任务</div></div>
+          <div class="setting"><div class="head"><label>Steam 价格同步开关</label><span class="src">数据库</span></div><div class="switch"><i></i>启用</div></div>
+          <div class="setting"><div class="head"><label>Steam API Key</label><span class="src">已保存</span></div><div class="inline"><input type="password" value="********"><span class="tag info">留空保持</span></div></div>
+          <div class="setting"><div class="head"><label>杉果采集</label><span class="src">默认值</span></div><div class="switch"><i></i>启用</div></div>
+          <div class="setting"><div class="head"><label>GOG 区服</label><span class="src">数据库</span></div><select><option>cn</option><option>hk</option><option>us</option></select></div>
+          <div class="setting"><div class="head"><label>ITAD 开关</label><span class="src">数据库</span></div><div class="switch off"><i></i>关闭</div></div>
+        </div>
+      </div>
+
+      <div class="card tabpane" data-pane="site">
+        <div class="card-head"><div><h3>站点与内容</h3><p>前台展示策略。</p></div></div>
+        <div class="setting-grid">
+          <div class="setting"><div class="head"><label>每页游戏数</label><span class="src">数据库</span></div><input value="24"></div>
+          <div class="setting"><div class="head"><label>首页默认排序</label><span class="src">数据库</span></div><select><option>热度</option><option>发行时间</option><option>折扣</option></select></div>
+          <div class="setting"><div class="head"><label>显示成人内容</label><span class="src">默认值</span></div><div class="switch off"><i></i>关闭</div></div>
+          <div class="setting"><div class="head"><label>开放注册</label><span class="src">数据库</span></div><div class="switch"><i></i>启用</div></div>
+        </div>
+      </div>
+
+      <div class="card tabpane" data-pane="network">
+        <div class="card-head"><div><h3>网络与代理</h3><p>国内服务器访问 Steam 通常需要代理；只支持 http/https，最多 10 条。</p></div></div>
+        <div class="setting-grid">
+          <div class="setting" style="grid-column:1/-1"><div class="head"><label>Steam 专用代理（按序切换）</label><span class="src">已保存 2 条</span></div>
+            <div class="inline"><input value="http://127.0.0.1:7890"><span class="tag ok">正常</span></div>
+            <div class="inline" style="margin-top:8px"><input value="http://10.0.0.2:3128"><span class="tag warn">冷却 30 分钟</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card tabpane" data-pane="auth">
+        <div class="card-head"><div><h3>账号与登录</h3><p>开放注册开关等登录相关配置。</p></div></div>
+        <div class="setting-grid">
+          <div class="setting"><div class="head"><label>开放注册</label><span class="src">数据库</span></div><div class="switch"><i></i>启用</div></div>
+          <div class="setting"><div class="head"><label>注册需邮箱验证码</label><span class="src">数据库</span></div><div class="switch"><i></i>启用</div></div>
+          <div class="setting"><div class="head"><label>登录失败锁定（次）</label><span class="src">默认值</span></div><input value="5"></div>
+          <div class="setting"><div class="head"><label>记住我天数</label><span class="src">数据库</span></div><input value="30"></div>
+        </div>
+      </div>
+
+      <div class="card tabpane" data-pane="alerts">
+        <div class="card-head"><div><h3>通知与提醒</h3><p>提醒开关与间隔、Webhook / 企业微信；邮件配置在「邮件服务」页。</p></div></div>
+        <div class="setting-grid">
+          <div class="setting"><div class="head"><label>到价提醒</label><span class="src">数据库</span></div><div class="switch"><i></i>启用</div></div>
+          <div class="setting"><div class="head"><label>提醒检查间隔（分钟）</label><span class="src">数据库</span></div><input value="10"></div>
+          <div class="setting"><div class="head"><label>企业微信 Webhook</label><span class="src">已保存</span></div><div class="inline"><input type="password" value="********"><span class="tag info">留空保持</span></div></div>
+          <div class="setting"><div class="head"><label>通知冷却（小时）</label><span class="src">默认值</span></div><input value="6"></div>
+        </div>
+      </div>
+
+      <div class="card tabpane" data-pane="advanced">
+        <div class="card-head"><div><h3>高级</h3><p>一般保持默认即可。</p></div></div>
+        <div class="setting-grid">
+          <div class="setting"><div class="head"><label>日志级别</label><span class="src">数据库</span></div><select><option>info</option><option>debug</option><option>warn</option></select></div>
+          <div class="setting"><div class="head"><label>备份保留份数</label><span class="src">数据库</span></div><input value="7"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 数据统计 · 价格变化（悬停折线图） ================= -->
+    <section class="view" id="view-stats">
+      <header class="admin-header">
+        <div>
+          <div class="admin-crumb">管理中心 <span>/</span> 系统</div>
+          <h1>数据统计</h1>
+          <p>价格变化、浏览排行、图片与备份</p>
+        </div>
+        <div class="header-actions"><button class="btn">刷新数据</button><button class="btn">导出 CSV</button></div>
+      </header>
+
+      <div class="card" style="padding:14px 15px 6px">
+        <div class="tabs">
+          <button class="on">价格变化</button><button>浏览排行</button><button>图片与备份</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="report-head" style="margin-bottom:12px">
+          <div><h2>价格变化 · 近 24 小时</h2><p>只统计有前次价格快照的变化 · 悬停「变化」看该游戏近 7 天走势</p></div>
+        </div>
+        <div class="metrics">
+          <div class="metric red"><span>降价</span><strong>37</strong></div>
+          <div class="metric"><span>涨价</span><strong>2</strong></div>
+          <div class="metric green"><span>新史低</span><strong>11</strong></div>
+          <div class="metric"><span>价格变化</span><strong>39</strong></div>
+        </div>
+      </div>
+
+      <div class="card table" style="overflow:visible">
+        <table class="t">
+          <thead><tr><th>游戏</th><th>平台</th><th class="num">原价</th><th class="num">现价</th><th class="num" style="width:120px">变化</th><th>时间</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="strong">Company of Heroes 3</td><td>Steam</td><td class="num">¥198.00</td><td class="num">¥65.34</td>
+              <td class="num chg-cell force"><span class="chg down">−67%</span>
+                <div class="chg-pop">
+                  <div class="pop-head"><strong>近 7 天最低价</strong><span>Steam · 国区</span></div>
+                  <p class="pop-sub">2026/11/03 — 11/09 · 每日最低</p>
+                  <svg viewBox="0 0 272 82" preserveAspectRatio="none">
+                    <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8b82f5" stop-opacity=".35"/><stop offset="1" stop-color="#8b82f5" stop-opacity="0"/></linearGradient></defs>
+                    <path d="M8 10 L48 10 L89 43 L130 43 L171 74 L212 74 L264 74 L264 80 L8 80 Z" fill="url(#g1)"/>
+                    <polyline points="8,10 48,10 89,43 130,43 171,74 212,74 264,74" fill="none" stroke="#8b82f5" stroke-width="2" stroke-linejoin="round"/>
+                    <circle cx="171" cy="74" r="3.4" fill="#34c39b" stroke="#0f1524" stroke-width="1.5"/>
+                    <text x="8" y="6" fill="#94a0b5" font-size="8">¥198</text>
+                    <text x="232" y="70" fill="#34c39b" font-size="8">¥65.34</text>
+                  </svg>
+                  <div class="pop-foot"><span>7 天最低 <b class="low">¥65.34</b></span><span>当前 <b>¥65.34</b></span><span>距史低 <b class="low">0%</b></span></div>
+                </div>
+              </td>
+              <td class="muted">2026/11/09 09:12:40</td>
+            </tr>
+            <tr><td class="strong">Hades II</td><td>Steam</td><td class="num">¥108.00</td><td class="num">¥86.40</td><td class="num chg-cell"><span class="chg down">−20%</span>
+              <div class="chg-pop">
+                <div class="pop-head"><strong>近 7 天最低价</strong><span>Steam · 国区</span></div>
+                <p class="pop-sub">2026/11/03 — 11/09 · 每日最低</p>
+                <svg viewBox="0 0 272 82" preserveAspectRatio="none">
+                  <polyline points="8,40 48,40 89,12 130,12 171,12 212,46 264,46" fill="none" stroke="#8b82f5" stroke-width="2" stroke-linejoin="round"/>
+                  <circle cx="212" cy="46" r="3.4" fill="#34c39b" stroke="#0f1524" stroke-width="1.5"/>
+                </svg>
+                <div class="pop-foot"><span>7 天最低 <b class="low">¥86.40</b></span><span>当前 <b>¥86.40</b></span><span>距史低 <b class="low">0%</b></span></div>
+              </div>
+            </td><td class="muted">2026/11/09 08:40:12</td></tr>
+            <tr><td class="strong">Stardew Valley</td><td>GOG</td><td class="num">¥48.00</td><td class="num">¥52.00</td><td class="num chg-cell"><span class="chg up">+8%</span>
+              <div class="chg-pop">
+                <div class="pop-head"><strong>近 7 天最低价</strong><span>GOG · 国区</span></div>
+                <p class="pop-sub">2026/11/03 — 11/09 · 每日最低</p>
+                <svg viewBox="0 0 272 82" preserveAspectRatio="none">
+                  <polyline points="8,60 48,60 89,60 130,30 171,30 212,30 264,18" fill="none" stroke="#8b82f5" stroke-width="2" stroke-linejoin="round"/>
+                  <circle cx="264" cy="18" r="3.4" fill="#f0717e" stroke="#0f1524" stroke-width="1.5"/>
+                </svg>
+                <div class="pop-foot"><span>7 天最低 <b class="low">¥45.00</b></span><span>当前 <b>¥52.00</b></span><span>距史低 <b>+15%</b></span></div>
+              </div>
+            </td><td class="muted">2026/11/09 07:05:33</td></tr>
+          </tbody>
+        </table>
+        <div class="pager"><span>共 39 条</span><div class="pages"><span class="on">1</span><span>2</span></div></div>
+      </div>
+
+      <div class="hint"><b>本次改动</b>：底部「近 7 天变化」表格删除，改为悬停「变化」列就地弹出折线图（近 7 天每日最低价 + 7 天最低 / 当前 / 距史低）。</div>
+    </section>
+
+    <!-- 占位：其它菜单（本批不动） -->
+    <section class="view" id="view-games"><header class="admin-header"><div><div class="admin-crumb">管理中心 <span>/</span> 内容运营</div><h1>游戏管理</h1><p>本批不改动（游戏目录 / 同步与回填）</p></div></header><div class="hint">本批不涉及，仅用于侧栏演示。</div></section>
+    <section class="view" id="view-recycle"><header class="admin-header"><div><div class="admin-crumb">管理中心 <span>/</span> 内容运营</div><h1>回收站</h1><p>本批不改动</p></div></header><div class="hint">本批不涉及。</div></section>
+    <section class="view" id="view-visitors"><header class="admin-header"><div><div class="admin-crumb">管理中心 <span>/</span> 访问与安全</div><h1>访问记录</h1><p>访问明细 / 异常审核 / 封禁与白名单 / 设备</p></div></header><div class="hint"><b>所有者已明确</b>：访问记录不要调整，本批零改动。</div></section>
+
+  </main>
+</div>
+
+<!-- ================= 浮层：新建用户（右侧抽屉，不跳页） ================= -->
+<div class="drawer-mask" id="drawer-new-user">
+  <div class="drawer" role="dialog" aria-label="新建用户">
+    <div class="drawer-head">
+      <div><h2>新建用户</h2><p>管理员可进入控制台；普通用户只能个性化浏览</p></div>
+      <button class="drawer-x" data-close="1" title="关闭">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="section-title">账号信息</div>
+      <div class="form-grid">
+        <div class="field"><label>用户名 <span class="req">*</span></label><input placeholder="3–32 位，字母 / 数字 / 下划线"><span class="help">唯一，创建后不可修改</span></div>
+        <div class="field"><label>显示名</label><input placeholder="可选，前台展示用"><span class="help">留空则显示用户名</span></div>
+        <div class="field full"><label>登录邮箱</label><input placeholder="可选，例如 name@example.com"><span class="help">填写后可接收验证码与账号变更通知</span></div>
+        <div class="field full"><label>角色</label>
+          <div class="radio-cards">
+            <div class="radio-card on"><strong>普通用户</strong><small>浏览、收藏与提醒</small></div>
+            <div class="radio-card"><strong>管理员</strong><small>可进入本控制台</small></div>
+          </div>
+        </div>
+      </div>
+      <div class="section-title" style="margin-top:2px">初始密码</div>
+      <div class="form-grid">
+        <div class="field"><label>初始密码</label><div class="inline"><input type="password" value=""><button class="btn">随机生成</button></div><span class="help">至少 12 位；留空自动生成 16 位临时密码</span></div>
+        <div class="field"><label>创建后</label>
+          <div style="display:flex;flex-direction:column;gap:9px;padding-top:4px">
+            <span class="switch"><i></i>发送「账号已创建」邮件</span>
+            <span class="switch off"><i></i>下次登录强制改密</span>
+          </div>
+        </div>
+      </div>
+      <div class="hint" style="margin-top:2px">创建成功后：① 抽屉里展示一次临时密码（可复制）；② 用户首次登录必须改密；③ 关闭抽屉即回列表，筛选与分页不丢。</div>
+    </div>
+    <div class="drawer-foot"><button class="btn" data-close="1">取消</button><button class="btn primary">创建账号</button></div>
+  </div>
+</div>
+
+<!-- ================= 浮层：新建/编辑通知（右侧抽屉，不跳页） ================= -->
+<div class="drawer-mask" id="drawer-new-ann">
+  <div class="drawer wide" role="dialog" aria-label="新建通知">
+    <div class="drawer-head">
+      <div><h2>新建通知</h2><p>填写内容与生效时间，发布后前台立即展示</p></div>
+      <button class="drawer-x" data-close="1" title="关闭">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field"><label>标题 <span class="req">*</span></label><input placeholder="例如：价格同步维护通知"><span class="help">0 / 120</span></div>
+      <div class="field"><label>正文 <span class="req">*</span></label><textarea placeholder="填写用户需要知道的内容" style="min-height:104px"></textarea><span class="help">0 / 3000 · 支持换行，不支持 HTML</span></div>
+      <div class="form-grid">
+        <div class="field"><label>级别</label><select><option>普通通知</option><option>提醒</option><option>重要</option></select></div>
+        <div class="field"><label>状态</label><span class="switch" style="padding-top:6px"><i></i>启用</span></div>
+        <div class="field"><label>开始时间</label><input value="立即生效"></div>
+        <div class="field"><label>结束时间</label><input value="永不过期"></div>
+      </div>
+      <div>
+        <div class="section-title" style="margin-bottom:8px">前台预览</div>
+        <div style="border:1px solid var(--border);border-radius:10px;background:var(--panel-2);padding:12px 13px">
+          <div style="display:flex;gap:9px;align-items:flex-start">
+            <span class="tag brand">通知</span>
+            <div><strong style="font-size:12.5px">标题会显示在这里</strong><p class="muted" style="font-size:11.5px;margin:6px 0 0;line-height:1.6">正文内容会显示在这里，长文本自动折行。</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="drawer-foot"><button class="btn" data-close="1">取消</button><button class="btn primary">发布通知</button></div>
+  </div>
+</div>
+
+<div class="proto-tip"><span><b>原型</b> 点击左侧菜单切换</span><span class="kbd">#users</span><span class="kbd">#op-logs</span><span class="kbd">#settings</span><span class="kbd">#stats</span></div>
+
+<script>
+  const views = ['users','announcements','op-logs','steam','mail','settings','stats','games','recycle','visitors'];
+  let currentView = 'users';
+  function go(view){
+    if(!views.includes(view)) view = 'users';
+    currentView = view;
+    document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on', v.id === 'view-'+view));
+    document.querySelectorAll('.admin-nav button').forEach(b=>b.classList.toggle('active', b.dataset.view === view));
+    document.querySelector('.admin-content').scrollTop = 0;
+  }
+  function closeDrawers(){
+    document.querySelectorAll('.drawer-mask').forEach(m=>m.classList.remove('on'));
+    document.body.style.overflow = '';
+  }
+  function openDrawer(id){
+    document.querySelectorAll('.drawer-mask').forEach(m=>m.classList.toggle('on', m.id === 'drawer-'+id));
+    document.body.style.overflow = 'hidden';
+  }
+  function applyHash(){
+    const parts = location.hash.replace('#','').split(':');
+    closeDrawers();
+    go(parts[0] || 'users');
+    if(!parts[1]) return;
+    if(document.getElementById('drawer-'+parts[1])) openDrawer(parts[1]);
+    else document.querySelectorAll('.tabs button[data-tab="'+parts[1]+'"]').forEach(b=>b.click());
+  }
+  document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{ location.hash = b.dataset.view; }));
+  document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>{ location.hash = b.dataset.go; }));
+  document.querySelectorAll('[data-drawer]').forEach(b=>b.addEventListener('click',()=>{
+    const base = b.dataset.drawer === 'new-ann' ? 'announcements' : 'users';
+    location.hash = base + ':' + b.dataset.drawer;
+  }));
+  document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>{
+    history.replaceState(null, '', location.pathname + location.search + '#' + currentView);
+    closeDrawers();
+  }));
+  document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape'){ closeDrawers(); history.replaceState(null, '', '#' + currentView); } });
+  window.addEventListener('hashchange', applyHash);
+
+  // 通用 tab 组：容器 id -> 只切该容器下的 .tabpane
+  function wireTabs(tabsId, scopeId){
+    const tabs = document.getElementById(tabsId);
+    if(!tabs) return;
+    const scope = document.getElementById(scopeId);
+    tabs.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
+      tabs.querySelectorAll('button').forEach(b=>b.classList.toggle('on', b===btn));
+      scope.querySelectorAll('.tabpane').forEach(p=>p.classList.toggle('on', p.dataset.pane === btn.dataset.tab));
+    }));
+  }
+  wireTabs('logTabs','view-op-logs');
+  wireTabs('mailTabs','view-mail');
+  wireTabs('setTabs','view-settings');
+  if(location.search.indexOf('shot') >= 0) document.body.classList.add('shot');
+  applyHash();
+</script>
+</body>
+</html>

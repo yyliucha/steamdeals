@@ -1212,6 +1212,35 @@ export async function dailyMinSeries(q, { gameId, region = 'cn' }) {
   return r.rows;
 }
 
+/**
+ * 批量近 N 天每日最低价（docs/ADMIN-CONSOLE-IA.md §6，AT 批）：
+ * 一次查询 group by game_id, day，返回 { [gameId]: [{ day, price_cents, currency }] }。
+ * 口径与 dailyMinSeries 一致（官方渠道、国区、跨平台取每日最低）；窗口按日历天算。
+ * 价格报表上限 100 行 → 序列最多 100×7=700 行，随列表一次返回，悬停零额外请求。
+ */
+export async function dailyMinSeriesBatch(q, { gameIds, days = 7, region = 'cn' }) {
+  const ids = [...new Set((gameIds ?? []).map(Number).filter((n) => Number.isFinite(n) && n > 0))];
+  if (!ids.length) return {};
+  const span = Math.min(Math.max(Number(days) || 7, 1), 30);
+  const r = await q(
+    `select d.game_id, d.day::text as day, min(d.min_price_cents) as price_cents, min(d.currency) as currency
+       from daily_prices d
+       join platforms p on p.code = d.platform_code
+      where d.game_id = any($1::int[]) and d.region = $2 and p.kind in ${OFFICIAL_KINDS}
+        and d.day >= current_date - ($3::int - 1)
+      group by d.game_id, d.day
+      order by d.game_id asc, d.day asc`,
+    [ids, region, span],
+  );
+  const out = {};
+  for (const row of r.rows) {
+    const key = Number(row.game_id);
+    if (!out[key]) out[key] = [];
+    out[key].push({ day: row.day, price_cents: Number(row.price_cents), currency: row.currency });
+  }
+  return out;
+}
+
 /** 单个游戏各平台每天的价（画多线时用）。 */
 export async function dailyPlatformSeries(q, { gameId, region = 'cn' }) {
   const r = await q(
@@ -1318,6 +1347,7 @@ export async function watchCandidates(q, { region = 'cn' } = {}) {
 // ---------------------------------------------------------------- 用户与会话
 
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { recordSteamLog } from '../steam-log.js';
 
 // AK-1（docs/AUTH-REDESIGN.md §4.2）：新格式 $scrypt$N$r$p$<salt b64>$<hash b64>（N=32768,r=8,p=1）；
 // 旧格式 salt:hash（N=16384 默认参数）继续可验，登录成功后静默升级。
@@ -1486,6 +1516,19 @@ export async function deleteUserAudited(q, { username, confirmUsername = null, o
       'insert into admin_user_deletions (username, role, email_masked, steam_accounts, sessions, deleted_by, deleted_by_id, reason) values ($1,$2,$3,$4,$5,$6,$7,$8)',
       [username, target.role, mask, steamAccounts, sessions, operator ?? '', operatorId, reason ? String(reason).slice(0, 500) : null],
     );
+    // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：用户被删后其 Steam 日志必须留下——
+    // 账号级联删除的同时给每个账号补一条 delete-cascade 审计（不挂外键，删除后仍可查）。
+    for (const sid of steamIds) {
+      await recordSteamLog(q, {
+        action: 'delete-cascade',
+        steamId: sid,
+        userId: target.id,
+        username,
+        actor: `admin:${operator ?? ''}`,
+        result: 'ok',
+        detail: { reason: reason ? String(reason).slice(0, 160) : null },
+      });
+    }
     await q('commit');
   } catch (err) {
     await q('rollback').catch(() => {});
@@ -1642,14 +1685,16 @@ export async function recordView(q, { userId = null, path, appid = null }) {
   await q('insert into page_views (user_id, path, appid) values ($1, $2, $3)', [userId, path, appid]);
 }
 
-/** 定期清理：访问记录/采集与任务记录/验证码（调度器周任务）。返回各表删除行数。 */
-export async function purgeOldRows(q, { visitorDays = 180, runDays = 90, emailDays = 7 } = {}) {
+/** 定期清理：访问记录/采集与任务记录/验证码/Steam 账号日志（调度器周任务）。返回各表删除行数。 */
+export async function purgeOldRows(q, { visitorDays = 180, runDays = 90, emailDays = 7, steamDays = 180 } = {}) {
   const del = async (sql, p) => (await q(sql, p)).rowCount ?? 0;
   const visitorLogs = await del("delete from visitor_logs where created_at < now() - ($1 || ' days')::interval", [String(visitorDays)]);
   const fetchRuns = await del("delete from fetch_runs where started_at < now() - ($1 || ' days')::interval", [String(runDays)]);
   const syncRuns = await del("delete from sync_runs where started_at < now() - ($1 || ' days')::interval", [String(runDays)]);
   const emailCodes = await del("delete from email_codes where created_at < now() - ($1 || ' days')::interval", [String(emailDays)]);
-  return { visitorLogs, fetchRuns, syncRuns, emailCodes };
+  // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：Steam 账号日志保留 180 天，并入现有 prune（不新建定时任务）
+  const steamAccountLogs = await del("delete from steam_account_logs where created_at < now() - ($1 || ' days')::interval", [String(steamDays)]);
+  return { visitorLogs, fetchRuns, syncRuns, emailCodes, steamAccountLogs };
 }
 
 /** 清理过期浏览记录（默认保留 90 天）。 */
