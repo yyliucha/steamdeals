@@ -42,6 +42,8 @@
 | **AN** | 未保存修改的离开提醒（后台 5 个编辑面） | [UNSAVED-GUARD.md](UNSAVED-GUARD.md) | 质检通过（2026-11-09，ac9cbf4） | ✅ 规格自包含 |
 | **AO** | 后台游戏列 + 平台链接抽屉改版（复制中英文 / 抽屉重做） | [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md) | 待开发 | ✅ 规格自包含 |
 | **AP** | 游戏详情·价格历史报表（趋势线 + 史低高亮） | [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md) | 待开发 | ✅ 规格自包含 |
+| **AQ** | 后台访问/异常列表排序（数值 IP + 上限 500） | [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §3 | 待开发 | ✅ 规格自包含 |
+| **AR** | 异常审核「按 IP 合并」视图 | [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §4 | 依赖阻塞（AQ） | ✅ 规格自包含 |
 | **F** | Steam 价格同步优化（缩量 / 热点优先） | ❌ 无独立规格（计划写在 [TODO.md](TODO.md) F 段） | 等排期 | ❌ 未给 |
 | **C1** | heat 逐 appid 全 `success:false` | ❌ 无规格（[TODO.md](TODO.md) C1） | 待探测 | ❌ 未给 |
 
@@ -63,4 +65,5 @@
 7. **AM**（Steam 代理池）同日入 TODO，规格 [PROXY-POOL.md](PROXY-POOL.md)；AM-1/AM-2 两批，后者依赖前者；
 8. **AN**（未保存修改的离开提醒）同日入 TODO，规格 [UNSAVED-GUARD.md](UNSAVED-GUARD.md)；单批，纯前端；
 9. **AO**（后台游戏列 + 链接抽屉改版）2026-11-09 入 TODO，规格 [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md)；单批，纯前端；
-10. **AP**（价格历史报表）2026-11-09 入 TODO，规格 [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md)；单批，纯前端。
+10. **AP**（价格历史报表）2026-11-09 入 TODO，规格 [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md)；单批，纯前端；
+11. **AQ / AR**（后台列表排序 / 按 IP 合并）2026-11-09 入 TODO，规格 [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md)；AR 依赖 AQ、下一期开发。
