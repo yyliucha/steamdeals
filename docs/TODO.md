@@ -799,7 +799,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AT. 待开发：后台信息架构改版（新增改抽屉 / 操作日志合并 5 tab / 邮件与设置 tab / 价格走势线图）
 
-**状态：已实现待发版（2026-11-09，a500811）**
+**状态：质检通过（2026-11-09，a500811；QA 报告 docs/QA-ADMIN-CONSOLE-IA-AT.md 未提交）**
 **依赖：** 无
 **解锁：** 无（下期「账号操作审计」等本批落地后另立项）
 **规格**：[ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md)；原型 [design/admin-console-ia.html](design/admin-console-ia.html)
