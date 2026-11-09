@@ -843,7 +843,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AV. 首页列表读模型：`game_region_snapshot`（把每请求全库聚合改成入库时维护）
 
-**状态：已实现待发版（2026-11-09）**
+**状态：质检通过（2026-11-09，9d588fe；QA 报告 docs/QA-READ-MODEL-AV.md 未提交；3 项性能验收转上线实测）**
 **依赖：** 无
 **解锁：** 无（首页性能专项；与后续「nginx gzip」部署侧改动独立）
 **规格**：[READ-MODEL.md](READ-MODEL.md)

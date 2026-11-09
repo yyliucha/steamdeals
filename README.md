@@ -639,7 +639,7 @@ node test/secrets.test.js    # 5 项：凭据扫描器自身的正确性 + 当�
 
 **进行中**
 
-- `AV` 首页列表读模型：game_region_snapshot（把每请求全库聚合改成入库时维护） —— 待发版
+- `AV` 首页列表读模型：game_region_snapshot（把每请求全库聚合改成入库时维护） —— 质检通过，待发版
 
 **接下来**
 
