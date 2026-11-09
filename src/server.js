@@ -674,12 +674,24 @@ export function createApiServer({
 
       // ---- 公开接口：站点信息 / 公告 / 设备指纹上报 ----
       if (path === '/api/site' && req.method === 'GET') {
+        // AL 批（docs/AUTH-REDESIGN.md §5.3）：注册页用——开关与 SMTP 就绪状态（不可用时不显示表单）
+        let registrationEnabled = true;
+        let registrationSmtpReady = false;
+        try {
+          const regRow = (await q("select value from app_settings where key = 'auth.registrationEnabled'")).rows[0];
+          registrationEnabled = regRow ? String(regRow.value) !== '0' : process.env.AUTH_REGISTRATION_ENABLED !== '0';
+          const { smtpConfig, isSmtpConfigured } = await import('./email-auth.js');
+          registrationSmtpReady = isSmtpConfigured(await smtpConfig(q));
+        } catch {
+          /* 表不存在等兜底：默认开放、SMTP 未就绪 */
+        }
         return json(res, 200, {
           name: siteName(),
           version: VERSION,
           appealEmail: appealEmail(),
           // 前台成人内容展示策略（hide/badge/show），Home 卡片按它决定角标
           adultDisplay: String(process.env.SITE_ADULT_DISPLAY ?? 'hide'),
+          registration: { enabled: registrationEnabled, smtpReady: registrationSmtpReady },
         });
       }
       if (path === '/api/announcements' && req.method === 'GET') {

@@ -17,6 +17,10 @@ const router = createRouter({
     { path: '/banned.html', redirect: '/banned' },
     { path: '/console', name: 'console', component: () => import('../pages/Console.vue'), meta: { title: 'SteamDeals · 管理控制台' } },
     { path: '/console.html', redirect: '/console' },
+    // AL 批（docs/AUTH-REDESIGN.md §5.1）：独立登录 / 注册 / 修改密码页
+    { path: '/login', name: 'login', component: () => import('../pages/LoginPage.vue'), meta: { title: '登录 · SteamDeals' } },
+    { path: '/register', name: 'register', component: () => import('../pages/RegisterPage.vue'), meta: { title: '注册 · SteamDeals' } },
+    { path: '/change-password', name: 'change-password', component: () => import('../pages/ChangePasswordPage.vue'), meta: { title: '修改密码 · SteamDeals' } },
   ],
 });
 
