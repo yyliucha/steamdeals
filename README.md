@@ -410,7 +410,7 @@ node src/probe.js --target steam --rounds 24 --interval 3600   # 跑 24 小时�
 | 提醒 | Webhook、企业微信、SMTP（授权码 AES-256-GCM 加密）、收件人、检查间隔 |
 | 网络 | `STEAM_PROXY`、`HTTPS_PROXY`、`NO_PROXY` |
 | 高级 | 熔断、备份、日志清理、静态页开关、日志级别 |
-| 封面图缓存 | 开关、间隔、每轮数量、下载间隔（图片落 `data/images`，不进库） |
+| 封面图缓存 | 开关、间隔、每轮数量、下载间隔、**总量上限**（`images.maxBytes`，超限自动按最旧清理；`node src/cli.js images prune --max-bytes <字节>` 可手动清理；图片落 `data/images`，不进库） |
 
 旧 `.env` 里的这些变量仍会被识别：如果是老库（已有管理员），首次启动自动导入数据库；新库则由 `/setup` 写入。优先级是 **数据库 > 环境变量 > 默认值**。完整列表见 [docs/DEPLOY.md](docs/DEPLOY.md#旧环境变量迁移)。
 
