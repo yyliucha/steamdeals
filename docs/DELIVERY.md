@@ -190,7 +190,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   `npm run todo:progress`/`todo:progress:check` + CI `docs-progress` 防漂移）+ README 过期项修正。
   纯文档/脚本/CI，无运行行为变化。验证：`npm test` 全绿、`frontend:build`、`scan` 干净、`todo:progress:check` 一致；
   质检：AS ✅ 放行（[QA-TODO-PROGRESS-AS.md](QA-TODO-PROGRESS-AS.md)）。
-  CI：docker-hub / docker-tcr 待 tag 后记录。
+  CI：docker-hub run 42601382807（test / smoke / publish 全绿）、docker-tcr run 42601382774（test / publish 全绿），
+  镜像已推送两源。
   **服务器部署待执行**（升级到 `2.3.0`）；部署后确认 GitHub 首页 README 进度块与 TODO 一致即可。
 - **v2.2.1 已发布**（tag `v2.2.1`）：F 批 Steam 价格同步优化——请求间隔 1100→1600ms（回到 200 次/5 分钟配额内）；
   选取改热点优先（近 90 天访问 / 用户标记 / 热度≥1 每天刷）+ 冷门降频（最近快照超 3 天才刷）；
