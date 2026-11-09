@@ -301,12 +301,29 @@ async function cmdSyncSteam() {
 /** 每日刷新已经有 Steam 报价的游戏，避免对全目录的免费/未售游戏重复请求。 */
 async function cmdSyncSteamPrices() {
   const limit = Math.max(1, Math.min(Number(flag('limit', '200000')) || 200000, 200000));
+  // F 批（docs/TODO.md F 段）：热点优先 + 冷门降频。
+  // 热点 = 近 90 天有访问 / 有用户标记 / 热度达标 → 每天刷；冷门 = 最近价格快照超过 N 天未更新才刷。
+  const hotHeatMin = Number(process.env.STEAM_PRICES_HOT_HEAT_MIN ?? '1');
+  const coldDays = Number(process.env.STEAM_PRICES_COLD_DAYS ?? '3');
   const appids = await withStore(async (store) => {
     const r = await store.query(
-      "select distinct g.steam_appid from games g " +
-        "join offers o on o.game_id = g.id and o.platform_code = 'steam' " +
-        'where g.steam_appid is not null and not g.deleted order by g.steam_appid limit $1',
-      [limit],
+      `select steam_appid from (
+         select g.steam_appid,
+                (exists (select 1 from page_views v where v.appid = g.steam_appid and v.created_at > now() - interval '90 days')
+                  or exists (select 1 from user_game_flags f where f.game_id = g.id)
+                  or coalesce(g.heat, 0) >= $2) as is_hot,
+                coalesce((select max(ps.captured_at) from price_snapshots ps
+                           join offers po on po.id = ps.offer_id and po.platform_code = 'steam'
+                          where po.game_id = g.id), '1970-01-01'::timestamptz) as last_snap
+           from games g
+           join offers o on o.game_id = g.id and o.platform_code = 'steam'
+          where g.steam_appid is not null and not g.deleted and not g.blocked
+          group by g.id, g.steam_appid, g.heat
+       ) t
+       where t.is_hot or t.last_snap < now() - make_interval(days => $3)
+       order by t.is_hot desc, t.last_snap asc, t.steam_appid
+       limit $1`,
+      [limit, hotHeatMin, coldDays],
     );
     return r.rows.map((x) => Number(x.steam_appid)).filter((n) => Number.isFinite(n) && n > 0);
   });
@@ -324,7 +341,7 @@ async function cmdSyncSteamPrices() {
       logger,
       region: 'cn',
       batchSize: 30,
-      rateLimitMs: 1100,
+      rateLimitMs: 1600,
       log: (m) => logger.debug('sync.progress', { msg: m }),
     });
     const stats = await withStore((store) => ingestOffers(store, { platform: steam, offers: result.offers, logger }));
