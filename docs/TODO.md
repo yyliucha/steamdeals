@@ -784,7 +784,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AS. README 开发进度摘要（自动生成）
 
-**状态：已实现待发版（2026-11-09）**
+**状态：质检通过（2026-11-09，de71311；QA 报告 docs/QA-TODO-PROGRESS-AS.md）**
 **依赖：** 无
 **解锁：** 无
 **规格**：[TODO-PROGRESS.md](TODO-PROGRESS.md)
