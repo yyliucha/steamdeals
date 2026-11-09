@@ -713,7 +713,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AN. 待开发：未保存修改的离开提醒
 
-**状态：待开发**
+**状态：已实现待发版（2026-11-09，ac9cbf4）**
 **依赖：** 无
 **解锁：** 无
 **规格**：[UNSAVED-GUARD.md](UNSAVED-GUARD.md)
