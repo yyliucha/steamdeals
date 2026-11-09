@@ -200,8 +200,11 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   无绑定账号提示可绑定同步、未配 Key 账号置灰；
   ④ C1：heat/catalog 适配 `fetchJson` 新契约（此前 heat 全量无效跳过、catalog 空跑），加契约回归测试；
   ⑤ AN 回归：「放弃修改」清草稿，弹窗不再反复出现（注册签名支持 discard，五面各自清，+2 回归测试）。
-  验证：`npm test` 71 文件 / 566 项全绿、`api.test.js` 22 项、`email-auth` 9 项、`frontend:build`、`scan` 干净；
-  质检：C1/AN/AA/AQ/AR/AO ✅ 放行（[QA-RELEASE-2.2.0.md](QA-RELEASE-2.2.0.md)、[QA-WISHLIST-AA.md](QA-WISHLIST-AA.md)、[QA-ADMIN-REVIEW-LISTS-AQ.md](QA-ADMIN-REVIEW-LISTS-AQ.md)、[QA-ADMIN-REVIEW-LISTS-AR.md](QA-ADMIN-REVIEW-LISTS-AR.md)、[QA-ADMIN-LINKS-DRAWER-AO.md](QA-ADMIN-LINKS-DRAWER-AO.md)）。
+  验证：`npm test` 72 文件 / 569 项全绿、`api.test.js` 22 项、`email-auth` 9 项、`frontend:build`、`scan` 干净；
+  质检：C1/AN/AA/AQ/AR/AO/AP ✅ 放行（[QA-RELEASE-2.2.0.md](QA-RELEASE-2.2.0.md)、[QA-WISHLIST-AA.md](QA-WISHLIST-AA.md)、[QA-ADMIN-REVIEW-LISTS-AQ.md](QA-ADMIN-REVIEW-LISTS-AQ.md)、[QA-ADMIN-REVIEW-LISTS-AR.md](QA-ADMIN-REVIEW-LISTS-AR.md)、[QA-ADMIN-LINKS-DRAWER-AO.md](QA-ADMIN-LINKS-DRAWER-AO.md)、[QA-PRICE-HISTORY-AP.md](QA-PRICE-HISTORY-AP.md)）。
+  CI：`docker-hub` run 42593316897（test/smoke/publish 全绿）、`docker-tcr` run 42593316989
+  （test 全绿、`build-push-action@v6` 与 `Verify manifests` 均 success），两个镜像源均已推送
+  （首轮因主链误引未提交的 AP 测试失败，已恢复 AP 测试入链并重打 tag）。
   **服务器部署待执行**（含 `2.2.1`）；部署后重点确认：
   C1——`heat --limit 5` 的 `withHeat>0` 且 catalog 补跑能进新游戏（另有 TODO C1 的「重置误标游标」建议）；
   AQ——十万行访问明细按 IP 排序耗时（超阈值再补索引）；AN——真机「放弃修改」后不再弹窗。
