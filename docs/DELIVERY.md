@@ -200,6 +200,9 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   验证：`npm test` 66 文件 / 542 项全绿、`node test/api.test.js` 22 项、`frontend:build`、`scan` 干净；
   质检：AM-2/AN/AK-1/AK-2/AK-3/AL/AC-2/AC-3/AC-4 九批均 ✅ 放行（QA-PROXY-POOL-AM2.md / QA-UNSAVED-GUARD-AN.md /
   QA-AUTH-AK1.md / QA-AUTH-AK2.md / QA-AUTH-AK3.md / QA-AUTH-AL.md / QA-SYNC-AC2.md / QA-SYNC-AC3.md / QA-SYNC-AC4.md）。
+  CI：`docker-hub` run 42577503696（test/smoke/publish 全绿）、`docker-tcr` run 42577503641
+  （test 全绿、`build-push-action@v6` 与 `Verify manifests` 均 success），两个镜像源均已推送
+  （首轮 docker-hub smoke 因 AK-1 密码策略拒 11 位旧密码失败，已改 workflow 为 ≥12 位强密码并重打 tag）。
   **服务器部署待执行**（按本文第 4 节升级到 `2.1.0`）；部署后重点人工确认：
   真机走一遍登录/注册/改密交互（AL QA 需人工确认项）、真实邮箱收到注册验证码、后台「重置熔断」按钮、
   老用户已有密码不受影响（登录自动静默升级为新哈希）、老部署升级后新密码必须 ≥12 位。
