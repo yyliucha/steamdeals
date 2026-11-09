@@ -1,6 +1,6 @@
 # 认证与密码系统重设计 + 登录/注册页（已确认待开发）
 
-> 状态：**已实现待发版（2026-11-09，AK-1 5a86013 / AK-2 7f6b568 / AK-3 df79db2 / AL 77c02e5）**。分两批（编号待入 [TODO.md](TODO.md) 时落定）：
+> 状态：**已发布 v2.1.0（2026-11-09，AK-1 5a86013 / AK-2 7f6b568 / AK-3 df79db2 / AL 77c02e5）**。分两批（编号待入 [TODO.md](TODO.md) 时落定）：
 > **AK 密码系统**（AK-1 策略与哈希 / AK-2 登录防护 / AK-3 账号流程）、**AL 登录·注册·改密页面**。
 > 关联：[WEB.md](WEB.md)、[MAIL-CONFIG-PAGE.md](MAIL-CONFIG-PAGE.md)（验证码邮件）、
 > [USER-LIFECYCLE.md](USER-LIFECYCLE.md)（AH 删除 / AI 模板 / AJ 通知，同一后台）、[HANDOVER.md](HANDOVER.md)。

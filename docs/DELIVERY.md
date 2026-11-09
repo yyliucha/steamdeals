@@ -6,7 +6,7 @@
 >
 > **会话分工**：讨论方案用 DeepSeek-V4.1-Flash1017，开发实现用 DeepSeek-V4-Pro（见 CONTRIBUTING.md）。
 >
-> **最后更新：2026-11-03（v1.9.0 已发布：PC 筛选修复 + 移动端独立设计 + 封禁标记；服务器升级待部署人员执行）。若你读到的时间晚于最近提交，先看 CHANGELOG 与 git log。**
+> **最后更新：2026-11-09（v2.1.0 已发布：AM-2/AN/AK×3/AL/AC-2~4 九批；服务器升级待部署人员执行）。若你读到的时间晚于最近提交，先看 CHANGELOG 与 git log。**
 
 ---
 
@@ -184,78 +184,25 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-06 更新，v2.0.0 已发布：用户生命周期 AH/AI/AJ + Steam 代理池 AM-1）
+### 当前状态（2026-11-09 更新，v2.1.0 已发布：AM-2/AN/AK×3/AL/AC-2~4 九批）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
-- **v2.0.0 已发布**（tag `v2.0.0`）：AH 用户彻底删除 + AI 邮件模板/HTML/发送记录 + AJ 账号变更通知 +
-  AM-1 Steam 代理池后端 四批——
-  ① 后台用户管理可彻底删除用户（输入用户名确认、删自己/最后可用管理员被拦、级联清理 + 最近删除审计表）；
-  ② 邮件模板化（9 事件模板 + HTML 多部分邮件 + `mail_log` 发送记录双 tab）；
-  ③ 7 类管理操作自动发 8 类通知邮件（改邮箱两封、批量不发、发送失败不影响业务、操作者固定「站点管理员」）；
-  ④ `network.steamProxy` 支持多条自动切换（冷却 60s/5min/30min、成功粘住、全部失败报错不回退直连、
-  5xx/429 不切换）+ 健康状态落 `data/proxy-health.json` + `GET /api/admin/proxies`。
-  验证：`npm test` 59 个文件 / 495 项全绿、`node test/api.test.js` 22 项、`frontend:build`、`scan` 干净；
-  质检：AH/AI/AJ/AM-1 四批均 ✅ 放行（QA-USER-DELETE-AH.md / QA-USER-LIFECYCLE-AI.md / QA-USER-NOTIFY-AJ.md /
-  QA-PROXY-POOL-AM1.md）。
-  CI：`docker-hub` run 42211636798（test/smoke/publish 全绿）、`docker-tcr` run 42211636783
-  （test 全绿、`build-push-action@v6` 与 `Verify manifests` 均 success），两个镜像源均已推送。
-  **服务器部署待执行**（按本文第 4 节升级到 `2.0.0`）；部署后重点人工确认：
-  真实邮箱客户端 HTML 渲染（AJ QA 需人工确认项）、真实多代理切换/冷却日志（AM-1 QA 需人工确认项）。
-
-- **待发版：AM-2 批「Steam 代理池设置页」**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
-  「网络与代理」的 Steam 专用代理从单行输入改为**列表编辑器**（查看并编辑走明文通道、增/删/上移/下移、
-  上限 10 条、清空全部；保存 = 非空行 `join('\n')`、清空传 `null`，前端校验 http/https 与 ≤10 报行号，服务端兜底）+
-  列表下方**健康状态表**（#/代理/状态/连续失败/冷却到/最近错误；正常绿/冷却中倒计时黄/未知灰）+「刷新」+
-  网络分组展开且页面可见时每 10 秒自动刷新 + 保存后立即刷新。质检 ✅ 放行（第 1 轮，[QA-PROXY-POOL-AM2.md](QA-PROXY-POOL-AM2.md)：
-  60 文件/499 项 npm test 全绿、frontend:build、scan 干净；1 项真机目视确认）。
-  规格见 [PROXY-POOL.md](PROXY-POOL.md)。
-
-- **待发版：AN 批「未保存修改的离开提醒」**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
-  系统设置/邮件配置/站点通知/编辑游戏/新建用户五个编辑面有未保存修改时，切菜单或离开路由弹三选一
-  （保存并离开 / 放弃修改 / 留在本页）；保存并离开按注册顺序逐个保存、任一失败留在本页并提示；
-  刷新/关闭不拦；401/非管理员跳转 bypass；当前菜单项带未保存小圆点。质检 ✅ 放行（第 1 轮，
-  [QA-UNSAVED-GUARD-AN.md](QA-UNSAVED-GUARD-AN.md)：61 文件/504 项 npm test 全绿、frontend:build、scan 干净；
-  1 项真机目视确认）。规格见 [UNSAVED-GUARD.md](UNSAVED-GUARD.md)。
-
-- **待发版：AK-1 批「密码策略 + 哈希升级」**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
-  密码最低 12 位（≤200）+ 弱口令黑名单（Top 1 万 + 常见词数字尾巴变体）+ 含用户名/邮箱片段 + 全同字符 + 连续序列；
-  六个设置密码入口统一策略（初始化/后台建号/后台重置/自助重置/CLI/后续注册与改密）；
-  scrypt N=32768 版本化哈希（`$scrypt$N$r$p$…`），旧格式兼容、登录静默升级 + `password_updated_at`；
-  登录时评估 `weak_password` 落库；`POST /api/password/check` 匿名限流。规格见 [AUTH-REDESIGN.md](AUTH-REDESIGN.md)。
-  注意：老部署升级后新密码必须 ≥12 位；AK-2（登录防护+后台标识）已解锁为待开发。
-
-- **待发版：AK-2 批「登录防护 + 后台安全标识」**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
-  登录重写——同 IP 15 分钟失败 ≥20 次 → 429（不消耗账号尝试次数）；账号 5 次错密码锁 15 分钟
-  （第 6 次 429 + 剩余时间；锁定期内正确密码也 429）；成功清零；失败统一「用户名或密码错误」（不暴露禁用）；
-  管理员解锁 + 审计；「记住我」30 天/默认 7 天；后台用户列表「已锁定/弱密码/需改密」tag。
-  规格见 [AUTH-REDESIGN.md](AUTH-REDESIGN.md)。注意：AK-3（账号流程）已解锁为待开发。
-
-- **待发版：AK-3 批「账号流程」**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
-  后台建号/重置密码可留空 → 16 位随机临时密码（只回一次）+ 首登强制改密；重置不再顺带启用账号；
-  自助注册（开关 `auth.registrationEnabled`、SMTP 未配置 503、唯一性 409、图形验证码 + 发码限流、
-  建号即验证并自动登录）；登录用户修改密码（踢其它会话）；`must_change_password` 用户业务接口 403 强制改密。
-  规格见 [AUTH-REDESIGN.md](AUTH-REDESIGN.md)。注意：AL（登录/注册/改密页面）已解锁为待开发。
-
-- **待发版：AL 批「登录 / 注册 / 改密页面」**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
-  独立 `/login`（桌面左右分栏 + 移动单列、三模式、Caps Lock、错误就地、记住我、回跳 next 站内校验）、
-  `/register`（强度条 + 60 秒倒计时 + 不可用说明）、`/change-password`（forced 提示）；首页不再弹登录框；
-  401 跳 /login；后台新建/重置密码留空 → 临时密码弹窗 +「随机生成」。规格见 [AUTH-REDESIGN.md](AUTH-REDESIGN.md)。
-
-- **待发版：AC-2 批「同步价格批（AC8）」**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
-  `steam-status` 判定 `ok`（国区有价）时**顺带写该游戏首次 offer**（共用同一次 appdetails 响应，不额外消耗配额；
-  锁区/无价/免费不写、fingerprint 幂等）；「已同步」口径复核为 **ok + 有报价**（免费不要求报价）。
-  规格见 [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) AC8。注意：AC-3（吞吐批）已解锁为待开发。
-
-- **待发版：AC-3 批「同步吞吐批（AC9+AC4）」**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
-  回填队列**新游戏优先**（按收录时间倒序，不再按 id 排队数周）+ 每周回填上限 2 万 → 5 万；
-  每日 Steam 配额预算：四任务串行估算超 24h 自动缩 steam-status 限额并告警（`scheduler.budget_exceeded`）。
-  规格见 [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) AC9/AC4。注意：AC-4（可靠性批）已解锁为待开发。
-
-- **待发版：AC-4 批「同步可靠性批（AC2+AC6+AC7）」**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
-  熔断在任务面板可见（熔断至 X）+ 后台「重置熔断」按钮（`POST /api/admin/circuit/reset`，清零失败计数与冷却）；
-  429 退避落盘跨子进程共享（`data/steam-429.json`）；报价解析结构校验（`adapter.<平台>.shape_mismatch`）。
-  规格见 [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) AC2/AC6/AC7。**至此 AC 四批全部完成（待发版）**。
+- **v2.1.0 已发布**（tag `v2.1.0`）：AM-2 代理池设置页 + AN 未保存离开提醒 + AK-1/2/3 密码系统 +
+  AL 登录/注册/改密页 + AC-2/3/4 同步三批——
+  ① 代理池列表编辑器 + 健康状态表（10 秒自动刷新）；
+  ② 后台五个编辑面未保存修改三选一离开提醒；
+  ③ 密码最低 12 位 + 弱口令黑名单 + scrypt 版本化哈希静默升级 + 强度接口；登录防护（锁 15 分钟/IP 限速/
+  记住我/后台安全标识+解锁）；账号流程（临时密码/自助注册/修改密码/首登强制改密）；
+  ④ 独立 `/login` `/register` `/change-password` 页面 + 首页去弹窗 + 401 跳转；
+  ⑤ steam-status 判 ok 顺带写首价 + 「已同步」= ok+有报价；回填新游戏优先 + 上限 5 万 + 每日配额预算超限降频；
+  熔断面板可见/手动重置 + 429 冷却落盘共享 + 报价结构校验。
+  验证：`npm test` 66 文件 / 542 项全绿、`node test/api.test.js` 22 项、`frontend:build`、`scan` 干净；
+  质检：AM-2/AN/AK-1/AK-2/AK-3/AL/AC-2/AC-3/AC-4 九批均 ✅ 放行（QA-PROXY-POOL-AM2.md / QA-UNSAVED-GUARD-AN.md /
+  QA-AUTH-AK1.md / QA-AUTH-AK2.md / QA-AUTH-AK3.md / QA-AUTH-AL.md / QA-SYNC-AC2.md / QA-SYNC-AC3.md / QA-SYNC-AC4.md）。
+  **服务器部署待执行**（按本文第 4 节升级到 `2.1.0`）；部署后重点人工确认：
+  真机走一遍登录/注册/改密交互（AL QA 需人工确认项）、真实邮箱收到注册验证码、后台「重置熔断」按钮、
+  老用户已有密码不受影响（登录自动静默升级为新哈希）、老部署升级后新密码必须 ≥12 位。
 
 - **v1.18.0 已发布**（tag `v1.18.0`）：AE/AF/AG/AC-1 四批——版本徽标按服务器 IP 选镜像仓库
   （ipinfo.io 定位 → 大陆/香港优先 TCR、其他优先 Hub，401 换 token、双失败回退 GitHub，结果带 source/region）；

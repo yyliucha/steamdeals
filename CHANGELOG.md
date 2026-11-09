@@ -2,6 +2,60 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.1.0] - 2026-11-09
+
+认证与账号系统（AK/AL）、Steam 代理池设置页（AM-2）、后台未保存离开提醒（AN）与同步可靠性（AC-2/3/4）九批一起交付。
+
+### 新增
+
+- **密码策略 + 哈希升级（AK-1 批，docs/AUTH-REDESIGN.md §4.1/§4.2）**：
+  - 新增 `src/password-policy.js` 与 `src/data/common-passwords.js`（Top 1 万常见密码 + 常见词数字尾巴变体）：
+    最低 **12 位**（≤200）、含用户名/邮箱 @ 前部分、全同字符、连续序列判定与 0–4 评分；
+  - scrypt 版本化哈希 `$scrypt$32768$8$1$…`（旧 `salt:hash` 兼容，登录成功**静默升级**）；
+    登录时评估 `weak_password` 落库；六个设置密码入口统一策略（初始化/后台建号/后台重置/自助重置/CLI/注册/改密）；
+  - `POST /api/password/check`（匿名、每 IP 每分钟 30 次）给前端强度条。
+
+- **登录防护 + 后台安全标识（AK-2 批，docs/AUTH-REDESIGN.md §4.3/§4.4）**：
+  同 IP 15 分钟失败 ≥20 次 → 429（不消耗账号尝试次数）；账号 5 次错密码锁 15 分钟（第 6 次 429 + 剩余时间）；
+  成功清零；登录失败统一「用户名或密码错误」（不暴露禁用）；管理员解锁（`POST /api/admin/users/:username/unlock`）；
+  「记住我」30 天/默认 7 天；后台用户列表「已锁定/弱密码/需改密」tag。
+
+- **账号流程（AK-3 批，docs/AUTH-REDESIGN.md §4.5–4.8）**：
+  后台建号/重置密码可留空 → 16 位随机临时密码（只回一次）+ 首登强制改密；重置不再顺带启用账号；
+  开放自助注册（开关 `auth.registrationEnabled`、SMTP 未配置 503、唯一性 409、图形验证码 + 发码限流、
+  建号即验证并自动登录）；登录用户修改密码（旧密码校验、踢其它会话保留当前、weak 清除）；
+  `must_change_password` 用户业务接口 403（白名单放行）。
+
+- **登录 / 注册 / 改密页面（AL 批，docs/AUTH-REDESIGN.md §5）**：
+  独立 `/login`（桌面左右分栏 + 移动单列、三模式、Caps Lock 提示、错误就地、记住我、回跳 next 站内校验）、
+  `/register`（强度条 + 60 秒倒计时 + 不可用说明）、`/change-password`（forced 提示）；
+  首页不再弹登录框；任意接口 401 → `/login?next=…`；后台新建/重置密码「随机生成」+ 临时密码弹窗。
+
+- **Steam 代理池设置页（AM-2 批，docs/PROXY-POOL.md §5）**：
+  「网络与代理」的 Steam 专用代理从单行输入改为**列表编辑器**（查看并编辑走明文通道、增/删/上移/下移、
+  上限 10 条、清空全部；前端校验 http/https 与 ≤10 报行号，服务端兜底）+ 健康状态表
+  （正常/冷却中倒计时/未知、连续失败、冷却到、最近错误）+ 每 10 秒自动刷新。
+
+- **未保存修改的离开提醒（AN 批，docs/UNSAVED-GUARD.md）**：
+  系统设置/邮件配置/站点通知/编辑游戏/新建用户五个编辑面有未保存修改时，切菜单或离开路由弹三选一
+  （保存并离开/放弃修改/留在本页）；刷新关闭不拦；401 跳转 bypass；当前菜单项未保存小圆点。
+
+- **同步价格/吞吐/可靠性三批（AC-2/3/4 批，docs/SYNC-FAILURE-MODES.md）**：
+  `steam-status` 判 ok 顺带写首次报价 + 「已同步」口径 = ok+有报价；回填新游戏优先 + 上限 5 万 +
+  每日 Steam 配额预算超限自动降频告警；熔断面板可见 + 手动重置（`POST /api/admin/circuit/reset`）；
+  429 冷却落盘跨子进程共享（`data/steam-429.json`）；报价解析结构校验（`adapter.<平台>.shape_mismatch`）。
+
+### 修复
+
+- 修复 AI 批遗留的测试断言过期（验证码模板主题与 multipart 正文提取）。
+
+### 测试
+
+- 新增 `test/password-policy.test.js`（11 项）、`test/auth-lockout.test.js`（6 项）、`test/register.test.js`（4 项）、
+  `test/password-change.test.js`（4 项）、`test/auth-pages.test.js`（7 项）、`test/proxy-pool-ui.test.js`（4 项）、
+  `test/unsaved-guard.test.js`（5 项）接入主链；扩展 `test/steam-status.test.js`（AC8）、`test/scheduler.test.js`（AC9/AC4/AC2）、
+  `test/http-error.test.js`（AC6）、`test/pg.test.js`（AC7）；主链 66 文件 / 542 项全绿。
+
 ## [2.0.0] - 2026-11-06
 
 账号生命周期三件套（用户彻底删除 AH、邮件模板化 AI、账号变更通知 AJ）与 Steam 代理池 AM-1 一并交付，跃升大版本 2.0.0。
