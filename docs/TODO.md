@@ -781,6 +781,21 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   状态混合显示「部分已处理」；排序复用 AQ 的 `compareIp()`。
 - **验收**：见规格 §4.4。
 
+## AS. 待开发：README 开发进度摘要（自动生成）
+
+**状态：待开发（2026-11-09）**
+**依赖：** 无
+**解锁：** 无
+**规格**：[TODO-PROGRESS.md](TODO-PROGRESS.md)
+
+- **需求**：README 现有「路线图」是手写的，已经与事实不一致（锁国区仍标未完成、Docker 镜像仍写「未构建」、
+  多区服对比同页一处 ✅ 一处 🚧）；所有者希望打开 GitHub 首页就能看待办进度，又不想再维护第二份清单。
+- **决策**：README 自动进度块；`docs/TODO.md` 仍是唯一来源；范围 = 进行中 + 接下来 + 最近 5 个完成；
+  脚本 + CI `--check` 防漂移；本期不上 GitHub Issues / Projects。
+- **方案**：新增 `scripts/todo-progress.js` 解析 TODO 的 `**状态：…**` 行，生成 README 标记块（`--check` 校验）；
+  替换旧「路线图」段、修正 README 过期项；加轻量 `docs-progress` workflow。**纯脚本 + 文档 + CI，不改业务代码**。
+- **验收**：见规格 §10。
+
 
 
 
