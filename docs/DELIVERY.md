@@ -214,7 +214,9 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 - **待发版：AN 批「未保存修改的离开提醒」**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
   系统设置/邮件配置/站点通知/编辑游戏/新建用户五个编辑面有未保存修改时，切菜单或离开路由弹三选一
   （保存并离开 / 放弃修改 / 留在本页）；保存并离开按注册顺序逐个保存、任一失败留在本页并提示；
-  刷新/关闭不拦；401/非管理员跳转 bypass；当前菜单项带未保存小圆点。规格见 [UNSAVED-GUARD.md](UNSAVED-GUARD.md)。
+  刷新/关闭不拦；401/非管理员跳转 bypass；当前菜单项带未保存小圆点。质检 ✅ 放行（第 1 轮，
+  [QA-UNSAVED-GUARD-AN.md](QA-UNSAVED-GUARD-AN.md)：61 文件/504 项 npm test 全绿、frontend:build、scan 干净；
+  1 项真机目视确认）。规格见 [UNSAVED-GUARD.md](UNSAVED-GUARD.md)。
 
 - **v1.18.0 已发布**（tag `v1.18.0`）：AE/AF/AG/AC-1 四批——版本徽标按服务器 IP 选镜像仓库
   （ipinfo.io 定位 → 大陆/香港优先 TCR、其他优先 Hub，401 换 token、双失败回退 GitHub，结果带 source/region）；

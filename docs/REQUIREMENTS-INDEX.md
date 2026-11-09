@@ -39,7 +39,7 @@
 | **AK** | 密码系统重设计（AK-1 策略/哈希、AK-2 登录防护、AK-3 账号流程） | [AUTH-REDESIGN.md](AUTH-REDESIGN.md) | AK-1 待开发；AK-2/3 依赖阻塞 | ✅ 规格自包含（按 §8 顺序派发） |
 | **AL** | 登录 / 注册 / 改密页面 | [AUTH-REDESIGN.md](AUTH-REDESIGN.md) | 依赖阻塞（AK-3） | ✅ 规格自包含（按 §8 顺序派发） |
 | **AM** | Steam 代理池（多代理按序切换 + 健康状态） | [PROXY-POOL.md](PROXY-POOL.md) | AM-1 已发布 v2.0.0（2026-11-06）；AM-2 质检通过（2026-11-09，b7c49df） | ✅ 规格自包含（按 §8 顺序派发） |
-| **AN** | 未保存修改的离开提醒（后台 5 个编辑面） | [UNSAVED-GUARD.md](UNSAVED-GUARD.md) | 已实现待发版（2026-11-09，ac9cbf4） | ✅ 规格自包含 |
+| **AN** | 未保存修改的离开提醒（后台 5 个编辑面） | [UNSAVED-GUARD.md](UNSAVED-GUARD.md) | 质检通过（2026-11-09，ac9cbf4） | ✅ 规格自包含 |
 | **AO** | 后台游戏列 + 平台链接抽屉改版（复制中英文 / 抽屉重做） | [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md) | 待开发 | ✅ 规格自包含 |
 | **AP** | 游戏详情·价格历史报表（趋势线 + 史低高亮） | [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md) | 待开发 | ✅ 规格自包含 |
 | **F** | Steam 价格同步优化（缩量 / 热点优先） | ❌ 无独立规格（计划写在 [TODO.md](TODO.md) F 段） | 等排期 | ❌ 未给 |
