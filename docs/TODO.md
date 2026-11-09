@@ -743,7 +743,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AP. 游戏详情·价格历史报表（史低高亮）
 
-**状态：已实现待发版（2026-11-09）**
+**状态：质检通过（2026-11-09，282d018；QA 报告 docs/QA-PRICE-HISTORY-AP.md）**
 **依赖：** 无
 **解锁：** 无
 **规格**：[PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md)
@@ -780,6 +780,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **方案**：前端按 `ip` 聚合（≤500 行，不改后端），处置复用 `POST /api/admin/bulk` 的 `reviews/approve-ip|approve-device|reject`；
   状态混合显示「部分已处理」；排序复用 AQ 的 `compareIp()`。
 - **验收**：见规格 §4.4。
+
 
 
 
