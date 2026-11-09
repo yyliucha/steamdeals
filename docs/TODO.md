@@ -726,9 +726,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   拦截点是 `Console.select()` 与 `router.beforeEach`；**刷新/关闭不拦**，401/退出登录不拦。
 - **验收**：见规格 §6。
 
-## AO. 待开发：后台游戏列与平台链接抽屉改版
+## AO. 后台游戏列与平台链接抽屉改版
 
-**状态：待开发**
+**状态：已实现待发版（2026-11-09）**
 **依赖：** 无
 **解锁：** 无
 **规格**：[ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md)
@@ -743,7 +743,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AP. 待开发：游戏详情·价格历史报表（史低高亮）
 
-**状态：待开发**
+**状态：已实现待发版（2026-11-09）**
 **依赖：** 无
 **解锁：** 无
 **规格**：[PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md)
@@ -768,9 +768,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   访问明细**服务端排序**（`/api/admin/visitors` 加 `sort/order` 白名单，IP 用零填充键排序，**不用 `ip::inet` 强转**避免脏数据报错）。
 - **验收**：见规格 §3.4。
 
-## AR. 待开发：异常审核「按 IP 合并」视图（下一期）
+## AR. 已发布 v2.2.0：异常审核「按 IP 合并」视图（下一期）
 
-**状态：质检通过（2026-11-09，0aa6842；QA 报告 docs/QA-ADMIN-REVIEW-LISTS-AR.md）**
+**状态：已发布 v2.2.0（2026-11-09，0aa6842）**
 **依赖：** AQ
 **解锁：** 无
 **规格**：[ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §4
@@ -780,6 +780,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **方案**：前端按 `ip` 聚合（≤500 行，不改后端），处置复用 `POST /api/admin/bulk` 的 `reviews/approve-ip|approve-device|reject`；
   状态混合显示「部分已处理」；排序复用 AQ 的 `compareIp()`。
 - **验收**：见规格 §4.4。
+
 
 
 

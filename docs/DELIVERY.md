@@ -180,12 +180,27 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-09 更新，v2.1.0 已发布：AM-2/AN/AK×3/AL/AC-2~4 九批）
+### 当前状态（2026-11-09 更新，v2.2.0 已发布：AQ 列表排序 + C1/AN 修复）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
-> **会话分工（2026-11-09）**：可直接开发的功能（AQ→AR、AO、AP、可选 F）已整理成
-> [HANDOVER-DEV-2026-11-09.md](HANDOVER-DEV-2026-11-09.md)，交由新会话；当前会话转入运维排查
-> （AA 愿望单根因日志 / C1 heat 探测 / C2 compose 文件名）。
+> **会话分工（2026-11-09）**：可直接开发的功能（AR、AO、AP、可选 F）见
+> [HANDOVER-DEV-2026-11-09.md](HANDOVER-DEV-2026-11-09.md)；运维排查结论见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) 与 TODO C 段。
+
+- **v2.2.0 已发布**（tag `v2.2.0`）：AQ 后台列表排序 + AA 愿望单六项缺陷修复 + C1/AN 修复——
+  ① 异常审核/访问明细表头排序（IP 数值序、服务端白名单、localStorage 持久化、待审上限 500）；
+  ② AA 六项：失败账号日志/提示带原因（未配 Key / 解密失败 / Steam 拒绝）、无 AppID 条目明确「仅本站」、
+  无绑定账号提示可绑定同步、未配 Key 账号置灰；
+  ③ C1：heat/catalog 适配 `fetchJson` 新契约（此前 heat 全量无效跳过、catalog 空跑），加契约回归测试；
+  ④ AN 回归：「放弃修改」清草稿，弹窗不再反复出现（注册签名支持 discard，五面各自清，+2 回归测试）。
+  验证：`npm test` 70 文件 / 563 项全绿、`api.test.js` 22 项、`email-auth` 9 项、`frontend:build`、`scan` 干净；
+  质检：C1/AN/AA/AQ ✅ 放行（[QA-RELEASE-2.2.0.md](QA-RELEASE-2.2.0.md)、[QA-WISHLIST-AA.md](QA-WISHLIST-AA.md)、[QA-ADMIN-REVIEW-LISTS-AQ.md](QA-ADMIN-REVIEW-LISTS-AQ.md)）。
+  **服务器部署待执行**（升级到 `2.2.0`）；部署后重点确认：
+  C1——`heat --limit 5` 的 `withHeat>0` 且 catalog 补跑能进新游戏（另有 TODO C1 的「重置误标游标」建议）；
+  AQ——十万行访问明细按 IP 排序耗时（超阈值再补索引）；AN——真机「放弃修改」后不再弹窗。
+
+- **待开发：AR 后台异常审核「按 IP 合并」视图**（2026-11-09 AQ 质检通过后解锁，另一方会话进行中）。
+
+- **待开发：AA 方案 A「愿望单诚实提示」**（方案 A 已确认，开发描述见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) §3/§4）。
 
 - **v2.1.0 已发布**（tag `v2.1.0`）：AM-2 代理池设置页 + AN 未保存离开提醒 + AK-1/2/3 密码系统 +
   AL 登录/注册/改密页 + AC-2/3/4 同步三批——
@@ -207,17 +222,6 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   部署后重点人工确认：
   真机走一遍登录/注册/改密交互（AL QA 需人工确认项）、真实邮箱收到注册验证码、后台「重置熔断」按钮、
   老用户已有密码不受影响（登录自动静默升级为新哈希）、老部署升级后新密码必须 ≥12 位。
-
-- **待发版：AA 批「愿望单缺陷修复（六项）」**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
-  失败账号日志/提示带原因（未配 Key / 解密失败 / Steam 拒绝）、无 AppID 条目明确「仅本站」不再弹多选、
-  无绑定账号提示可绑定同步、未配 Key 账号置灰。**根因（Steam 拒推）仍等日志定性后补**。
-  规格见 [WISHLIST-FIX.md](WISHLIST-FIX.md) §4/§6。
-
-- **待发版：AN 回归修复 + C1 修复**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
-  ① **AN 弹窗反复出现修复（f10d683）**——`discard()` 之前只放行一次导航不清草稿，Console 切换 section 又不卸载组件，
-  导致「放弃修改」后每次导航都再弹；现在注册签名支持 `discard` 回调、五个编辑面各自清草稿，新增 2 项回归测试。
-  ② **C1 heat/catalog 修复（b01aaf8）**——AB 批 `fetchJson` 改为返回 `{...res, json}` 后，heat 与 steam-catalog 仍按旧契约
-  解包（线上实测 `heat.entry_invalid` 全量、catalog 空跑）；改为 `data.json` 解包，新增 `test/fetchjson-contract.test.js`。
 
 - **待开发：AA 方案 A「愿望单诚实提示」**（2026-11-09 所有者确认方案 A）：
   根因已定案——`wishlist_add_failed` = `HTTP 401 → api.steampowered.com`，写接口 `AddToWishlist` 不接受 Web API Key

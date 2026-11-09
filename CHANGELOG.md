@@ -2,6 +2,38 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.2.0] - 2026-11-09
+
+后台列表排序（AQ 批）+ 三个线上问题的修复（heat/catalog 静默失效、未保存弹窗反复出现）一起交付。
+
+### 新增
+
+- **后台访问/异常列表排序（AQ 批，docs/ADMIN-REVIEW-LISTS.md §3）**：
+  - 异常审核列表**客户端排序**：最近出现 / IP / 次数 / 规则，默认「最近出现 ↓」，
+    IP 按**数值序**（IPv4 转整数、IPv6/异常值排后、空值最后），排序状态存 `localStorage`，切换不重置筛选；
+  - 访问明细**服务端排序**：`GET /api/admin/visitors` 新增 `sort=time|ip|status` + `order=asc|desc` **白名单**
+    （非法回落默认；IP 用零填充字符串键，不用 `ip::inet` 防脏数据炸查询），换排序回第 1 页；
+  - 异常审核拉取上限 300 → **500**，列表头显示「共 N 条（上限 500）」。
+
+### 修复
+
+- **愿望单六项产品缺陷（AA 批，docs/WISHLIST-FIX.md §4）**：失败账号的日志与提示带**原因**
+  （未配 Key / 解密失败 / Steam 拒绝）、无 Steam AppID 条目明确「仅本站」不再弹多选、
+  无绑定账号提示「绑定后可同步推送」、未配 Key 账号在弹窗置灰注明；新增 `test/wishlist.test.js`（7 项）。
+- **heat 任务静默失效（C1，docs/TODO.md C 段）**：AB 批把 `fetchJson` 改为返回 `{...res, json}` 后，
+  `heat` 仍按旧契约解包（`data[appid]`）→ 永远取到 undefined → **全量「无效跳过」、写 0 条热度**；
+  `steam-catalog` 同因空跑（新游戏进不了库）。改为 `data.json` 解包，新增
+  `test/fetchjson-contract.test.js` 锁契约，防再犯。
+- **后台「放弃修改」后弹窗反复出现（AN 回归）**：`discard()` 只放行一次导航、不清任何草稿，而 Console 切换
+  section 不卸载组件 → 草稿一直挂着、每次导航都弹。现在注册签名支持 `discard` 回调，五个编辑面各自清草稿，
+  新增 2 项回归测试（「放弃后 dirtySources 为 0、下次导航直接放行」）。
+
+### 文档
+
+- **AA 方案 A 定案（docs/WISHLIST-OAUTH.md）**：愿望单推送 Steam 失败根因为 `HTTP 401 → api.steampowered.com`
+  （写接口不接受 Web API Key，只读 GetWishlist 正常）；经所有者确认采用**方案 A「诚实提示」**——
+  改为中性文案「已加入本站愿望单（Steam 推送暂不支持）」+ 文档说明，不投入 OAuth 改造。开发描述已入规格，待排期。
+
 ## [2.1.0] - 2026-11-09
 
 认证与账号系统（AK/AL）、Steam 代理池设置页（AM-2）、后台未保存离开提醒（AN）与同步可靠性（AC-2/3/4）九批一起交付。
