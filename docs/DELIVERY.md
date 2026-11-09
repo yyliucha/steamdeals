@@ -252,6 +252,11 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   每日 Steam 配额预算：四任务串行估算超 24h 自动缩 steam-status 限额并告警（`scheduler.budget_exceeded`）。
   规格见 [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) AC9/AC4。注意：AC-4（可靠性批）已解锁为待开发。
 
+- **待发版：AC-4 批「同步可靠性批（AC2+AC6+AC7）」**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
+  熔断在任务面板可见（熔断至 X）+ 后台「重置熔断」按钮（`POST /api/admin/circuit/reset`，清零失败计数与冷却）；
+  429 退避落盘跨子进程共享（`data/steam-429.json`）；报价解析结构校验（`adapter.<平台>.shape_mismatch`）。
+  规格见 [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) AC2/AC6/AC7。**至此 AC 四批全部完成（待发版）**。
+
 - **v1.18.0 已发布**（tag `v1.18.0`）：AE/AF/AG/AC-1 四批——版本徽标按服务器 IP 选镜像仓库
   （ipinfo.io 定位 → 大陆/香港优先 TCR、其他优先 Hub，401 换 token、双失败回退 GitHub，结果带 source/region）；
   搜索态写操作后列表立刻刷新（先失效 30 秒搜索缓存）；后台「游戏管理」平台链接抽屉（`/api/admin/games/:id/links`
