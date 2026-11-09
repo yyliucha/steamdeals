@@ -1,6 +1,6 @@
 # 添加愿望单失败：链路审计与修复（待排查确认）
 
-> 状态：**已审计；现象已补全（2026-11-06 13:38 截图），等一条 `adapter.steam.wishlist_add_failed` 日志定性**。
+> 状态：**§4 六项产品缺陷已修复待发版（2026-11-09）；根因仍等一条 `adapter.steam.wishlist_add_failed` 日志定性**。
 > 关联：[STEAM-ACCOUNTS.md](STEAM-ACCOUNTS.md)（多账号与愿望单同步）、[WEB.md](WEB.md)、[TODO.md](TODO.md) 的 AA 条目。
 
 ## 1. 现象
@@ -80,14 +80,16 @@ docker logs steamdeals --since 6h 2>&1 | grep -E 'wishlist' | tail -30
 
 ## 4. 无论根因如何都要修的产品缺陷
 
-| # | 问题 | 位置 | 修法 |
-|---|---|---|---|
-| 1 | 服务端日志只记失败账号 id，**不记原因** | `server.js` 的 `steam.wishlist_manual_add`（`failed: failed.map(f => f.steamId)`） | 改为记 `{steamId, reason}`，排障靠它 |
-| 2 | 前端提示只有"XX 推送失败"，**不显示原因** | `Home.vue:257` | toast 里带上 `reason`（未配 Key / 解密失败 / Steam 拒绝） |
-| 3 | 弹窗里未配 API Key 的账号被**静默排除**在默认勾选外 | `Home.vue:253` | 账号项显示"未配置 API Key（不可推送）"并置灰 |
-| 4 | 无绑定账号时**静默只加本站** | `Home.vue:253` | 提示「已加入本站愿望单；绑定 Steam 账号可同步推送」 |
-| 5 | 多选全部为空时用户点确认 → 仅本站，但弹窗文案暗示"同时加入 Steam" | `Home.vue:82` | 空选时按钮改文案「仅加入本站」 |
-| 6 | `game.steam_appid` 为 null 时无任何 Steam 动作，但提示与有推送时相同 | `server.js:1329` | 明确"该条目无 Steam AppID，仅本站" |
+> 六项已全部修复待发版（2026-11-09，AA 修复批）：实现与测试见 `test/wishlist.test.js`（7 项入主链）。
+
+| # | 问题 | 位置 | 修法 | 状态 |
+|---|---|---|---|---|
+| 1 | 服务端日志只记失败账号 id，**不记原因** | `server.js` 的 `steam.wishlist_manual_add`（`failed: failed.map(f => f.steamId)`） | 改为记 `{steamId, reason}`，排障靠它 | ✅ 已修 |
+| 2 | 前端提示只有"XX 推送失败"，**不显示原因** | `Home.vue:257` | toast 里带上 `reason`（未配 Key / 解密失败 / Steam 拒绝） | ✅ 已修 |
+| 3 | 弹窗里未配 API Key 的账号被**静默排除**在默认勾选外 | `Home.vue:253` | 账号项显示"未配置 API Key（不可推送）"并置灰 | ✅ 已修（此前已置灰，本次补测试锁定） |
+| 4 | 无绑定账号时**静默只加本站** | `Home.vue:253` | 提示「已加入本站愿望单；绑定 Steam 账号可同步推送」 | ✅ 已修 |
+| 5 | 多选全部为空时用户点确认 → 仅本站，但弹窗文案暗示"同时加入 Steam" | `Home.vue:82` | 空选时按钮改文案「仅加入本站」 | ✅ 已修（此前已有，本次补测试锁定） |
+| 6 | `game.steam_appid` 为 null 时无任何 Steam 动作，但提示与有推送时相同 | `server.js:1329` | 明确"该条目无 Steam AppID，仅本站" | ✅ 已修（前端不再为无 AppID 条目弹多选） |
 
 ## 5. 需要所有者补充的信息（决定根因）
 

@@ -1524,7 +1524,8 @@ export function createApiServer({
           steamIds,
           added,
           alreadyIn,
-          failed: failed.map((f) => f.steamId),
+          // AA 批（docs/WISHLIST-FIX.md §4-1）：失败账号必须带原因，排障不再只看到 steamId
+          failed: failed.map((f) => ({ steamId: f.steamId, reason: f.reason })),
         });
         return json(res, 200, { ok: true, appid: game.steam_appid ?? null, added, alreadyIn, failed });
       }
