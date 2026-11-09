@@ -444,7 +444,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AA. 添加愿望单推送 Steam 失败（根因已定案，方案 A 已实现并随 AU 发版）
 
-**状态：方案 A 已实现待发版（2026-11-09，见 AU 条目）；根因定案（2026-11-09 线上日志：`HTTP 401 → api.steampowered.com`）。**
+**状态：方案 A 已实现并质检通过（2026-11-09，随 AU，785670b；QA 报告 docs/QA-AU-D1D2AA.md）；根因定案（2026-11-09 线上日志：`HTTP 401 → api.steampowered.com`）。**
 开发描述见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) §3/§4（只改前端文案 + 文档同步；不投入 OAuth 改造、不动凭据模型）。
 §4 六项产品缺陷修复批已随 **v2.2.0 发布**（2026-11-09，5b59bfa；QA 报告 docs/QA-WISHLIST-AA.md）。
 本条目剩余：方案 A「诚实提示」的文案改动**已随 AU 交付（2026-11-09）**，见 AU 条目。
@@ -819,7 +819,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AU. pg_trgm 搜索索引 + 封面图缓存总量上限 + 愿望单诚实口径（AA 方案 A）
 
-**状态：已实现待发版（2026-11-09）**
+**状态：质检通过（2026-11-09，785670b；QA 报告 docs/QA-AU-D1D2AA.md）**
 **依赖：** 无
 **解锁：** 无（D1/D2 由本条收口；AA 条目的「方案 A」部分由本条交付）
 **规格**：[ROADMAP.md](ROADMAP.md) 的 D1/D2 + [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) §3/§4
