@@ -237,6 +237,11 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   建号即验证并自动登录）；登录用户修改密码（踢其它会话）；`must_change_password` 用户业务接口 403 强制改密。
   规格见 [AUTH-REDESIGN.md](AUTH-REDESIGN.md)。注意：AL（登录/注册/改密页面）已解锁为待开发。
 
+- **待发版：AL 批「登录 / 注册 / 改密页面」**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
+  独立 `/login`（桌面左右分栏 + 移动单列、三模式、Caps Lock、错误就地、记住我、回跳 next 站内校验）、
+  `/register`（强度条 + 60 秒倒计时 + 不可用说明）、`/change-password`（forced 提示）；首页不再弹登录框；
+  401 跳 /login；后台新建/重置密码留空 → 临时密码弹窗 +「随机生成」。规格见 [AUTH-REDESIGN.md](AUTH-REDESIGN.md)。
+
 - **v1.18.0 已发布**（tag `v1.18.0`）：AE/AF/AG/AC-1 四批——版本徽标按服务器 IP 选镜像仓库
   （ipinfo.io 定位 → 大陆/香港优先 TCR、其他优先 Hub，401 换 token、双失败回退 GitHub，结果带 source/region）；
   搜索态写操作后列表立刻刷新（先失效 30 秒搜索缓存）；后台「游戏管理」平台链接抽屉（`/api/admin/games/:id/links`
