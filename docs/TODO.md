@@ -728,7 +728,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AO. 后台游戏列与平台链接抽屉改版
 
-**状态：已实现待发版（2026-11-09）**
+**状态：质检通过（2026-11-09，af70754；QA 报告 docs/QA-ADMIN-LINKS-DRAWER-AO.md）**
 **依赖：** 无
 **解锁：** 无
 **规格**：[ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md)
@@ -780,6 +780,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **方案**：前端按 `ip` 聚合（≤500 行，不改后端），处置复用 `POST /api/admin/bulk` 的 `reviews/approve-ip|approve-device|reject`；
   状态混合显示「部分已处理」；排序复用 AQ 的 `compareIp()`。
 - **验收**：见规格 §4.4。
+
 
 
 
