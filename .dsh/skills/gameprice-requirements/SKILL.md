@@ -180,11 +180,11 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
 4. 若需求里有真机/线上证据，写进 TODO 条目或规格（开发本机可能复现不了）。
 5. **改完 TODO / INDEX 后运行 `npm run todo:progress`**，保持 README「开发进度」块与 TODO 一致（CI `docs-progress` 会校验，规则见 [docs/TODO-PROGRESS.md](../../../docs/TODO-PROGRESS.md)）。
 
-**并发写 TODO（2026-11-06 所有者要求）**：建条目 / 加 INDEX 行之前先确认没有别的会话在写这两份文件
+**并发写 TODO（2026-11-09 所有者新规）**：建条目 / 加 INDEX 行之前先探测占用
 （`git status --short docs/TODO.md docs/REQUIREMENTS-INDEX.md`、`LastWriteTime` 2 分钟内被改过、`.git/index.lock`）；
-**发现被占用立即停手**——不改 TODO / INDEX、不提交，把"想加/改什么条目、证据、疑似占用方"报给所有者，
-**由人工决定**怎么处理；所有者确认可写后再重读全文、用 `edit` 定点替换。完整规则见
-[docs/HANDOVER.md](../../../docs/HANDOVER.md) §10。
+**被占用就跳过 TODO / INDEX 的写入**——规格与开发描述照常产出，把「待建条目 / 待改状态」写进开发描述与对话，
+开发照常派发；条目由**收尾复盘**补——本批最后提交的会话重读两份文件全文、用 `edit` 定点替换补建 / 补状态，
+并运行 `npm run todo:progress`。完整规则见 [docs/HANDOVER.md](../../../docs/HANDOVER.md) §10。
 
 > 不要在主对话里当"唯一的传话人"：对话会丢，TODO 不会。任何"以后要做"的结论，
 > 只要没进 TODO，就等于没记。

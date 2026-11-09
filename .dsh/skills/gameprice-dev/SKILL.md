@@ -52,20 +52,21 @@ git status --short; git log --oneline -5; node -p "require('./package.json').ver
    `待决策`、`待排查`（未出结论）、`已过时`、`依赖阻塞` 的条目不要碰。做完一条就把该条目的状态改成 `已实现待发版`。
    **遇到 `依赖阻塞`**：说明前置条目还没完成，不要绕过它硬做——在汇报里写明"被 X 阻塞"。
 
-### 1.1 TODO 被占用时（2026-11-06 所有者要求）
+### 1.1 TODO 被占用时（2026-11-09 所有者新规：直接干活，收尾复盘）
 
-`docs/TODO.md` / `docs/REQUIREMENTS-INDEX.md` 可能被别的会话同时改。**发现被占用就停手并上报，不要自己处理。**
+`docs/TODO.md` / `docs/REQUIREMENTS-INDEX.md` 可能被别的会话同时改。**被占用就跳过 TODO/INDEX 的写入，照常干活**，不要停下等。
 
 1. **写前探测**：`git status --short docs/TODO.md docs/REQUIREMENTS-INDEX.md` + 看 `LastWriteTime`
    （2 分钟内被改过 = 可能有人在写，自己刚写过的除外）+ `Test-Path .git/index.lock`（True = 有 git 操作）；
-2. **命中就停**：立刻停止对这两份文件的**一切写入**（不改状态、不加哈希、不加条目、不补 INDEX），
-   不重试、不覆盖、不回滚、不 `git stash`、不提交；
-3. **上报给所有者**：想改哪个编号 / 什么状态、证据（mtime、`git status`、最近提交）、疑似占用方、自己的改动现状，
-   由**人工决定**怎么处理；期间可以继续改代码、跑测试，但**本条的交付状态先不落 TODO**；
-4. 只有所有者确认可写后再动：先 `git pull --rebase` / `git diff`，**重读两份文件全文**吸收别人的新增，
-   再用 `edit` 定点替换（**禁止整文件 `write`**）；发现别人的内容被冲掉 → **停手、保留现场再上报**，不自行补回。
+2. **命中就跳过这两份文件的写入**：不改状态、不加哈希、不加条目、不补 INDEX、不 `git add` 这两份文件；
+   不回滚、不 `git stash`、不覆盖；
+3. **照常干活**：改代码、补测试、跑验证、提交推 main（提交只 `git add` 自己的文件，**绝不 `git add -A`**）、
+   质检照常调用；把「待回写的状态」记进提交信息与汇报，不要只留在对话里；
+4. **收尾复盘**：本批最后提交的会话负责——先 `git pull --rebase` / `git diff`，**重读两份文件全文**吸收别人的新增，
+   用 `edit` 定点替换补上本批状态（**禁止整文件 `write`**），跑 `npm run todo:progress` 同步 README；
+   发现别人的内容被冲掉 → 停手、保留现场再上报，不自行补回。
 
-完整规则（含上报格式、备份与撞车处理）见 [docs/HANDOVER.md](../../../docs/HANDOVER.md) §10。
+完整规则（含撞车处理）见 [docs/HANDOVER.md](../../../docs/HANDOVER.md) §10。
 
 ## 2. 代码地图
 
