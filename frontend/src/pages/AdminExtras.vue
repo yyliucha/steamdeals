@@ -77,7 +77,9 @@ const loading=ref(false),saving=ref(false),users=ref([]),recycleGames=ref([]),st
 const newUser=ref({username:'',password:'',email:'',role:'user'});
 // AN 批（docs/UNSAVED-GUARD.md §4.4）：新建用户面——任一字段非空即算脏（角色默认 user 不算），
 // save = 创建账号：创建成功才离开，失败留在本页并提示
-const unregisterUnsaved=registerUnsavedSource({id:'new-user',label:'新建用户',isDirty:()=>Boolean(newUser.value.username.trim()||newUser.value.password||newUser.value.email.trim()||newUser.value.role!=='user'),save:submitCreateUser});
+// 放弃修改时清掉新建用户草稿（否则脏状态一直挂着，每次导航都弹窗——2026-11-09 修复）
+function discardNewUser(){newUser.value={username:'',password:'',email:'',role:'user'};}
+const unregisterUnsaved=registerUnsavedSource({id:'new-user',label:'新建用户',isDirty:()=>Boolean(newUser.value.username.trim()||newUser.value.password||newUser.value.email.trim()||newUser.value.role!=='user'),save:submitCreateUser,discard:discardNewUser});
 const usersPager=useListPagination(users), recyclePager=useListPagination(recycleGames), steamPager=useListPagination(libraryGames), mailPager=useListPagination(mailRecords), logsPager=useListPagination(logEntries);
 const pagedUsers=usersPager.items, usersPage=usersPager.page, usersPageSize=usersPager.pageSize;
 const pagedRecycleGames=recyclePager.items, recyclePage=recyclePager.page, recyclePageSize=recyclePager.pageSize;

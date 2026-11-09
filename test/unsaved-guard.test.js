@@ -7,6 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { registerUnsavedSource, requestLeave, discard, dirtySources } from '../frontend/src/composables/useUnsavedGuard.js';
 
 const read = (p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), 'utf8');
 const composable = read('../frontend/src/composables/useUnsavedGuard.js');
@@ -69,4 +70,38 @@ test('边界：不拦刷新/关闭（无 beforeunload，决策 3）；菜单当�
   }
   assert.match(consoleJs, /hasDirtySources\(\)/, '菜单小圆点按脏来源刷新');
   assert.match(consoleJs, /nav-dirty/, '小圆点样式');
+});
+
+test('回归（2026-11-09）：放弃修改必须清掉草稿——只放行一次会导致草稿一直在、每次导航都弹窗', async () => {
+  let draft = 'typed';
+  const off = registerUnsavedSource({
+    id: 'regression-discard',
+    label: '测试面',
+    isDirty: () => draft !== '',
+    save: () => {},
+    discard: () => { draft = ''; },
+  });
+  try {
+    const pending = requestLeave();
+    assert.equal(dirtySources().length, 1, '有脏来源');
+    assert.ok(pending instanceof Promise, 'requestLeave 返回 Promise');
+    discard();
+    assert.equal(await pending, true, '放弃修改放行本次导航');
+    assert.equal(draft, '', 'discard 回调被调用、草稿已清');
+    assert.equal(dirtySources().length, 0, '清完草稿后不再脏');
+    assert.equal(await requestLeave(), true, '下一次导航直接放行、不再弹窗');
+  } finally {
+    off();
+  }
+});
+
+test('回归（2026-11-09）：五个编辑面都提供 discard 回调，composable 调用 source.discard', () => {
+  assert.match(composable, /discard = null/, '注册签名支持可选 discard');
+  assert.match(composable, /void source\.discard\?\.\(\)/, '放弃修改时逐个调用来源 discard');
+  assert.equal((adminModules.match(/discard:/g) || []).length, 3, '系统设置/站点通知/编辑游戏三个来源都有 discard');
+  assert.match(adminModules, /discard:discardSettings/, '系统设置 discard 重置代理编辑态并重拉');
+  assert.match(adminModules, /discard:resetAnnouncement/, '站点通知 discard 清表单+快照');
+  assert.match(adminModules, /discard:closeGameDialog/, '编辑游戏 discard 关弹窗+清快照');
+  assert.match(mailForm, /discard: discardDraft/, '邮件配置 discard 恢复上次加载/保存值');
+  assert.match(adminExtras, /discard:discardNewUser/, '新建用户 discard 清空草稿');
 });

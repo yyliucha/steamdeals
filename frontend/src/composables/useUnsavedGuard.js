@@ -14,9 +14,9 @@ let pendingResolve = null;
 let pendingPromise = null;
 let bypass = false;
 
-/** 注册一个编辑面；返回注销函数（组件 onUnmounted 调用）。 */
-export function registerUnsavedSource({ id, label, isDirty, save }) {
-  sources.set(id, { label, isDirty, save });
+/** 注册一个编辑面；返回注销函数（组件 onUnmounted 调用）。discard 可选：放弃修改时清掉该面草稿。 */
+export function registerUnsavedSource({ id, label, isDirty, save, discard = null }) {
+  sources.set(id, { label, isDirty, save, discard });
   return () => {
     sources.delete(id);
   };
@@ -73,8 +73,18 @@ export async function saveAndLeave() {
   settle(true);
 }
 
-/** 放弃修改：直接放行。 */
+/**
+ * 放弃修改：先把各脏来源的草稿清掉（来源的 discard 回调），再放行导航。
+ * 2026-11-09 修复：此前只 settle(true) 不放行后续——草稿没清，下一次导航又弹同一个弹窗。
+ */
 export function discard() {
+  for (const source of dirtySources()) {
+    try {
+      void source.discard?.();
+    } catch {
+      /* 清草稿失败不影响离开；该来源仍是脏的，下次会再提示（可接受） */
+    }
+  }
   settle(true);
 }
 

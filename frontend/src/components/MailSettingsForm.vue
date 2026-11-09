@@ -62,6 +62,18 @@ function mailFieldId(key) { return 'mail-' + key.replace(/[^a-zA-Z0-9]/g, '-'); 
 function hasSecret(key) { return Boolean(schema.value?.secrets?.[key]?.hasValue); }
 function sourceLabel(key) { return schema.value?.sources?.[key] ? '后台设置' : '环境变量/默认'; }
 
+// 放弃修改：把邮件配置草稿恢复成「上次加载/保存的值」，清空清除标记与脏标记
+function discardDraft() {
+  const next = {};
+  for (const field of schema.value?.fields || []) {
+    if (!isMailSettingKey(field.key)) continue;
+    next[field.key] = field.type === 'secret' ? '' : schema.value?.values?.[field.key] ?? field.default ?? (field.type === 'bool' ? false : '');
+  }
+  values.value = next;
+  clearFlags.value = {};
+  dirty.value = false;
+}
+
 async function load() {
   loading.value = true;
   error.value = '';
@@ -131,7 +143,7 @@ async function save() {
 }
 
 // AN 批（docs/UNSAVED-GUARD.md §4.4）：邮件配置面——脏 = 组件内 dirty，保存 = submit（失败抛错，离开守卫靠它）
-const unregisterUnsaved = registerUnsavedSource({ id: 'mail-settings', label: '邮件配置', isDirty: () => dirty.value, save: submit });
+const unregisterUnsaved = registerUnsavedSource({ id: 'mail-settings', label: '邮件配置', isDirty: () => dirty.value, save: submit, discard: discardDraft });
 
 onMounted(load);
 onUnmounted(unregisterUnsaved);

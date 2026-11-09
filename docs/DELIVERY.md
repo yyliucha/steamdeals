@@ -213,6 +213,15 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   无绑定账号提示可绑定同步、未配 Key 账号置灰。**根因（Steam 拒推）仍等日志定性后补**。
   规格见 [WISHLIST-FIX.md](WISHLIST-FIX.md) §4/§6。
 
+- **待发版：AN 回归修复 + C1 修复**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
+  ① **AN 弹窗反复出现修复**——`discard()` 之前只放行一次导航不清草稿，Console 切换 section 又不卸载组件，
+  导致「放弃修改」后每次导航都再弹；现在注册签名支持 `discard` 回调、五个编辑面各自清草稿，新增 2 项回归测试。
+  ② **C1 heat/catalog 修复**——AB 批 `fetchJson` 改为返回 `{...res, json}` 后，heat 与 steam-catalog 仍按旧契约
+  解包（线上实测 `heat.entry_invalid` 全量、catalog 空跑）；改为 `data.json` 解包，新增 `test/fetchjson-contract.test.js`。
+  ③ **AA 根因已定案（2026-11-09 线上日志）**：`wishlist_add_failed` = `HTTP 401 → api.steampowered.com`——
+  `IWishlistService/AddToWishlist` 不接受 Web API Key（GET 读愿望单可用、写操作要 OAuth access_token），
+  修复方向需「Steam 账号 OAuth 授权拿 access_token」能力，待所有者确认后立项。
+
 - **v1.18.0 已发布**（tag `v1.18.0`）：AE/AF/AG/AC-1 四批——版本徽标按服务器 IP 选镜像仓库
   （ipinfo.io 定位 → 大陆/香港优先 TCR、其他优先 Hub，401 换 token、双失败回退 GitHub，结果带 source/region）；
   搜索态写操作后列表立刻刷新（先失效 30 秒搜索缓存）；后台「游戏管理」平台链接抽屉（`/api/admin/games/:id/links`
