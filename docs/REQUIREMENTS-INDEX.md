@@ -41,6 +41,7 @@
 | **AM** | Steam 代理池（多代理按序切换 + 健康状态） | [PROXY-POOL.md](PROXY-POOL.md) | AM-1 已发布 v2.0.0（2026-11-06）；AM-2 质检通过（2026-11-09，b7c49df） | ✅ 规格自包含（按 §8 顺序派发） |
 | **AN** | 未保存修改的离开提醒（后台 5 个编辑面） | [UNSAVED-GUARD.md](UNSAVED-GUARD.md) | 待开发 | ✅ 规格自包含 |
 | **AO** | 后台游戏列 + 平台链接抽屉改版（复制中英文 / 抽屉重做） | [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md) | 待开发 | ✅ 规格自包含 |
+| **AP** | 游戏详情·价格历史报表（趋势线 + 史低高亮） | [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md) | 待开发 | ✅ 规格自包含 |
 | **F** | Steam 价格同步优化（缩量 / 热点优先） | ❌ 无独立规格（计划写在 [TODO.md](TODO.md) F 段） | 等排期 | ❌ 未给 |
 | **C1** | heat 逐 appid 全 `success:false` | ❌ 无规格（[TODO.md](TODO.md) C1） | 待探测 | ❌ 未给 |
 
@@ -61,4 +62,5 @@
    AK/AL 未单独给开发描述——所有者明确"按规格 §8 顺序直接派发"；
 7. **AM**（Steam 代理池）同日入 TODO，规格 [PROXY-POOL.md](PROXY-POOL.md)；AM-1/AM-2 两批，后者依赖前者；
 8. **AN**（未保存修改的离开提醒）同日入 TODO，规格 [UNSAVED-GUARD.md](UNSAVED-GUARD.md)；单批，纯前端；
-9. **AO**（后台游戏列 + 链接抽屉改版）2026-11-09 入 TODO，规格 [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md)；单批，纯前端。
+9. **AO**（后台游戏列 + 链接抽屉改版）2026-11-09 入 TODO，规格 [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md)；单批，纯前端；
+10. **AP**（价格历史报表）2026-11-09 入 TODO，规格 [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md)；单批，纯前端。
