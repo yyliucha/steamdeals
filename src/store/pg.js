@@ -1361,10 +1361,10 @@ export function passwordNeedsRehash(stored) {
   return value.length > 0 && !value.startsWith('$scrypt$');
 }
 
-export async function createUser(q, { username, password, role = 'user', email = null }) {
+export async function createUser(q, { username, password, role = 'user', email = null, mustChange = false }) {
   const r = await q(
-    'insert into users (username, password_hash, role, email) values ($1, $2, $3, $4) returning id, username, role, email, email_verified',
-    [username, hashPassword(password), role, email],
+    'insert into users (username, password_hash, role, email, must_change_password) values ($1, $2, $3, $4, $5) returning id, username, role, email, email_verified',
+    [username, hashPassword(password), role, email, Boolean(mustChange)],
   );
   return r.rows[0];
 }
@@ -1427,13 +1427,14 @@ export async function updateUser(q, { username, displayName = undefined, role = 
   return r.rows[0] ?? null;
 }
 
-/** 改密码：同时踢掉该用户所有会话，旧 cookie 立即失效。 */
-export async function setUserPassword(q, { username = null, userId = null, password }) {
+/** 改密码：踢掉该用户所有会话，旧 cookie 立即失效；AK-3 起不再顺带启用账号（启用/禁用是独立动作）。 */
+export async function setUserPassword(q, { username = null, userId = null, password, mustChange = false }) {
   const where = userId != null ? 'id = $2' : 'username = $2';
   const key = userId != null ? userId : username;
-  const r = await q(`update users set password_hash = $1, disabled = false where ${where} returning id`, [
+  const r = await q(`update users set password_hash = $1, must_change_password = $3 where ${where} returning id`, [
     hashPassword(password),
     key,
+    Boolean(mustChange),
   ]);
   if (!r.rows.length) return null;
   await q('delete from sessions where user_id = $1', [r.rows[0].id]);

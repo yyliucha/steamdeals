@@ -738,9 +738,25 @@ export function createApiServer({
       // Steam 路由块里，否则该块之前的路由（如 /api/games/search）在全新库上会 500。
       await ensureSteamSchemaOnce(q);
 
+      // AK-3（docs/AUTH-REDESIGN.md §4.8）：首次登录强制改密——must_change_password 的用户
+      // 只放行白名单路径（改密页要用的 /api/password/check 一并放行），其余一律 403。
+      if (user?.must_change_password) {
+        const allow = (p) =>
+          p === '/api/me' ||
+          p === '/api/logout' ||
+          p === '/api/user/password' ||
+          p === '/api/site' ||
+          p === '/api/captcha' ||
+          p === '/api/password/check' ||
+          !p.startsWith('/api/');
+        if (!allow(path)) {
+          return json(res, 403, { error: '需要先修改密码', code: 'must_change_password' });
+        }
+      }
+
       // 邮箱验证码路由（发送 / 校验），逻辑在 auth-routes.js
       const authRoutes = await import('./auth-routes.js');
-      if (await authRoutes.handleEmailAuth({ path, req, res, q, logger, json, readBody })) return;
+      if (await authRoutes.handleEmailAuth({ path, req, res, q, logger, json, readBody, captcha, ip })) return;
       const requireUser = () => {
         if (!user) {
           json(res, 401, { error: '需要登录' });
@@ -891,6 +907,27 @@ export function createApiServer({
       if (path === '/api/logout' && req.method === 'POST') {
         await db.deleteSession(q, token);
         return json(res, 200, { ok: true }, { 'set-cookie': sessionCookie(req, '', 0) });
+      }
+
+      // AK-3（docs/AUTH-REDESIGN.md §4.7）：登录用户修改密码——旧密码校验、策略、踢其它会话（保留当前）
+      if (path === '/api/user/password' && req.method === 'POST') {
+        if (!requireUser()) return;
+        const body = await readBody(req);
+        const oldPassword = String(body.oldPassword ?? '');
+        const newPassword = String(body.newPassword ?? '');
+        const row = (await q('select password_hash from users where id = $1', [user.id])).rows[0];
+        if (!row || !db.verifyPassword(oldPassword, row.password_hash)) {
+          return json(res, 400, { error: '当前密码不正确' });
+        }
+        const policyError = passwordPolicy.passwordPolicyError(newPassword, { username: user.username });
+        if (policyError) return json(res, 400, { error: policyError });
+        await q(
+          'update users set password_hash = $1, weak_password = false, must_change_password = false, password_updated_at = now() where id = $2',
+          [db.hashPassword(newPassword), user.id],
+        );
+        await q('delete from sessions where user_id = $1 and token <> $2', [user.id, token]);
+        logger?.info('auth.password_changed', { userId: user.id });
+        return json(res, 200, { ok: true, message: '密码已修改，其它设备已退出登录' });
       }
 
       // ---- 当前用户与偏好 ----
@@ -1953,14 +1990,17 @@ export function createApiServer({
       if (pwdMatch && req.method === 'POST') {
         if (!requireAdmin()) return;
         const body = await readBody(req);
-        const password = String(body.password ?? '');
+        const rawPassword = String(body.password ?? '');
         const username = decodeURIComponent(pwdMatch[1]);
         const before = (await q('select email from users where username = $1', [username])).rows[0];
         if (!before) return json(res, 404, { error: '没有该用户' });
-        // AK-1（docs/AUTH-REDESIGN.md §4.1）：重置密码统一走密码策略（不再各写 length < 8）
+        // AK-3（docs/AUTH-REDESIGN.md §4.5）：密码可留空 → 生成临时密码（响应只回一次）；
+        // 重置一律 must_change_password=true；不再顺带启用账号（启用/禁用是独立动作）
+        const generated = rawPassword ? null : passwordPolicy.generateTempPassword();
+        const password = rawPassword || generated;
         const policyError = passwordPolicy.passwordPolicyError(password, { username, email: before.email ?? '' });
         if (policyError) return json(res, 400, { error: policyError });
-        const row = await db.setUserPassword(q, { username, password });
+        const row = await db.setUserPassword(q, { username, password, mustChange: true });
         if (!row) return json(res, 404, { error: '没有该用户' });
         logger?.info('api.user_password_reset', { username, by: user.username });
         // AJ 批：重置密码同步发通知；正文只写"已重置，请向管理员获取新密码"，
@@ -1974,7 +2014,11 @@ export function createApiServer({
           siteUrl: baseUrl(req),
           contactEmail: appealEmail(),
         });
-        return json(res, 200, { ok: true, notify: { status: notifyResult.status, error: notifyResult.error ?? null } });
+        return json(res, 200, {
+          ok: true,
+          notify: { status: notifyResult.status, error: notifyResult.error ?? null },
+          ...(generated ? { tempPassword: generated } : {}),
+        });
       }
 
       // AK-2（docs/AUTH-REDESIGN.md §4.4）：管理员解锁——清零失败计数与锁定
@@ -2636,7 +2680,7 @@ export function createApiServer({
         if (!requireAdmin()) return;
         const body = await readBody(req);
         const username = String(body.username ?? '').trim();
-        const password = String(body.password ?? '');
+        const rawPassword = String(body.password ?? '');
         if (!username) return json(res, 400, { error: '用户名必填' });
         // 邮箱可选，但必须和账号在同一次写入里落库：先建号、再绑邮箱的两步式会让
         // "邮箱已被占用"时账号已落库，前端报错刷新却冒出幽灵用户（2026-11-06 反馈的 bug）。
@@ -2644,10 +2688,13 @@ export function createApiServer({
         const rawEmail = String(body.email ?? '').trim();
         const email = rawEmail ? auth.normalizeEmail(rawEmail) : null;
         if (rawEmail && !email) return json(res, 400, { error: '邮箱格式不正确' });
-        // AK-1（docs/AUTH-REDESIGN.md §4.1）：建号密码统一走密码策略
+        // AK-3（docs/AUTH-REDESIGN.md §4.5）：密码可留空 → 生成 16 位随机临时密码（响应只回一次）；
+        // 填了必须过策略；后台建号一律 must_change_password=true
+        const generated = rawPassword ? null : passwordPolicy.generateTempPassword();
+        const password = rawPassword || generated;
         const policyError = passwordPolicy.passwordPolicyError(password, { username, email: rawEmail });
         if (policyError) return json(res, 400, { error: policyError });
-        const doCreate = () => db.createUser(q, { username, password, role: body.role === 'admin' ? 'admin' : 'user', email });
+        const doCreate = () => db.createUser(q, { username, password, role: body.role === 'admin' ? 'admin' : 'user', email, mustChange: true });
         let created;
         try {
           try {
@@ -2675,8 +2722,8 @@ export function createApiServer({
           });
           return json(res, 500, { error: '创建失败：' + String(err.message).slice(0, 160) });
         }
-        logger?.info('api.user_created', { username: created.username, role: created.role, emailBound: Boolean(email) });
-        return json(res, 201, { user: created });
+        logger?.info('api.user_created', { username: created.username, role: created.role, emailBound: Boolean(email), tempGenerated: Boolean(generated) });
+        return json(res, 201, { user: created, ...(generated ? { tempPassword: generated } : {}) });
       }
 
       // ---- 管理员：访问记录（分页 + 过滤 + 今日汇总）----

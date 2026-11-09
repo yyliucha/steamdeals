@@ -3,6 +3,7 @@
 // 含用户名/邮箱 @ 前部分（长度 ≥4、忽略大小写）、全同字符、连续序列（递增/递减 ≥6）。
 // 纯函数；六个设置密码的入口统一调用本模块，不再各写 length < 8。
 // 不 trim、不做 Unicode 归一化——空格与中文都是合法字符，密码原样哈希。
+import { randomBytes } from 'node:crypto';
 import { COMMON_PASSWORDS } from './data/common-passwords.js';
 
 export const MIN_LENGTH = 12;
@@ -105,4 +106,9 @@ export function passwordPolicyError(password, { username = '', email = '' } = {}
   const check = evaluatePassword(password, { username, email });
   if (check.ok) return null;
   return `密码不符合要求：${check.reasons.map((r) => REASON_TEXT[r]).join('、')}`;
+}
+
+/** AK-3（docs/AUTH-REDESIGN.md §4.5）：16 位随机临时密码（base64url，天然满足策略），只在响应里出现一次。 */
+export function generateTempPassword(bytes = 12) {
+  return randomBytes(bytes).toString('base64url');
 }

@@ -143,6 +143,11 @@ export const SETTINGS = [
     help: '封禁页/申诉页展示的邮箱。留空则依次回退到：邮件收件人 → 发件人 → SMTP 账号。',
   }),
 
+  // ---- 账号与登录（AK-3，docs/AUTH-REDESIGN.md §4.6）----
+  def('auth.registrationEnabled', 'AUTH_REGISTRATION_ENABLED', 'auth', '开放用户注册', 'bool', true, {
+    help: '关闭后注册接口返回 403；SMTP 未配置时注册同样不可用（503）。',
+  }),
+
   // ---- 网络 ----
   def('network.steamProxy', 'STEAM_PROXY', 'network', 'Steam 专用代理', 'secret', '', {
     help: '只作用于 Steam 域名，如 http://127.0.0.1:7890。可配多条（换行分隔、按顺序尝试、最多 10 条），仅支持 http/https。',
@@ -183,6 +188,7 @@ export const SETTING_MAP = new Map(SETTINGS.map((d) => [d.key, d]));
 export const GROUPS = [
   { id: 'sources', title: '数据源与采集', description: '开关、间隔、API Key 与区服。' },
   { id: 'site', title: '站点与内容', description: '前台展示策略。' },
+  { id: 'auth', title: '账号与登录', description: '开放注册开关等登录相关配置。' },
   { id: 'alerts', title: '通知与提醒', description: '提醒开关与间隔、Webhook / 企业微信；邮件配置在「邮件服务」页。' },
   { id: 'network', title: '网络与代理', description: '国内服务器访问 Steam 通常需要代理；只支持 http/https。' },
   { id: 'advanced', title: '高级', description: '一般保持默认即可。' },
