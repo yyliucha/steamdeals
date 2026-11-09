@@ -218,6 +218,13 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   [QA-UNSAVED-GUARD-AN.md](QA-UNSAVED-GUARD-AN.md)：61 文件/504 项 npm test 全绿、frontend:build、scan 干净；
   1 项真机目视确认）。规格见 [UNSAVED-GUARD.md](UNSAVED-GUARD.md)。
 
+- **待发版：AK-1 批「密码策略 + 哈希升级」**（2026-11-09 已提交 main，等「构建 vX.Y.Z」指令）：
+  密码最低 12 位（≤200）+ 弱口令黑名单（Top 1 万 + 常见词数字尾巴变体）+ 含用户名/邮箱片段 + 全同字符 + 连续序列；
+  六个设置密码入口统一策略（初始化/后台建号/后台重置/自助重置/CLI/后续注册与改密）；
+  scrypt N=32768 版本化哈希（`$scrypt$N$r$p$…`），旧格式兼容、登录静默升级 + `password_updated_at`；
+  登录时评估 `weak_password` 落库；`POST /api/password/check` 匿名限流。规格见 [AUTH-REDESIGN.md](AUTH-REDESIGN.md)。
+  注意：老部署升级后新密码必须 ≥12 位；AK-2（登录防护+后台标识）已解锁为待开发。
+
 - **v1.18.0 已发布**（tag `v1.18.0`）：AE/AF/AG/AC-1 四批——版本徽标按服务器 IP 选镜像仓库
   （ipinfo.io 定位 → 大陆/香港优先 TCR、其他优先 Hub，401 换 token、双失败回退 GitHub，结果带 source/region）；
   搜索态写操作后列表立刻刷新（先失效 30 秒搜索缓存）；后台「游戏管理」平台链接抽屉（`/api/admin/games/:id/links`
