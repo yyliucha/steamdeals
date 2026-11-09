@@ -192,7 +192,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   （「仅本站保存 / Steam 推送暂不支持」，不再出现「推送失败」字样，失败日志与推送分支保留）。
   验证：`npm test` 全绿、`frontend:build`、`scan` 干净；
   质检：AU ✅ 放行（[QA-AU-D1D2AA.md](QA-AU-D1D2AA.md)）。
-  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  CI：docker-hub run 42619351781（test / smoke / publish 全绿）、docker-tcr run 42619351759（test / publish 全绿），
+  镜像已推送两源。
   **服务器部署待执行**（升级到 `2.5.0`）；部署后生产验证 `\dx` 有 `pg_trgm`、关键词查询 `EXPLAIN` 命中
   Bitmap Index Scan（TODO AU「待线上验证」）。
 - **v2.4.0 已发布**（tag `v2.4.0`）：AT 批后台信息架构改版——新建用户/新建·编辑通知改右侧抽屉（不跳页、
