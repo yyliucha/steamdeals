@@ -2114,7 +2114,8 @@ async function cmdHeat() {
           `https://store.steampowered.com/api/appdetails?appids=${appid}&filters=recommendations,release_date&cc=cn&l=schinese`,
           { logger, label: 'steam.heat', timeoutMs: 30000, retries: 1 },
         );
-        const entry = data?.[String(appid)];
+        // AB 批起 fetchJson 返回 { ...res, json }：必须取 .json 再按 appid 解包（2026-11-09 线上定位：旧写法取不到 → 全量无效跳过）
+        const entry = data?.json?.[String(appid)];
         const ok = Boolean(entry && entry.success === true && entry.data);
         await withStore(async (store) => {
           const q = (sql, p) => store.query(sql, p);

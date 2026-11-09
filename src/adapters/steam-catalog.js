@@ -67,10 +67,12 @@ export async function fetchAppList({ logger = null, env = process.env, onPage = 
       (lastAppid ? '&last_appid=' + lastAppid : '');
     // 单页 1 万条（约 1-2MB），放宽超时并允许重试，避免大响应被代理重置
     const data = await fetchJson(url, { logger, timeoutMs: 60000, retries: 2 });
-    const resp = data?.response ?? {};
-    const list = findAppArray(data) ?? [];
+    // AB 批起 fetchJson 返回 { ...res, json }：先取 .json 再找 apps 数组（2026-11-09 与 heat 同批定位）
+    const body = data?.json ?? {};
+    const resp = body?.response ?? {};
+    const list = findAppArray(body) ?? [];
     if (!list.length && page === 0) {
-      logger?.info('steam.catalog.shape', { topKeys: Object.keys(data ?? {}), sample: JSON.stringify(data ?? {}).slice(0, 400) });
+      logger?.info('steam.catalog.shape', { topKeys: Object.keys(body), sample: JSON.stringify(body).slice(0, 400) });
     }
     for (const a of list) {
       const appid = Number(a.appid ?? a.app_id ?? a.id);
