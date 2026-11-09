@@ -38,12 +38,12 @@
 
 ## C. 线上问题 / 需要探测
 
-**状态：C1 待探测；C2 待确认。**
+**状态：C1 待探测；C2 已确认（2026-11-09）。**
 
 | # | 事项 | 现状 | 下一步 |
 |---|---|---|---|
-| C1 | **heat 逐 appid 全 `success:false`** | 线上 heat 请求返回全 `success:false`（日志"无效跳过 30"），疑似 `l=schinese` 与 `l=zh` 的差异或 `filters=recommendations,release_date` 被拒 | 在服务器跑一条最小探测：`docker exec steamdeals node --input-type=module -e '…fetchText appdetails…'`，对比不同 `l` 参数与 filters 组合的响应；确认后改 `heat` 的 URL 参数 |
-| C2 | 服务器 compose 文件名 | 实际文件名不是 `compose.yaml`（历史 sed 报不存在） | `cd /home/ubuntu/steamdeals && ls compose*.*` 确认后写入本文 |
+| C1 | **heat 逐 appid 全 `success:false`** | 线上 heat 请求返回全 `success:false`（日志"无效跳过 30"），疑似 `l=schinese` 与 `l=zh` 的差异或 `filters=recommendations,release_date` 被拒；**2026-11-09 探测：heat 过去 24h 未跑（每日一次），无现日志**，待手动跑 1 款或等定时轮取得现证据 | 服务器执行 `docker exec steamdeals node /app/src/cli.js heat --limit 1 --sleep 0` 后取 `logs --event heat --since 10`，对比 status/snippet 定参数问题 |
+| C2 | 服务器 compose 文件名 | **已确认（2026-11-09）：`/home/ubuntu/steamdeals/docker-compose.yml`**（`docker inspect steamdeals --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}'` 取证） | 已写入 DELIVERY §4 |
 
 ## D. 文档中挂着、但优先级低或已决定不做
 

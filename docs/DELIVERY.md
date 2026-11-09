@@ -97,20 +97,16 @@ gh run list --limit 2
 > 通用流程（Hub/TCR 两种源的 pull/up、验证、回滚）见
 > [DEPLOY.md 的「发布与升级流程」](DEPLOY.md#发布与升级流程从提交到上线)，本节是**这台生产服务器**的具体执行版。
 
-服务器：`ubuntu@VM-0-6-ubuntu`（118.25.114.250），项目目录 `/home/ubuntu/steamdeals`。
-**注意：compose 文件名不叫 compose.yaml**（历史上 sed compose.yaml 报不存在）；先确认：
-
-```bash
-cd /home/ubuntu/steamdeals
-ls compose*.*
-docker compose config --images   # 看当前实际用的镜像 tag
-```
+> 服务器：`ubuntu@VM-0-6-ubuntu`（118.25.114.250），项目目录 `/home/ubuntu/steamdeals`。
+> **compose 文件已确认（2026-11-09）：`/home/ubuntu/steamdeals/docker-compose.yml`**（docker inspect 标签取证）。
 
 用真实文件名替换 tag 并部署（TCR 的可用 tag：`latest`、`sha-<完整40位提交号>`、`<git tag 版本号>`——
 以 CI 实际推送为准，先 `docker manifest inspect ccr.ccs.tencentyun.com/tcb-100003189690-pljp/steamdeals:<tag>` 确认存在）：
 
 ```bash
-sed -i 's#tcb-100003189690-pljp/steamdeals:[^" ]*#tcb-100003189690-pljp/steamdeals:sha-<完整40位提交号>#' <真实 compose 文件名>
+cd /home/ubuntu/steamdeals
+docker compose config --images   # 看当前实际用的镜像 tag
+sed -i 's#tcb-100003189690-pljp/steamdeals:[^" ]*#tcb-100003189690-pljp/steamdeals:sha-<完整40位提交号>#' docker-compose.yml
 docker compose pull app && docker compose up -d app
 docker exec steamdeals node -p "require('./package.json').version"   # 期望输出新版本
 ```
@@ -206,7 +202,9 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   CI：`docker-hub` run 42577503696（test/smoke/publish 全绿）、`docker-tcr` run 42577503641
   （test 全绿、`build-push-action@v6` 与 `Verify manifests` 均 success），两个镜像源均已推送
   （首轮 docker-hub smoke 因 AK-1 密码策略拒 11 位旧密码失败，已改 workflow 为 ≥12 位强密码并重打 tag）。
-  **服务器部署待执行**（按本文第 4 节升级到 `2.1.0`）；部署后重点人工确认：
+  服务器部署：**已部署（2026-11-09 15:55 实测）**——容器 `package.json` 版本 `2.1.0`、
+  `/home/ubuntu/steamdeals/docker-compose.yml` 当日更新并重启（`scheduler.start` 15:55:20 全量任务表，含 heat）。
+  部署后重点人工确认：
   真机走一遍登录/注册/改密交互（AL QA 需人工确认项）、真实邮箱收到注册验证码、后台「重置熔断」按钮、
   老用户已有密码不受影响（登录自动静默升级为新哈希）、老部署升级后新密码必须 ≥12 位。
 
