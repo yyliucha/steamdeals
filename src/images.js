@@ -9,7 +9,7 @@
 //   · /img/steam/<appid>/<size> 路由：本地有就直接发文件；没有才走 CDN 并落盘
 //   · `node src/cli.js images pull`：批量预下载（列表用 capsule_sm_120、详情用 header）
 //   · 调度器定时补图（IMAGES_INTERVAL_MIN），让新同步进来的游戏慢慢都有图
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 export const IMG_SIZES = ['header', 'capsule_231x87', 'capsule_sm_120', 'capsule_616x353', 'library_600x900', 'library_hero'];
@@ -89,6 +89,58 @@ export function imageStats(env = process.env) {
     /* 目录还没建：返回 0 */
   }
   return { images: files, games: games.size, bytes, root };
+}
+
+/**
+ * D2（docs/ROADMAP.md）：图片缓存总量上限——超出 maxBytes 时按 mtime 从最旧删到合规。
+ * 只删 .jpg，不动其它文件；maxBytes <= 0 视为不限，直接返回。
+ * 返回 { removed, freedBytes, remainingBytes }。
+ */
+export function pruneImages({ maxBytes = 0, env = process.env } = {}) {
+  const limit = Number(maxBytes) || 0;
+  if (limit <= 0) return { removed: 0, freedBytes: 0, remainingBytes: imageStats(env).bytes };
+  const root = imgRoot(env);
+  const files = [];
+  let total = 0;
+  try {
+    for (const id of readdirSync(root)) {
+      let names = [];
+      try {
+        names = readdirSync(join(root, id));
+      } catch {
+        continue;
+      }
+      for (const name of names) {
+        if (!name.endsWith('.jpg')) continue;
+        const full = join(root, id, name);
+        try {
+          const st = statSync(full);
+          total += st.size;
+          files.push({ full, size: st.size, mtime: st.mtimeMs });
+        } catch {
+          /* 单个文件读取失败忽略 */
+        }
+      }
+    }
+  } catch {
+    return { removed: 0, freedBytes: 0, remainingBytes: total };
+  }
+  files.sort((a, b) => a.mtime - b.mtime); // 最旧在前
+  let freed = 0;
+  let removed = 0;
+  let remaining = total;
+  for (const f of files) {
+    if (remaining <= limit) break;
+    try {
+      unlinkSync(f.full);
+      removed += 1;
+      freed += f.size;
+      remaining -= f.size;
+    } catch {
+      /* 删不掉的跳过，不中断 */
+    }
+  }
+  return { removed, freedBytes: freed, remainingBytes: remaining };
 }
 
 // 三条互不重复的取图路：Cloudflare(默认走 STEAM_PROXY) → Akamai(直连) → Cloudflare(强制直连)

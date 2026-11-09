@@ -2,6 +2,30 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+AU 批：`pg_trgm` 搜索索引 + 封面图缓存总量上限 + 愿望单诚实口径（AA 方案 A）。见 [docs/TODO.md](docs/TODO.md) 的 AU 条目。
+
+### 新增
+
+- **搜索索引（D1）**：迁移建 `pg_trgm` 扩展与 3 条表达式 GIN 索引（`games.name` / `games.name_en` /
+  `game_aliases.platform_title`），表达式与 `gameKeywordSql` 的字段侧归一化逐字一致（去半角/全角空格 + lower）；
+  本地 pglite 无扩展时静默跳过、迁移不中断。
+- **封面图缓存总量上限（D2）**：新设置 `images.maxBytes`（字节，0=不限）；超限按 mtime 从最旧清理（只删 `.jpg`）；
+  `node src/cli.js images prune --max-bytes <字节>` 手动清理；`images pull` 结束自动清理（调度器任务同样生效）。
+
+### 修复
+
+- **愿望单提示口径（AA 方案 A）**：Steam `AddToWishlist` 对 Web API Key 返回 401（已停止接受第三方写入），
+  前端弹窗与加入/移除提示改为「仅本站保存」「Steam 推送暂不支持」，不再出现「推送失败」字样；
+  服务端失败日志与 reason、推送分支代码保留，每日只读同步不受影响。
+
+### 测试
+
+- `test/images.test.js`：超限按最旧删除 / 上限内不动 / 0=不限；
+  `test/pg.test.js`：迁移含三条索引表达式 + pglite 两次 migrate 不中断；
+  `test/wishlist.test.js`：诚实口径断言（含「不再出现推送失败」反例）。
+
 ## [2.4.0] - 2026-11-09
 
 AT 批：后台信息架构改版——新建/编辑改右侧抽屉、操作日志合并 5 tab、邮件与设置 tab 化、价格变化悬停线图（规格 [docs/ADMIN-CONSOLE-IA.md](docs/ADMIN-CONSOLE-IA.md)）。

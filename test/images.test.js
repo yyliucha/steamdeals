@@ -69,6 +69,38 @@ test('downloadImage：注入 fetchBuffer 成功即落盘，全失败返回 ok:fa
   });
 });
 
+test('D2：pruneImages 超上限按最旧删除到合规；上限内不动；0=不限', async () => {
+  await withTmpDir(async () => {
+    images.saveImage(1001, 'header', Buffer.from('a'.repeat(400)));
+    images.saveImage(1002, 'header', Buffer.from('b'.repeat(300)));
+    // 显式拉开 mtime，保证「最旧先删」可判定
+    const { utimesSync } = await import('node:fs');
+    utimesSync(images.imageFile(1001, 'header'), new Date(2020, 0, 1), new Date(2020, 0, 1));
+    utimesSync(images.imageFile(1002, 'header'), new Date(2022, 0, 1), new Date(2022, 0, 1));
+    const before = images.imageStats();
+    assert.equal(before.bytes, 700);
+    assert.equal(before.images, 2);
+
+    // 上限内：不动
+    let r = images.pruneImages({ maxBytes: 700 });
+    assert.equal(r.removed, 0);
+    assert.equal(r.remainingBytes, 700);
+
+    // 上限 500：最旧的 1001（400B）被删，剩 1002（300B）
+    r = images.pruneImages({ maxBytes: 500 });
+    assert.equal(r.removed, 1);
+    assert.equal(r.freedBytes, 400);
+    assert.equal(r.remainingBytes, 300);
+    assert.equal(images.hasImage(1001, 'header'), false, '最旧文件先删');
+    assert.equal(images.hasImage(1002, 'header'), true, '较新文件保留');
+
+    // 0 = 不限
+    r = images.pruneImages({ maxBytes: 0 });
+    assert.equal(r.removed, 0);
+    assert.equal(images.hasImage(1002, 'header'), true);
+  });
+});
+
 test('/img 路由：本地已有文件时直接发，不依赖网络；全失败返回 404', async () => {
   await withTmpDir(async () => {
     const store = await openStore('pglite:', {});

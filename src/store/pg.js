@@ -425,6 +425,23 @@ export async function migrate(store) {
   // 免费游戏一次性置位（docs/STEAM-SYNC-STATUS-AND-RATING.md §3/§6）：is_free 已已知，
   // 免费永远无价，不需要再发请求；置位后 9.2 万「待同步」立刻拆出 2.3 万免费。
   await store.query(`update games set steam_status = 'free' where is_free and steam_status is null`);
+  // D1（docs/ROADMAP.md）：模糊搜索 pg_trgm 表达式索引——与 AD 批 gameKeywordSql 的字段侧归一化
+  // 表达式完全一致（去半角/全角空格 + 小写），LIKE '%kw%' 才能走 GIN 索引。
+  // 本地 pglite 不带 pg_trgm 扩展：失败只跳过、不中断迁移（生产 PostgreSQL 15 会成功建索引）。
+  try {
+    await store.exec('create extension if not exists pg_trgm');
+    await store.exec(
+      "create index if not exists games_name_trgm on games using gin (replace(replace(lower(coalesce(name,'')),' ',''),'　','') gin_trgm_ops)",
+    );
+    await store.exec(
+      "create index if not exists games_name_en_trgm on games using gin (replace(replace(lower(coalesce(name_en,'')),' ',''),'　','') gin_trgm_ops)",
+    );
+    await store.exec(
+      "create index if not exists game_aliases_title_trgm on game_aliases using gin (replace(replace(lower(coalesce(platform_title,'')),' ',''),'　','') gin_trgm_ops)",
+    );
+  } catch (err) {
+    // 本地 pglite（WASM 版）没有 pg_trgm：静默跳过，生产建索引
+  }
 }
 
 export async function upsertPlatform(q, { code, name, kind }) {

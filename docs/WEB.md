@@ -43,6 +43,7 @@ node src/cli.js serve --port 8090
 | `/banned` | Vue 封禁提示页（403/429）：服务端注入 `window.__BAN_PAGE__`（站点名/申诉邮箱/到期时间/申诉编号）；**只有真正被封禁的请求才会走到这里**（拦截链直接返回）。`/banned`、`/banned/`、`/banned.html`、`/appeal`、`/appeal/` 都在 `BAN_ONLY_PAGES` 注册表里：未封禁 / 管理员 / 封禁已过期访问一律 302 回首页（`ban.redirect_home`），客户端另有 30 秒复查（`/api/ban/state`）保证解封后自动离开 |
 | `/appeal` | Vue 申诉页：URL 只带 `?code=AP-XXXXXX`（`reason`/`until`/`email` 已移出 URL），站点名与申诉邮箱由服务端注入 `window.__APPEAL__`；**被封禁的 IP/设备也能打开**（服务端对 `/appeal` 跳过封禁与限流判定），未封禁访问则 302 回首页；旧链接的多余参数被忽略并清洗 |
 | 点游戏名 | 详情弹窗：各平台报价、折扣、简介；管理员可直接改标记、设到价提醒；报价与价格历史分页显示 |
+| 愿望单（卡片/详情按钮） | 加入**本站愿望单**并联动到价提醒；**Steam 账号推送暂不可用**（AA 批：`AddToWishlist` 对 Web API Key 返回 401，Steam 已停止接受第三方写入），弹窗与提示为诚实口径「仅本站保存」；详见 [STEAM-ACCOUNTS.md](STEAM-ACCOUNTS.md) §16 与 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) |
 
 ### 手机端 PWA（添加到主屏幕）
 

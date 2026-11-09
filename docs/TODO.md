@@ -50,8 +50,8 @@
 
 | # | 事项 | 状态 |
 |---|---|---|
-| D1 | `pg_trgm` 搜索索引 | 未做，需要生产 `EXPLAIN ANALYZE` 数据（当前 `like '%kw%'` 114.87ms，阈值 150ms）；见 [ROADMAP](ROADMAP.md) |
-| D2 | 图片缓存总量上限 | 可选未做（当前靠 `IMAGES_LIMIT` 控制每轮数量） |
+| D1 | `pg_trgm` 搜索索引 | **已落地（2026-11-09，见 AU）**：3 条表达式 GIN 索引随 migrate 建，生产待 `EXPLAIN` 复核是否命中 |
+| D2 | 图片缓存总量上限 | **已落地（2026-11-09，见 AU）**：`images.maxBytes` + `images prune --max-bytes` + pull 后自动清理 |
 | D3 | `app_type` 全量回填 | **已决定放弃**（v1.4.3 起 GetItems 的 `type` 枚举已正确写入，新数据会自动带类型） |
 | D4 | 侧栏「版本」徽标位置修复 | **已修（v1.4.6）**：徽标移到后台 header 右侧 + 侧栏底部两行布局与收缩约束；见 [UI-FIXES.md 第 1 条](UI-FIXES.md#1-后台侧栏版本检测被挤出侧栏底部v145-实测) |
 
@@ -442,12 +442,12 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   其余表格加横向滚动提示；E 视觉微调（触摸 ≥44px）。
 - **验收**：真机详情页不再横向溢出、安装按钮可用、后台卡片化不横向滚动、PC 零回归、`npm test` 全绿。
 
-## AA. 待开发：添加愿望单推送 Steam 失败（根因已定案，方案 A 已确认）
+## AA. 添加愿望单推送 Steam 失败（根因已定案，方案 A 已实现并随 AU 发版）
 
-**状态：根因定案（2026-11-09 线上日志：`HTTP 401 → api.steampowered.com`）；方案 A「诚实提示 + 明确不可用」已由所有者确认（2026-11-09），待开发**。
+**状态：方案 A 已实现待发版（2026-11-09，见 AU 条目）；根因定案（2026-11-09 线上日志：`HTTP 401 → api.steampowered.com`）。**
 开发描述见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) §3/§4（只改前端文案 + 文档同步；不投入 OAuth 改造、不动凭据模型）。
 §4 六项产品缺陷修复批已随 **v2.2.0 发布**（2026-11-09，5b59bfa；QA 报告 docs/QA-WISHLIST-AA.md）。
-本条目剩余：方案 A「诚实提示」的文案改动待开发（见上）。
+本条目剩余：方案 A「诚实提示」的文案改动**已随 AU 交付（2026-11-09）**，见 AU 条目。
 
 - **现象（2026-11-06 13:38 已补全）**：多选弹窗勾选 Steam 账号后提交 → 游戏进了本站「愿望单」，但**没有归属到该 Steam 账号**；
   前端提示「已加入本站愿望单；76561198268202591 推送失败」；后台确认该账号**已配置 API Key**。
@@ -817,6 +817,29 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `/api/admin/reports/price` 去 `daily` 加 `series`（`dailyMinSeriesBatch` 一次查出）；保留期并入 `prune`（`--steam-days`）。
 - **验收**：见规格 §11 的 1–14。
 
+## AU. pg_trgm 搜索索引 + 封面图缓存总量上限 + 愿望单诚实口径（AA 方案 A）
+
+**状态：已实现待发版（2026-11-09）**
+**依赖：** 无
+**解锁：** 无（D1/D2 由本条收口；AA 条目的「方案 A」部分由本条交付）
+**规格**：[ROADMAP.md](ROADMAP.md) 的 D1/D2 + [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) §3/§4
+
+- **D1 搜索索引**：`migrate()` 内 `create extension if not exists pg_trgm` + 3 条表达式 GIN 索引
+  （`games.name` / `games.name_en` / `game_aliases.platform_title`），表达式与 `gameKeywordSql`
+  的字段侧归一化逐字一致（`replace(replace(lower(coalesce(col,'')),' ',''),'　','')`）；
+  整段包在 try/catch 里——本地 pglite 无 `pg_trgm` 时静默跳过、不中断迁移。
+- **D2 缓存上限**：新增设置 `images.maxBytes`（字节，0=不限，高级分组，走 `def()` 热加载约 15 秒）；
+  `images.pruneImages({maxBytes})` 按 mtime 从最旧删到合规（只删 `.jpg`、删不掉跳过不中断、返回
+  `{removed,freedBytes,remainingBytes}`）；`node src/cli.js images prune --max-bytes <字节>` 手动清理；
+  `images pull` 结束时若 `IMAGES_MAX_BYTES>0` 自动清理（调度器 `images` 任务子进程继承水合后的 env，同样生效）。
+- **AA 方案 A（诚实口径）**：愿望单弹窗说明改「加入本站愿望单；Steam 已停止接受第三方写入，账号推送暂不支持（仅本站保存）」；
+  加入/移除提示均不含「失败」字样（「已加入本站愿望单（Steam 推送暂不支持）」/「已按选择移除本站愿望单；Steam 回推暂不支持」）；
+  服务端 `adapter.steam.wishlist_add_failed` + reason 与推送分支代码保留；`WEB.md`、`STEAM-ACCOUNTS.md` 已同步。
+- **测试**：`test/images.test.js`（超限按最旧删除/上限内不动/0=不限）、`test/pg.test.js`（迁移含三索引表达式 +
+  pglite 两次 migrate 不中断）、`test/settings.test.js`/`test/setup.test.js`（59 项）、`test/wishlist.test.js`（诚实口径断言）。
+- **验收**：① 两次 `migrate` 不报错，本地 pglite 不因缺扩展中断；② 上限内不删、超限按最旧删、`0` 不限；
+  ③ `images pull` 后按上限自动清理；④ 愿望单提示不含「失败」、文档口径一致；⑤ `npm test` / `frontend:build` / `scan` 全绿。
+- **待线上验证**：生产库 `\dx` 有 `pg_trgm`、`EXPLAIN` 对关键词查询命中 Bitmap Index Scan（本机无 PG 15，标 🔎）。
 
 
 

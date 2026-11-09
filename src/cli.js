@@ -2367,8 +2367,21 @@ async function cmdImages() {
     console.log(`目录：${s.root}`);
     return;
   }
+  if (sub === 'prune') {
+    // D2（docs/ROADMAP.md）：按总量上限清理最旧文件；默认读设置 images.maxBytes（水合后的 env）
+    const maxBytes = Math.max(0, Number(flag('max-bytes', process.env.IMAGES_MAX_BYTES ?? '0')) || 0);
+    if (maxBytes <= 0) throw new Error('用法: node src/cli.js images prune --max-bytes <字节>（或先配置系统设置 images.maxBytes）');
+    const before = images.imageStats();
+    const r = images.pruneImages({ maxBytes });
+    logger.info('images.pruned', { maxBytes, removed: r.removed, freedBytes: r.freedBytes, remainingBytes: r.remainingBytes });
+    console.log(
+      `清理完成：删除 ${r.removed} 张（释放 ${(r.freedBytes / 1024 / 1024).toFixed(1)} MB）；` +
+        `缓存 ${(before.bytes / 1024 / 1024).toFixed(1)} → ${(r.remainingBytes / 1024 / 1024).toFixed(1)} MB（上限 ${(maxBytes / 1024 / 1024).toFixed(1)} MB）`,
+    );
+    return;
+  }
   if (sub !== 'pull') {
-    throw new Error('用法: node src/cli.js images pull [--limit 200] [--sleep 300] [--sizes capsule_sm_120,header] | images stats');
+    throw new Error('用法: node src/cli.js images pull [--limit 200] [--sleep 300] [--sizes capsule_sm_120,header] | images stats | images prune --max-bytes <字节>');
   }
   const limit = Math.min(Math.max(Number(flag('limit', '200')) || 200, 1), 5000);
   const sleepMs = Math.max(0, Number(flag('sleep', '300')) || 0);
@@ -2424,6 +2437,15 @@ async function cmdImages() {
   logger.info('images.pull.done', { ...stats, images: local.images, games: local.games, bytes: local.bytes });
   console.log(`完成：新下载 ${stats.downloaded} 张，跳过 ${stats.skipped} 张，失败 ${stats.failed} 张`);
   console.log(`缓存合计：${local.images} 张 / ${local.games} 款游戏 / ${(local.bytes / 1024 / 1024).toFixed(1)} MB → ${local.root}`);
+  // D2：补图后若设置了总量上限，自动按最旧清理
+  const maxBytes = Math.max(0, Number(process.env.IMAGES_MAX_BYTES ?? '0') || 0);
+  if (maxBytes > 0) {
+    const r = images.pruneImages({ maxBytes });
+    if (r.removed > 0) {
+      logger.info('images.pruned', { maxBytes, removed: r.removed, freedBytes: r.freedBytes, remainingBytes: r.remainingBytes });
+      console.log(`已按上限清理 ${r.removed} 张（释放 ${(r.freedBytes / 1024 / 1024).toFixed(1)} MB）`);
+    }
+  }
 }
 
 /** 一键同步：把能采集的源按顺序跑一遍，最后重建页面。 */

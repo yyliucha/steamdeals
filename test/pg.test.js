@@ -1,6 +1,8 @@
 // 用 PGlite（编译成 wasm 的真 PostgreSQL）跑，SQL 语义与生产的 PG 15 一致。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import { ingestOffers, offerHash, rawOfferShapeIssue } from '../src/ingest.js';
@@ -46,6 +48,24 @@ test('建表幂等，跑两次 migrate 不报错', async () => {
       `select count(*)::int as c from information_schema.tables where table_schema='public'`,
     );
     assert.ok(t.rows[0].c >= 6);
+  } finally {
+    await store.close();
+  }
+});
+
+test('D1：migrate 含 pg_trgm 表达式索引（与搜索归一化同表达式），无扩展环境不中断', async () => {
+  const src = readFileSync(fileURLToPath(new URL('../src/store/pg.js', import.meta.url)), 'utf8');
+  assert.match(src, /create extension if not exists pg_trgm/, '建扩展语句存在');
+  assert.match(src, /games_name_trgm on games using gin/, 'games.name 表达式索引');
+  assert.match(src, /games_name_en_trgm on games using gin/, 'games.name_en 表达式索引');
+  assert.match(src, /game_aliases_title_trgm on game_aliases using gin/, '平台别名表达式索引');
+  assert.ok(src.includes("replace(replace(lower(coalesce(name,'')),' ',''),'　','') gin_trgm_ops"), '归一化表达式与 gameKeywordSql 字段侧一致');
+  assert.ok(src.includes("replace(replace(lower(coalesce(platform_title,'')),' ',''),'　','') gin_trgm_ops"), '别名归一化表达式一致');
+  // 本地 pglite 无 pg_trgm：migrate 必须静默跳过而不是中断
+  const store = await freshStore();
+  try {
+    await db.migrate(store);
+    await db.migrate(store);
   } finally {
     await store.close();
   }

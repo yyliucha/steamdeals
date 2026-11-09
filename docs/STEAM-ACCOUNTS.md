@@ -270,3 +270,7 @@ delete from steam_wishlist where steam_id = $1 and appid <> all($2::int[]);
 
 **已知限制**：AddToWishlist 属未文档化接口，真实行为需**服务器上线后验证**（本机无 Steam 出口）；
 未配 Key 的账号只能同步不能推送/回推，靠每日同步对账收敛。
+**2026-11-09 定案（AA 批，方案 A）**：线上实测 `AddToWishlist` 对 Web API Key 返回 **HTTP 401**（只读 `GetWishlist` 正常）——
+**Steam 已停止接受第三方写入，网页端写愿望单暂不可用，仅本站保存**；前端提示与弹窗已改诚实口径
+（「已加入本站愿望单（Steam 推送暂不支持）」），失败原因仍记日志（`adapter.steam.wishlist_add_failed` + reason）。
+详见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md)。

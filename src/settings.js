@@ -181,6 +181,7 @@ export const SETTINGS = [
   def('images.initialDelaySec', 'IMAGES_INITIAL_DELAY_SEC', 'advanced', '补图首轮延迟（秒）', 'int', 1200, { min: 0, max: 86400, advanced: true }),
   def('images.limit', 'IMAGES_LIMIT', 'advanced', '每轮补图数量', 'int', 200, { min: 1, max: 5000, advanced: true }),
   def('images.sleepMs', 'IMAGES_SLEEP_MS', 'advanced', '每张图间隔（毫秒）', 'int', 300, { min: 0, max: 60000, advanced: true }),
+  def('images.maxBytes', 'IMAGES_MAX_BYTES', 'advanced', '封面图缓存总量上限（字节，0=不限）', 'int', 0, { min: 0, max: 100 * 1024 * 1024 * 1024, advanced: true, help: '缓存超过该值后按最旧文件清理（D2 批）；0 表示不限制。生产约 3200 张图 ≈ 90MB，可设 5GB 量级。' }),
 ];
 
 export const SETTING_MAP = new Map(SETTINGS.map((d) => [d.key, d]));

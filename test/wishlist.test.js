@@ -173,9 +173,11 @@ test('前端（静态断言）：无 AppID 直达仅本站、无账号直达并�
   const src = readFileSync(fileURLToPath(new URL('../frontend/src/pages/Home.vue', import.meta.url)), 'utf8');
   assert.match(src, /if\(!game\.steam_appid\)return addWishlist\(game,\[\]\)/, '§4-6 无 AppID 不弹多选');
   assert.match(src, /if\(!steamAccounts\.value\.length\)return addWishlist\(game,\[\],\{siteOnlyHint:'已加入本站愿望单；绑定 Steam 账号可同步推送'\}\)/, '§4-4 无账号提示可绑定');
-  assert.match(src, /f\.reason\|\|'推送失败'/, '§4-2 失败提示带 reason');
+  assert.match(src, /已加入本站愿望单（Steam 推送暂不支持）/, '方案 A：失败提示改诚实口径（含「暂不支持」）');
+  assert.doesNotMatch(src, /推送失败/, '方案 A：提示不再出现「失败」字样');
   assert.match(src, /未配置 API Key，不可推送/, '§4-3 未配 Key 账号注明不可推送');
   assert.match(src, /:disabled="!acc\.api_key_set \|\| wishAccAlready\(acc\)"/, '§4-3 未配 Key 置灰');
   assert.match(src, /confirmWishlist\(true\)">仅加入本站</, '§4-5 空选「仅加入本站」按钮');
   assert.match(src, /已加入本站愿望单（该条目无 Steam AppID，仅本站）/, '§4-6 无 AppID 成功提示');
+  assert.match(src, /Steam 已停止接受第三方写入，账号推送暂不支持（仅本站保存）/, '方案 A：弹窗说明诚实口径');
 });
