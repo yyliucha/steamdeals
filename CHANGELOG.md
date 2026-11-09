@@ -2,7 +2,7 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [2.5.0] - 2026-11-09
 
 AU 批：`pg_trgm` 搜索索引 + 封面图缓存总量上限 + 愿望单诚实口径（AA 方案 A）。见 [docs/TODO.md](docs/TODO.md) 的 AU 条目。
 

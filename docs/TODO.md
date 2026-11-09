@@ -442,9 +442,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   其余表格加横向滚动提示；E 视觉微调（触摸 ≥44px）。
 - **验收**：真机详情页不再横向溢出、安装按钮可用、后台卡片化不横向滚动、PC 零回归、`npm test` 全绿。
 
-## AA. 添加愿望单推送 Steam 失败（根因已定案，方案 A 已实现并随 AU 发版）
+## AA. 添加愿望单推送 Steam 失败（根因已定案，方案 A 已实现并发布 v2.5.0）
 
-**状态：方案 A 已实现并质检通过（2026-11-09，随 AU，785670b；QA 报告 docs/QA-AU-D1D2AA.md）；根因定案（2026-11-09 线上日志：`HTTP 401 → api.steampowered.com`）。**
+**状态：方案 A 已实现并发布 v2.5.0（2026-11-09，随 AU 批，785670b；QA 报告 docs/QA-AU-D1D2AA.md）；根因定案（2026-11-09 线上日志：`HTTP 401 → api.steampowered.com`）。**
 开发描述见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) §3/§4（只改前端文案 + 文档同步；不投入 OAuth 改造、不动凭据模型）。
 §4 六项产品缺陷修复批已随 **v2.2.0 发布**（2026-11-09，5b59bfa；QA 报告 docs/QA-WISHLIST-AA.md）。
 本条目剩余：方案 A「诚实提示」的文案改动**已随 AU 交付（2026-11-09）**，见 AU 条目。
@@ -817,9 +817,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `/api/admin/reports/price` 去 `daily` 加 `series`（`dailyMinSeriesBatch` 一次查出）；保留期并入 `prune`（`--steam-days`）。
 - **验收**：见规格 §11 的 1–14。
 
-## AU. pg_trgm 搜索索引 + 封面图缓存总量上限 + 愿望单诚实口径（AA 方案 A）
+## AU. ~~pg_trgm 搜索索引 + 封面图缓存总量上限 + 愿望单诚实口径（AA 方案 A）~~ → **已实现并发布 v2.5.0（2026-11-09）**
 
-**状态：质检通过（2026-11-09，785670b；QA 报告 docs/QA-AU-D1D2AA.md）**
+**状态：已发布 v2.5.0（2026-11-09，785670b；QA 报告 docs/QA-AU-D1D2AA.md）**
 **依赖：** 无
 **解锁：** 无（D1/D2 由本条收口；AA 条目的「方案 A」部分由本条交付）
 **规格**：[ROADMAP.md](ROADMAP.md) 的 D1/D2 + [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) §3/§4

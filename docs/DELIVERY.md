@@ -180,12 +180,21 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-09 更新，v2.4.0 已发布：AT 批——后台信息架构改版）
+### 当前状态（2026-11-09 更新，v2.5.0 已发布：AU 批——搜索索引 + 图片缓存上限 + 愿望单诚实口径）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 > **会话分工（2026-11-09）**：可直接开发的功能（AR、AO、AP、可选 F）见
 > [HANDOVER-DEV-2026-11-09.md](HANDOVER-DEV-2026-11-09.md)；运维排查结论见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) 与 TODO C 段。
 
+- **v2.5.0 已发布**（tag `v2.5.0`）：AU 批——① D1 `pg_trgm` 搜索索引（迁移建扩展 + 3 条表达式 GIN 索引，
+  与搜索归一化逐字一致，本地 pglite 无扩展静默跳过）；② D2 封面图缓存总量上限（设置 `images.maxBytes`，
+  超限按最旧清理 + `images prune --max-bytes` + `images pull` 后自动清理）；③ AA 方案 A 愿望单诚实口径
+  （「仅本站保存 / Steam 推送暂不支持」，不再出现「推送失败」字样，失败日志与推送分支保留）。
+  验证：`npm test` 全绿、`frontend:build`、`scan` 干净；
+  质检：AU ✅ 放行（[QA-AU-D1D2AA.md](QA-AU-D1D2AA.md)）。
+  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  **服务器部署待执行**（升级到 `2.5.0`）；部署后生产验证 `\dx` 有 `pg_trgm`、关键词查询 `EXPLAIN` 命中
+  Bitmap Index Scan（TODO AU「待线上验证」）。
 - **v2.4.0 已发布**（tag `v2.4.0`）：AT 批后台信息架构改版——新建用户/新建·编辑通知改右侧抽屉（不跳页、
   URL 直达、临时密码抽屉内一次性展示、通知带前台预览）；新菜单「操作日志」一页 5 tab（用户删除/批量操作/
   Steam 账号/邮件发送/运行与同步，?tab= 直达、懒加载+缓存，旧书签 bulk-ops/sync 自动映射不 404）；
