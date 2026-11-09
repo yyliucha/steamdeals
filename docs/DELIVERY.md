@@ -195,7 +195,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md)。
   验证：`npm test` 74 个文件全绿、`node test/api.test.js` 22 项全绿、`frontend:build`、`scan` 干净；
   质检：AT ✅ 放行（[QA-ADMIN-CONSOLE-IA-AT.md](QA-ADMIN-CONSOLE-IA-AT.md)，通过 14 / 缺失 0 / 偏差 0 / 需人工确认 4）。
-  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  CI：docker-hub run 42611223021（test / smoke / publish 全绿）、docker-tcr run 42611223034（test / publish 全绿），
+  镜像已推送两源。
   **服务器部署待执行**（升级到 `2.4.0`）；部署后按规格 §11 验收 1–14 目视核对（含抽 2 游戏对 7 天最低值、
   真机 ≤768 抽屉全屏）。
 - **v2.3.0 已发布**（tag `v2.3.0`）：AS 批——README「开发进度」自动摘要（`scripts/todo-progress.js` 生成 +
