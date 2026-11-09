@@ -38,11 +38,11 @@
 
 ## C. 线上问题 / 需要探测
 
-**状态：C1 待探测；C2 已确认（2026-11-09）。**
+**状态：C1 已定案并修复待发版（2026-11-09，b01aaf8）；C2 已确认（2026-11-09）。**
 
 | # | 事项 | 现状 | 下一步 |
 |---|---|---|---|
-| C1 | **heat 逐 appid 全 `success:false`** | 线上 heat 请求返回全 `success:false`（日志"无效跳过 30"），疑似 `l=schinese` 与 `l=zh` 的差异或 `filters=recommendations,release_date` 被拒；**2026-11-09 探测：heat 过去 24h 未跑（每日一次），无现日志**，待手动跑 1 款或等定时轮取得现证据 | 服务器执行 `docker exec steamdeals node /app/src/cli.js heat --limit 1 --sleep 0` 后取 `logs --event heat --since 10`，对比 status/snippet 定参数问题 |
+| C1 | ~~**heat 逐 appid 全 `success:false`**~~ | **已定案（2026-11-09 线上取证）**：不是 Steam 参数问题——`fetchJson` 自 AB 批返回 `{...res, json}`，heat 与 steam-catalog 仍按旧契约解包（`data[appid]`），永远取到 undefined → 全部「无效跳过」。日志铁证：`heat.entry_invalid` 的 shape 是 fetchJson 包装对象、body 里 `success:true`。**修复已提交 main（b01aaf8）：`data.json` 解包 + `test/fetchjson-contract.test.js` 回归锁** | 随下个版本构建部署后验证 `heat.done withHeat>0`；已标记的旧条目 7 天后自动重选 |
 | C2 | 服务器 compose 文件名 | **已确认（2026-11-09）：`/home/ubuntu/steamdeals/docker-compose.yml`**（`docker inspect steamdeals --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}'` 取证） | 已写入 DELIVERY §4 |
 
 ## D. 文档中挂着、但优先级低或已决定不做
@@ -441,11 +441,11 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   其余表格加横向滚动提示；E 视觉微调（触摸 ≥44px）。
 - **验收**：真机详情页不再横向溢出、安装按钮可用、后台卡片化不横向滚动、PC 零回归、`npm test` 全绿。
 
-## AA. 待排查：添加愿望单功能失败
+## AA. 待开发：添加愿望单推送 Steam 失败（根因已定案，方案 A 已确认）
 
-**状态：6 项产品缺陷修复批质检通过（2026-11-09，5b59bfa；QA 报告 docs/QA-WISHLIST-AA.md）；根因定性仍等所有者提供日志（见下）**。
-本条原状只登记现象与排查线索；§4 六项「无论根因都要修」的缺陷已修复并质检通过（待发版），
-根因修复等 `adapter.steam.wishlist_add_failed` 日志定性后再补。
+**状态：根因定案（2026-11-09 线上日志：`HTTP 401 → api.steampowered.com`）；方案 A「诚实提示 + 明确不可用」已由所有者确认（2026-11-09），待开发**。
+开发描述见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) §3/§4（只改前端文案 + 文档同步；不投入 OAuth 改造、不动凭据模型）。
+§4 六项产品缺陷修复批已质检通过（2026-11-09，5b59bfa；QA 报告 docs/QA-WISHLIST-AA.md），待发版。
 
 - **现象（2026-11-06 13:38 已补全）**：多选弹窗勾选 Steam 账号后提交 → 游戏进了本站「愿望单」，但**没有归属到该 Steam 账号**；
   前端提示「已加入本站愿望单；76561198268202591 推送失败」；后台确认该账号**已配置 API Key**。
@@ -714,10 +714,10 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AN. 已发布 v2.1.0：未保存修改的离开提醒
 
-**状态：已发布 v2.1.0（2026-11-09，ac9cbf4）**
+**状态：已发布 v2.1.0（2026-11-09，ac9cbf4）；回归修复待发版（2026-11-09，f10d683：「放弃修改」只放行一次不清草稿 → 弹窗反复出现，已修 + 2 项回归测试）**
 **依赖：** 无
 **解锁：** 无
-**规格**：[UNSAVED-GUARD.md](UNSAVED-GUARD.md)
+**规格**：[UNSAVED-GUARD.md](UNSAVED-GUARD.md)（回归修复见 §7）
 
 - **需求**：编辑过（系统设置 / 邮件配置 / 站点通知 / 编辑游戏 / 新建用户）之后切菜单或离开页面，弹窗提示：
   「还有没保存的修改」→「…还有修改没保存，离开后会丢失。要先保存吗？」按钮 **保存并离开 / 放弃修改 / 留在本页**。
