@@ -38,7 +38,7 @@
 | **AJ** | 账号变更通知（7 类操作 / 8 类邮件） | [USER-LIFECYCLE.md](USER-LIFECYCLE.md) | 已发布 v2.0.0（2026-11-06） | ✅ 已在对话给出 |
 | **AK** | 密码系统重设计（AK-1 策略/哈希、AK-2 登录防护、AK-3 账号流程） | [AUTH-REDESIGN.md](AUTH-REDESIGN.md) | AK-1 待开发；AK-2/3 依赖阻塞 | ✅ 规格自包含（按 §8 顺序派发） |
 | **AL** | 登录 / 注册 / 改密页面 | [AUTH-REDESIGN.md](AUTH-REDESIGN.md) | 依赖阻塞（AK-3） | ✅ 规格自包含（按 §8 顺序派发） |
-| **AM** | Steam 代理池（多代理按序切换 + 健康状态） | [PROXY-POOL.md](PROXY-POOL.md) | AM-1 已发布 v2.0.0（2026-11-06）；AM-2 待开发 | ✅ 规格自包含（按 §8 顺序派发） |
+| **AM** | Steam 代理池（多代理按序切换 + 健康状态） | [PROXY-POOL.md](PROXY-POOL.md) | AM-1 已发布 v2.0.0（2026-11-06）；AM-2 已实现待发版（2026-11-09，b7c49df） | ✅ 规格自包含（按 §8 顺序派发） |
 | **AN** | 未保存修改的离开提醒（后台 5 个编辑面） | [UNSAVED-GUARD.md](UNSAVED-GUARD.md) | 待开发 | ✅ 规格自包含 |
 | **F** | Steam 价格同步优化（缩量 / 热点优先） | ❌ 无独立规格（计划写在 [TODO.md](TODO.md) F 段） | 等排期 | ❌ 未给 |
 | **C1** | heat 逐 appid 全 `success:false` | ❌ 无规格（[TODO.md](TODO.md) C1） | 待探测 | ❌ 未给 |
