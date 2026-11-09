@@ -30,7 +30,7 @@
       </template>
       <template v-else-if="visitorView==='review'">
         <div class="notice-card"><strong>异常请求由管理员审核</strong><p>系统记录异常但不自动永久封禁；审核后可封 IP、封设备或忽略。白名单可保护自己的管理出口 IP。封禁发生时该 IP 的旧待审会标记为 auto_banned 永久退出待审（「全部」视图可查）；封禁期间产生的新异常仍会以「待审」出现（状态列可据此判断是否已处理）。</p></div>
-        <div class="module-card table-card"><div class="card-heading padded"><div><h3>待审列表</h3><p>auto_banned = 封禁发生时自动退出待审的旧记录 · 共 {{ reviews.length }} 条（上限 500）</p></div><el-select v-model="reviewStatus" style="width:130px" @change="loadReviews"><el-option label="只看待审" value="pending"/><el-option label="全部（审计）" value="all"/></el-select></div><BulkBar :count="sel.reviews.count" :actions="reviewsBulkActions" :running="bulkRunning" @run="(a)=>runBulk(a,sel.reviews,{refresh:loadReviews})" @clear="sel.reviews.clear()"/><template v-if="!isMobile"><el-table ref="reviewsTable" row-key="id" :data="pagedReviews" v-loading="loading" stripe :default-sort="reviewSort" @sort-change="onReviewSortChange" @selection-change="sel.reviews.onSelectionChange"><el-table-column type="selection" width="44" :selectable="(row)=>row.status==='pending'"/><el-table-column prop="last_seen" sortable="custom" label="最近出现" min-width="155"><template #default="{row}">{{ dateTime(row.last_seen) }}</template></el-table-column><el-table-column prop="ip" sortable="custom" label="IP" width="140"/><el-table-column prop="rule" sortable="custom" label="规则" min-width="130"><template #default="{row}">{{ row.rule }}</template></el-table-column><el-table-column prop="hits" sortable="custom" label="次数" width="75" align="right"/><el-table-column label="状态" width="110"><template #default="{row}"><el-tag v-if="row.status==='pending'" type="success" size="small">待审</el-tag><el-tag v-else-if="row.status==='approved'" type="danger" size="small" :title="reviewStatusHint(row)">已封禁</el-tag><el-tag v-else-if="row.status==='rejected'" type="info" size="small" :title="reviewStatusHint(row)">已忽略</el-tag><el-tag v-else type="info" size="small" :title="reviewStatusHint(row)">自动退出</el-tag></template></el-table-column><el-table-column label="请求" min-width="180" show-overflow-tooltip><template #default="{row}">{{ row.path||row.detail }}</template></el-table-column><el-table-column label="操作" width="200"><template #default="{row}"><el-button v-if="row.status==='pending'" link type="danger" @click="reviewAction(row,'ip')">封 IP</el-button><el-button v-if="row.status==='pending' && row.fingerprint" link type="danger" @click="reviewAction(row,'device')">封设备</el-button><el-button v-if="row.status==='pending'" link @click="ignoreReview(row)">忽略</el-button></template></el-table-column></el-table></template><div v-else class="game-card-list"><div v-for="row in pagedReviews" :key="row.id" class="admin-card"><div class="admin-card-pick"><el-checkbox :model-value="sel.reviews.has(row)" :disabled="row.status!=='pending'" @change="sel.reviews.toggle(row)">选择</el-checkbox></div><div class="admin-card-main"><strong class="mono">{{ row.ip }}</strong><small>{{ dateTime(row.last_seen) }} · 命中 {{ row.hits }} 次</small><span class="muted">{{ row.rule }}</span><el-tag v-if="row.status==='pending'" type="success" size="small">待审</el-tag><el-tag v-else-if="row.status==='approved'" type="danger" size="small">已封禁</el-tag><el-tag v-else-if="row.status==='rejected'" type="info" size="small">已忽略</el-tag><el-tag v-else type="info" size="small">自动退出</el-tag><p class="admin-card-path">{{ row.path||row.detail }}</p></div><div class="admin-card-foot"><span></span><span><el-button v-if="row.status==='pending'" link type="danger" @click="reviewAction(row,'ip')">封 IP</el-button><el-button v-if="row.status==='pending' && row.fingerprint" link type="danger" @click="reviewAction(row,'device')">封设备</el-button><el-button v-if="row.status==='pending'" link @click="ignoreReview(row)">忽略</el-button></span></div></div></div><PaginationBar v-model:page="reviewsPage" v-model:page-size="reviewsPageSize" :total="reviews.length"/></div>
+        <div class="module-card table-card"><div class="card-heading padded"><div><h3>待审列表</h3><p>auto_banned = 封禁发生时自动退出待审的旧记录 · 共 {{ reviews.length }} 条（上限 500）</p></div><el-select v-model="reviewStatus" style="width:130px" @change="loadReviews"><el-option label="只看待审" value="pending"/><el-option label="全部（审计）" value="all"/></el-select><el-switch v-model="reviewMerge" active-text="按 IP 合并" style="margin-left:12px" @change="onMergeToggle"/></div><BulkBar v-if="!reviewMerge" :count="sel.reviews.count" :actions="reviewsBulkActions" :running="bulkRunning" @run="(a)=>runBulk(a,sel.reviews,{refresh:loadReviews})" @clear="sel.reviews.clear()"/><div v-else class="merge-bar"><span>已选 {{ mergedPicked.size }} 个 IP · {{ mergedPickedCount }} 条待审</span><el-button size="small" type="danger" plain :disabled="!mergedPicked.size" :loading="bulkRunning==='approve-ip'" @click="runMergedBulk('approve-ip')">封 IP</el-button><el-button size="small" type="danger" plain :disabled="!mergedPicked.size" :loading="bulkRunning==='approve-device'" @click="runMergedBulk('approve-device')">封设备</el-button><el-button size="small" :disabled="!mergedPicked.size" :loading="bulkRunning==='reject'" @click="runMergedBulk('reject')">忽略</el-button></div><template v-if="!isMobile && !reviewMerge"><el-table ref="reviewsTable" row-key="id" :data="pagedReviews" v-loading="loading" stripe :default-sort="reviewSort" @sort-change="onReviewSortChange" @selection-change="sel.reviews.onSelectionChange"><el-table-column type="selection" width="44" :selectable="(row)=>row.status==='pending'"/><el-table-column prop="last_seen" sortable="custom" label="最近出现" min-width="155"><template #default="{row}">{{ dateTime(row.last_seen) }}</template></el-table-column><el-table-column prop="ip" sortable="custom" label="IP" width="140"/><el-table-column prop="rule" sortable="custom" label="规则" min-width="130"><template #default="{row}">{{ row.rule }}</template></el-table-column><el-table-column prop="hits" sortable="custom" label="次数" width="75" align="right"/><el-table-column label="状态" width="110"><template #default="{row}"><el-tag v-if="row.status==='pending'" type="success" size="small">待审</el-tag><el-tag v-else-if="row.status==='approved'" type="danger" size="small" :title="reviewStatusHint(row)">已封禁</el-tag><el-tag v-else-if="row.status==='rejected'" type="info" size="small" :title="reviewStatusHint(row)">已忽略</el-tag><el-tag v-else type="info" size="small" :title="reviewStatusHint(row)">自动退出</el-tag></template></el-table-column><el-table-column label="请求" min-width="180" show-overflow-tooltip><template #default="{row}">{{ row.path||row.detail }}</template></el-table-column><el-table-column label="操作" width="200"><template #default="{row}"><el-button v-if="row.status==='pending'" link type="danger" @click="reviewAction(row,'ip')">封 IP</el-button><el-button v-if="row.status==='pending' && row.fingerprint" link type="danger" @click="reviewAction(row,'device')">封设备</el-button><el-button v-if="row.status==='pending'" link @click="ignoreReview(row)">忽略</el-button></template></el-table-column></el-table></template><template v-if="reviewMerge"><el-table ref="mergedReviewsTable" row-key="key" :data="pagedMergedReviews" v-loading="loading" :default-sort="mergedSort" @sort-change="onMergedSortChange"><el-table-column width="44"><template #default="{row}"><el-checkbox :model-value="mergedPicked.has(row.key)" :disabled="!row.pendingCount" @change="toggleMergedPick(row)"/></template></el-table-column><el-table-column type="expand"><template #default="{row}"><div class="merged-detail"><div v-for="r in row.rows" :key="r.id" class="merged-detail-row"><span class="muted">{{ r.rule }}</span><span>命中 {{ r.hits }} 次</span><span class="muted">{{ r.path||r.detail }}</span><span class="muted">{{ dateTime(r.last_seen) }}</span><el-tag v-if="r.status==='pending'" type="success" size="small">待审</el-tag><el-tag v-else-if="r.status==='approved'" type="danger" size="small">已封禁</el-tag><el-tag v-else-if="r.status==='rejected'" type="info" size="small">已忽略</el-tag><el-tag v-else type="info" size="small">自动退出</el-tag></div></div></template></el-table-column><el-table-column prop="ip" sortable="custom" label="IP" min-width="180"><template #default="{row}"><span class="mono">{{ row.ip }}</span><small v-if="row.devices>1" style="margin-left:8px">· {{ row.devices }} 个设备</small></template></el-table-column><el-table-column prop="ruleCount" sortable="custom" label="规则摘要" min-width="220"><template #default="{row}"><span v-for="r in row.rules" :key="r.rule">{{ r.rule }} ×{{ r.n }}<span v-if="r!==row.rules[row.rules.length-1]"> · </span></span></template></el-table-column><el-table-column prop="hitsTotal" sortable="custom" label="总次数" width="80" align="right"/><el-table-column prop="last_seen" sortable="custom" label="首次 → 最近" min-width="190"><template #default="{row}">{{ dateTime(row.firstSeen) }} → {{ dateTime(row.lastSeen) }}</template></el-table-column><el-table-column label="状态" width="110"><template #default="{row}"><el-tag v-if="row.status==='pending'" type="success" size="small">待审</el-tag><el-tag v-else-if="row.status==='auto_banned'" type="info" size="small">已封禁</el-tag><el-tag v-else type="warning" size="small">部分已处理</el-tag></template></el-table-column><el-table-column label="操作" width="190"><template #default="{row}"><el-button v-if="row.pendingCount" link type="danger" @click="mergedAct(row,'approve-ip')">封 IP</el-button><el-button v-if="row.pendingCount && row.devices" link type="danger" @click="mergedAct(row,'approve-device')">封设备</el-button><el-button v-if="row.pendingCount" link @click="mergedAct(row,'reject')">忽略</el-button></template></el-table-column></el-table></template><div v-else-if="!reviewMerge" class="game-card-list"><div v-for="row in pagedReviews" :key="row.id" class="admin-card"><div class="admin-card-pick"><el-checkbox :model-value="sel.reviews.has(row)" :disabled="row.status!=='pending'" @change="sel.reviews.toggle(row)">选择</el-checkbox></div><div class="admin-card-main"><strong class="mono">{{ row.ip }}</strong><small>{{ dateTime(row.last_seen) }} · 命中 {{ row.hits }} 次</small><span class="muted">{{ row.rule }}</span><el-tag v-if="row.status==='pending'" type="success" size="small">待审</el-tag><el-tag v-else-if="row.status==='approved'" type="danger" size="small">已封禁</el-tag><el-tag v-else-if="row.status==='rejected'" type="info" size="small">已忽略</el-tag><el-tag v-else type="info" size="small">自动退出</el-tag><p class="admin-card-path">{{ row.path||row.detail }}</p></div><div class="admin-card-foot"><span></span><span><el-button v-if="row.status==='pending'" link type="danger" @click="reviewAction(row,'ip')">封 IP</el-button><el-button v-if="row.status==='pending' && row.fingerprint" link type="danger" @click="reviewAction(row,'device')">封设备</el-button><el-button v-if="row.status==='pending'" link @click="ignoreReview(row)">忽略</el-button></span></div></div></div><div v-else class="game-card-list"><div v-for="row in pagedMergedReviews" :key="row.key" class="admin-card"><div class="admin-card-pick"><el-checkbox :model-value="mergedPicked.has(row.key)" :disabled="!row.pendingCount" @change="toggleMergedPick(row)">选择</el-checkbox></div><div class="admin-card-main"><strong class="mono">{{ row.ip }}</strong><small>首次 {{ dateTime(row.firstSeen) }} → 最近 {{ dateTime(row.lastSeen) }}</small><span class="muted">{{ row.rules.map(r=>r.rule+' ×'+r.n).join(' · ') }}</span><el-tag v-if="row.status==='pending'" type="success" size="small">待审</el-tag><el-tag v-else-if="row.status==='auto_banned'" type="info" size="small">已封禁</el-tag><el-tag v-else type="warning" size="small">部分已处理</el-tag><p class="admin-card-path">共 {{ row.ruleCount }} 条规则 · {{ row.hitsTotal }} 次命中 · {{ row.devices }} 个设备</p></div><div class="admin-card-foot"><span></span><span><el-button v-if="row.pendingCount" link type="danger" @click="mergedAct(row,'approve-ip')">封 IP</el-button><el-button v-if="row.pendingCount && row.devices" link type="danger" @click="mergedAct(row,'approve-device')">封设备</el-button><el-button v-if="row.pendingCount" link @click="mergedAct(row,'reject')">忽略</el-button></span></div></div></div><PaginationBar v-if="!reviewMerge" v-model:page="reviewsPage" v-model:page-size="reviewsPageSize" :total="reviews.length"/><PaginationBar v-else v-model:page="mergedPage" v-model:page-size="mergedPageSize" :total="sortedMergedReviews.length"/></div>
       </template>
       <template v-else-if="visitorView==='devices'">
         <div class="notice-card"><strong>设备封禁按指纹生效</strong><p>换 IP 也会命中；白名单 IP 不受影响。审核弹窗「封设备」产生的封禁同样在这里管理。解封后该设备仍会出现在「最近设备」里（历史记录不删）。</p></div>
@@ -153,6 +153,114 @@ function onVisitorSortChange({ prop, order }) {
   visitorSort.value = prop && order ? { prop, order } : { prop: 'created_at', order: 'descending' };
   saveSortState(SORT_STORAGE.visitor, visitorSort.value);
   loadVisitors(1);
+}
+// AR 批（docs/ADMIN-REVIEW-LISTS.md §4）：异常审核「按 IP 合并」视图（默认关，localStorage 持久化）
+const reviewMerge = ref((() => { try { return localStorage.getItem('admin.reviewMerge') === '1'; } catch { return false; } })());
+function onMergeToggle() { try { localStorage.setItem('admin.reviewMerge', reviewMerge.value ? '1' : '0'); } catch { /* 忽略 */ } sel.reviews.clear(); mergedPicked.value = new Set(); reviewsPager.page.value = 1; }
+const mergedPicked = ref(new Set());
+function toggleMergedPick(row) { const next = new Set(mergedPicked.value); if (next.has(row.key)) next.delete(row.key); else next.add(row.key); mergedPicked.value = next; }
+const mergedSort = ref(loadSortState('admin.reviewMergeSort', { prop: 'last_seen', order: 'descending' }));
+function onMergedSortChange({ prop, order }) {
+  mergedSort.value = prop && order ? { prop, order } : { prop: 'last_seen', order: 'descending' };
+  saveSortState('admin.reviewMergeSort', mergedSort.value);
+  mergedPager.page.value = 1;
+}
+const sortedMergedReviews = computed(() => {
+  const byIp = new Map();
+  for (const r of reviews.value) {
+    const key = r.ip || '(空)';
+    if (!byIp.has(key)) byIp.set(key, { ip: r.ip || '', rows: [] });
+    byIp.get(key).rows.push(r);
+  }
+  const list = [];
+  for (const g of byIp.values()) {
+    const pending = g.rows.filter((r) => r.status === 'pending');
+    const statuses = new Set(g.rows.map((r) => r.status));
+    const ruleMap = new Map();
+    for (const r of g.rows) ruleMap.set(r.rule, (ruleMap.get(r.rule) || 0) + 1);
+    const days = g.rows.map((r) => r.last_seen || '').filter(Boolean).sort();
+    const firsts = g.rows.map((r) => r.created_at || '').filter(Boolean).sort();
+    list.push({
+      key: g.ip || '(空)',
+      ip: g.ip,
+      rows: g.rows,
+      rules: [...ruleMap.entries()].map(([rule, n]) => ({ rule, n })).sort((a, b) => b.n - a.n),
+      ruleCount: ruleMap.size,
+      hitsTotal: g.rows.reduce((s, r) => s + (Number(r.hits) || 0), 0),
+      firstSeen: firsts[0] || '',
+      lastSeen: days[days.length - 1] || '',
+      devices: new Set(g.rows.map((r) => r.fingerprint || r.device_id).filter(Boolean)).size,
+      status: pending.length ? 'pending' : (statuses.size === 1 && statuses.has('auto_banned') ? 'auto_banned' : 'partial'),
+      pendingIds: pending.map((r) => r.id),
+      pendingCount: pending.length,
+    });
+  }
+  const { prop, order } = mergedSort.value;
+  const dir = order === 'ascending' ? 1 : -1;
+  return list.sort((a, b) => {
+    let va; let vb;
+    if (prop === 'ip') return compareIp(a.ip, b.ip) * dir;
+    if (prop === 'hitsTotal') { va = a.hitsTotal; vb = b.hitsTotal; }
+    else if (prop === 'ruleCount') { va = a.ruleCount; vb = b.ruleCount; }
+    else { va = a.lastSeen; vb = b.lastSeen; }
+    if (va < vb) return -1 * dir;
+    if (va > vb) return 1 * dir;
+    return 0;
+  });
+});
+const mergedPager = useListPagination(sortedMergedReviews);
+const pagedMergedReviews = mergedPager.items;
+const mergedPickedCount = computed(() => sortedMergedReviews.value.filter((g) => mergedPicked.value.has(g.key)).reduce((s, g) => s + g.pendingCount, 0));
+const mergedPage = mergedPager.page, mergedPageSize = mergedPager.pageSize;
+async function mergedAct(row, actionKey) {
+  const labels = { 'approve-ip': '封 IP', 'approve-device': '封设备', reject: '忽略' };
+  const label = labels[actionKey];
+  let ids = row.pendingIds.slice();
+  if (actionKey === 'approve-device') {
+    const seen = new Set();
+    ids = row.rows.filter((r) => r.status === 'pending' && r.fingerprint && !seen.has(r.fingerprint) && seen.add(r.fingerprint)).map((r) => r.id);
+  }
+  if (!ids.length) return ElMessage.warning('该 IP 没有可处理的待审记录');
+  let confirmCount = null;
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `将处理 ${row.ip} 的 ${row.ruleCount} 条规则 / ${row.hitsTotal} 次命中 / ${row.devices} 个设备（共 ${ids.length} 条记录）执行「${label}」，请再次输入这个数字确认`,
+      `确认${label}`,
+      { inputPattern: /^\d+$/, inputErrorMessage: '请输入数字', confirmButtonText: '确认执行', cancelButtonText: '取消', type: 'warning' },
+    );
+    if (Number(String(value).trim()) !== Number(ids.length)) { ElMessage.warning('输入的条数与待处理记录数不一致，已取消'); return; }
+    confirmCount = Number(ids.length);
+  } catch (e) { if (e === 'cancel' || e === 'close') return; throw e; }
+  bulkRunning.value = actionKey;
+  try {
+    const d = await api('/api/admin/bulk', json('POST', { target: 'reviews', action: actionKey, keys: ids, confirmCount }));
+    bulkResult.result = d; bulkResult.visible = true;
+    mergedPicked.value = new Set();
+    await loadReviews();
+  } catch (e) { notifyError(e); } finally { bulkRunning.value = ''; }
+}
+async function runMergedBulk(actionKey) {
+  const groups = sortedMergedReviews.value.filter((g) => mergedPicked.value.has(g.key));
+  if (!groups.length) return ElMessage.warning('请先勾选要操作的 IP');
+  let ids = [];
+  for (const g of groups) ids.push(...g.pendingIds);
+  if (actionKey === 'approve-device') {
+    const seen = new Set();
+    const all = groups.flatMap((g) => g.rows);
+    ids = all.filter((r) => r.status === 'pending' && r.fingerprint && !seen.has(r.fingerprint) && seen.add(r.fingerprint)).map((r) => r.id);
+  }
+  if (!ids.length) return ElMessage.warning('所选 IP 没有可处理的待审记录');
+  const labels = { 'approve-ip': '封 IP', 'approve-device': '封设备', reject: '忽略' };
+  const label = labels[actionKey];
+  const confirmCount = await promptBulkConfirm(ids.length, label);
+  if (confirmCount == null) return;
+  bulkRunning.value = actionKey;
+  try {
+    const d = await api('/api/admin/bulk', json('POST', { target: 'reviews', action: actionKey, keys: ids, confirmCount }));
+    bulkResult.result = d; bulkResult.visible = true;
+    mergedPicked.value = new Set();
+    await loadReviews();
+  } catch (e) { notifyError(e); } finally { bulkRunning.value = ''; }
 }
 const reviewsPager=useListPagination(sortedReviews), blacklistPager=useListPagination(blacklist), whitelistPager=useListPagination(whitelist), abusePager=useListPagination(abuse), announcementsPager=useListPagination(announcements), dailyPager=useListPagination(daily), backupsPager=useListPagination(backups), devicesPager=useListPagination(devices), deviceBansPager=useListPagination(deviceBans);
 const pagedReviews=reviewsPager.items,reviewsPage=reviewsPager.page,reviewsPageSize=reviewsPager.pageSize;
@@ -278,7 +386,7 @@ let gameSnapshot=null;
 function gameDirty(){return gameDialog.value&&gameSnapshot!==null&&JSON.stringify({description:gameDescription.value,blocked:Boolean(gameBlocked.value)})!==gameSnapshot;}
 
 async function loadVisitors(page=visitorPage.value){sel.visitors.clear();loading.value=true;visitorPage.value=page;try{const qs=new URLSearchParams({page:String(page),pageSize:String(visitorPageSize.value),filter:visitorFilter.value,ip:visitorIp.value.trim(),path:visitorPath.value.trim(),...visitorSortParams()});const d=await api(`/api/admin/visitors?${qs}`);visitors.value=d.rows||[];visitorTotal.value=d.total||0;visitorSummary.value=d.summary||{};}catch(e){notifyError(e);}finally{loading.value=false;}}
-async function loadReviews(){sel.reviews.clear();loading.value=true;try{const d=await api(`/api/admin/reviews?status=${reviewStatus.value}`);reviews.value=d.reviews||[];}catch(e){notifyError(e);}finally{loading.value=false;}}
+async function loadReviews(){sel.reviews.clear();mergedPicked.value=new Set();loading.value=true;try{const d=await api(`/api/admin/reviews?status=${reviewStatus.value}`);reviews.value=d.reviews||[];}catch(e){notifyError(e);}finally{loading.value=false;}}
 async function loadSecurity(){sel.blacklist.clear();sel.whitelist.clear();sel.abuse.clear();loading.value=true;try{const [b,w,a]=await Promise.all([api('/api/admin/blacklist'),api('/api/admin/whitelist'),api('/api/admin/abuse?limit=200')]);blacklist.value=b.ips||[];whitelist.value=w.ips||[];abuse.value=a.abuse||[];}catch(e){notifyError(e);}finally{loading.value=false;}}
 function loadVisitorView(){if(visitorView.value==='visits')loadVisitors(1);else if(visitorView.value==='review')loadReviews();else if(visitorView.value==='devices')loadDevices();else loadSecurity();}
 async function loadDevices(){sel.devices.clear();sel.deviceBans.clear();loading.value=true;try{const [d,b]=await Promise.all([api('/api/admin/devices?limit=100'),api('/api/admin/device-bans')]);devices.value=d.devices||[];deviceBans.value=b.bans||[];}catch(e){notifyError(e);}finally{loading.value=false;}}
@@ -385,5 +493,8 @@ if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('ch
 .bulk-op-keys{display:flex;flex-wrap:wrap;gap:4px;max-height:180px;overflow:auto}
 .proxy-editor{display:flex;flex-direction:column;gap:10px;width:100%}.proxy-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.proxy-count{font-size:12px;color:var(--fg-muted)}.proxy-row{display:flex;align-items:center;gap:6px}.proxy-row>.el-input{flex:1;max-width:430px}.proxy-index{width:22px;text-align:right;font-size:12px;color:var(--fg-muted);flex:none}.proxy-actions{display:flex;align-items:center;gap:14px}.proxy-health{border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:8px}.proxy-health-head{display:flex;align-items:center;justify-content:space-between}.proxy-health-head strong{font-size:12px}
 </style>
+
+
+
 
 

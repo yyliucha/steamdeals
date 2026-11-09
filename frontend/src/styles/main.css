@@ -17,3 +17,5 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 .m-console .table-card,.m-console .table-scroll{position:relative}
 .m-console .table-card::after,.m-console .table-scroll::after{content:'';position:absolute;top:0;right:0;bottom:0;width:34px;background:linear-gradient(90deg,transparent,var(--panel));pointer-events:none;z-index:2}
 .m-console .table-card::before,.m-console .table-scroll::before{content:'左右滑动查看更多';position:absolute;top:6px;right:40px;z-index:3;font-size:11px;color:var(--fg-subtle);pointer-events:none}
+
+.merge-bar{display:flex;align-items:center;gap:8px;padding:8px 2px;color:var(--fg-muted);font-size:12px}.merge-bar>span{flex:1}.merged-detail{padding:2px 8px}.merged-detail-row{display:flex;gap:12px;align-items:center;padding:7px 2px;border-bottom:1px dashed var(--border);font-size:12px}.merged-detail-row>span:first-child{min-width:150px;font-weight:600;color:var(--fg-2)}
