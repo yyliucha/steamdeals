@@ -354,6 +354,12 @@ const ALTERS = [
   'alter table users add column if not exists email text',
   'alter table users add column if not exists email_verified boolean not null default false',
   'alter table users add column if not exists steam_id text',
+  // AK-1（docs/AUTH-REDESIGN.md §3）：密码系统补列
+  'alter table users add column if not exists must_change_password boolean not null default false',
+  'alter table users add column if not exists failed_login_count integer not null default 0',
+  'alter table users add column if not exists locked_until timestamptz',
+  'alter table users add column if not exists weak_password boolean',
+  'alter table users add column if not exists password_updated_at timestamptz',
   'alter table games add column if not exists developers text[]',
   'alter table games add column if not exists publishers text[]',
   'alter table games add column if not exists genres text[]',
@@ -1313,18 +1319,46 @@ export async function watchCandidates(q, { region = 'cn' } = {}) {
 
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
-/** scrypt 哈希：salt:hash（hex）。不引第三方库，node:crypto 足够。 */
-export function hashPassword(password, salt = randomBytes(16).toString('hex')) {
-  const hash = scryptSync(String(password), salt, 64).toString('hex');
-  return `${salt}:${hash}`;
+// AK-1（docs/AUTH-REDESIGN.md §4.2）：新格式 $scrypt$N$r$p$<salt b64>$<hash b64>（N=32768,r=8,p=1）；
+// 旧格式 salt:hash（N=16384 默认参数）继续可验，登录成功后静默升级。
+const SCRYPT_OPTS = { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
+
+/** scrypt 哈希（带算法与参数的版本化格式；不引第三方库，node:crypto 足够）。 */
+export function hashPassword(password) {
+  const salt = randomBytes(16);
+  const hash = scryptSync(String(password), salt, 64, SCRYPT_OPTS);
+  return `$scrypt$${SCRYPT_OPTS.N}$${SCRYPT_OPTS.r}$${SCRYPT_OPTS.p}$${salt.toString('base64')}$${hash.toString('base64')}`;
 }
 
+/** 校验密码：兼容新格式 $scrypt$… 与旧格式 salt:hash（保持返回 boolean，不改调用点签名）。 */
 export function verifyPassword(password, stored) {
-  const [salt, hash] = String(stored ?? '').split(':');
+  const value = String(stored ?? '');
+  if (value.startsWith('$scrypt$')) {
+    const parts = value.split('$'); // ['', 'scrypt', N, r, p, salt, hash]
+    const [n, r, p, saltB64, hashB64] = parts.slice(2);
+    try {
+      const hash = scryptSync(String(password), Buffer.from(saltB64, 'base64'), 64, {
+        N: Number(n),
+        r: Number(r),
+        p: Number(p),
+        maxmem: 256 * 1024 * 1024,
+      });
+      return timingSafeEqual(hash, Buffer.from(hashB64, 'base64'));
+    } catch {
+      return false;
+    }
+  }
+  const [salt, hash] = value.split(':');
   if (!salt || !hash) return false;
   const candidate = scryptSync(String(password), salt, 64);
   const expected = Buffer.from(hash, 'hex');
   return candidate.length === expected.length && timingSafeEqual(candidate, expected);
+}
+
+/** 旧格式（或空）需要升级到版本化格式。 */
+export function passwordNeedsRehash(stored) {
+  const value = String(stored ?? '');
+  return value.length > 0 && !value.startsWith('$scrypt$');
 }
 
 export async function createUser(q, { username, password, role = 'user', email = null }) {
@@ -1336,7 +1370,7 @@ export async function createUser(q, { username, password, role = 'user', email =
 }
 
 export async function findUserByName(q, username) {
-  const r = await q('select id, username, password_hash, role, disabled from users where username = $1', [username]);
+  const r = await q('select id, username, password_hash, role, disabled, email from users where username = $1', [username]);
   return r.rows[0] ?? null;
 }
 

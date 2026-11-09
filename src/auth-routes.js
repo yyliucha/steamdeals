@@ -26,6 +26,7 @@ import { sessionCookie } from './session-cookie.js';
 import { baseUrl } from './steam-login.js';
 import { appealEmailFrom } from './appeal.js';
 import { renderTemplate, resolveTemplate } from './mail-templates.js';
+import { passwordPolicyError } from './password-policy.js';
 
 export function maskEmail(email) {
   const v = String(email ?? '');
@@ -217,9 +218,13 @@ export async function handleEmailAuth({ path, req, res, q, logger, json, readBod
     }
 
     const resetPassword = purpose === 'reset' ? String(body.password ?? '') : null;
-    if (purpose === 'reset' && (resetPassword.length < 8 || resetPassword.length > 200)) {
-      json(res, 400, { error: '新密码需要 8-200 位' });
-      return true;
+    if (purpose === 'reset') {
+      // AK-1（docs/AUTH-REDESIGN.md §4.1）：自助重置统一走密码策略
+      const policyError = passwordPolicyError(resetPassword, { email });
+      if (policyError) {
+        json(res, 400, { error: policyError });
+        return true;
+      }
     }
 
     // 校验通过：立刻作废，防止重放

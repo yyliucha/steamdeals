@@ -29,6 +29,7 @@ import { bestMatch, confidenceLabel } from './match.js';
 import { renderCompare, groupOffersByRegion } from './compare.js';
 import { extractAppId, fetchMetadata, normalizeOfficial } from './adapters/steam-meta.js';
 import { describeProxy, decideProxy, parseProxy, redactProxy } from './proxy.js';
+import { passwordPolicyError } from './password-policy.js';
 import { startStaticServer } from './serve.js';
 import * as settings from './settings.js';
 
@@ -1215,7 +1216,9 @@ async function cmdUser() {
     const password =
       pwIdx > -1 ? String(args[pwIdx + 1]) : Buffer.from(crypto.getRandomValues(new Uint8Array(9))).toString('base64url');
     if (!username) throw new Error('用法: node src/cli.js user add <用户名> [--admin] [--password xxx]');
-    if (password.length < 8 || password.length > 200) throw new Error('密码需要 8-200 位');
+    // AK-1（docs/AUTH-REDESIGN.md §4.1）：CLI 建号同样走密码策略（随机生成的 12 位自动符合）
+    const policyError = passwordPolicy.passwordPolicyError(password, { username });
+    if (policyError) throw new Error(policyError);
     const created = await withStore((store) =>
       db.createUser((sql, p) => store.query(sql, p), { username, password, role }),
     );

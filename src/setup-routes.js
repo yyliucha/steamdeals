@@ -5,6 +5,7 @@ import * as db from './store/pg.js';
 import * as settings from './settings.js';
 import { normalizeEmail } from './email-auth.js';
 import { sessionCookie } from './session-cookie.js';
+import { passwordPolicyError } from './password-policy.js';
 
 const jsonError = (json, res, status, message) => json(res, status, { error: message });
 
@@ -14,15 +15,12 @@ function validateAdmin(admin) {
   if (!/^[^\s/]{3,32}$/.test(username)) {
     throw Object.assign(new Error('管理员用户名需要 3-32 个字符，且不能包含空格或斜杠'), { status: 400 });
   }
-  if (password.length < 8) {
-    throw Object.assign(new Error('管理员密码至少 8 位'), { status: 400 });
-  }
-  if (password.length > 200) {
-    throw Object.assign(new Error('管理员密码过长'), { status: 400 });
-  }
   const rawEmail = String(admin?.email ?? '').trim();
   const email = rawEmail ? normalizeEmail(rawEmail) : null;
   if (rawEmail && !email) throw Object.assign(new Error('管理员邮箱格式不正确'), { status: 400 });
+  // AK-1（docs/AUTH-REDESIGN.md §4.1）：首次初始化同样走密码策略
+  const policyError = passwordPolicyError(password, { username, email: rawEmail });
+  if (policyError) throw Object.assign(new Error(policyError), { status: 400 });
   return { username, password, email };
 }
 

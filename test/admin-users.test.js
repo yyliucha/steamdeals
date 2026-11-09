@@ -43,7 +43,7 @@ test('建号带邮箱：一次写入成功，邮箱未验证', async () => {
   const { store, q, srv, base } = await setup();
   try {
     const admin = await login(base, 'admin', 'admin123456');
-    const res = await create(base, admin.cookie, { username: 'bob', password: 'bob123456', role: 'user', email: 'bob@example.com' });
+    const res = await create(base, admin.cookie, { username: 'bob', password: 'k7Qw!2mXp3nZ', role: 'user', email: 'bob@example.com' });
     assert.equal(res.status, 201);
     const body = await res.json();
     assert.equal(body.user.email, 'bob@example.com');
@@ -62,7 +62,7 @@ test('邮箱已被占用：409 明确报错，且用户数不变（原子，不�
   try {
     const admin = await login(base, 'admin', 'admin123456');
     const before = (await q('select count(*)::int as n from users')).rows[0].n;
-    const res = await create(base, admin.cookie, { username: 'carol', password: 'carol123456', role: 'user', email: 'taken@example.com' });
+    const res = await create(base, admin.cookie, { username: 'carol', password: 'k7Qw!2mXp3nZ', role: 'user', email: 'taken@example.com' });
     assert.equal(res.status, 409);
     const body = await res.json();
     assert.match(body.error, /邮箱已被其他账号绑定/);
@@ -80,7 +80,7 @@ test('用户名重复：409 且用户数不变', async () => {
   try {
     const admin = await login(base, 'admin', 'admin123456');
     const before = (await q('select count(*)::int as n from users')).rows[0].n;
-    const res = await create(base, admin.cookie, { username: 'alice', password: 'alice123456', role: 'user', email: 'other@example.com' });
+    const res = await create(base, admin.cookie, { username: 'alice', password: 'k7Qw!2mXp3nZ', role: 'user', email: 'other@example.com' });
     assert.equal(res.status, 409);
     assert.match((await res.json()).error, /用户名已存在/);
     assert.equal((await q('select count(*)::int as n from users')).rows[0].n, before);
@@ -95,7 +95,7 @@ test('邮箱格式非法：400 且不建号', async () => {
   try {
     const admin = await login(base, 'admin', 'admin123456');
     const before = (await q('select count(*)::int as n from users')).rows[0].n;
-    const res = await create(base, admin.cookie, { username: 'dave', password: 'dave123456', role: 'user', email: 'not-an-email' });
+    const res = await create(base, admin.cookie, { username: 'dave', password: 'k7Qw!2mXp3nZ', role: 'user', email: 'not-an-email' });
     assert.equal(res.status, 400);
     assert.match((await res.json()).error, /邮箱格式不正确/);
     assert.equal((await q('select count(*)::int as n from users')).rows[0].n, before);
@@ -109,7 +109,7 @@ test('不带邮箱：向后兼容 201', async () => {
   const { store, q, srv, base } = await setup();
   try {
     const admin = await login(base, 'admin', 'admin123456');
-    const res = await create(base, admin.cookie, { username: 'erin', password: 'erin123456', role: 'user' });
+    const res = await create(base, admin.cookie, { username: 'erin', password: 'k7Qw!2mXp3nZ', role: 'user' });
     assert.equal(res.status, 201);
     const row = (await q("select email from users where username = 'erin'")).rows[0];
     assert.equal(row.email, null);
@@ -123,10 +123,10 @@ test('权限：匿名 401，普通用户 403，都不产生用户', async () => 
   const { store, q, srv, base } = await setup();
   try {
     const before = (await q('select count(*)::int as n from users')).rows[0].n;
-    const anon = await create(base, null, { username: 'frank', password: 'frank123456' });
+    const anon = await create(base, null, { username: 'frank', password: 'k7Qw!2mXp3nZ' });
     assert.equal(anon.status, 401);
     const alice = await login(base, 'alice', 'alice123456');
-    const forbidden = await create(base, alice.cookie, { username: 'frank', password: 'frank123456' });
+    const forbidden = await create(base, alice.cookie, { username: 'frank', password: 'k7Qw!2mXp3nZ' });
     assert.equal(forbidden.status, 403);
     assert.equal((await q('select count(*)::int as n from users')).rows[0].n, before);
   } finally {

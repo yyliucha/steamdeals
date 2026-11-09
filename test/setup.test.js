@@ -96,7 +96,7 @@ test('完成初始化：建管理员 + 写设置 + 建会话，随后页面/API 
   const { store, q, srv, base } = await boot();
   try {
     const out = await postJson(base, '/api/setup/complete', {
-      admin: { username: 'admin', password: 'admin123456', email: 'admin@example.com' },
+      admin: { username: 'admin', password: 'correct-horse-battery-staple', email: 'admin@example.com' },
       settings: {
         'sources.itad.apiKey': 'itad-key-12345678',
         'sources.steam.enabled': false,
@@ -120,7 +120,7 @@ test('完成初始化：建管理员 + 写设置 + 建会话，随后页面/API 
     assert.equal(me.user.username, 'admin');
 
     const setupAgain = await postJson(base, '/api/setup/complete', {
-      admin: { username: 'admin2', password: 'admin123456' },
+      admin: { username: 'admin2', password: 'correct-horse-battery-staple' },
     });
     assert.equal(setupAgain.res.status, 409, '完成后不能再次初始化');
 
@@ -151,13 +151,13 @@ test('SETUP_TOKEN：没有口令 401，带口令通过', async () => {
     assert.equal(status.setupTokenRequired, true);
 
     const bad = await postJson(base, '/api/setup/complete', {
-      admin: { username: 'admin', password: 'admin123456' },
+      admin: { username: 'admin', password: 'correct-horse-battery-staple' },
       setupToken: 'wrong',
     });
     assert.equal(bad.res.status, 401);
 
     const ok = await postJson(base, '/api/setup/complete', {
-      admin: { username: 'admin', password: 'admin123456' },
+      admin: { username: 'admin', password: 'correct-horse-battery-staple' },
       setupToken: 's3cret-token',
     });
     assert.equal(ok.res.status, 200, JSON.stringify(ok.json));
@@ -173,7 +173,7 @@ test('老部署已有管理员：启动即视为初始化完成，不拦截', as
     await db.migrate(store);
     await (await import('../src/email-auth.js')).ensureEmailSchema(store);
     const q = (sql, p) => store.query(sql, p);
-    await db.createUser(q, { username: 'admin', password: 'admin123456', role: 'admin' });
+    await db.createUser(q, { username: 'admin', password: 'correct-horse-battery-staple', role: 'admin' });
     settings.resetSettingsCache();
     const initialized = await settings.initializeSettings({ store, env: {}, secretKey: SECRET });
     assert.equal(initialized.completed, true);

@@ -205,13 +205,20 @@ test('发码后邮件内容落库：正文不存明文验证码，哈希可校�
       assert.equal(res.status, 200, JSON.stringify(await res.text()));
 
       const row = (await q('select id, subject, body, code_hash from email_codes order by id desc limit 1')).rows[0];
-      assert.equal(row.subject, 'SteamDeals 登录验证码');
+      assert.equal(row.subject, 'SteamDeals 验证码', '主题跟随 verify_code 模板默认值（AI 批）');
       assert.equal(row.body, '验证码邮件正文未保存。', '数据库不能留明文验证码');
-      // 真实验证码只在发出的邮件里：从假 SMTP 收到的 base64 正文里解出来，验证哈希仍然对得上
+      // 真实验证码只在发出的邮件里：邮件现在是 multipart/alternative（AI 批），
+      // 逐个 base64 段解码后找 6 位验证码，再验证哈希仍然对得上
       const rawMail = String(state.data || '');
-      const base64Body = rawMail.split(/\r?\n\r?\n/).slice(1).join('');
-      const mailText = Buffer.from(base64Body.replace(/\s+/g, ''), 'base64').toString('utf8');
-      const code = /(\d{6})/.exec(mailText)?.[1];
+      let code = null;
+      for (const line of rawMail.split(/\r?\n/)) {
+        if (!/^[A-Za-z0-9+/=]{20,}$/.test(line)) continue;
+        const m = /(\d{6})/.exec(Buffer.from(line, 'base64').toString('utf8'));
+        if (m) {
+          code = m[1];
+          break;
+        }
+      }
       assert.ok(code, '发出的邮件正文里应有 6 位验证码');
       assert.equal(verifyCodeHash('alice@example.com', code, row.code_hash), true, '邮件里的验证码能通过哈希校验');
 
@@ -224,7 +231,7 @@ test('发码后邮件内容落库：正文不存明文验证码，哈希可校�
       const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0];
       const emails = await (await fetch(`${base}/api/admin/emails`, { headers: { cookie } })).json();
       assert.equal(emails.records[0].body, row.body);
-      assert.equal(emails.records[0].subject, 'SteamDeals 登录验证码');
+      assert.equal(emails.records[0].subject, 'SteamDeals 验证码');
 
       // 清理：3 天前的记录被删
       await q("update email_codes set created_at = now() - interval '4 days'");

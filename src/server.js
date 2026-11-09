@@ -32,6 +32,7 @@ import * as mailTemplates from './mail-templates.js';
 import * as notify from './notify.js';
 import * as accountNotify from './account-notify.js';
 import * as proxyPool from './proxy-pool.js';
+import * as passwordPolicy from './password-policy.js';
 import { maskEmail } from './auth-routes.js';
 import { auditJobs as auditSchedulerJobs } from './scheduler.js';
 
@@ -51,6 +52,8 @@ const DEVICE_COOKIE = 'gp_device';
 
 // 测试邮件限流：同一管理员 10 秒 1 次（docs/USER-LIFECYCLE.md §7.5）
 const mailTestCooldown = new Map();
+// AK-1（docs/AUTH-REDESIGN.md §4.1）：/api/password/check 匿名限流计数（每 IP 每分钟 30 次，内存态）
+const passwordCheckHits = new Map();
 
 // 单款价格历史 CSV 默认关闭：线上暂不对外提供（避免被试探出导出能力）；HISTORY_CSV_ENABLED=1 才放行
 const historyCsvEnabled = () => process.env.HISTORY_CSV_ENABLED === '1';
@@ -784,12 +787,50 @@ export function createApiServer({
           return json(res, 401, { error: found?.disabled ? '账号已被禁用' : '用户名或密码错误' });
         }
         const sessionToken = await db.createSession(q, { userId: found.id });
-        logger?.info('api.login', { userId: found.id, username: found.username });
+        // AK-1（docs/AUTH-REDESIGN.md §4.2/决策 3）：旧哈希静默升级 + 弱密码评估落库（不强制改密）
+        let rehashed = false;
+        if (db.passwordNeedsRehash(found.password_hash)) {
+          await q('update users set password_hash = $1, password_updated_at = now() where id = $2', [
+            db.hashPassword(String(body.password ?? '')),
+            found.id,
+          ]);
+          rehashed = true;
+          logger?.info('auth.password_rehashed', { userId: found.id });
+        }
+        const weak = passwordPolicy.evaluatePassword(String(body.password ?? ''), {
+          username: found.username,
+          email: found.email ?? '',
+        });
+        await q('update users set weak_password = $1 where id = $2', [!weak.ok, found.id]);
+        logger?.info('api.login', { userId: found.id, username: found.username, rehashed, weak: !weak.ok });
         return json(
           res,
           200,
           { user: { id: found.id, username: found.username, role: found.role } },
           { 'set-cookie': sessionCookie(req, sessionToken, 604800) },
+        );
+      }
+
+      // AK-1（docs/AUTH-REDESIGN.md §4.1）：密码强度评估（匿名，每 IP 每分钟 30 次，只评估不回显用户信息）
+      if (path === '/api/password/check' && req.method === 'POST') {
+        const body = await readBody(req);
+        const now = Date.now();
+        const minuteKey = Math.floor(now / 60_000);
+        const entry = passwordCheckHits.get(ip) ?? { minute: minuteKey, count: 0 };
+        if (entry.minute !== minuteKey) {
+          entry.minute = minuteKey;
+          entry.count = 0;
+        }
+        entry.count += 1;
+        if (entry.count > 30) return json(res, 429, { error: '请求过于频繁，请稍后再试' });
+        passwordCheckHits.set(ip, entry);
+        return json(
+          res,
+          200,
+          passwordPolicy.evaluatePassword(String(body.password ?? ''), {
+            username: String(body.username ?? ''),
+            email: String(body.email ?? ''),
+          }),
         );
       }
 
@@ -1857,10 +1898,12 @@ export function createApiServer({
         if (!requireAdmin()) return;
         const body = await readBody(req);
         const password = String(body.password ?? '');
-        if (password.length < 8 || password.length > 200) return json(res, 400, { error: '密码需要 8-200 位' });
         const username = decodeURIComponent(pwdMatch[1]);
         const before = (await q('select email from users where username = $1', [username])).rows[0];
         if (!before) return json(res, 404, { error: '没有该用户' });
+        // AK-1（docs/AUTH-REDESIGN.md §4.1）：重置密码统一走密码策略（不再各写 length < 8）
+        const policyError = passwordPolicy.passwordPolicyError(password, { username, email: before.email ?? '' });
+        if (policyError) return json(res, 400, { error: policyError });
         const row = await db.setUserPassword(q, { username, password });
         if (!row) return json(res, 404, { error: '没有该用户' });
         logger?.info('api.user_password_reset', { username, by: user.username });
@@ -2527,15 +2570,16 @@ export function createApiServer({
         const body = await readBody(req);
         const username = String(body.username ?? '').trim();
         const password = String(body.password ?? '');
-        if (!username || password.length < 8 || password.length > 200) {
-          return json(res, 400, { error: '用户名必填，密码需要 8-200 位' });
-        }
+        if (!username) return json(res, 400, { error: '用户名必填' });
         // 邮箱可选，但必须和账号在同一次写入里落库：先建号、再绑邮箱的两步式会让
         // "邮箱已被占用"时账号已落库，前端报错刷新却冒出幽灵用户（2026-11-06 反馈的 bug）。
         const auth = await import('./email-auth.js');
         const rawEmail = String(body.email ?? '').trim();
         const email = rawEmail ? auth.normalizeEmail(rawEmail) : null;
         if (rawEmail && !email) return json(res, 400, { error: '邮箱格式不正确' });
+        // AK-1（docs/AUTH-REDESIGN.md §4.1）：建号密码统一走密码策略
+        const policyError = passwordPolicy.passwordPolicyError(password, { username, email: rawEmail });
+        if (policyError) return json(res, 400, { error: policyError });
         const doCreate = () => db.createUser(q, { username, password, role: body.role === 'admin' ? 'admin' : 'user', email });
         let created;
         try {
