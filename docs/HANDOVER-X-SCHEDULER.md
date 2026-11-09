@@ -13,7 +13,7 @@ node -p "require('./package.json').version"
 ```
 
 **工作区未提交文件**（随本批一起提交）：`docs/SCHEDULER-BLOCKING-FIX.md`（新）、`docs/HANDOVER-X-SCHEDULER.md`（新）、
-`docs/TODO.md`（X 条目）。`.dsh/` 已在 `.gitignore`，不要提交。
+`docs/TODO.md`（X 条目）。`.dsh/` 其余本机文件仍不入库（`.dsh/skills/` 自 2026-11-09 起随仓库提交）。
 
 ## 1. 需求一句话
 

@@ -21,5 +21,7 @@ compose.cn.external-db.local.yaml
 *.db-shm
 data/secret.key
 frontend/dist/
-# 本机技能目录（DSH 本地工作流文件，不进公开仓库）
-.dsh/
+# DSH 配置目录：skills 随仓库提交（2026-11-09 所有者改策略），其余本机文件不入库
+.dsh/*
+!.dsh/skills/
+!.dsh/skills/**

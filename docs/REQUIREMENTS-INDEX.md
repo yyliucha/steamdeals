@@ -51,7 +51,7 @@
 
 | 内容 | 落点 |
 |---|---|
-| 需求 skill 三条规则：① 设计/排查阶段分开决定是否给命令；② §9 排查命令规范；③ 需求确认后**必须**产出开发描述 | `.dsh/skills/gameprice-requirements/SKILL.md`（gitignored，不在仓库文档里） |
+| 需求 skill 三条规则：① 设计/排查阶段分开决定是否给命令；② §9 排查命令规范；③ 需求确认后**必须**产出开发描述 | `.dsh/skills/gameprice-requirements/SKILL.md`（自 2026-11-09 起随仓库提交） |
 
 ## 未落实项（本轮对账结论）
 
