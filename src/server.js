@@ -276,6 +276,9 @@ export function createApiServer({
   steamWishlistPush = null, // 测试注入：({steamId, apiKey, appid, action}) => Promise<{ok, reason}>；默认走 IWishlistService 推送
 }) {
   const q = query;
+  // AV 批（docs/READ-MODEL.md §5.2）：/api/games/count 的 priced 计数 60 秒进程内缓存。
+  // 挂在每个服务实例闭包里（单实例；多副本各自缓存，数值偏差可接受）。
+  const pricedCountCache = { value: null, at: 0 };
   // 手动同步的进程内状态：同一时刻只允许一个同步任务
   let syncChild = null;
   let syncRun = null; // { id, mode, startedAt, params }
@@ -964,10 +967,22 @@ export function createApiServer({
       }
 
       // ---- 游戏数量（匿名可读）：库内总数 + 已有价格数，前台"实时数量"靠它 ----
+      // AV 批（docs/READ-MODEL.md §5.2）：priced 改读读模型（distinct game_id，跨区服去重口径不变）
+      // + 60 秒进程内缓存；READ_MODEL=legacy 保留旧查询。catalog 口径不变。
       if (path === '/api/games/count' && req.method === 'GET') {
-        const priced = await q('select count(*)::int as n from (select distinct game_id from daily_prices) x');
+        let priced;
+        if (process.env.READ_MODEL === 'legacy') {
+          priced = (await q('select count(*)::int as n from (select distinct game_id from daily_prices) x')).rows[0]?.n ?? 0;
+        } else {
+          const now = Date.now();
+          if (pricedCountCache.value == null || now - pricedCountCache.at > 60_000) {
+            pricedCountCache.value = (await q('select count(distinct game_id)::int as n from game_region_snapshot')).rows[0]?.n ?? 0;
+            pricedCountCache.at = now;
+          }
+          priced = pricedCountCache.value;
+        }
         const catalog = await q('select count(*)::int as n from games where not deleted and not blocked');
-        return json(res, 200, { priced: priced.rows[0]?.n ?? 0, catalog: catalog.rows[0]?.n ?? 0 });
+        return json(res, 200, { priced, catalog: catalog.rows[0]?.n ?? 0 });
       }
 
       // ---- 公告已读（登录用户写表；游客只存浏览器本地，不调用）----

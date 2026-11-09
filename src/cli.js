@@ -2069,6 +2069,37 @@ async function cmdPrune() {
   logger.info('maintenance.cleanup', { ...result, visitorDays, runDays, emailDays, steamDays });
 }
 
+// 首页列表读模型对账/重建（docs/READ-MODEL.md §7，AV 批）
+async function cmdReadModel() {
+  const sub = args[1];
+  if (sub === 'check') {
+    const sample = Math.min(Math.max(Number(flag('sample', '200')) || 200, 1), 2000);
+    const fix = flag('fix') != null;
+    const result = await withStore((store) =>
+      db.readModelCheck((sql, p) => store.query(sql, p), { sample, fix }),
+    );
+    console.log(
+      `对账完成：抽样 ${result.checked} 个 (game,region)，差异 ${result.diffs.length}${fix ? '（已就地修复）' : '（可用 --fix 就地修复）'}`,
+    );
+    for (const d of result.diffs.slice(0, 20)) {
+      console.log(`  差异：game ${d.gameId} / ${d.region} / ${d.field} → 快照 ${JSON.stringify(d.snapshot)} ≠ 实际 ${JSON.stringify(d.actual)}`);
+    }
+    logger.info('readmodel.check', { checked: result.checked, diffs: result.diffs.length, fix });
+    if (result.diffs.length && !fix) process.exitCode = 1; // 对账不通过非零退出（调度器可观测）
+    return;
+  }
+  if (sub === 'rebuild') {
+    const region = flag('region') ?? null;
+    const result = await withStore((store) =>
+      db.readModelRebuild((sql, p) => store.query(sql, p), { region }),
+    );
+    logger.info('readmodel.rebuild', { region, deleted: result.deleted });
+    console.log(`重建完成：删除 ${result.deleted} 行（${region ?? '全部区服'}），已重新回填。`);
+    return;
+  }
+  throw new Error('用法: node src/cli.js readmodel check [--sample 200] [--fix] | readmodel rebuild [--region cn]');
+}
+
 // 热度回填：appdetails 的 recommendations（评测数）+ release_date，给 games 落 heat。
 // 与价格回填共用 Steam 配额，靠后台任务槽位互斥（同一时刻只允许一个 Steam 重任务）。
 async function cmdHeat() {
@@ -2349,6 +2380,7 @@ const commands = {
   prune: cmdPrune,
   'proxy-check': cmdProxyCheck,
   images: cmdImages,
+  readmodel: cmdReadModel,
   report: cmdReport,
   'steam-accounts': cmdSteamAccounts,
   'steam-claim': cmdSteamClaim,
@@ -2608,6 +2640,7 @@ async function main() {
     images: cmdImages,
     backup: cmdBackup,
     prune: cmdPrune,
+    readmodel: cmdReadModel,
     alerts: cmdAlerts,
     report: cmdReport,
   };
@@ -2660,8 +2693,9 @@ async function main() {
                        --limit 200000 --sleep 1700（按 heat_at 为 null 自动续跑；全量约 90 小时，可分多周跑）
   steam-status         Steam 同步状态判定 + 内容分级（逐 appid 全量 appdetails，cc=cn 失败补 cc=hk）
                        --limit 200000 --batch 30 --rate 1500（steam_checked_at 作续跑游标；免费已由迁移置位）
-  prune                定期清理：访问记录/采集与任务记录/验证码
-                       --visitor-days 180 --run-days 90 --email-days 7
+  prune                定期清理：访问记录/采集与任务记录/验证码/Steam 账号日志
+                       --visitor-days 180 --run-days 90 --email-days 7 --steam-days 180
+  readmodel            首页列表读模型对账/重建：check [--sample 200] [--fix]、rebuild [--region cn]
   steam-accounts       同步所有已绑定 Steam 账号的游戏库与愿望单（差集删除 + 自动提醒）
                        --sleep 1000（账号间间隔，≥1s；调度器默认每日执行）
   steam-claim <用户名> <SteamID>

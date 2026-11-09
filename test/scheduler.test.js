@@ -66,10 +66,10 @@ test('AC11：状态文件带健康面板字段（耗时/结果/失败原因）�
   }
 });
 
-test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清理、gog / humble / discover / backup / alerts / images），各自间隔', () => {
+test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清理、gog / humble / discover / backup / alerts / images / readmodel），各自间隔', () => {
   const jobs = jobsFromEnv({});
   assert.deepEqual(jobs.map((j) => j.name), [
-    'steam-prices', 'heat', 'steam-status', 'rename', 'backfill', 'prune', 'sonkwo', 'itad', 'gog', 'humble',
+    'steam-prices', 'heat', 'steam-status', 'rename', 'backfill', 'prune', 'readmodel', 'sonkwo', 'itad', 'gog', 'humble',
     'discover', 'backup', 'logs', 'alerts', 'images',
   ]);
   const interval = (name) => jobs.find((j) => j.name === name).intervalMin;
@@ -79,6 +79,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.equal(interval('rename'), 10080, '重写名字默认每周一次');
   assert.equal(interval('backfill'), 10080, '增量回填默认每周一次');
   assert.equal(interval('prune'), 10080, '清理默认每周一次');
+  assert.equal(interval('readmodel'), 1440, 'AV 批：读模型对账默认每天一次');
   assert.equal(interval('itad'), 1440);
   assert.equal(interval('gog'), 720);
   assert.equal(interval('humble'), 720);
@@ -97,6 +98,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.deepEqual(args('rename'), ['rename', '--limit', '200000', '--batch', '100', '--sleep', '1500']);
   assert.deepEqual(args('backfill'), ['backfill', '--limit', '50000', '--batch', '100', '--sleep', '3000'], 'AC-3/AC9：回填默认上限 5 万');
   assert.deepEqual(args('prune'), ['prune']);
+  assert.deepEqual(args('readmodel'), ['readmodel', 'check', '--sample', '200'], 'AV 批：默认抽样 200 对账');
 });
 
 test('目录同步任务：有 STEAM_API_KEY 才出现，参数可覆盖，STEAM_ENABLED=0 一并关闭', () => {
@@ -238,6 +240,7 @@ test('显式禁用或间隔为 0 的任务会被剔除', () => {
     BACKUP_ENABLED: '0',
     LOGS_PRUNE_ENABLED: '0',
     IMAGES_ENABLED: '0',
+    READMODEL_ENABLED: '0',
   });
   assert.deepEqual(jobs.map((j) => j.name), ['heat', 'rename', 'backfill', 'prune', 'sonkwo', 'alerts']);
 });

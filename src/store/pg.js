@@ -394,7 +394,7 @@ const ALTERS = [
   'create index if not exists idx_games_steam_status on games (steam_status) where steam_status is not null',
 ];
 
-export async function migrate(store) {
+export async function migrate(store, { logger = null } = {}) {
   await store.exec(SCHEMA);
   await store.exec(USER_SCHEMA);
   // 老库补列：必须幂等，容器每次启动都会跑
@@ -441,6 +441,16 @@ export async function migrate(store) {
     );
   } catch (err) {
     // 本地 pglite（WASM 版）没有 pg_trgm：静默跳过，生产建索引
+  }
+  // AV 批（docs/READ-MODEL.md §3/§6）：首页列表读模型——(game, region) 粒度的价格/史低快照。
+  // 表空时一次性回填（offers ∪ daily_prices 并集）；回填失败必须报错不吞（列表暂时为空需人工介入，规格 §7）。
+  await store.exec(GAME_REGION_SNAPSHOT_DDL);
+  const empty = await store.query('select count(*)::int as n from game_region_snapshot limit 1');
+  if (Number(empty.rows[0]?.n ?? 0) === 0) {
+    logger?.info('readmodel.backfill_start', {});
+    const started = Date.now();
+    await backfillGameRegionSnapshot((sql, p) => store.query(sql, p));
+    logger?.info('readmodel.backfill_done', { elapsedMs: Date.now() - started });
   }
 }
 
@@ -771,6 +781,178 @@ export async function upsertDaily(q, { gameId, platformCode, region, priceCents,
   );
 }
 
+// ---------------------------------------------------------------- 首页列表读模型（docs/READ-MODEL.md，AV 批）
+//
+// 目标：把「每次请求现算全库聚合」改成「入库时算一次、读的时候只查一行」。
+// 写入方只有 ingestOffers（唯一写 offers）+ mergeGames（唯一删/移 offers），同库强一致，不需要队列。
+
+const GAME_REGION_SNAPSHOT_DDL = `
+create table if not exists game_region_snapshot (
+  game_id           bigint not null references games(id) on delete cascade,
+  region            text   not null,
+  -- 当前价（官方渠道 = official + authorized_reseller，仅 in_stock）
+  price_cents       integer,
+  currency          text,
+  original_cents    integer,
+  discount_pct      integer,
+  steam_price_cents integer,            -- 只看 Steam 平台的最低在售价
+  low_platform      text,
+  low_platform_name text,
+  platform_names    text[],             -- 该区服在售的平台名（卡片标签）
+  offers_count      integer not null default 0,
+  last_seen_at      timestamptz,
+  -- 历史（来自 daily_prices 的日聚合）
+  hist_low_cents       integer,
+  prev_hist_low_cents  integer,         -- 今天以前的史低（「新史低」角标）
+  hist_low_day         date,            -- hist_low 最新覆盖到哪一天（日界切换用）
+  updated_at        timestamptz not null default now(),
+  primary key (game_id, region)
+);
+
+-- 列表排序/筛选（只覆盖有当前价的行）
+create index if not exists grs_region_discount on game_region_snapshot (region, discount_pct desc, price_cents asc) where price_cents is not null;
+create index if not exists grs_region_price    on game_region_snapshot (region, price_cents asc) where price_cents is not null;
+create index if not exists grs_region_seen     on game_region_snapshot (region, last_seen_at desc) where price_cents is not null;
+-- 计数与 join 用
+create index if not exists grs_game on game_region_snapshot (game_id);
+`;
+
+/**
+ * 一次性回填读模型（docs/READ-MODEL.md §6）：行集合 = offers ∪ daily_prices 的 (game, region)；
+ * 当前价列实时聚合 offers（官方渠道、在售），历史列一次聚合 daily_prices（hist_low_day=current_date）。
+ * 幂等（on conflict do update / do nothing），中断后重启可继续。
+ */
+export async function backfillGameRegionSnapshot(q) {
+  // 1) 当前价列：每个 (game, region) 一条（有在售官方报价才有价）
+  await q(
+    `insert into game_region_snapshot (game_id, region, price_cents, currency, original_cents, discount_pct,
+        steam_price_cents, low_platform, low_platform_name, platform_names, offers_count, last_seen_at)
+     select o.game_id, o.region,
+       min(o.price_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}) as current_low,
+       (array_agg(o.currency order by o.price_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}))[1],
+       min(o.original_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}),
+       max(o.discount_pct) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}),
+       min(o.price_cents) filter (where o.in_stock and o.platform_code = 'steam'),
+       (array_agg(o.platform_code order by o.price_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}))[1],
+       (array_agg(p.name order by o.price_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}))[1],
+       array_agg(distinct p.name) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}),
+       count(*) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}),
+       max(o.last_seen_at)
+       from offers o join platforms p on p.code = o.platform_code
+      group by o.game_id, o.region
+     on conflict (game_id, region) do update set
+       price_cents = excluded.price_cents, currency = excluded.currency, original_cents = excluded.original_cents,
+       discount_pct = excluded.discount_pct, steam_price_cents = excluded.steam_price_cents,
+       low_platform = excluded.low_platform, low_platform_name = excluded.low_platform_name,
+       platform_names = excluded.platform_names, offers_count = excluded.offers_count,
+       last_seen_at = excluded.last_seen_at, updated_at = now()`,
+  );
+  // 2) 有历史但无现价的游戏也要有行（与旧 exists(daily_prices) 语义对齐，§6.3）
+  await q(
+    `insert into game_region_snapshot (game_id, region)
+     select distinct d.game_id, d.region from daily_prices d
+     on conflict (game_id, region) do nothing`,
+  );
+  // 3) 历史列：一次聚合 daily_prices（官方渠道；prev = 今天以前）
+  await q(
+    `update game_region_snapshot rs
+        set hist_low_cents = t.hist, prev_hist_low_cents = t.prev, hist_low_day = current_date, updated_at = now()
+       from (
+         select d.game_id, d.region,
+           min(d.min_price_cents) filter (where p.kind in ${OFFICIAL_KINDS}) as hist,
+           min(d.min_price_cents) filter (where d.day < current_date and p.kind in ${OFFICIAL_KINDS}) as prev
+           from daily_prices d join platforms p on p.code = d.platform_code
+          group by d.game_id, d.region
+       ) t
+      where rs.game_id = t.game_id and rs.region = t.region`,
+  );
+}
+
+/**
+ * 重算一个游戏全部区服的「当前价」列（docs/READ-MODEL.md §4）：
+ * 每个 offer 写库后调用；单游戏只扫几行，1–3ms。历史列不动（由 touchDailyAggregate 维护）。
+ */
+export async function refreshGameRegionPrices(q, gameId) {
+  await q(
+    `insert into game_region_snapshot (game_id, region, price_cents, currency, original_cents, discount_pct,
+        steam_price_cents, low_platform, low_platform_name, platform_names, offers_count, last_seen_at)
+     select o.game_id, o.region,
+       min(o.price_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}) as current_low,
+       (array_agg(o.currency order by o.price_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}))[1],
+       min(o.original_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}),
+       max(o.discount_pct) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}),
+       min(o.price_cents) filter (where o.in_stock and o.platform_code = 'steam'),
+       (array_agg(o.platform_code order by o.price_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}))[1],
+       (array_agg(p.name order by o.price_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}))[1],
+       array_agg(distinct p.name) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}),
+       count(*) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}),
+       max(o.last_seen_at)
+       from offers o join platforms p on p.code = o.platform_code
+      where o.game_id = $1
+      group by o.game_id, o.region
+     on conflict (game_id, region) do update set
+       price_cents = excluded.price_cents, currency = excluded.currency, original_cents = excluded.original_cents,
+       discount_pct = excluded.discount_pct, steam_price_cents = excluded.steam_price_cents,
+       low_platform = excluded.low_platform, low_platform_name = excluded.low_platform_name,
+       platform_names = excluded.platform_names, offers_count = excluded.offers_count,
+       last_seen_at = excluded.last_seen_at, updated_at = now()`,
+    [gameId],
+  );
+}
+
+/**
+ * 重算一个游戏全部区服的「历史」列（mergeGames 移动 daily 后调用，docs/READ-MODEL.md §4）。
+ * 先补齐行（该游戏有日价但快照缺行的区服——与回填「daily ∪ offers」的语义一致），再更新历史列。
+ */
+export async function refreshGameRegionHist(q, gameId) {
+  await q(
+    `insert into game_region_snapshot (game_id, region)
+     select distinct d.game_id, d.region from daily_prices d where d.game_id = $1
+     on conflict (game_id, region) do nothing`,
+    [gameId],
+  );
+  await q(
+    `update game_region_snapshot rs
+        set hist_low_cents = t.hist, prev_hist_low_cents = t.prev, hist_low_day = current_date, updated_at = now()
+       from (
+         select d.game_id, d.region,
+           min(d.min_price_cents) filter (where p.kind in ${OFFICIAL_KINDS}) as hist,
+           min(d.min_price_cents) filter (where d.day < current_date and p.kind in ${OFFICIAL_KINDS}) as prev
+           from daily_prices d join platforms p on p.code = d.platform_code
+          where d.game_id = $1
+          group by d.game_id, d.region
+       ) t
+      where rs.game_id = t.game_id and rs.region = t.region`,
+    [gameId],
+  );
+}
+
+/**
+ * 维护史低与新史低（docs/READ-MODEL.md §4 日界切换）：
+ * upsertDaily 之后调用。hist_low 只吸收官方渠道价（c2c 不进史低）；
+ * 日界切换不看渠道——「今天第一次写入之前」的 hist_low 恰好等于 prev_hist_low，任何写入触发切换都对。
+ */
+export async function touchDailyAggregate(q, { gameId, region, platformCode, priceCents }) {
+  await q(
+    `insert into game_region_snapshot (game_id, region, price_cents, offers_count, hist_low_cents, prev_hist_low_cents, hist_low_day)
+     values ($1, $2, null, 0,
+       case when exists (select 1 from platforms p where p.code = $3 and p.kind in ${OFFICIAL_KINDS}) then $4::int else null end,
+       null, current_date)
+     on conflict (game_id, region) do update set
+       hist_low_cents = case
+         when exists (select 1 from platforms p where p.code = $3 and p.kind in ${OFFICIAL_KINDS})
+           then least(coalesce(game_region_snapshot.hist_low_cents, $4::int), $4::int)
+         else game_region_snapshot.hist_low_cents end,
+       prev_hist_low_cents = case
+         when game_region_snapshot.hist_low_day is null or game_region_snapshot.hist_low_day < current_date
+           then game_region_snapshot.hist_low_cents
+         else game_region_snapshot.prev_hist_low_cents end,
+       hist_low_day = current_date,
+       updated_at = now()`,
+    [gameId, region, platformCode, priceCents],
+  );
+}
+
 export async function startFetchRun(q, platformCode) {
   const r = await q('insert into fetch_runs (platform_code, started_at) values ($1, now()) returning id', [platformCode]);
   return Number(r.rows[0].id);
@@ -948,6 +1130,46 @@ const GAME_SELECT = `select g.id,
                   where o.game_id = g.id and o.region = $1 and o.in_stock and p.kind in ${OFFICIAL_KINDS}
                ) x) as all_offers`;
 
+// AV 批（docs/READ-MODEL.md §5.1）：非 compact 分支的读模型版——价格/史低列全部取快照 rs.*，
+// all_offers 仍逐行现算（旧页面用，每行一条子查询、页内最多 100 行，可接受）。
+const GAME_SELECT_RM = `select g.id,
+            g.steam_appid,
+            coalesce(nullif(g.name, ''), nullif(g.name_en, ''), 'appid:' || g.steam_appid) as name,
+            g.name_en,
+            g.app_type,
+            g.interested,
+            g.owned,
+            g.blocked,
+            g.description,
+            g.developers,
+            g.publishers,
+            g.genres,
+            g.tags,
+            g.steam_status,
+            g.required_age,
+            g.adult_flag,
+            g.mature_flag,
+            g.steam_checked_at,
+            rs.price_cents as current_low,
+            rs.currency,
+            rs.steam_price_cents as steam_price,
+            rs.original_cents as current_original,
+            rs.discount_pct as discount,
+            rs.hist_low_cents as hist_low,
+            rs.prev_hist_low_cents as prev_hist_low,
+            (select count(*)::int from daily_prices d
+              where d.game_id = g.id and d.region = $1) as day_count,
+            rs.last_seen_at,
+            rs.low_platform_name,
+            rs.low_platform,
+            (select json_agg(x order by x.price)
+               from (
+                 select p.code as platform, p.name as platform_name, o.price_cents as price, o.currency
+                   from offers o
+                   join platforms p on p.code = o.platform_code
+                  where o.game_id = g.id and o.region = $1 and o.in_stock and p.kind in ${OFFICIAL_KINDS}
+               ) x) as all_offers`;
+
 // 生效「已拥有」推导：手动 owned=true ∪（未被 owned=false 永久排除 且 appid 在该用户所有账号的库里）。
 // $uid 为当前用户 id；游客（uid=null）不显示已拥有/谁拥有/愿望单（规格 §6）。
 const EFFECTIVE_OWNED_SQL = (uidRef) =>
@@ -1077,8 +1299,11 @@ export async function gameSearch(
     return `$${filterParams.length}`;
   };
 
+  // AV 批（docs/READ-MODEL.md §5）：读模型模式下「有历史/有报价」的语义由快照行存在承担，
+  // 去掉 exists(daily_prices)；READ_MODEL=legacy 保留旧 SQL 作回滚开关（表保留不删数据）。
+  const useReadModel = process.env.READ_MODEL !== 'legacy';
   const conds = [
-    'exists (select 1 from daily_prices d where d.game_id = g.id and d.region = $1)',
+    ...(useReadModel ? [] : ['exists (select 1 from daily_prices d where d.game_id = g.id and d.region = $1)']),
     'not g.deleted',
     // AD 批（SEARCH-I18N.md）：关键词条件收敛到 gameKeywordSql（name/name_en/平台别名 + 空格归一化）。
     // 纯数字关键词按 AppID 精确匹配（走索引）；否则只按名称三源模糊匹配。
@@ -1135,12 +1360,33 @@ export async function gameSearch(
         ? 'name asc'
         : `${discountExpr} desc nulls last, ${priceExpr} asc nulls last, name asc`;
 
-  const total = Number(
-    (await q(
-      `select count(*)::int as n from games g ${userJoin(3)} ${where}`,
-      filterParams,
-    )).rows[0]?.n ?? 0,
-  );
+  // AV 批（docs/READ-MODEL.md §5.1）：读模型分支——compact 用内连接（行存在=有历史/有报价），
+  // 非 compact 用左连接 + rs.game_id is not null（保持旧「exists(daily_prices)」语义）。
+  const rmFromCompact = `from games g ${userJoin(3)} join game_region_snapshot rs on rs.game_id = g.id and rs.region = $1`;
+  const rmFromFull = `from games g ${userJoin(3)} left join game_region_snapshot rs on rs.game_id = g.id and rs.region = $1`;
+  const rmConds = useReadModel ? [...conds] : null;
+  if (rmConds && !compact) rmConds.unshift('rs.game_id is not null');
+  const rmWhereStr = rmConds ? 'where ' + rmConds.join(' and ') : null;
+  const rmSort =
+    sort === 'name'
+      ? 'name asc'
+      : sort === 'price'
+        ? 'rs.price_cents asc nulls last, name asc'
+        : 'rs.discount_pct desc nulls last, rs.price_cents asc nulls last, name asc';
+
+  const total = useReadModel
+    ? Number(
+        (await q(
+          `select count(*)::int as n ${compact ? rmFromCompact : rmFromFull} ${rmWhereStr}`,
+          filterParams,
+        )).rows[0]?.n ?? 0,
+      )
+    : Number(
+        (await q(
+          `select count(*)::int as n from games g ${userJoin(3)} ${where}`,
+          filterParams,
+        )).rows[0]?.n ?? 0,
+      );
   const extra = userId
     ? `, ${col('interested')} as eff_interested, uf.interested as user_interested, ${EFFECTIVE_OWNED_SQL('$3')} as eff_owned, uf.owned as user_owned,
        ${OWNED_BY_SQL('$3')} as owned_by, ${WISHLISTED_SQL('$3')} as wishlisted,
@@ -1188,11 +1434,38 @@ export async function gameSearch(
     ${where}
     order by g.heat desc nulls last, ${sort === 'name' ? 'name asc' : sort === 'price' ? 'pr.current_low asc nulls last, name asc' : 'pr.discount desc nulls last, pr.current_low asc nulls last, name asc'}, g.id asc
     limit __LIST_LIMIT__ offset __LIST_OFFSET__`;
+  // AV 批（docs/READ-MODEL.md §5.1）：compact 读模型查询——与旧 compact 同字段（价格/史低来自 rs.*，
+  // 补 rs.platform_names），排序与旧 CTE 版一致（含 g.id 兜底）。
+  const compactRmQuery = `
+    select g.id, g.steam_appid, coalesce(nullif(g.name, ''), nullif(g.name_en, ''), 'appid:' || g.steam_appid) as name,
+      g.name_en, g.app_type, g.heat, g.release_date,
+      ${userId ? 'uf.interested' : 'null::boolean'} as interested,
+      ${userId ? 'uf.interested' : 'null::boolean'} as user_interested,
+      ${userId ? 'uf.owned' : 'null::boolean'} as user_owned,
+      ${userId ? EFFECTIVE_OWNED_SQL('$3') : 'false'} as owned,
+      ${userId ? OWNED_BY_SQL('$3') : "'[]'::json"} as owned_by,
+      ${userId ? WISHLISTED_SQL('$3') : 'false'} as wishlisted,
+      ${userId ? WISHLISTED_BY_SQL('$3') : "'[]'::json"} as wishlisted_by,
+      ${userId ? SITE_WISHLISTED_SQL('$3') : 'false'} as site_wishlisted,
+      g.blocked,
+      rs.price_cents as current_low, rs.currency, rs.steam_price_cents as steam_price,
+      rs.original_cents as current_original, rs.discount_pct as discount,
+      rs.hist_low_cents as hist_low, rs.prev_hist_low_cents as prev_hist_low,
+      (select count(*)::int from daily_prices d where d.game_id = g.id and d.region = $1) as day_count,
+      rs.last_seen_at, rs.low_platform_name, rs.low_platform, rs.platform_names
+    ${rmFromCompact}
+    ${rmWhereStr}
+    order by g.heat desc nulls last, ${rmSort}, g.id asc
+    limit __LIST_LIMIT__ offset __LIST_OFFSET__`;
   const limitIndex = filterParams.length + 1;
   const rows = (await q(
-    compact
-      ? compactQuery.replace('__LIST_LIMIT__', `$${limitIndex}`).replace('__LIST_OFFSET__', `$${limitIndex + 1}`)
-      : `${GAME_SELECT}${extra} from games g ${userJoin(3)} ${where} order by g.heat desc nulls last, ${order} limit $${limitIndex} offset $${limitIndex + 1}`,
+    useReadModel
+      ? compact
+        ? compactRmQuery.replace('__LIST_LIMIT__', `$${limitIndex}`).replace('__LIST_OFFSET__', `$${limitIndex + 1}`)
+        : `${GAME_SELECT_RM}${extra} ${rmFromFull} ${rmWhereStr} order by g.heat desc nulls last, ${rmSort} limit $${limitIndex} offset $${limitIndex + 1}`
+      : compact
+        ? compactQuery.replace('__LIST_LIMIT__', `$${limitIndex}`).replace('__LIST_OFFSET__', `$${limitIndex + 1}`)
+        : `${GAME_SELECT}${extra} from games g ${userJoin(3)} ${where} order by g.heat desc nulls last, ${order} limit $${limitIndex} offset $${limitIndex + 1}`,
     [...filterParams, size, offset],
   )).rows;
   if (userId && !compact) {
@@ -2533,11 +2806,96 @@ export async function mergeGames(q, { fromGameId, toGameId, logger = null }) {
   );
   await q('update watchlist set game_id = $1 where game_id = $2', [toGameId, fromGameId]);
 
+  // AV 批（docs/READ-MODEL.md §4）：合并移动了 offers 与 daily，from/to 两个 game 的读模型都要刷新；
+  // from 的 games 行删除时快照由外键级联清掉，这里先把它归零避免删前窗口读到旧价。
+  await refreshGameRegionPrices(q, fromGameId);
+  await refreshGameRegionPrices(q, toGameId);
+  await refreshGameRegionHist(q, toGameId);
+
   await q('delete from games where id = $1', [fromGameId]);
 
   const result = { merged: true, moved, dropped, fromGameId: Number(fromGameId), toGameId: Number(toGameId) };
   logger?.info('db.merge_games', result);
   return result;
+}
+
+// ---------------------------------------------------------------- 读模型对账与重建（docs/READ-MODEL.md §7）
+
+/**
+ * 抽样对账：随机取 N 个快照行，实时聚合 offers/daily_prices 与快照逐字段比对（价格 9 列 + 史低 2 列）。
+ * 返回 { checked, diffs }；fix=true 对出现差异的 game 就地重刷（价格列 + 历史列）。
+ * 口径与 refreshGameRegionPrices / touchDailyAggregate 完全一致（官方渠道、在售、日界 prev）。
+ */
+export async function readModelCheck(q, { sample = 200, fix = false } = {}) {
+  const cap = Math.min(Math.max(Number(sample) || 200, 1), 2000);
+  const rows = (await q('select game_id, region from game_region_snapshot order by random() limit $1', [cap])).rows;
+  const diffs = [];
+  const normArr = (v) => (Array.isArray(v) ? [...v].sort().map(String) : v == null ? null : [String(v)]);
+  const toIso = (v) => (v instanceof Date ? v.toISOString() : v == null ? null : String(v).slice(0, 23));
+  for (const row of rows) {
+    const gameId = Number(row.game_id);
+    const region = row.region;
+    const snap = (await q('select * from game_region_snapshot where game_id = $1 and region = $2', [gameId, region])).rows[0];
+    if (!snap) continue;
+    const price = (
+      await q(
+        `select min(o.price_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}) as price_cents,
+                (array_agg(o.currency order by o.price_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}))[1] as currency,
+                min(o.original_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}) as original_cents,
+                max(o.discount_pct) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}) as discount_pct,
+                min(o.price_cents) filter (where o.in_stock and o.platform_code = 'steam') as steam_price_cents,
+                (array_agg(o.platform_code order by o.price_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}))[1] as low_platform,
+                (array_agg(p.name order by o.price_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}))[1] as low_platform_name,
+                array_agg(distinct p.name) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}) as platform_names,
+                count(*) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}) as offers_count,
+                max(o.last_seen_at) as last_seen_at
+           from offers o join platforms p on p.code = o.platform_code
+          where o.game_id = $1 and o.region = $2`,
+        [gameId, region],
+      )
+    ).rows[0];
+    const hist = (
+      await q(
+        `select min(d.min_price_cents) filter (where p.kind in ${OFFICIAL_KINDS}) as hist_low_cents,
+                min(d.min_price_cents) filter (where d.day < current_date and p.kind in ${OFFICIAL_KINDS}) as prev_hist_low_cents
+           from daily_prices d join platforms p on p.code = d.platform_code
+          where d.game_id = $1 and d.region = $2`,
+        [gameId, region],
+      )
+    ).rows[0];
+    const pairs = [
+      ['price_cents', snap.price_cents, price.price_cents],
+      ['currency', snap.currency, price.currency],
+      ['original_cents', snap.original_cents, price.original_cents],
+      ['discount_pct', snap.discount_pct, price.discount_pct],
+      ['steam_price_cents', snap.steam_price_cents, price.steam_price_cents],
+      ['low_platform', snap.low_platform, price.low_platform],
+      ['low_platform_name', snap.low_platform_name, price.low_platform_name],
+      ['platform_names', normArr(snap.platform_names), normArr(price.platform_names)],
+      ['offers_count', Number(snap.offers_count ?? 0), Number(price.offers_count ?? 0)],
+      ['last_seen_at', toIso(snap.last_seen_at), toIso(price.last_seen_at)],
+      ['hist_low_cents', snap.hist_low_cents, hist.hist_low_cents],
+      ['prev_hist_low_cents', snap.prev_hist_low_cents, hist.prev_hist_low_cents],
+    ];
+    for (const [field, a, b] of pairs) {
+      if (String(a) !== String(b)) diffs.push({ gameId, region, field, snapshot: a, actual: b });
+    }
+    if (fix && diffs.some((d) => d.gameId === gameId && d.region === region)) {
+      await refreshGameRegionPrices(q, gameId);
+      await refreshGameRegionHist(q, gameId);
+    }
+  }
+  return { checked: rows.length, diffs };
+}
+
+/** 全量重建：删除（可指定区服）后重跑一次性回填（docs/READ-MODEL.md §7 运维手段）。 */
+export async function readModelRebuild(q, { region = null } = {}) {
+  const del = region
+    ? await q('delete from game_region_snapshot where region = $1', [String(region)])
+    : await q('delete from game_region_snapshot');
+  const deleted = del.rowCount ?? 0;
+  await backfillGameRegionSnapshot(q);
+  return { deleted };
 }
 
 // ---------------------------------------------------------------- 后台批量操作

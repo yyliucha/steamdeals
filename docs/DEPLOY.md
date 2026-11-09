@@ -50,6 +50,12 @@ docker compose -f compose.cn.yaml up -d
 
 `up -d` 用新镜像重建容器并重启调度器；数据在命名卷里，不会丢。启动时自动跑幂等迁移。
 
+> **AV 批（docs/READ-MODEL.md）升级注意**：首次启动会建 `game_region_snapshot` 读模型表并做**一次性回填**
+> （offers ∪ daily_prices 全量聚合，生产量级估 10–60 秒，`readmodel.backfill_start/done` 日志可观测），
+> 期间首页列表会短暂变慢/偏旧，回填完成即恢复。回填失败会写 error 且不吞异常（列表暂时为空需人工介入：
+> 可 `docker exec … node src/cli.js readmodel rebuild` 重试）。回滚开关：设置 `READ_MODEL=legacy` 环境变量
+> 即回到旧 SQL（表保留不删数据）。每日调度器跑 `readmodel check --sample 200` 抽样对账，差异会记任务失败。
+
 ### 4. 升级后验证（服务器执行，只读）
 
 ```bash

@@ -193,7 +193,11 @@ async function searchSetup() {
   const seed = async (appid, name, nameEn) => {
     await q('insert into games (steam_appid, name, name_en, is_free) values ($1,$2,$3,false)', [appid, name, nameEn]);
     await q("insert into daily_prices (game_id, platform_code, region, day, min_price_cents, currency) select id,'steam','cn',current_date,1000,'CNY' from games where steam_appid = $1", [appid]);
-    return (await q('select id from games where steam_appid = $1', [appid])).rows[0].id;
+    const gid = (await q('select id from games where steam_appid = $1', [appid])).rows[0].id;
+    // AV 批：原始 SQL 种价不进读模型，手动刷新（gameSearch 默认走读模型）
+    await db.refreshGameRegionPrices(q, gid);
+    await db.refreshGameRegionHist(q, gid);
+    return gid;
   };
   const g1 = await seed(6001, '英雄连3', 'Company of Heroes 3');
   const g2 = await seed(6002, 'Company of Heroes 2', null); // name_en 为空、别名才有中文

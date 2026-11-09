@@ -34,6 +34,9 @@ const seedGame = async (store, appid, name) => {
     "insert into daily_prices (game_id, platform_code, region, day, min_price_cents, currency) values ($1, 'steam', 'cn', current_date - 1, 9900, 'CNY')",
     [gameId],
   );
+  // AV 批：原始 SQL 种价不进读模型，手动刷新价格/历史列（生产走 ingest 的 touch 路径）
+  await db.refreshGameRegionPrices(q, gameId);
+  await db.refreshGameRegionHist(q, gameId);
   return gameId;
 };
 

@@ -158,6 +158,10 @@ test('前台成人过滤：adult=hide 时 adult_flag 的游戏不出现在列表
     for (const appid of [3001, 3002]) {
       await q("insert into offers (game_id, platform_code, product_type, region, currency, price_cents) select id, 'steam', 'official_direct', 'cn', 'CNY', 1000 from games where steam_appid = $1", [appid]);
       await q("insert into daily_prices (game_id, platform_code, region, day, min_price_cents, currency) select id, 'steam', 'cn', current_date, 1000, 'CNY' from games where steam_appid = $1", [appid]);
+      const gid = (await q('select id from games where steam_appid = $1', [appid])).rows[0].id;
+      // AV 批：原始 SQL 种价不进读模型，手动刷新
+      await db.refreshGameRegionPrices(q, gid);
+      await db.refreshGameRegionHist(q, gid);
     }
     const hide = await db.gameSearch(q, { region: 'cn', adult: 'hide' });
     assert.equal(hide.total, 1, 'hide 时成人不可见');

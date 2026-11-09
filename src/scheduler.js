@@ -114,6 +114,14 @@ export function jobsFromEnv(env = process.env) {
       enabled: env.PRUNE_ENABLED !== '0',
     },
     {
+      name: 'readmodel',
+      // AV 批（docs/READ-MODEL.md §8）：每日抽样对账 200 个 (game,region)，发现差异记 job 失败可观测
+      args: ['readmodel', 'check', '--sample', String(num(env.READMODEL_SAMPLE, 200))],
+      intervalMin: num(env.READMODEL_INTERVAL_MIN, 1440),
+      initialDelaySec: num(env.READMODEL_INITIAL_DELAY_SEC, 3600),
+      enabled: env.READMODEL_ENABLED !== '0',
+    },
+    {
       name: 'sonkwo',
       args: ['sync', 'sonkwo'],
       intervalMin: num(env.SONKWO_INTERVAL_MIN, 60),

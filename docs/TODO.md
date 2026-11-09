@@ -841,6 +841,34 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ③ `images pull` 后按上限自动清理；④ 愿望单提示不含「失败」、文档口径一致；⑤ `npm test` / `frontend:build` / `scan` 全绿。
 - **待线上验证**：生产库 `\dx` 有 `pg_trgm`、`EXPLAIN` 对关键词查询命中 Bitmap Index Scan（本机无 PG 15，标 🔎）。
 
+## AV. 首页列表读模型：`game_region_snapshot`（把每请求全库聚合改成入库时维护）
+
+**状态：已实现待发版（2026-11-09）**
+**依赖：** 无
+**解锁：** 无（首页性能专项；与后续「nginx gzip」部署侧改动独立）
+**规格**：[READ-MODEL.md](READ-MODEL.md)
+
+- **问题（2026-11-09 线上实测）**：首页 `POST /api/games/search` **2.78–3.86s**，`q=zzzz`（0 条、134B）仍 2.40s、
+  `q=730`（appid 精确、0 条）2.42s——**成本与结果无关**；`/api/games/count` 0.36s；首页 JS 279KB + CSS 135KB 未压缩（部署侧另办）。
+  根因：`gameSearch` 每次请求跑 `price_rollup`（全区服 offers）+ `daily_rollup`（千万级 daily_prices）两个 CTE、
+  19.6 万 games 逐行 `exists(daily_prices)`、`count(*)` 再全扫一遍，两个 CTE 只为返回 20 行服务。
+- **方案**：新增读模型表 `game_region_snapshot`（`(game_id, region)` 一行：当前价/折扣/Steam 价/平台标签/史低/新史低/更新时间），
+  入库时维护：`ingestOffers` 每个 offer 写入后 `refreshGameRegionPrices(gameId)`、`upsertDaily` 后
+  `touchDailyAggregate`（日界切换维护 `hist_low`/`prev_hist_low`/`hist_low_day`）、`mergeGames` 尾部刷新两个 game；
+  `gameSearch`（compact 与非 compact 两分支）与 `/api/games/count` 改读读模型，去掉两个 CTE 与 `exists`；
+  迁移表空时一次性回填（offers ∪ daily_prices 并集）；`READ_MODEL=legacy` 保留旧 SQL 作回滚开关。
+- **落地内容（已实现待发版）**：`pg.js`（DDL+4 索引、`backfillGameRegionSnapshot`/`refreshGameRegionPrices`/
+  `refreshGameRegionHist`/`touchDailyAggregate`/`readModelCheck`/`readModelRebuild`、`mergeGames` 钩子、
+  `gameSearch` 读模型分支含 legacy 开关）；`ingest.js` 两写入点；`server.js` `/api/games/count` 读快照 + 60s 实例级缓存；
+  `cli.js` `readmodel check [--sample 200] [--fix] / rebuild [--region]`；调度器每日 `readmodel` 任务（抽样 200，差异记失败）；
+  `test/game-search-read-model.test.js`（新旧 20 组组合一致性 + 同轮更新 + 日界切换 + 合并 + 禁用/回收站 + 对账/修复/重建）。
+- **配套**：`node src/cli.js readmodel check|rebuild`（抽样对账/全量重建）+ 每日 `readmodel` 调度任务（抽样 200 条）；
+  `test/scheduler.test.js` 断言默认参数与开关。
+- **验收**：见规格 §9——① 列表 TTFB P95 < 150ms、零命中 < 150ms；② `/api/games/count` < 30ms；
+  ③ `EXPLAIN` 无 `daily_prices` 聚合、无全表 offers 聚合；④ 新旧实现 total 与第一页顺序一致（20 组组合）；
+  ⑤ 写价后快照同轮更新、合并不失真、抽样对账 0 差异；⑥ `npm test` / `frontend:build` / `scan` 全绿。
+- **回滚**：`READ_MODEL=legacy` 切回旧 SQL，表保留。
+
 
 
 

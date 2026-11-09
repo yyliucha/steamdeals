@@ -98,6 +98,9 @@ export async function ingestOffers(store, { platform, offers, logger = null }) {
         await db.updateOffer(q, offerId, offer);
         stats.updated += 1;
       }
+      // AV 批（docs/READ-MODEL.md §4）：每个 offer 写库后立即重算该游戏全部区服的当前价列
+      //（读模型同轮可见，列表最迟下一次请求读到新价）。
+      await db.refreshGameRegionPrices(q, game.id);
 
       const prev = await db.lastSnapshot(q, offerId);
       if (!prev || prev.hash !== hash) {
@@ -123,6 +126,13 @@ export async function ingestOffers(store, { platform, offers, logger = null }) {
         region: offer.region,
         priceCents: offer.priceCents,
         currency: offer.currency,
+      });
+      // AV 批（docs/READ-MODEL.md §4）：日聚合写入后维护史低/新史低（日界切换），官方渠道才进史低。
+      await db.touchDailyAggregate(q, {
+        gameId: game.id,
+        region: offer.region,
+        platformCode: plat.code,
+        priceCents: offer.priceCents,
       });
       logger?.debug('ingest.offer', {
         gameId: game.id,

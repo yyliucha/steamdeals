@@ -39,6 +39,9 @@ async function setup() {
   });
   await q(`insert into daily_prices (game_id, platform_code, region, day, min_price_cents, currency)
            select id, 'steam', 'cn', current_date - 1, 4800, 'CNY' from games where steam_appid = 413150`);
+  // AV 批：原始 SQL 补的历史行不进读模型，这里手动重刷历史列（与生产 ingest 路径的 touch 一致）
+  const baseGid = (await q('select id from games where steam_appid = 413150')).rows[0].id;
+  await db.refreshGameRegionHist(q, baseGid);
 
   const srv = await startApiServer({ query: q, port: 0, host: '127.0.0.1' });
   return { store, q, srv, base: `http://127.0.0.1:${srv.port}` };
@@ -361,6 +364,9 @@ test('服务端搜索与分页：分页元数据、关键词全库搜索、折�
         "insert into daily_prices (game_id, platform_code, region, day, min_price_cents, currency) values ($1,'steam','cn', current_date, $2, 'CNY')",
         [gid, 1000 + i * 10],
       );
+      // AV 批：原始 SQL 种价不进读模型，手动刷新价格列 + 历史列
+      await db.refreshGameRegionPrices(q, gid);
+      await db.refreshGameRegionHist(q, gid);
     }
 
     const p1 = await (await fetch(`${base}/api/games?page=1&pageSize=10`)).json();
@@ -598,6 +604,9 @@ test('类型筛选：只看游戏 / 只看 DLC', async () => {
       "insert into daily_prices (game_id, platform_code, region, day, min_price_cents, currency) values ($1,'steam','cn', current_date, 500, 'CNY')",
       [dlcId],
     );
+    // AV 批：原始 SQL 种价不进读模型，手动刷新
+    await db.refreshGameRegionPrices(q, dlcId);
+    await db.refreshGameRegionHist(q, dlcId);
 
     const onlyDlc = await (await fetch(`${base}/api/games?type=dlc`)).json();
     assert.equal(onlyDlc.total, 1);
