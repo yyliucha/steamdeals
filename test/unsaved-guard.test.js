@@ -25,6 +25,7 @@ test('composable 五个接口齐全（§4.1），弹窗状态放模块级 reacti
   assert.match(composable, /export const unsavedDialog = reactive\(\{ open: false, labels: \[\] \}\)/, '弹窗状态是模块级 reactive（Console 卸载后仍在）');
   assert.match(composable, /pendingPromise/, '已有弹窗时复用同一个 Promise（防重复弹）');
   assert.match(composable, /await source\.save\(\)/, '保存并离开按注册顺序逐个 await save');
+  assert.match(composable, /settle\(false\); \/\/ 失败：关弹窗、取消导航，留在本页/, '任一保存失败：关弹窗并取消导航（§3.1）');
 });
 
 test('弹窗：标题与三按钮文案（§3.1），失败留在本页并提示', () => {

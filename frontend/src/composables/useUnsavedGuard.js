@@ -58,12 +58,17 @@ function settle(ok) {
   resolve?.(ok);
 }
 
-/** 保存并离开：按注册顺序逐个保存当前脏的来源；全部成功才放行，任一失败留在本页并抛出错误（组件负责提示）。 */
+/** 保存并离开：按注册顺序逐个保存当前脏的来源；全部成功才放行，任一失败关闭弹窗、留在本页并抛出错误（组件负责提示）。 */
 export async function saveAndLeave() {
   const dirty = dirtySources();
   for (const source of [...sources.values()]) {
     if (!dirty.includes(source)) continue;
-    await source.save();
+    try {
+      await source.save();
+    } catch (err) {
+      settle(false); // 失败：关弹窗、取消导航，留在本页
+      throw err;
+    }
   }
   settle(true);
 }
