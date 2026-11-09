@@ -682,7 +682,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AL. 待开发：登录 / 注册 / 改密页面
 
-**状态：已实现待发版（2026-11-09，77c02e5）**
+**状态：质检通过（2026-11-09，77c02e5；QA 报告 docs/QA-AUTH-AL.md）**
 **依赖：** AK-3
 **解锁：** 无
 **规格**：[AUTH-REDESIGN.md](AUTH-REDESIGN.md) §5 / §8 验收 10
