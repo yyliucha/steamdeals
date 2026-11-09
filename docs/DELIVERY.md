@@ -186,14 +186,16 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 > **会话分工（2026-11-09）**：可直接开发的功能（AR、AO、AP、可选 F）见
 > [HANDOVER-DEV-2026-11-09.md](HANDOVER-DEV-2026-11-09.md)；运维排查结论见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) 与 TODO C 段。
 
-- **v2.2.0 已发布**（tag `v2.2.0`）：AQ 后台列表排序 + AA 愿望单六项缺陷修复 + C1/AN 修复——
+- **v2.2.0 已发布**（tag `v2.2.0`）：AQ/AR/AO 后台批次 + AA 愿望单六项缺陷修复 + C1/AN 修复——
   ① 异常审核/访问明细表头排序（IP 数值序、服务端白名单、localStorage 持久化、待审上限 500）；
-  ② AA 六项：失败账号日志/提示带原因（未配 Key / 解密失败 / Steam 拒绝）、无 AppID 条目明确「仅本站」、
+  ② 异常审核「按 IP 合并」视图（聚合行 + 展开明细 + 处置作用于该 IP 全部待审 + 部分已处理状态 + 移动卡片）；
+  ③ 后台游戏列布局修复 + 平台链接抽屉重做（复制中英文两行、点名称开抽屉、每渠道一张卡、移动端全屏）；
+  ③ AA 六项：失败账号日志/提示带原因（未配 Key / 解密失败 / Steam 拒绝）、无 AppID 条目明确「仅本站」、
   无绑定账号提示可绑定同步、未配 Key 账号置灰；
-  ③ C1：heat/catalog 适配 `fetchJson` 新契约（此前 heat 全量无效跳过、catalog 空跑），加契约回归测试；
-  ④ AN 回归：「放弃修改」清草稿，弹窗不再反复出现（注册签名支持 discard，五面各自清，+2 回归测试）。
-  验证：`npm test` 70 文件 / 563 项全绿、`api.test.js` 22 项、`email-auth` 9 项、`frontend:build`、`scan` 干净；
-  质检：C1/AN/AA/AQ ✅ 放行（[QA-RELEASE-2.2.0.md](QA-RELEASE-2.2.0.md)、[QA-WISHLIST-AA.md](QA-WISHLIST-AA.md)、[QA-ADMIN-REVIEW-LISTS-AQ.md](QA-ADMIN-REVIEW-LISTS-AQ.md)）。
+  ④ C1：heat/catalog 适配 `fetchJson` 新契约（此前 heat 全量无效跳过、catalog 空跑），加契约回归测试；
+  ⑤ AN 回归：「放弃修改」清草稿，弹窗不再反复出现（注册签名支持 discard，五面各自清，+2 回归测试）。
+  验证：`npm test` 71 文件 / 566 项全绿、`api.test.js` 22 项、`email-auth` 9 项、`frontend:build`、`scan` 干净；
+  质检：C1/AN/AA/AQ/AR/AO ✅ 放行（[QA-RELEASE-2.2.0.md](QA-RELEASE-2.2.0.md)、[QA-WISHLIST-AA.md](QA-WISHLIST-AA.md)、[QA-ADMIN-REVIEW-LISTS-AQ.md](QA-ADMIN-REVIEW-LISTS-AQ.md)、[QA-ADMIN-REVIEW-LISTS-AR.md](QA-ADMIN-REVIEW-LISTS-AR.md)、[QA-ADMIN-LINKS-DRAWER-AO.md](QA-ADMIN-LINKS-DRAWER-AO.md)）。
   **服务器部署待执行**（升级到 `2.2.0`）；部署后重点确认：
   C1——`heat --limit 5` 的 `withHeat>0` 且 catalog 补跑能进新游戏（另有 TODO C1 的「重置误标游标」建议）；
   AQ——十万行访问明细按 IP 排序耗时（超阈值再补索引）；AN——真机「放弃修改」后不再弹窗。

@@ -4,7 +4,7 @@
 > AN 回归 = [UNSAVED-GUARD.md](UNSAVED-GUARD.md) §7；AA = [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) §3/§4/§6（方案 A 已确认）
 > + [WISHLIST-FIX.md](WISHLIST-FIX.md) §4/§6（六项缺陷，独立报告已放行）；
 > AQ = [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §3.4（另有独立报告 [QA-ADMIN-REVIEW-LISTS-AQ.md](QA-ADMIN-REVIEW-LISTS-AQ.md) 第 1 轮 ✅）。
-> 结论：✅ 放行 —— 通过 15 / 缺失 0 / 偏差 0 / 需人工确认 3
+> 结论：✅ 放行 —— 通过 20 / 缺失 0 / 偏差 0 / 需人工确认 3
 
 ## 功能清单（本批交付的全部功能，一条一行）
 
@@ -25,6 +25,11 @@
 | 10 | AQ | 访问明细服务端排序（白名单 sort/order，非法回落默认） | `/api/admin/visitors?sort=&order=` | ✅ | `src/server.js`（`['time','ip','status']` 白名单）+ `test/admin-review-lists.test.js` |
 | 11 | AQ | 待审上限 300 → 500 + 列表头计数 | 后台 → 异常审核 | ✅ | `src/store/pg.js`（500）+ 列表头「共 N 条（上限 500）」 |
 | 12 | AQ | 排序状态刷新后保留、换排序回第 1 页 | 同上 | ✅ | `loadSortState/saveSortState` + `onVisitorSortChange→loadVisitors(1)` |
+| 13 | AR | 待审列表「按 IP 合并」开关（默认关、状态持久化），同 IP 多规则合成一行（摘要/总次数/首末时间/设备数/状态） | 后台 → 异常审核 → 按 IP 合并 | ✅ | 独立报告 [QA-ADMIN-REVIEW-LISTS-AR.md](QA-ADMIN-REVIEW-LISTS-AR.md)（✅ 放行 7/0/0/1） |
+| 14 | AR | 展开看每条明细；封 IP/封设备/忽略作用于该 IP 全部待审（确认弹窗写明条数） | 同上 | ✅ | 同上 |
+| 15 | AR | 状态混合显示「部分已处理」；勾选合并行 = 该 IP 全部待审（批量栏「N 个 IP · M 条记录」）；移动端卡片化 | 同上 | ✅ | 同上 |
+| 16 | AO | 游戏列单行省略、复制图标固定行尾、英文名悬停看全名；复制 = 中英文两行 | 后台 → 游戏管理 | ✅ | 独立报告 [QA-ADMIN-LINKS-DRAWER-AO.md](QA-ADMIN-LINKS-DRAWER-AO.md)（✅ 放行） |
+| 17 | AO | 点游戏名开抽屉（复制只点图标）；抽屉重做（封面/名称/AppID/每渠道卡片/空态/移动端全屏） | 同上 | ✅ | 同上 |
 
 ## 逐条核对（验收 → 证据）
 
@@ -39,6 +44,8 @@
 | 7 | AA 方案 A 文档完整（决策/改动/验收/开发描述） | 读文档 | WISHLIST-OAUTH.md §3/§4/§5/§6 | ✅ |
 | 7a | AA 六项缺陷修复 | 引用独立报告 + 重跑测试 | [QA-WISHLIST-AA.md](QA-WISHLIST-AA.md)（✅ 放行 9/0/0/2）；`test/wishlist.test.js` 7/7 | ✅ |
 | 8 | AQ 规格 §3.4 七条 | 独立复核 + 依赖 AQ 报告 | 见上表 8-12 行；独立复核 `sortable="custom"` 12 处、白名单、500、compareIp | ✅ |
+| 8a | AR 规格 §4.4 八条 | 引用独立报告 | [QA-ADMIN-REVIEW-LISTS-AR.md](QA-ADMIN-REVIEW-LISTS-AR.md)（✅ 放行；聚合/展开/批量/状态/移动端） | ✅ |
+| 8b | AO 规格 §8 十条 | 引用独立报告 | [QA-ADMIN-LINKS-DRAWER-AO.md](QA-ADMIN-LINKS-DRAWER-AO.md)（✅ 放行） | ✅ |
 | 9 | 纪律：无擅自 tag | `git tag --list` | 仅 v1.9.0/v2.0.0/v2.1.0，未新增 | ✅ |
 | 10 | 纪律：无构建产物/日志入库、未碰部署配置 | `git status --short` + diff | diff 仅代码/文档/测试；无 dist/log/data | ✅ |
 | 11 | 已验证：npm test / api / build / scan | 亲自重跑 | 见下 | ✅ |
@@ -70,4 +77,4 @@ npm run scan                   → ✅ 未发现高置信度凭据 / 未发现�
 
 ## 复检记录
 
-- 第 1 轮（2026-11-09）：✅ 放行（通过 15 / 缺失 0 / 偏差 0 / 需人工确认 3）。AQ 与 AA 六项各有独立报告（本轮引用结论并独立复核关键证据）。
+- 第 1 轮（2026-11-09）：✅ 放行（通过 18 / 缺失 0 / 偏差 0 / 需人工确认 3）。AQ/AR/AA六项各有独立报告（本轮引用结论并独立复核关键证据）。
