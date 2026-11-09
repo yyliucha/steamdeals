@@ -62,6 +62,7 @@ import BulkBar from '../components/BulkBar.vue';
 import BulkResultDialog from '../components/BulkResultDialog.vue';
 import { useBulkSelection,promptBulkConfirm } from '../composables/useBulkSelection.js';
 import { useListPagination } from '../composables/useListPagination.js';
+import { registerUnsavedSource } from '../composables/useUnsavedGuard.js';
 import { ElMessage,ElMessageBox } from 'element-plus';
 import { fmtDateTime as dateTime } from '../utils/siteTime.js';
 const props=defineProps({section:{type:String,required:true},me:{type:Object,default:null}});
@@ -72,6 +73,9 @@ function onMobileChange(e){isMobile.value=e.matches;}
 if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',onMobileChange);else mobileQuery.addListener(onMobileChange);}
 const loading=ref(false),saving=ref(false),users=ref([]),recycleGames=ref([]),steamAccounts=ref([]),unownedAccounts=ref([]),steamLimit=ref(5),steamError=ref(''),activeAccount=ref(null),libraryGames=ref([]),apiKeyDialog=ref({visible:false,row:null,value:''}),smtp=ref({}),mailRecords=ref([]),mailMessage=ref(''),mailOk=ref(false),smtpTrace=ref(''),testEmail=ref(''),mailDialog=ref(false),activeMail=ref(null),mailCode=ref(null),logEntries=ref([]),logFiles=ref([]),logQuery=ref(''),logScope=ref(''),logMinutes=ref('0'),autoLogs=ref(false),syncRuns=ref([]);
 const newUser=ref({username:'',password:'',email:'',role:'user'});
+// AN 批（docs/UNSAVED-GUARD.md §4.4）：新建用户面——任一字段非空即算脏（角色默认 user 不算），
+// save = 创建账号：创建成功才离开，失败留在本页并提示
+const unregisterUnsaved=registerUnsavedSource({id:'new-user',label:'新建用户',isDirty:()=>Boolean(newUser.value.username.trim()||newUser.value.password||newUser.value.email.trim()||newUser.value.role!=='user'),save:submitCreateUser});
 const usersPager=useListPagination(users), recyclePager=useListPagination(recycleGames), steamPager=useListPagination(libraryGames), mailPager=useListPagination(mailRecords), logsPager=useListPagination(logEntries);
 const pagedUsers=usersPager.items, usersPage=usersPager.page, usersPageSize=usersPager.pageSize;
 const pagedRecycleGames=recyclePager.items, recyclePage=recyclePager.page, recyclePageSize=recyclePager.pageSize;
@@ -129,7 +133,8 @@ async function runBulk(action,selection,{options,refresh}={}){
 // 回收站「全选当前筛选」：列表一次最多拉 1000 条，与后端单次上限一致
 function selectAllRecycle(){if(!recycleGames.value.length)return;sel.recycle.selectRows(recycleGames.value);}
 async function loadUsers(){sel.users.clear();loading.value=true;try{const d=await api('/api/admin/users');users.value=d.users||[];}catch(e){notify(e);}finally{loading.value=false;}}
-async function createUser(){if(!newUser.value.username.trim()||newUser.value.password.length<8)return ElMessage.warning('用户名必填，密码至少 8 位');await act(async()=>{const u={...newUser.value,username:newUser.value.username.trim()};await api('/api/admin/users',body('POST',{username:u.username,password:u.password,role:u.role,email:u.email.trim()||undefined}));newUser.value={username:'',password:'',email:'',role:'user'};ElMessage.success('账号已创建');await loadUsers();});}
+async function submitCreateUser(){const u={...newUser.value,username:newUser.value.username.trim()};await api('/api/admin/users',body('POST',{username:u.username,password:u.password,role:u.role,email:u.email.trim()||undefined}));newUser.value={username:'',password:'',email:'',role:'user'};}
+async function createUser(){if(!newUser.value.username.trim()||newUser.value.password.length<8)return ElMessage.warning('用户名必填，密码至少 8 位');await act(async()=>{await submitCreateUser();ElMessage.success('账号已创建');await loadUsers();});}
 async function editName(row){try{const {value}=await ElMessageBox.prompt(`修改 ${row.username} 的显示名；留空清除`,'修改显示名',{inputValue:row.display_name||''});const d=await api(`/api/admin/users/${encodeURIComponent(row.username)}`,body('PATCH',{display_name:value}));toastNotify(d);await loadUsers();}catch(e){if(e!=='cancel'&&e!=='close')notify(e);}}
 async function editEmail(row){try{const {value}=await ElMessageBox.prompt('输入登录邮箱；留空解绑','绑定邮箱',{inputValue:row.email||'',inputType:'email'});const d=await api(`/api/admin/users/${encodeURIComponent(row.username)}/email`,body('POST',{email:value.trim()}));if(value.trim()){ElMessage.success(d.notify==='queued'?'邮箱已绑定，需重新验证（变更通知邮件稍后发送）':'邮箱已绑定，需重新验证');}else{ElMessage.success('邮箱已解绑');}await loadUsers();}catch(e){if(e!=='cancel'&&e!=='close')notify(e);}}
 async function verifyEmail(row){await act(async()=>{const d=await api(`/api/admin/users/${encodeURIComponent(row.username)}/email/code`,body('POST',{}));const {value}=await ElMessageBox.prompt(`${d.hint||'验证码已发送'}，输入邮件中的 6 位验证码`,'验证邮箱',{inputPattern:/^\d{6}$/,inputErrorMessage:'请输入 6 位验证码'});await api(`/api/admin/users/${encodeURIComponent(row.username)}/email/verify`,body('POST',{code:value.trim()}));ElMessage.success('邮箱已验证');await loadUsers();});}
@@ -187,7 +192,7 @@ watch(()=>props.section,s=>{if(s==='users'){loadUsers();loadDeletions();}else if
 // 翻页清空选择（常规列表只支持本页勾选）；回收站例外：可用「全选当前筛选」一次性选满
 watch(recyclePage,()=>sel.recycle.clear());watch(usersPage,()=>sel.users.clear());
 onMounted(()=>{if(props.section==='users'){loadUsers();loadDeletions();}else if(props.section==='recycle')loadRecycle();else if(props.section==='steam'){consumeSteamQuery();loadSteam();}else if(props.section==='mail'){loadMail();loadTemplates();loadMailLog();}else if(props.section==='sync'){loadLogs();loadSyncRuns();}});
-const timer=setInterval(()=>{if(props.section==='sync'&&autoLogs.value&&!document.hidden)loadLogs();},10000);onBeforeUnmount(()=>{clearInterval(timer);if(mobileQuery){if(mobileQuery.removeEventListener)mobileQuery.removeEventListener('change',onMobileChange);else mobileQuery.removeListener(onMobileChange);}});
+const timer=setInterval(()=>{if(props.section==='sync'&&autoLogs.value&&!document.hidden)loadLogs();},10000);onBeforeUnmount(()=>{clearInterval(timer);unregisterUnsaved();if(mobileQuery){if(mobileQuery.removeEventListener)mobileQuery.removeEventListener('change',onMobileChange);else mobileQuery.removeListener(onMobileChange);}});
 </script>
 
 <style scoped>

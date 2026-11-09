@@ -3,6 +3,7 @@ import Home from '../pages/Home.vue';
 import Setup from '../pages/Setup.vue';
 import BanPage from '../pages/BanPage.vue';
 import AppealPage from '../pages/AppealPage.vue';
+import { installRouterGuard } from '../composables/useUnsavedGuard.js';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -20,4 +21,6 @@ const router = createRouter({
 });
 
 router.afterEach((to) => { document.title = to.meta?.title || 'SteamDeals'; });
+// AN 批（docs/UNSAVED-GUARD.md §4.3）：未保存修改的离开提醒——所有路由离开统一过 requestLeave()
+installRouterGuard(router);
 export default router;

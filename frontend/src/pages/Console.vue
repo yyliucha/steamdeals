@@ -6,7 +6,7 @@
       <nav class="admin-nav">
         <template v-for="group in visibleGroups" :key="group.name">
           <div class="nav-heading">{{ group.name }}</div>
-          <button v-for="item in group.items" :key="item.id" :class="{ active: selected === item.id }" @click="select(item)"><span class="nav-glyph">{{ item.glyph }}</span><span>{{ item.label }}</span><el-icon v-if="selected === item.id" class="arrow"><ArrowRight /></el-icon></button>
+          <button v-for="item in group.items" :key="item.id" :class="{ active: selected === item.id }" @click="select(item)"><span class="nav-glyph">{{ item.glyph }}</span><span>{{ item.label }}</span><span v-if="selected === item.id && menuDirty" class="nav-dirty" title="有未保存的修改">●</span><el-icon v-if="selected === item.id" class="arrow"><ArrowRight /></el-icon></button>
         </template>
         <el-empty v-if="!visibleGroups.length" :image-size="44" description="没有匹配的功能" />
       </nav>
@@ -23,7 +23,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowRight, Search } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
@@ -31,6 +31,7 @@ import AdminModules from './AdminModules.vue';
 import AdminExtras from './AdminExtras.vue';
 import { useTheme } from '../composables/useTheme.js';
 import { fmtDateTime } from '../utils/siteTime.js';
+import { requestLeave, bypassNextGuard, hasDirtySources } from '../composables/useUnsavedGuard.js';
 
 const router=useRouter(), route=useRoute(), filter=ref(''), user=ref(null);
 const theme = useTheme();
@@ -54,7 +55,13 @@ const selected=ref(String(route.query.section||'games'));
 watch(()=>route.query.section,(v)=>{if(v&&groups.some(g=>g.items.some(i=>i.id===v)))selected.value=v;});
 const selectedItem=computed(()=>groups.flatMap(g=>g.items.map(i=>({...i,group:g.name}))).find(i=>i.id===selected.value)||groups[0].items[0]);
 const visibleGroups=computed(()=>{const q=filter.value.trim().toLocaleLowerCase();return groups.map(g=>({...g,items:g.items.filter(i=>!q||`${i.label} ${i.description} ${g.name}`.toLocaleLowerCase().includes(q))})).filter(g=>g.items.length);});
-async function select(item){ selected.value=item.id; await router.replace({path:'/console',query:{section:item.id}}); }
+// AN 批（docs/UNSAVED-GUARD.md §4.3）：切菜单前先过离开确认——不要先改 selected 再拦
+async function select(item){ if(item.id===selected.value)return; if(!(await requestLeave()))return; selected.value=item.id; await router.replace({path:'/console',query:{section:item.id}}); }
+// 当前菜单项的「未保存修改」小圆点（与邮件配置的小标一致）
+const menuDirty=ref(false);
+let menuDirtyTimer=null;
+onBeforeUnmount(()=>{if(menuDirtyTimer){clearInterval(menuDirtyTimer);menuDirtyTimer=null;}});
+onMounted(()=>{menuDirtyTimer=setInterval(()=>{menuDirty.value=hasDirtySources();},800);});
 // 侧栏搜索按 Enter：直接打开第一个匹配的功能
 function onFilterEnter(){const first=visibleGroups.value[0]?.items[0];if(first){filter.value='';select(first);}else if(filter.value.trim()){ElMessage.warning('没有匹配的功能');}}
 
@@ -78,11 +85,12 @@ async function loadVersion(force){
   finally{versionLoading.value=false;}
 }
 
-onMounted(async()=>{try{const valid=groups.some(g=>g.items.some(i=>i.id===selected.value));if(!valid)selected.value='games';const res=await fetch('/api/me',{credentials:'same-origin'});const data=await res.json();user.value=data.user||null;if(user.value?.role!=='admin'){ElMessage.warning('此页面需要管理员账号登录');router.replace('/');return;}const st=data.prefs?.theme;if(st==='light'||st==='dark'){if(theme.storedMode()!==st)theme.set(st);}else if(theme.storedMode()){fetch('/api/prefs',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({theme:theme.storedMode()})}).catch(()=>{});}}catch{ElMessage.error('无法验证管理员身份');router.replace('/');return;}loadVersion(false);});
+onMounted(async()=>{try{const valid=groups.some(g=>g.items.some(i=>i.id===selected.value));if(!valid)selected.value='games';const res=await fetch('/api/me',{credentials:'same-origin'});const data=await res.json();user.value=data.user||null;if(user.value?.role!=='admin'){ElMessage.warning('此页面需要管理员账号登录');bypassNextGuard();router.replace('/');return;}const st=data.prefs?.theme;if(st==='light'||st==='dark'){if(theme.storedMode()!==st)theme.set(st);}else if(theme.storedMode()){fetch('/api/prefs',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({theme:theme.storedMode()})}).catch(()=>{});}}catch{ElMessage.error('无法验证管理员身份');bypassNextGuard();router.replace('/');return;}loadVersion(false);});
 </script>
 
 <style scoped>
 .theme-btn{font-size:17px}
+.nav-dirty{color:var(--warn);font-size:9px;margin-left:auto;line-height:1}
 .header-actions{display:flex;align-items:center;gap:12px;min-width:0}
 .header-version{font-size:11px;color:var(--fg-muted);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .header-version em{font-style:normal;color:var(--warn);font-weight:600}

@@ -3,6 +3,7 @@
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
 import { NETWORK_ERROR_MESSAGE, networkDown } from './utils/network.js';
 import { dismissUpdate, updateNotice } from './composables/useVersionGuard.js';
+import UnsavedLeaveDialog from './components/UnsavedLeaveDialog.vue';
 
 // 不做离线缓存，所以"重试"就是重新向服务器要一次页面；恢复网络后即可正常打开
 function retryNetwork() {
@@ -28,6 +29,7 @@ function refreshUpdate() {
       </div>
     </div>
     <router-view />
+    <UnsavedLeaveDialog />
   </el-config-provider>
 </template>
 

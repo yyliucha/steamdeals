@@ -28,9 +28,10 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { isMailSettingKey } from '../utils/settings.js';
+import { registerUnsavedSource } from '../composables/useUnsavedGuard.js';
 
 const emit = defineEmits(['saved']);
 
@@ -92,7 +93,7 @@ async function reveal(key) {
   }
 }
 
-async function save() {
+async function submit() {
   const patch = {};
   for (const field of mailFields.value) {
     const v = values.value[field.key];
@@ -107,14 +108,19 @@ async function save() {
       patch[field.key] = v;
     }
   }
+  const d = await api('/api/admin/settings', { method: 'POST', body: JSON.stringify({ values: patch }) });
+  schema.value = d;
+  for (const field of mailFields.value) {
+    if (field.type === 'secret') values.value[field.key] = '';
+  }
+  dirty.value = false;
+  return d;
+}
+
+async function save() {
   saving.value = true;
   try {
-    const d = await api('/api/admin/settings', { method: 'POST', body: JSON.stringify({ values: patch }) });
-    schema.value = d;
-    for (const field of mailFields.value) {
-      if (field.type === 'secret') values.value[field.key] = '';
-    }
-    dirty.value = false;
+    const d = await submit();
     ElMessage.success(`已保存 ${d.keys?.length || 0} 项邮件配置`);
     emit('saved');
   } catch (e) {
@@ -124,7 +130,11 @@ async function save() {
   }
 }
 
+// AN 批（docs/UNSAVED-GUARD.md §4.4）：邮件配置面——脏 = 组件内 dirty，保存 = submit（失败抛错，离开守卫靠它）
+const unregisterUnsaved = registerUnsavedSource({ id: 'mail-settings', label: '邮件配置', isDirty: () => dirty.value, save: submit });
+
 onMounted(load);
+onUnmounted(unregisterUnsaved);
 defineExpose({ reload: load });
 </script>
 
