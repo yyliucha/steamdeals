@@ -756,7 +756,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AQ. 待开发：后台访问/异常列表排序（数值 IP + 上限 500）
 
-**状态：已实现待发版（2026-11-09）**
+**状态：质检通过（2026-11-09，8a20304；QA 报告 docs/QA-ADMIN-REVIEW-LISTS-AQ.md，1 项 🔎 上线后看排序性能）**
 **依赖：** 无
 **解锁：** AR
 **规格**：[ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §3
@@ -769,7 +769,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AR. 待开发：异常审核「按 IP 合并」视图（下一期）
 
-**状态：依赖阻塞（AQ）**
+**状态：待开发（AQ 已质检通过，2026-11-09 解锁）**
 **依赖：** AQ
 **解锁：** 无
 **规格**：[ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §4
