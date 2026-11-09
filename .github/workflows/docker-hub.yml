@@ -67,7 +67,7 @@ jobs:
           curl -fsS -c /tmp/cookies.txt \
             -H 'content-type: application/json' \
             -H 'x-setup-token: ci-setup-token' \
-            -d '{"admin":{"username":"admin","password":"admin123456"},"settings":{"sources.steam.enabled":false},"setupToken":"ci-setup-token"}' \
+            -d '{"admin":{"username":"admin","password":"ci-setup-pw-2.1.0-strong"},"settings":{"sources.steam.enabled":false},"setupToken":"ci-setup-token"}' \
             http://127.0.0.1:8090/api/setup/complete
           curl -fsS -b /tmp/cookies.txt http://127.0.0.1:8090/api/games >/dev/null
           curl -fsS -b /tmp/cookies.txt http://127.0.0.1:8090/api/admin/settings >/dev/null
