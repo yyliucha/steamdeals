@@ -756,7 +756,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AQ. 待开发：后台访问/异常列表排序（数值 IP + 上限 500）
 
-**状态：待开发**
+**状态：已实现待发版（2026-11-09）**
 **依赖：** 无
 **解锁：** AR
 **规格**：[ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §3

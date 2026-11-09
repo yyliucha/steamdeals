@@ -200,7 +200,7 @@ POST /api/setup/complete
 - `GET /api/admin/users` → 用户列表（角色、最近登录）
 - `GET /api/admin/views` → 浏览排行（90 天前自动清理）
 - `POST /api/admin/users` → `{ username, password, role }` 建号
-- `GET /api/admin/visitors?page&pageSize&ip&path` → 访问记录分页 + 今日汇总（访问数/独立 IP/黑名单数/高频 IP）
+- `GET /api/admin/visitors?page&pageSize&ip&path&sort&order` → 访问记录分页 + 今日汇总（访问数/独立 IP/黑名单数/高频 IP）；`sort=time|ip|status`、`order=asc|desc`（白名单，非法回落默认；AQ 批）
 - `GET /api/admin/images` → 封面图本地缓存统计（张数/覆盖游戏数/体积/目录）
 - `GET /api/admin/emails` → 验证码邮件记录（含 `subject`/`body`：用户收不到邮件时直接看验证码）
 - `GET /api/admin/blacklist` → 黑名单列表；`POST /api/admin/blacklist` → `{ ip, note }` 拉黑（支持 CIDR）；
@@ -274,3 +274,4 @@ node test/serve.test.js     # 5 项：静态服务路径穿越与内容类型（
 Vue 页面没有单元测试：改动前端后至少跑 `npm run frontend:build` 确认能构建，再用浏览器过一遍
 `/`、`/console`、`/banned` 与改动的后台模块。`web/` 里旧页面的内联脚本由
 `node scripts/check-html-syntax.mjs web/index.html web/console.html web/setup.html` 做语法校验（CI 会跑）。
+

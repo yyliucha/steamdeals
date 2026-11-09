@@ -2759,7 +2759,11 @@ export function createApiServer({
         const p = String(url.searchParams.get('path') ?? '').trim();
         // filter=visits（默认，正常访问）| blocked（被拦截）| all
         const filter = String(url.searchParams.get('filter') ?? 'visits');
-        const list = await db.listVisitorLogs(q, { page, pageSize, ip: ip || null, path: p || null, filter });
+        // AQ 批（docs/ADMIN-REVIEW-LISTS.md §3.2）：排序白名单，非法值回落默认，不拼接用户输入
+        const rawSort = String(url.searchParams.get('sort') ?? '');
+        const sort = ['time', 'ip', 'status'].includes(rawSort) ? rawSort : 'time';
+        const order = String(url.searchParams.get('order') ?? '') === 'asc' ? 'asc' : 'desc';
+        const list = await db.listVisitorLogs(q, { page, pageSize, ip: ip || null, path: p || null, filter, sort, order });
         const summary = await db.visitorSummary(q);
         return json(res, 200, { ...list, page, pageSize, filter, pages: Math.max(1, Math.ceil(list.total / pageSize)), summary });
       }
@@ -2975,7 +2979,7 @@ export function createApiServer({
       if (path === '/api/admin/reviews' && req.method === 'GET') {
         if (!requireAdmin()) return;
         const status = String(url.searchParams.get('status') ?? '') === 'all' ? 'all' : 'pending';
-        const reviews = await db.listAbuseReviews(q, { status, limit: Number(url.searchParams.get('limit') ?? 300) });
+        const reviews = await db.listAbuseReviews(q, { status, limit: Number(url.searchParams.get('limit') ?? 500) });
         return json(res, 200, { reviews, pending: await db.countPendingReviews(q) });
       }
       if (path === '/api/admin/reviews/approve' && req.method === 'POST') {

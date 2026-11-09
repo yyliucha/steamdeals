@@ -1698,14 +1698,32 @@ export async function setVisitorRegion(q, id, region) {
  * 分页查访问记录。
  * filter: visits（默认，只看正常访问）| blocked（只看被拦截）| all
  */
-export async function listVisitorLogs(q, { page = 1, pageSize = 50, ip = null, path = null, filter = 'visits' } = {}) {
+/**
+ * 访问明细排序子句（AQ 批 docs/ADMIN-REVIEW-LISTS.md §3.2）。
+ * 白名单：sort ∈ time|ip|status，order ∈ asc|desc；非法值回落默认，**不拼接用户输入**。
+ * IP 用零填充字符串键排序：等价于数值序，又不会像 ip::inet 那样被脏数据（空串/非 IP）炸掉整条查询。
+ */
+export function visitorOrderClause(sort = 'time', order = 'desc') {
+  const dir = order === 'asc' ? 'asc' : 'desc';
+  if (sort === 'ip') {
+    const key =
+      "case when ip ~ '^[0-9]{1,3}(\\.[0-9]{1,3}){3}$' then " +
+      "lpad(split_part(ip,'.',1),3,'0')||'.'||lpad(split_part(ip,'.',2),3,'0')||'.'||" +
+      "lpad(split_part(ip,'.',3),3,'0')||'.'||lpad(split_part(ip,'.',4),3,'0') else 'zzz'||ip end";
+    return `${key} ${dir} nulls last, id desc`;
+  }
+  if (sort === 'status') return `blocked ${dir}, id desc`;
+  return `id ${dir}`;
+}
+
+export async function listVisitorLogs(q, { page = 1, pageSize = 50, ip = null, path = null, filter = 'visits', sort = 'time', order = 'desc' } = {}) {
   const blockedCond = filter === 'blocked' ? 'and blocked' : filter === 'all' ? '' : 'and not blocked';
   const where = `where ($1 = '' or ip = $1 or remote_ip = $1) and ($2 = '' or path like '%' || $2 || '%') ${blockedCond}`;
   const cnt = await q(`select count(*)::int as n from visitor_logs ${where}`, [ip ?? '', path ?? '']);
   const rows = await q(
     `select id, ip, remote_ip, region, path, method, user_agent, status, blocked, block_reason, created_at
        from visitor_logs ${where}
-      order by id desc limit $3 offset $4`,
+      order by ${visitorOrderClause(sort, order)} limit $3 offset $4`,
     [ip ?? '', path ?? '', pageSize, (page - 1) * pageSize],
   );
   return { total: cnt.rows[0]?.n ?? 0, rows: rows.rows };
@@ -1952,7 +1970,7 @@ export async function recordAbuseReview(q, { ip = null, deviceId = null, fingerp
 // v1.9.0 起封禁动作已把该 IP 的旧 pending 标成 auto_banned 永久退出待审，所以这里
 // **不再**按"IP 是否处于临时封禁"二次过滤——封禁期间新产生的 pending 恰恰是最该看的，
 // 而且状态列本来就写着「待审」。列表与 countPendingReviews 必须同一口径。
-export async function listAbuseReviews(q, { status = 'pending', limit = 100 } = {}) {
+export async function listAbuseReviews(q, { status = 'pending', limit = 500 } = {}) {
   // pending：只看待审；all：审计视图（含 auto_banned）。
   const statusCond = status === 'all' ? '' : "and status = 'pending'";
   const r = await q(
@@ -1962,7 +1980,7 @@ export async function listAbuseReviews(q, { status = 'pending', limit = 100 } = 
         ${statusCond}
       order by last_seen desc
       limit $1`,
-    [Math.min(Math.max(Number(limit) || 100, 1), 300)],
+    [Math.min(Math.max(Number(limit) || 500, 1), 500)],
   );
   return r.rows;
 }
