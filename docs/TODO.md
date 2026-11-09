@@ -782,9 +782,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   状态混合显示「部分已处理」；排序复用 AQ 的 `compareIp()`。
 - **验收**：见规格 §4.4。
 
-## AS. README 开发进度摘要（自动生成）
+## AS. 已发布 v2.3.0：README 开发进度摘要（自动生成）
 
-**状态：质检通过（2026-11-09，de71311；QA 报告 docs/QA-TODO-PROGRESS-AS.md）**
+**状态：已发布 v2.3.0（2026-11-09，de71311；QA 报告 docs/QA-TODO-PROGRESS-AS.md）**
 **依赖：** 无
 **解锁：** 无
 **规格**：[TODO-PROGRESS.md](TODO-PROGRESS.md)
@@ -797,9 +797,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   替换旧「路线图」段、修正 README 过期项；加轻量 `docs-progress` workflow。**纯脚本 + 文档 + CI，不改业务代码**。
 - **验收**：见规格 §10。
 
-## AT. 待开发：后台信息架构改版（新增改抽屉 / 操作日志合并 5 tab / 邮件与设置 tab / 价格走势线图）
+## AT. ~~待开发：后台信息架构改版（新增改抽屉 / 操作日志合并 5 tab / 邮件与设置 tab / 价格走势线图）~~ → **已实现并发布 v2.4.0（2026-11-09）**
 
-**状态：质检通过（2026-11-09，a500811；QA 报告 docs/QA-ADMIN-CONSOLE-IA-AT.md 未提交）**
+**状态：已发布 v2.4.0（2026-11-09，a500811；QA 报告 docs/QA-ADMIN-CONSOLE-IA-AT.md）**
 **依赖：** 无
 **解锁：** 无（下期「账号操作审计」等本批落地后另立项）
 **规格**：[ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md)；原型 [design/admin-console-ia.html](design/admin-console-ia.html)

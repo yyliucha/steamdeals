@@ -29,7 +29,7 @@
 | **Y** | 补 `steamStatus.initialDelaySec` 设置项 | 并入 [STEAM-STATUS-FIX.md](STEAM-STATUS-FIX.md) §3-F | 已发布 v1.16.4（随 AB） | 随 AB |
 | **AD** | 搜索支持中英文（含平台中文别名） | [SEARCH-I18N.md](SEARCH-I18N.md) | 已发布 v1.17.0（服务器仍 1.16.4，待部署验收） | ✅ 已在对话给出 |
 | **AA** | 添加愿望单推送失败 | [WISHLIST-FIX.md](WISHLIST-FIX.md) | 待排查（等 `wishlist_add_failed` 日志） | ❌ 等根因 |
-| **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 质检通过（2026-11-09，a500811） | ✅ 本轮已给 |
+| **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |
 | **AC** | 同步不可达的未保证项（AC1–AC11） | [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) | AC-1 已发布 v1.18.0；AC-2/AC-3/AC-4 已发布 v2.1.0（2026-11-09） | ✅ 已在对话给出 |
 | **AE** | 版本检测按服务器 IP 选镜像仓库（TCR/Hub） | [VERSION-SOURCE.md](VERSION-SOURCE.md) | 已发布 v1.18.0 | ✅ 已在对话给出 |
 | **AF** | 愿望单/标记操作后列表不刷新（搜索缓存未失效） | [FRONTEND-STALE-LIST.md](FRONTEND-STALE-LIST.md) | 已发布 v1.18.0 | ✅ 已在对话给出 |
@@ -45,7 +45,7 @@
 | **AP** | 游戏详情·价格历史报表（趋势线 + 史低高亮） | [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md) | 已发布 v2.2.0（282d018） | ✅ 规格自包含 |
 | **AQ** | 后台访问/异常列表排序（数值 IP + 上限 500） | [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §3 | 已发布 v2.2.0（2026-11-09，8a20304） | ✅ 规格自包含 |
 | **AR** | 异常审核「按 IP 合并」视图 | [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §4 | 已发布 v2.2.0（2026-11-09，0aa6842） | ✅ 规格自包含 |
-| **AS** | README 开发进度摘要（自动生成） | [TODO-PROGRESS.md](TODO-PROGRESS.md) | 质检通过（de71311） | ✅ 规格自包含 |
+| **AS** | README 开发进度摘要（自动生成） | [TODO-PROGRESS.md](TODO-PROGRESS.md) | 已发布 v2.3.0（de71311） | ✅ 规格自包含 |
 | **F** | Steam 价格同步优化（缩量 / 热点优先） | 计划写在 [TODO.md](TODO.md) F 段 | 已发布 v2.2.1（f32e2b9） | ✅ 按 F 段方案实现 |
 | **C1** | heat 逐 appid 全 `success:false` | ❌ 无规格（[TODO.md](TODO.md) C1） | 待探测 | ❌ 未给 |
 

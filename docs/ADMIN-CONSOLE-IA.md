@@ -1,7 +1,7 @@
 # 后台信息架构改版：新增改抽屉 · 操作日志合并 · 设置/邮件 tab · 价格走势线图
 
-> 状态：**已实现待发版（2026-11-09）**——所有者已确认 Q1–Q4、Q7；Q5 定为 **C：右侧抽屉浮层（不跳页）**；
-> Q6/Q8/Q9 按建议默认（§12）。代码+测试已交付（见 docs/TODO.md AT 条目），等「构建」指令后随版本发布。
+> 状态：**已实现并发布 v2.4.0（2026-11-09，a500811）**——所有者已确认 Q1–Q4、Q7；Q5 定为 **C：右侧抽屉浮层（不跳页）**；
+> Q6/Q8/Q9 按建议默认（§12）。QA ✅ 放行（docs/QA-ADMIN-CONSOLE-IA-AT.md，通过 14 / 缺失 0 / 偏差 0 / 需人工确认 4）。
 > 原型：[docs/design/admin-console-ia.html](design/admin-console-ia.html) + [总览图](design/admin-console-ia-overview.png)。
 > 关联：[PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md) · [WEB.md](WEB.md) · [USER-LIFECYCLE.md](USER-LIFECYCLE.md) ·
 > [ADMIN-PARITY.md](ADMIN-PARITY.md) · [UNSAVED-GUARD.md](UNSAVED-GUARD.md) · [HANDOVER.md](HANDOVER.md)

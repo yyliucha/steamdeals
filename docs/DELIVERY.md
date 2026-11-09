@@ -180,12 +180,24 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-09 更新，v2.3.0 已发布：AS 批——README 开发进度摘要）
+### 当前状态（2026-11-09 更新，v2.4.0 已发布：AT 批——后台信息架构改版）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 > **会话分工（2026-11-09）**：可直接开发的功能（AR、AO、AP、可选 F）见
 > [HANDOVER-DEV-2026-11-09.md](HANDOVER-DEV-2026-11-09.md)；运维排查结论见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) 与 TODO C 段。
 
+- **v2.4.0 已发布**（tag `v2.4.0`）：AT 批后台信息架构改版——新建用户/新建·编辑通知改右侧抽屉（不跳页、
+  URL 直达、临时密码抽屉内一次性展示、通知带前台预览）；新菜单「操作日志」一页 5 tab（用户删除/批量操作/
+  Steam 账号/邮件发送/运行与同步，?tab= 直达、懒加载+缓存，旧书签 bulk-ops/sync 自动映射不 404）；
+  `steam_account_logs` 审计 7 类动作（失败也记、用户被删后日志仍在、保留 180 天并入 prune）；
+  邮件服务 3 tab + 发送记录单一入口；系统设置折叠改 6 tab；价格变化悬停「变化」列弹近 7 天线图
+  （`/api/admin/reports/price` 去 `daily` 加 `series`，无逐行请求）。规格见
+  [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md)。
+  验证：`npm test` 74 个文件全绿、`node test/api.test.js` 22 项全绿、`frontend:build`、`scan` 干净；
+  质检：AT ✅ 放行（[QA-ADMIN-CONSOLE-IA-AT.md](QA-ADMIN-CONSOLE-IA-AT.md)，通过 14 / 缺失 0 / 偏差 0 / 需人工确认 4）。
+  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  **服务器部署待执行**（升级到 `2.4.0`）；部署后按规格 §11 验收 1–14 目视核对（含抽 2 游戏对 7 天最低值、
+  真机 ≤768 抽屉全屏）。
 - **v2.3.0 已发布**（tag `v2.3.0`）：AS 批——README「开发进度」自动摘要（`scripts/todo-progress.js` 生成 +
   `npm run todo:progress`/`todo:progress:check` + CI `docs-progress` 防漂移）+ README 过期项修正。
   纯文档/脚本/CI，无运行行为变化。验证：`npm test` 全绿、`frontend:build`、`scan` 干净、`todo:progress:check` 一致；

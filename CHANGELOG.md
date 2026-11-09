@@ -2,6 +2,35 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.4.0] - 2026-11-09
+
+AT 批：后台信息架构改版——新建/编辑改右侧抽屉、操作日志合并 5 tab、邮件与设置 tab 化、价格变化悬停线图（规格 [docs/ADMIN-CONSOLE-IA.md](docs/ADMIN-CONSOLE-IA.md)）。
+
+### 新增
+
+- **新建用户 / 新建·编辑站点通知改右侧抽屉**：用户管理与站点通知页只留列表；抽屉不跳页、列表不刷新、
+  关闭后筛选/分页/滚动位置不丢；`?section=users&drawer=new`、`?section=announcements&drawer=new&id=…` 可直达；
+  新建用户成功后临时密码在抽屉内一次性展示（可复制）；通知抽屉带前台预览；未保存离开提醒对抽屉照常生效。
+- **操作日志（新菜单，5 tab）**：侧栏新增「日志审计 / 操作日志」，删除「批量操作记录」「运行日志」两个菜单；
+  一页收拢用户删除 / 批量操作 / Steam 账号 / 邮件发送 / 运行与同步（含实时输出，10 秒轮询只在 tab 打开时跑）；
+  `?tab=` 直达、切 tab 懒加载 + 内存缓存、顶部显示条数；旧书签 `?section=bulk-ops` / `?section=sync` /
+  `?section=mail&tab=records` 自动映射不 404；用户删除 tab 上限 200 + 日期范围筛选。
+- **Steam 账号操作审计**：新表 `steam_account_logs` 记录绑定 / 解绑 / 认领 / 同步游戏库 / 同步愿望单 /
+  更换 API Key / 级联删除 7 类动作（失败也记录并带原因与耗时；`user_id` 不挂外键——用户被删后日志仍在）；
+  `GET /api/admin/steam-logs`（limit≤500 / steamId / action / result / days）；保留 180 天并入现有
+  `prune` 周任务（`--steam-days` 可调）；Steam 账号页「操作日志 ↗」入口与行内「日志」链接。
+- **邮件服务 3 tab**：配置 / 模板 / 发送测试分开；发送记录只留「查看发送记录 ↗」一个入口（跳到操作日志·邮件发送）。
+- **系统设置 6 tab**：折叠面板改为 tab（与旧 6 分组一一对应、项数一致），搜索命中自动切到对应 tab。
+- **价格变化悬停线图**：删除底部「近 7 天变化」表；悬停「变化」列即时弹该游戏近 7 天线图（7 天最低 / 当前、
+  无数据空态）；`/api/admin/reports/price` 移除 `daily`、新增 `series`（报告内 game_id 一次查出每日最低，无逐行请求）。
+
+### 测试
+
+- 新增 `test/admin-console-ia.test.js`（11 项：审计落库/失败记录/删用户后日志保留/180 天清理/序列批量查询/
+  接口鉴权与筛选/前端接线静态断言）接入 `npm test` 主链；
+  `unsaved-guard` / `auth-pages` / `admin-bulk` / `proxy-pool-ui` / `frontend-registration` / `api.test.js`
+  断言随抽屉化与报表字段更新。
+
 ## [2.3.0] - 2026-11-09
 
 AS 批：README 开发进度摘要（自动生成）+ docs-progress CI 防漂移 + README 过期项修正。
