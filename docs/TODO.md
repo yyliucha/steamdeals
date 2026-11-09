@@ -64,9 +64,9 @@
   （未跟踪），覆盖容器/镜像版本/调度任务/429 计数/数据概况/API 冒烟；发布内容涉及同步链路时再加 `--write`
   （真实写 3 条 `steam-status`）。
 
-## F. 待实施：Steam 价格同步优化（方案已定，2026-11-02，等排期）
+## F. ~~待实施：Steam 价格同步优化~~ → **已发布 v2.2.1（2026-11-09）**
 
-**状态：质检通过（2026-11-09，f32e2b9；QA 报告 docs/QA-STEAM-PRICES-F.md）**（① 限速 1100→1600；② 热点优先 + 冷门降频。方案见下方两条）。
+**状态：已发布 v2.2.1（2026-11-09，f32e2b9；QA 报告 docs/QA-STEAM-PRICES-F.md）**（① 限速 1100→1600；② 热点优先 + 冷门降频。方案见下方两条）。
 
 调查结论：目录/回填/改名/热度都已是增量；唯一"全量重拉"的是价格刷新——每天把**有 Steam 报价的
 10.6 万款**逐个重拉（约 3500 次请求、1 小时+）。Steam 没有价格差分接口，无法直接"只拉变更"，只能缩小轮询集合。
@@ -728,7 +728,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AO. 后台游戏列与平台链接抽屉改版
 
-**状态：质检通过（2026-11-09，af70754；QA 报告 docs/QA-ADMIN-LINKS-DRAWER-AO.md）**
+**状态：已发布 v2.2.0（2026-11-09，af70754；QA 报告 docs/QA-ADMIN-LINKS-DRAWER-AO.md）**
 **依赖：** 无
 **解锁：** 无
 **规格**：[ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md)
@@ -743,7 +743,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AP. 游戏详情·价格历史报表（史低高亮）
 
-**状态：质检通过（2026-11-09，282d018；QA 报告 docs/QA-PRICE-HISTORY-AP.md）**
+**状态：已发布 v2.2.0（2026-11-09，282d018；QA 报告 docs/QA-PRICE-HISTORY-AP.md）**
 **依赖：** 无
 **解锁：** 无
 **规格**：[PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md)
@@ -795,6 +795,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **方案**：新增 `scripts/todo-progress.js` 解析 TODO 的 `**状态：…**` 行，生成 README 标记块（`--check` 校验）；
   替换旧「路线图」段、修正 README 过期项；加轻量 `docs-progress` workflow。**纯脚本 + 文档 + CI，不改业务代码**。
 - **验收**：见规格 §10。
+
 
 
 

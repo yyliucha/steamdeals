@@ -2,6 +2,17 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.2.1] - 2026-11-09
+
+Steam 价格同步优化（F 批）：限速收紧 + 热点优先 / 冷门降频。
+
+### 新增
+
+- **Steam 价格同步优化（F 批）**：`steam-prices` 请求间隔 1100 → **1600ms**（约 187 次/5 分钟，
+  回到 Steam 200 次/5 分钟配额内，不再靠 429 冷却兜底）；选取条件改**热点优先 + 冷门降频**——
+  热点（近 90 天有访问 / 有用户标记 / `heat ≥ 1`）每天刷，冷门在最近价格快照超过 **3 天**未更新才刷，
+  排序 `is_hot desc, last_snap asc`；阈值可用 `STEAM_PRICES_HOT_HEAT_MIN`（默认 1）/
+  `STEAM_PRICES_COLD_DAYS`（默认 3）调整；不新增调度任务。测试 `test/steam-prices-priority.test.js`。
 ## [2.2.0] - 2026-11-09
 
 后台列表排序（AQ 批）+ 三个线上问题的修复（heat/catalog 静默失效、未保存弹窗反复出现）一起交付。
@@ -2576,3 +2587,4 @@ Steam 封面图多路兜底（线上图片 404 的修复）。
 - ITAD 响应结构按官方文档实现，尚未用真实 key 验证。
 - 无失败熔断：某源持续 403 时仍需人工关闭。
 - 无前端界面，当前只有 CLI。
+

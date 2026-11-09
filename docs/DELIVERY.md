@@ -186,6 +186,11 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 > **会话分工（2026-11-09）**：可直接开发的功能（AR、AO、AP、可选 F）见
 > [HANDOVER-DEV-2026-11-09.md](HANDOVER-DEV-2026-11-09.md)；运维排查结论见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) 与 TODO C 段。
 
+- **v2.2.1 已发布**（tag `v2.2.1`）：F 批 Steam 价格同步优化——请求间隔 1100→1600ms（回到 200 次/5 分钟配额内）；
+  选取改热点优先（近 90 天访问 / 用户标记 / 热度≥1 每天刷）+ 冷门降频（最近快照超 3 天才刷）；
+  阈值 `STEAM_PRICES_HOT_HEAT_MIN` / `STEAM_PRICES_COLD_DAYS` 可调。验证：`npm test` 全链全绿 + `frontend:build` + `scan`；
+  质检：F ✅ 放行（[QA-STEAM-PRICES-F.md](QA-STEAM-PRICES-F.md)）。
+  **服务器部署待执行**（升级到 `2.2.1`）；部署后重点确认：steam-prices 单轮时长与 429 频率、热点阈值是否需调。
 - **v2.2.0 已发布**（tag `v2.2.0`）：AQ/AR/AO 后台批次 + AA 愿望单六项缺陷修复 + C1/AN 修复——
   ① 异常审核/访问明细表头排序（IP 数值序、服务端白名单、localStorage 持久化、待审上限 500）；
   ② 异常审核「按 IP 合并」视图（聚合行 + 展开明细 + 处置作用于该 IP 全部待审 + 部分已处理状态 + 移动卡片）；
@@ -197,7 +202,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   ⑤ AN 回归：「放弃修改」清草稿，弹窗不再反复出现（注册签名支持 discard，五面各自清，+2 回归测试）。
   验证：`npm test` 71 文件 / 566 项全绿、`api.test.js` 22 项、`email-auth` 9 项、`frontend:build`、`scan` 干净；
   质检：C1/AN/AA/AQ/AR/AO ✅ 放行（[QA-RELEASE-2.2.0.md](QA-RELEASE-2.2.0.md)、[QA-WISHLIST-AA.md](QA-WISHLIST-AA.md)、[QA-ADMIN-REVIEW-LISTS-AQ.md](QA-ADMIN-REVIEW-LISTS-AQ.md)、[QA-ADMIN-REVIEW-LISTS-AR.md](QA-ADMIN-REVIEW-LISTS-AR.md)、[QA-ADMIN-LINKS-DRAWER-AO.md](QA-ADMIN-LINKS-DRAWER-AO.md)）。
-  **服务器部署待执行**（升级到 `2.2.0`）；部署后重点确认：
+  **服务器部署待执行**（含 `2.2.1`）；部署后重点确认：
   C1——`heat --limit 5` 的 `withHeat>0` 且 catalog 补跑能进新游戏（另有 TODO C1 的「重置误标游标」建议）；
   AQ——十万行访问明细按 IP 排序耗时（超阈值再补索引）；AN——真机「放弃修改」后不再弹窗。
 
@@ -395,3 +400,4 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 - 待探测（需服务器）：线上 heat 逐 appid 返回全 `success:false`（[TODO.md C1](TODO.md#c-线上问题--需要探测)）、
   服务器 compose 真实文件名（C2）。
 - 已知事项：`web/*.html` 旧回退页（无 Vue 构建产物时才使用）的 Steam 区块未同步新接口，生产走 Vue 构建不受影响。
+
