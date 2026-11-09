@@ -34,7 +34,7 @@ import * as accountNotify from './account-notify.js';
 import * as proxyPool from './proxy-pool.js';
 import * as passwordPolicy from './password-policy.js';
 import { maskEmail } from './auth-routes.js';
-import { auditJobs as auditSchedulerJobs } from './scheduler.js';
+import { auditJobs as auditSchedulerJobs, resetCircuit } from './scheduler.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -2119,6 +2119,17 @@ export function createApiServer({
         if (!requireAdmin()) return;
         const limit = Number(url.searchParams.get('limit') ?? 20);
         return json(res, 200, { runs: await db.listSyncRuns(q, { limit }) });
+      }
+
+      // AC-4/AC2（docs/SYNC-FAILURE-MODES.md AC2）：手动重置任务熔断（内存态，同进程 scheduler 生效）
+      if (path === '/api/admin/circuit/reset' && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const body = await readBody(req);
+        const name = String(body.name ?? '').trim();
+        if (!name) return json(res, 400, { error: '缺少任务名' });
+        const handled = resetCircuit(name);
+        logger?.info('api.circuit_reset', { name, by: user.username, handled });
+        return json(res, 200, { ok: true, handled });
       }
 
       // ---- 管理员：数据回填（批量补全量元数据/价格，与同步共用子进程槽位）----

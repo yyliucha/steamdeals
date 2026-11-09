@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
-import { ingestOffers, offerHash } from '../src/ingest.js';
+import { ingestOffers, offerHash, rawOfferShapeIssue } from '../src/ingest.js';
 
 const steamPlatform = { code: 'steam', name: 'Steam 国区', kind: 'official' };
 
@@ -361,6 +361,30 @@ test('回填：upsertGameMeta 写 description，markBackfilled 记录 backfill_a
     await db.upsertGameMeta(q, { steamAppid: 990001, nameZh: '回填测试', description: '新说明' });
     row = (await q('select description from games where steam_appid = 990001')).rows[0];
     assert.equal(row.description, '一段说明');
+  } finally {
+    await store.close();
+  }
+});
+test('AC-7：结构校验——priceCents/title/region 缺失记 shape_mismatch 并跳过，不写坏数据', async () => {
+  const store = await freshStore();
+  const events = [];
+  const logger = { trace() {}, debug() {}, info() {}, warn: (e, f) => events.push([e, f]), error() {} };
+  try {
+    assert.equal(rawOfferShapeIssue(offer(1, 9900)), null, '正常报价通过');
+    assert.equal(rawOfferShapeIssue({ ...offer(1, 9900), priceCents: undefined }), 'priceCents');
+    assert.equal(rawOfferShapeIssue({ ...offer(1, 9900), title: '  ' }), 'title');
+    assert.equal(rawOfferShapeIssue({ ...offer(1, 9900), region: null }), 'region');
+    const s = await ingestOffers(store, {
+      platform: steamPlatform,
+      offers: [ { ...offer(1, 9900), priceCents: undefined }, { ...offer(2, 9900), title: '' }, { ...offer(3, 9900), region: null } ],
+      logger,
+    });
+    assert.equal(s.shapeMismatch, 3, '三条都记 shape_mismatch');
+    assert.equal(s.skipped, 3);
+    assert.equal(s.inserted, 0, '坏数据不写库');
+    assert.ok(events.some(([e, f]) => e === 'adapter.steam.shape_mismatch' && f.field === 'priceCents'));
+    assert.ok(events.some(([e, f]) => e === 'adapter.steam.shape_mismatch' && f.field === 'title'));
+    assert.ok(events.some(([e, f]) => e === 'adapter.steam.shape_mismatch' && f.field === 'region'));
   } finally {
     await store.close();
   }

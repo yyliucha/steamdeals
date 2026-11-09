@@ -202,6 +202,19 @@ export function jobsFromEnv(env = process.env) {
 /** 熔断参数：连续失败 threshold 次后，暂停该任务 cooldownMs。 */
 export const CIRCUIT = { threshold: 3, cooldownMs: 6 * 3600_000 };
 
+// AC-4/AC2（docs/SYNC-FAILURE-MODES.md AC2）：熔断手动重置——scheduler.start 注册钩子，
+// /api/admin/circuit/reset 通过 resetCircuit 触发（scheduler 与 web 同进程时生效）。
+const circuitResetHooks = new Set();
+export function registerCircuitReset(fn) {
+  circuitResetHooks.add(fn);
+  return () => circuitResetHooks.delete(fn);
+}
+export function resetCircuit(name) {
+  let handled = false;
+  for (const fn of circuitResetHooks) handled = fn(name) || handled;
+  return handled;
+}
+
 /** 记录一次任务结果，返回新的健康状态。纯函数，便于单测。 */
 export function recordJobResult(state, { code, nowMs, threshold = CIRCUIT.threshold, cooldownMs = CIRCUIT.cooldownMs }) {
   if (code === 0) return { failures: 0, openUntil: null, opened: false };
@@ -567,6 +580,15 @@ export async function main() {
       logger.warn('scheduler.lastrun_restore_failed', { err: serializeError(err) });
     }
     const health = new Map(); // job.name -> { failures, openUntil }
+    // AC-4/AC2：熔断手动重置钩子（后台按钮 → resetCircuit → 清零该任务熔断）
+    registerCircuitReset((name) => {
+      const state = health.get(name);
+      if (!state) return false;
+      state.failures = 0;
+      state.openUntil = null;
+      logger.info('scheduler.circuit_reset_manual', { job: name });
+      return true;
+    });
     const running = new Set();
     const startedAt = new Map(); // job.name -> 本次启动毫秒（AC11 耗时）
     const lastOutcome = new Map(); // job.name -> { elapsedMs, result, error }（AC11 健康面板）

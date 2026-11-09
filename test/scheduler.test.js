@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget } from '../src/scheduler.js';
+import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, registerCircuitReset, resetCircuit } from '../src/scheduler.js';
 
 test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），默认 3，非法回落默认', () => {
   assert.equal(lightConcurrency({}), 3);
@@ -439,4 +439,20 @@ test('AC-9：回填候选新游戏优先（created_at 倒序）+ 默认上限提
   assert.equal((cli.match(/order by g\.created_at desc nulls last, g\.id desc limit/g) || []).length, 2, 'backfill 与 steamall 两处');
   const sched = readFileSync(new URL('../src/scheduler.js', import.meta.url), 'utf8');
   assert.match(sched, /STEAM_BACKFILL_LIMIT, 50000/, '回填默认上限 5 万');
+});
+
+test('AC-2：熔断手动重置——registerCircuitReset 注册钩子，resetCircuit 触发清零', () => {
+  const state = { failures: 3, openUntil: Date.now() + 3600_000 };
+  const off = registerCircuitReset((name) => {
+    if (name !== 'heat') return false;
+    state.failures = 0;
+    state.openUntil = null;
+    return true;
+  });
+  assert.equal(resetCircuit('unknown'), false, '没有对应钩子 = 未处理');
+  assert.equal(resetCircuit('heat'), true, '命中钩子清零');
+  assert.equal(state.failures, 0);
+  assert.equal(state.openUntil, null);
+  off();
+  assert.equal(resetCircuit('heat'), false, '注销后不再处理');
 });

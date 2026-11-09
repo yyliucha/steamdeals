@@ -16,9 +16,20 @@ export function offerHash(offer) {
   return createHash('sha1').update(payload).digest('hex').slice(0, 16);
 }
 
+/**
+ * AC-4/AC7（docs/SYNC-FAILURE-MODES.md AC7）：RawOffer 结构校验——关键字段缺失返回字段名，
+ * 调用方记 `adapter.<平台>.shape_mismatch` 并跳过该条，字段改名不再静默变 null。
+ */
+export function rawOfferShapeIssue(offer) {
+  if (typeof offer?.priceCents !== 'number' || !Number.isFinite(offer.priceCents)) return 'priceCents';
+  if (!String(offer?.title ?? '').trim()) return 'title';
+  if (!String(offer?.region ?? '').trim()) return 'region';
+  return null;
+}
+
 export async function ingestOffers(store, { platform, offers, logger = null }) {
   const q = (sql, params) => store.query(sql, params);
-  const stats = { total: offers.length, inserted: 0, updated: 0, snapshots: 0, unchanged: 0, skipped: 0, noAppId: 0 };
+  const stats = { total: offers.length, inserted: 0, updated: 0, snapshots: 0, unchanged: 0, skipped: 0, noAppId: 0, shapeMismatch: 0 };
   const platformCache = new Set();
 
   for (const offer of offers) {
@@ -26,6 +37,14 @@ export async function ingestOffers(store, { platform, offers, logger = null }) {
     if (!plat?.code) {
       stats.skipped += 1;
       logger?.warn('ingest.skip', { reason: 'missing_platform', title: offer.title });
+      continue;
+    }
+    // AC-4/AC7：关键字段缺失 → 记 shape_mismatch 并跳过，不写坏数据
+    const shapeIssue = rawOfferShapeIssue(offer);
+    if (shapeIssue) {
+      stats.skipped += 1;
+      stats.shapeMismatch += 1;
+      logger?.warn(`adapter.${plat.code}.shape_mismatch`, { field: shapeIssue, title: String(offer?.title ?? '').slice(0, 120) });
       continue;
     }
     try {

@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { explainError, fetchText } from '../src/http.js';
+import { explainError, fetchText, readSteam429Until, writeSteam429Until, steam429FilePath } from '../src/http.js';
 
 /** 复刻 undici 8.x ProxyAgent 的包装形状。 */
 function proxyTunnelError(status) {
@@ -194,5 +194,29 @@ test('真实 undici ProxyAgent：代理回 502 时按可重试处理', async () 
     });
   } finally {
     await proxy.close();
+  }
+});
+
+test('AC-6：429 全局退避——冷却落盘跨进程共享（readSteam429Until/writeSteam429Until）', async () => {
+  const { mkdtempSync, readFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'steam-429-'));
+  const saved = process.env.STEAM_429_FILE;
+  process.env.STEAM_429_FILE = join(dir, 'steam-429.json');
+  try {
+    assert.equal(readSteam429Until(), 0, '无文件 = 无冷却');
+    const until = Date.now() + 1800_000;
+    writeSteam429Until(until);
+    const read = readSteam429Until();
+    assert.ok(read > Date.now() && read <= until, '落盘后读回未来冷却时间');
+    const raw = readFileSync(steam429FilePath(), 'utf8');
+    assert.ok(raw.includes(new Date(until).toISOString()), '文件内容是 ISO 时间');
+    assert.equal(readSteam429Until(Date.now() + 3600_000), 0, '过期后视为无冷却');
+    writeSteam429Until(Date.now() - 1000);
+    assert.equal(readSteam429Until(), 0, '写过去时间不产生冷却');
+  } finally {
+    if (saved === undefined) delete process.env.STEAM_429_FILE;
+    else process.env.STEAM_429_FILE = saved;
   }
 });

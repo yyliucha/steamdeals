@@ -61,6 +61,32 @@ const rid = () => Math.random().toString(36).slice(2, 10);
 const STEAM_429_COOLDOWN_MS = 30 * 60 * 1000;
 let steamCooldownUntil = 0;
 
+// AC-4/AC6（docs/SYNC-FAILURE-MODES.md AC6）：429 全局退避预算——冷却时间落盘跨子进程共享
+// （每个任务都是独立子进程，内存态各睡各的 30 分钟；落盘后任何进程都会尊重最早的冷却）。
+// 测试可用 STEAM_429_FILE 覆盖路径。
+import { existsSync as _fsExists, readFileSync as _fsRead, writeFileSync as _fsWrite, renameSync as _fsRename, mkdirSync as _fsMkdir } from 'node:fs';
+import { dirname as _fsDirname } from 'node:path';
+export const steam429FilePath = () => process.env.STEAM_429_FILE ?? 'data/steam-429.json';
+export function readSteam429Until(nowMs = Date.now()) {
+  try {
+    const parsed = JSON.parse(_fsRead(steam429FilePath(), 'utf8'));
+    const t = Date.parse(parsed?.until);
+    return Number.isFinite(t) && t > nowMs ? t : 0;
+  } catch {
+    return 0;
+  }
+}
+export function writeSteam429Until(untilMs) {
+  try {
+    const file = steam429FilePath();
+    _fsMkdir(_fsDirname(file), { recursive: true });
+    _fsWrite(`${file}.tmp`, JSON.stringify({ until: new Date(untilMs).toISOString() }));
+    _fsRename(`${file}.tmp`, file);
+  } catch {
+    /* 退避文件写失败不影响内存冷却 */
+  }
+}
+
 function retryAfterMs(value) {
   if (!value) return 0;
   const seconds = Number(value);
@@ -269,8 +295,9 @@ export async function fetchText(url, opts = {}) {
 
   while (true) {
     attempt += 1;
-    if (isSteamHost(hostOf(url)) && steamCooldownUntil > Date.now()) {
-      const delayMs = steamCooldownUntil - Date.now();
+    const effective429 = Math.max(steamCooldownUntil, readSteam429Until());
+    if (isSteamHost(hostOf(url)) && effective429 > Date.now()) {
+      const delayMs = effective429 - Date.now();
       logger?.warn('http.rate_limit_wait', { label, delayMs, message: 'Steam 处于 429 冷却期，等待后再请求' });
       await sleep(delayMs);
     }
@@ -381,6 +408,7 @@ export async function fetchText(url, opts = {}) {
         const backoffMs = Math.min(6 * 60 * 60 * 1000, STEAM_429_COOLDOWN_MS * (2 ** (steam429Retries - 1)));
         const delayMs = Math.max(backoffMs, retryAfterMs(err.retryAfter));
         steamCooldownUntil = Math.max(steamCooldownUntil, Date.now() + delayMs);
+        writeSteam429Until(steamCooldownUntil); // AC6：落盘共享给其它子进程
         logger?.warn('http.rate_limit_pause', {
           label,
           requestId,
