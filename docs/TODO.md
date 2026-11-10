@@ -1072,7 +1072,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BH. 待开发：访问记录按 IP 统计（访问明细默认 IP 视图 + 黑白名单统计列 + 设备按设备码）
 
-**状态：已实现待发版（2026-11-10）**
+**状态：质检通过（2026-11-10，1f9e76a；QA 报告 docs/QA-VISIT-IP-STATS.md 未提交）**
 **依赖：** 无（复用异常审核按 IP 合并的交互先例）
 **解锁：** 无
 **规格**：[VISIT-IP-STATS.md](VISIT-IP-STATS.md)
