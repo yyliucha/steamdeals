@@ -871,7 +871,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AW. 封面图回源：404 快失败 + 超时收紧 + 负缓存分层 + `header_image` 直链
 
-**状态：已实现待发版（2026-11-10）**
+**状态：质检通过（2026-11-10，cb3fbf1；QA 报告 docs/QA-IMAGE-FETCH-AW.md 未提交）**
 **依赖：** 无
 **解锁：** 无（与 AV 的列表读模型互补；HTTP/2 属部署侧 [NGINX-PERF.md](NGINX-PERF.md)）
 **规格**：[IMAGE-FETCH.md](IMAGE-FETCH.md)
