@@ -39,7 +39,7 @@
 | **BB** | 代理健康主动探测（立即检测按钮 + 每 10 分钟定时任务） | [PROXY-POOL.md](PROXY-POOL.md) §11 | 已发布 v2.8.0（2026-11-10） | ✅ 本轮已给 |
 | **BC** | 封面图补图覆盖率（header_image 补全 + 预取扩大 + 缺图缓存可手动清） | [IMAGE-COVERAGE.md](IMAGE-COVERAGE.md) | 已发布 v2.8.0（2026-11-10） | ✅ 本轮已给 |
 | **BD** | 后台链接抽屉「最低价」醒目（方案 A：整卡高亮 + 角标） | [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md) §12 | 质检通过（2026-11-10，0124f79） | ✅ 本轮已给 |
-| **BE** | 愿望单仅本站：去 Steam 关联 + 前后端清单 + 后台可删不可加 | [WISHLIST-SITE-ONLY.md](WISHLIST-SITE-ONLY.md) | 已实现待发版（2026-11-10） | ✅ 本轮已给 |
+| **BE** | 愿望单仅本站：去 Steam 关联 + 前后端清单 + 后台可删不可加 | [WISHLIST-SITE-ONLY.md](WISHLIST-SITE-ONLY.md) | 质检通过（2026-11-10，66f0c18） | ✅ 本轮已给 |
 | **BF** | 数据库遗留对象清理（已下线功能的表/列） | [DB-LEGACY-CLEANUP.md](DB-LEGACY-CLEANUP.md) | 待开发（2026-11-10 已确认） | ✅ 本轮已给 |
 | **BG** | BUG：站点通知页未编辑即误报「未保存的修改」 | [UNSAVED-GUARD.md](UNSAVED-GUARD.md) §11 | 待开发（2026-11-10 已确认） | ✅ 本轮已给 |
 | **BH** | 访问记录按 IP 统计（访问明细默认 IP 视图 + 黑白名单统计列 + 设备按设备码） | [VISIT-IP-STATS.md](VISIT-IP-STATS.md) | 待开发（2026-11-10 已确认） | ✅ 本轮已给 |

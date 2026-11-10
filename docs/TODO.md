@@ -1015,7 +1015,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BE. 待开发：愿望单仅本站（去 Steam 关联 + 前后端清单 + 后台可删不可加）
 
-**状态：已实现待发版（2026-11-10）**
+**状态：质检通过（2026-11-10，66f0c18；QA 报告 docs/QA-WISHLIST-SITE-ONLY.md 未提交）**
 **依赖：** AA（已发布 v2.5.0：Steam 写接口 401 的诚实口径铺垫）
 **解锁：** 无
 **规格**：[WISHLIST-SITE-ONLY.md](WISHLIST-SITE-ONLY.md)
