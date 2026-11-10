@@ -33,6 +33,12 @@
 | **AV** | 首页列表读模型 `game_region_snapshot`（每请求全库聚合 → 入库时维护） | [READ-MODEL.md](READ-MODEL.md) | 已发布 v2.6.0（2026-11-10） | ✅ 本轮已给 |
 | **AW** | 封面图回源：404 快失败 + 超时收紧 + 负缓存分层 + `header_image` 直链 | [IMAGE-FETCH.md](IMAGE-FETCH.md) | 已发布 v2.7.0（2026-11-10） | ✅ 本轮已给 |
 | **AX** | 异常审核「按 IP 合并」定为默认视图（去开关、去明细表、不做逐条处置） | [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §4.5 | 已发布 v2.7.0（2026-11-10） | ✅ 本轮已给 |
+| **AY** | AV 读模型上线后性能未达门槛（列表 340ms / 零命中 1.59s / count 163ms） | [READ-MODEL.md](READ-MODEL.md) §9 | 待排查（2026-11-10） | ✅ 本轮已给 |
+| **AZ** | 异常审核「规则摘要」列精简（首规则 ×n · 共 N 条规则 + hover 弹层） | [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §4.6 | 待开发（2026-11-10 已确认） | ✅ 本轮已给 |
+| **BA** | 运行与同步页重设计（任务健康条 + 记录精简折叠 + 固定高度日志面板） | [RUN-SYNC-REDESIGN.md](RUN-SYNC-REDESIGN.md) | 待开发（2026-11-10 已确认） | ✅ 本轮已给 |
+| **BB** | 代理健康主动探测（立即检测按钮 + 每 10 分钟定时任务） | [PROXY-POOL.md](PROXY-POOL.md) §11 | 待开发（2026-11-10 已确认） | ✅ 本轮已给 |
+| **BC** | 封面图补图覆盖率（header_image 补全 + 预取扩大 + 缺图缓存可手动清） | [IMAGE-COVERAGE.md](IMAGE-COVERAGE.md) | 待开发（2026-11-10 已确认） | ✅ 本轮已给 |
+| **BD** | 后台链接抽屉「最低价」醒目（方案 A：整卡高亮 + 角标） | [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md) §12 | 已实现待发版（2026-11-10） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |
 | **AC** | 同步不可达的未保证项（AC1–AC11） | [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) | AC-1 已发布 v1.18.0；AC-2/AC-3/AC-4 已发布 v2.1.0（2026-11-09） | ✅ 已在对话给出 |
 | **AE** | 版本检测按服务器 IP 选镜像仓库（TCR/Hub） | [VERSION-SOURCE.md](VERSION-SOURCE.md) | 已发布 v1.18.0 | ✅ 已在对话给出 |

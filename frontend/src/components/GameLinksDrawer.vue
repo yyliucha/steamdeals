@@ -5,6 +5,7 @@ import { computed } from 'vue';
 import { ElMessage } from 'element-plus';
 import { copyText } from '../utils/clipboard.js';
 import { nameCopyText } from '../utils/gameNames.js';
+import { pickLowestLink } from '../utils/linkPrices.js';
 import { fmtDateTime } from '../utils/siteTime.js';
 
 const props = defineProps({
@@ -49,6 +50,8 @@ const sortedLinks = computed(() => {
     return String(a.platform_name ?? '').localeCompare(String(b.platform_name ?? ''));
   });
 });
+// BD 批（docs/ADMIN-LINKS-DRAWER.md §12）：最低价醒目——同币种内比、缺货不参与、全部同价不标。
+const lowestLink = computed(() => pickLowestLink(sortedLinks.value));
 
 async function doCopy(text, tip) {
   const ok = await copyText(text);
@@ -93,10 +96,11 @@ function close() {
       <div class="ld-body" v-loading="loading">
         <template v-if="sortedLinks.length">
           <div class="ld-sec"><h4>可跳转的购买渠道</h4><span>{{ sortedLinks.length }} 个链接</span></div>
-          <div v-for="l in sortedLinks" :key="`${l.platform_code}|${l.region}|${l.buy_url}`" class="ld-card" :class="{ out: !l.in_stock }">
+          <div v-for="l in sortedLinks" :key="`${l.platform_code}|${l.region}|${l.buy_url}`" class="ld-card" :class="{ out: !l.in_stock, low: l === lowestLink }">
             <div class="ld-card-main">
               <div class="ld-top">
                 <span class="ld-plat"><span class="dot" :class="PLATFORM_DOT[l.platform_code] || 'other'"></span>{{ l.platform_name || l.platform_code }}</span>
+                <span v-if="l === lowestLink" class="ld-badge">最低价</span>
                 <span class="ld-region">{{ regionLabel(l.region) }}</span>
               </div>
               <div class="ld-price">
@@ -142,6 +146,11 @@ function close() {
 .ld-sec span{color:var(--fg-muted);font-size:12px}
 .ld-card{display:flex;align-items:center;gap:12px;padding:13px 14px;border:1px solid var(--border);border-radius:12px;background:var(--panel-2);margin-bottom:10px}
 .ld-card.out{opacity:.55}
+/* BD 批（docs/ADMIN-LINKS-DRAWER.md §12）：最低价整卡高亮 + 角标 */
+.ld-card.low{border-color:var(--success);background:linear-gradient(180deg,rgba(52,195,155,.13),var(--panel-2) 70%);box-shadow:0 0 0 1px rgba(52,195,155,.22),0 8px 24px rgba(52,195,155,.10)}
+.ld-card.low .ld-price strong{color:var(--success);font-size:21px}
+.ld-badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:6px;background:var(--success);color:#06231b;font-size:11px;font-weight:800;letter-spacing:.02em}
+.ld-badge::before{content:'★';font-size:10px}
 .ld-card-main{flex:1;min-width:0}
 .ld-top{display:flex;align-items:center;gap:8px}
 .ld-plat{display:inline-flex;align-items:center;gap:7px;font-weight:700;font-size:13px;color:var(--fg)}

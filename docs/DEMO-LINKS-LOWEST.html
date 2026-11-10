@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>链接抽屉 · 最低价醒目 Demo</title>
+<style>
+  :root{
+    --bg:#0f1524;--bg-2:#121a2e;--panel:#161f33;--panel-2:#1a2440;--border:#26334c;--border-2:#2c3a56;
+    --fg:#e6eaf2;--fg-2:#c4cbd9;--fg-muted:#94a0b5;--brand:#8b82f5;--brand-2:#38d9f0;
+    --success:#34c39b;--warn:#f0a34c;--danger:#f0717e;
+    color-scheme:dark;font-family:'DM Sans','Noto Sans SC',-apple-system,'Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);min-height:100vh;display:flex;align-items:flex-start;justify-content:center;gap:28px;flex-wrap:wrap;padding:28px}
+  .demo-note{width:100%;text-align:center;color:var(--fg-muted);font-size:12px;margin-bottom:4px}
+  .demo-note b{color:var(--fg-2)}
+  .drawer{width:560px;max-width:96vw;background:var(--panel);border:1px solid var(--border);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px #0008}
+  .drawer-head{display:flex;gap:14px;align-items:center;padding:16px 20px 12px;border-bottom:1px solid var(--border);position:relative}
+  .cover{width:56px;height:56px;border-radius:12px;flex:0 0 auto;background:linear-gradient(135deg,#2b3a5e,#3d2f63);display:grid;place-items:center;font-weight:800;color:#c9c4ff;font-size:14px}
+  .title{min-width:0;flex:1}
+  .title h3{margin:0;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .en{color:var(--fg-muted);font-size:12px;margin-top:3px}
+  .tools{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}
+  .chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--panel-2);color:var(--fg-2);font-size:12px;cursor:pointer}
+  .chip:hover{border-color:var(--brand)}
+  .close{position:absolute;top:12px;right:14px;width:28px;height:28px;border:0;border-radius:7px;background:transparent;color:var(--fg-muted);font-size:20px;cursor:pointer}
+  .body{flex:1;overflow:auto;padding:14px 20px 6px}
+  .sec{display:flex;align-items:center;justify-content:space-between;margin:4px 0 10px}
+  .sec h4{margin:0;font-size:13px;color:var(--fg-2)}
+  .sec span{color:var(--fg-muted);font-size:12px}
+  /* 方案 B 汇总条 */
+  .low-summary{display:flex;align-items:center;gap:8px;margin:0 0 12px;padding:9px 12px;border-radius:10px;border:1px solid rgba(52,195,155,.45);background:rgba(52,195,155,.10);font-size:12.5px;color:var(--fg-2)}
+  .low-summary b{color:var(--success);font-size:14px}
+  .card{display:flex;align-items:center;gap:12px;padding:13px 14px;border:1px solid var(--border);border-radius:12px;background:var(--panel-2);margin-bottom:10px;transition:.15s}
+  .card-main{flex:1;min-width:0}
+  .top{display:flex;align-items:center;gap:8px}
+  .plat{display:inline-flex;align-items:center;gap:7px;font-weight:700;font-size:13px}
+  .dot{width:8px;height:8px;border-radius:50%}
+  .dot.gog{background:#a06bff}.dot.steam{background:#66c0f4}.dot.humble{background:#f0717e}
+  .region{font-size:11px;color:var(--fg-muted);border:1px solid var(--border);border-radius:5px;padding:0 6px}
+  .price{display:flex;align-items:baseline;gap:8px;margin-top:5px}
+  .price strong{font-size:18px;letter-spacing:-.02em;color:var(--brand-2)}
+  .meta{color:var(--fg-muted);font-size:11.5px;margin-top:5px}
+  .open{height:34px;padding:0 14px;border-radius:8px;border:1px solid var(--brand);background:rgba(139,130,245,.14);color:#c9c4ff;font-size:12.5px;font-weight:600;cursor:pointer}
+  .open:hover{background:rgba(139,130,245,.26);color:#fff}
+  .foot{padding:11px 20px 14px;border-top:1px solid var(--border);color:var(--fg-muted);font-size:11.5px}
+  /* 方案 A：最低价整卡高亮 */
+  .card.low{border-color:var(--success);background:linear-gradient(180deg,rgba(52,195,155,.13),var(--panel-2) 70%);box-shadow:0 0 0 1px rgba(52,195,155,.25),0 8px 24px rgba(52,195,155,.10)}
+  .card.low .price strong{color:var(--success);font-size:21px}
+  .badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:6px;background:var(--success);color:#06231b;font-size:11px;font-weight:800;letter-spacing:.02em}
+  .badge::before{content:'★';font-size:10px}
+  .legend{width:100%;text-align:center;color:var(--fg-muted);font-size:11.5px;padding:2px 0 0}
+  .legend code{color:var(--fg-2)}
+  @media(max-width:640px){body{padding:14px}.drawer{width:100%}}
+</style>
+</head>
+<body>
+<div class="demo-note">后台 → 游戏管理 → 点游戏名弹出的「链接抽屉」（对应现有 GameLinksDrawer.vue）· <b>最低价醒目方案对比</b></div>
+
+<!-- 方案 A -->
+<div class="drawer">
+  <div class="drawer-head">
+    <div class="cover">SC</div>
+    <div class="title">
+      <h3>细胞分裂</h3>
+      <div class="en">Tom Clancy's Splinter Cell®</div>
+      <div class="tools"><span class="chip">⧉ 复制中英文名</span><span class="chip">⧉ AppID 13560</span></div>
+    </div>
+    <button class="close">×</button>
+  </div>
+  <div class="body">
+    <div class="sec"><h4>可跳转的购买渠道</h4><span>3 个链接</span></div>
+    <div class="card low">
+      <div class="card-main">
+        <div class="top"><span class="plat"><span class="dot gog"></span>GOG</span><span class="badge">最低价</span><span class="region">国区</span></div>
+        <div class="price"><strong>¥25.00</strong></div>
+        <div class="meta">最后更新：今天 2026/11/10 10:41:27 · 有货</div>
+      </div>
+      <button class="open">打开 ↗</button>
+    </div>
+    <div class="card">
+      <div class="card-main">
+        <div class="top"><span class="plat"><span class="dot steam"></span>Steam</span><span class="region">国区</span></div>
+        <div class="price"><strong>¥40.00</strong></div>
+        <div class="meta">最后更新：昨天 2026/11/08 20:10:40 · 有货</div>
+      </div>
+      <button class="open">打开 ↗</button>
+    </div>
+    <div class="card">
+      <div class="card-main">
+        <div class="top"><span class="plat"><span class="dot humble"></span>Humble</span><span class="region">国区</span></div>
+        <div class="price"><strong>¥66.66</strong></div>
+        <div class="meta">最后更新：今天 2026/11/10 10:28:24 · 有货</div>
+      </div>
+      <button class="open">打开 ↗</button>
+    </div>
+  </div>
+  <div class="foot">价格与库存以平台页面为准 · 链接由采集任务维护</div>
+</div>
+
+<!-- 方案 B -->
+<div class="drawer">
+  <div class="drawer-head">
+    <div class="cover">SC</div>
+    <div class="title">
+      <h3>细胞分裂</h3>
+      <div class="en">Tom Clancy's Splinter Cell®</div>
+      <div class="tools"><span class="chip">⧉ 复制中英文名</span><span class="chip">⧉ AppID 13560</span></div>
+    </div>
+    <button class="close">×</button>
+  </div>
+  <div class="body">
+    <div class="sec"><h4>可跳转的购买渠道</h4><span>3 个链接</span></div>
+    <div class="low-summary">已按价格排序 · 当前最低 <b>¥25.00</b>（GOG）</div>
+    <div class="card">
+      <div class="card-main">
+        <div class="top"><span class="plat"><span class="dot gog"></span>GOG</span><span class="region">国区</span></div>
+        <div class="price"><strong>¥25.00</strong></div>
+        <div class="meta">最后更新：今天 2026/11/10 10:41:27 · 有货</div>
+      </div>
+      <button class="open">打开 ↗</button>
+    </div>
+    <div class="card">
+      <div class="card-main">
+        <div class="top"><span class="plat"><span class="dot steam"></span>Steam</span><span class="region">国区</span></div>
+        <div class="price"><strong>¥40.00</strong></div>
+        <div class="meta">最后更新：昨天 2026/11/08 20:10:40 · 有货</div>
+      </div>
+      <button class="open">打开 ↗</button>
+    </div>
+    <div class="card">
+      <div class="card-main">
+        <div class="top"><span class="plat"><span class="dot humble"></span>Humble</span><span class="region">国区</span></div>
+        <div class="price"><strong>¥66.66</strong></div>
+        <div class="meta">最后更新：今天 2026/11/10 10:28:24 · 有货</div>
+      </div>
+      <button class="open">打开 ↗</button>
+    </div>
+  </div>
+  <div class="foot">价格与库存以平台页面为准 · 链接由采集任务维护</div>
+</div>
+
+<div class="legend">左：<code>方案 A</code> 最低价整卡高亮 +「最低价」角标（推荐） &nbsp;·&nbsp; 右：<code>方案 B</code> 顶部汇总条（不动卡片） &nbsp;·&nbsp; 可叠加：A+B 同时用</div>
+</body>
+</html>

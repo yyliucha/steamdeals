@@ -868,6 +868,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ③ `EXPLAIN` 无 `daily_prices` 聚合、无全表 offers 聚合；④ 新旧实现 total 与第一页顺序一致（20 组组合）；
   ⑤ 写价后快照同轮更新、合并不失真、抽样对账 0 差异；⑥ `npm test` / `frontend:build` / `scan` 全绿。
 - **回滚**：`READ_MODEL=legacy` 切回旧 SQL，表保留。
+- **上线实测（2026-11-10 13:19–13:26，外网 TTFB，扣 TLS ≈70–85ms）**：默认筛选 **337 / 340 / 343ms**（服务端 ≈265ms）；
+  `q=zzzzzz` 零命中 **1.59s**（服务端 ≈1.52s）；`/api/games/count` **163ms**（服务端 ≈84ms）。
+  **三项都未达 §9 门槛（150 / 150 / 30ms）**，功能正常但性能验收未通过 → 立 **AY** 跟进（见下）。
 
 ## AW. ~~封面图回源：404 快失败 + 超时收紧 + 负缓存分层 + `header_image` 直链~~ → **已实现并发布 v2.7.0（2026-11-10）**
 
@@ -918,6 +921,100 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   合并视图（聚合/展开/整 IP 处置/移动卡片/分页/`admin.reviewMergeSort` 排序）提为默认唯一渲染，翻页清空 IP 选择；
   标题说明补「同一 IP 合并为一行，展开看逐条规则」。测试：`admin-review-lists.test.js` 改断言（无开关/无合并键/
   默认合并表）、`admin-bulk.test.js` 计数随明细表移除更新、`reviews.test.js` 悬停提示断言改合并展开行。无后端改动。
+## AY. 待排查：AV 读模型上线后性能未达门槛（列表 340ms / 零命中 1.59s / count 163ms）
+
+**状态：待排查（2026-11-10，外网实测已取，缺生产 EXPLAIN）**
+**依赖：** AV（已发布 v2.6.0）
+**解锁：** 无
+**规格**：[READ-MODEL.md](READ-MODEL.md) §9 性能门槛
+
+- **实测（2026-11-10 13:19–13:26，外网 TTFB，扣除 TLS 握手 ≈70–85ms）**：
+  ① `POST /api/games/search` 默认筛选 **337 / 340 / 343ms**（服务端 ≈265ms），门槛 <150ms；
+  ② `q=zzzzzz` 零命中 **1.59s**（服务端 ≈1.52s），门槛 <150ms——零命中反而比有结果慢约 5 倍，明显异常；
+  ③ `GET /api/games/count` **163ms**（服务端 ≈84ms），门槛 <30ms。
+- **怀疑点**：关键词 OR（`name LIKE` / `name_en LIKE` / `game_aliases` EXISTS）与 `game_region_snapshot` join
+  组合后退化成 19.6 万 games 全表扫 + 逐行别名探测；count 与列表各扫一遍。
+- **下一步（只读）**：生产库对两条 SQL 跑 `EXPLAIN (ANALYZE, BUFFERS)`（参数：region='cn'、kw='' 与 kw='zzzzzz'），
+  据计划二选一：① 关键词先用 trgm 收敛成 game_id 集合再 join 快照；② count 与列表共用一次候选集
+  （`count(*) over()`）或给 count 加短缓存。
+- **验收**：三项回到 §9 门槛（列表 P95<150ms、零命中<150ms、count<30ms），且列表 total/排序/筛选不变
+  （复用 `test/game-search-read-model.test.js` 的组合一致性用例）。
+
+## AZ. 待开发：异常审核「规则摘要」列精简（首规则 ×n · 共 N 条规则 + hover 弹层）
+
+**状态：待开发（2026-11-10，所有者确认选「首规则 ×n · 共 N 条规则」）**
+**依赖：** AX（已发布 v2.7.0）
+**解锁：** 无
+**规格**：[ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §4.6
+
+- **问题（2026-11-10 所有者，合并视图截图）**：规则摘要列把该 IP 的全部规则逐条拼出
+  （`cms-probe ×1 · script-ext ×1 · secret-file ×1 · vcs-dir ×1`），一个 IP 带 3–4 条规则就占满整行。
+- **方案**：列内只显示 `首规则 ×n · 共 N 条规则`（首规则 = 次数最多，`row.rules` 已按次数降序）；
+  悬停弹层（el-popover）列出全部规则 `规则 ×n`；明细仍以展开行为准；移动端卡片同口径。
+- **改动**：`AdminModules.vue` 合并表 ruleCount 列 + 移动卡片；`test/admin-review-lists.test.js` 断言改「首规则 + 共 N 条规则 + popover」。
+- **验收**：见规格 §4.6——列固定宽不溢出；hover 弹层列全部规则；单规则 IP 不出现空弹层；移动端同口径；`npm test` / `frontend:build` / `scan` 全绿。
+
+## BA. 待开发：运行与同步页重设计（任务健康条 + 记录精简 + 固定高度日志面板）
+
+**状态：待开发（2026-11-10，所有者确认方案 A）**
+**依赖：** 无（复用 `/api/admin/sync/status`、`/api/admin/logs`、`/api/admin/sync/runs` 现有接口）
+**解锁：** 无
+**规格**：[RUN-SYNC-REDESIGN.md](RUN-SYNC-REDESIGN.md)
+
+- **问题（2026-11-10 所有者，页面截图）**：同步记录 10 列 × 20 行 + 日志筛选/摘要/300 条日志卡片 ≈ 2100px+，
+  日志永远在最下面，每次都要滚到底。
+- **方案（方案 A）**：① 顶部任务健康条（chips：任务名/最近状态/耗时/下次运行，点 chip 过滤日志，60s 自动刷新）；
+  ② 同步记录列合并为 6 列（时间/模式/状态/结果/耗时/备注），默认最近 5 轮 + 展开全部；
+  ③ 日志面板固定高度 55vh 内部滚动，筛选条 sticky 在面板头，日志行紧凑单行 + 点击展开完整字段；
+  ④ 移动端健康条横向滚动、日志面板 50vh。
+- **验收**：见规格 §4——1440×900 一屏可见健康条 + 记录前 5 行 + 日志头；日志面板内部滚动不拉长页面；
+  chip 过滤可用；记录 5 轮折叠；日志行展开/筛选/自动刷新可用；移动端无横向溢出；`npm test` / `frontend:build` / `scan` 全绿。
+
+## BB. 待开发：代理健康主动探测（立即检测按钮 + 每 10 分钟定时任务）
+
+**状态：待开发（2026-11-10，所有者确认「立即检测 + 定时探测」）**
+**依赖：** AM-1 / AM-2（代理池，已发布）
+**解锁：** 无
+**规格**：[PROXY-POOL.md](PROXY-POOL.md) §11
+
+- **问题（2026-11-10 所有者，设置页截图）**：健康状态显示「未知」——健康数据只来自真实 Steam 请求
+  （`http.js` → `proxy-pool.js` 写 `data/proxy-health.json`），没有主动探测；代理没被真实请求用过就永远未知。
+- **方案**：`POST /api/admin/proxies/probe`（CONNECT 协议层探测，复用 diagnose 的 `probeProxyConnect`）；
+  设置页「立即检测」按钮；定时任务 `proxy-probe`（每 10 分钟，`PROXY_PROBE_ENABLED=0` 可关）；
+  探测结果与业务冷却**分离**（探测失败不写 coolsdown）；「未知」改为「未检测」+ 上次检测时间；日志脱敏。
+- **验收**：见规格 §11.6——探测结果正确、不误改业务冷却、定时任务默认参数与开关断言、脱敏、
+  老配置兼容、`npm test` / `frontend:build` / `scan` 全绿。
+
+## BC. 待开发：封面图补图覆盖率（header_image 补全 + 预取扩大 + 缺图缓存可手动清）
+
+**状态：待开发（2026-11-10，所有者确认「提高补图覆盖率」）**
+**依赖：** AW（已发布 v2.7.0；本批在其上提高覆盖率，占位块保留为兜底）
+**解锁：** 无
+**规格**：[IMAGE-COVERAGE.md](IMAGE-COVERAGE.md)
+
+- **问题（2026-11-10 所有者，前台截图）**：新游戏前台封面显示占位块（W/C/G/夜 等）。根因：价格类同步入库的
+  游戏没有 `header_image`（只有元数据同步才写），老路径又 404；AW 批的 24h 负缓存让「补上后也要等 24h」；
+  `images pull` 每轮 200 款覆盖约 3%。
+- **方案**：① `steam-status` 顺带写 `header_image`（同一次全量 appdetails 响应已有字段，零额外请求）+
+  `backfill` 候选追加「有价但 header_image 为空」；② `images.limit` 默认 200→500（生产已保存旧值需部署侧调）；
+  ③ 后台「清除缺图缓存」按钮 + `POST /api/admin/images/reset-miss`；④ 前端占位块保持 v2.7.0 设计。
+- **验收**：见规格 §4——`steam-status.header_image_filled` >0、backfill 补齐、limit 默认 500、reset-miss 生效、
+  占位块行为不变、`npm test` / `frontend:build` / `scan` 全绿。
+
+## BD. 待开发：后台链接抽屉「最低价」醒目（方案 A：整卡高亮 + 角标）
+
+**状态：已实现待发版（2026-11-10）**
+**依赖：** AO（链接抽屉，已发布 v2.1.0）
+**解锁：** 无
+**规格**：[ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md) §12
+
+- **问题（2026-11-10 所有者，链接抽屉截图）**：多个渠道价格并列无重点，要自己比价。
+- **方案（方案 A）**：最低价那张卡整卡高亮（绿描边 + 淡绿底 + 发光 + 「★ 最低价」角标 + 价格放大变绿）；
+  口径：币种不折算（首项币种锚定）、缺货不参与、至少 2 条可比且唯一最低才标；纯前端。
+- **验收**：见规格 §12——三渠道时 GOG 高亮；跨币种不比较；缺货/单条/同价不标；移动端生效；`npm test` / `frontend:build` / `scan` 全绿。
+
+
+
 
 
 

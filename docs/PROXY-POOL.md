@@ -191,3 +191,73 @@ for attempt in 1..maxAttempts:
 ## 10. 待确认
 
 无。5 个问题已于 2026-11-06 确认（切换条件 A、冷却 60s/5min/30min、全部失败不回直连、列表 UI ≤10、显示健康状态）。
+
+## 11. 2026-11-10 修订（BB）：代理健康主动探测
+
+**问题（2026-11-10 所有者，设置页截图）**：健康状态表显示「未知」——健康数据只来自真实 Steam 请求的
+成功/失败（`http.js` → `proxy-pool.js` 写 `data/proxy-health.json`），**没有主动探测**；代理只要没被真实请求
+用过，就永远是「未知」，无法在设置页判断它是否可用。
+
+**决策（所有者 2026-11-10）**：
+
+1. 设置页健康表加「**立即检测**」按钮：服务端对每条代理做 CONNECT 协议层探测，更新健康并返回每条结果；
+2. 后台**定时探测任务** `proxy-probe`：每 10 分钟探测一次（`PROXY_PROBE_ENABLED=0` 可关）；
+3. 探测结果与业务冷却**分离**：探测失败只更新「最近检测 / 探测结果」字段，**不写业务冷却**（避免探测误杀；
+   业务失败仍按 AM-1 的 `noteProxyFailure` 进冷却）；
+4. 状态显示口径：`正常`（最近一次业务请求成功）/ `冷却中`（业务冷却）/ `未检测`（从未探测过）——
+   「未知」改为「未检测」并显示「上次检测时间」。
+
+**设计**
+
+### 11.1 探测方式（复用 diagnose 的 CONNECT 逻辑）
+
+- 从 `cli.js` 的 `cmdDiagnose` 抽出 `probeProxyConnect(proxyUrl, target)` 到 `src/proxy-pool.js` 导出：
+  HTTP CONNECT 到 `store.steampowered.com:443`，带 `proxy-authorization`（未脱敏地址），12s 超时；
+  返回 `{ ok, status, detail }`；
+- 探测目标固定 `store.steampowered.com:443`（与业务主目标一致）；每条代理独立探测、互不影响；
+- 探测**不写日志明文**：日志与 API 只出现 `redactProxy()` 后的地址。
+
+### 11.2 健康文件扩展（`data/proxy-health.json`）
+
+每个代理记录追加：`probeAt`（最近探测时间 ISO）、`probeOk`（bool）、`probeError`（失败原因 ≤120 字）；不改变现有
+`fails`/`downUntil`/`lastOkAt`/`lastError` 语义。
+
+### 11.3 服务端
+
+- `proxy-pool.js` 导出 `probeProxy(url)`（单条）与 `probeAllProxies(env, { file })`（遍历池、写文件、返回汇总）；
+- `POST /api/admin/proxies/probe`（仅管理员，需 CSRF/同源校验——沿用现有管理接口约定）：调 `probeAllProxies`，
+  返回 `{ proxies: [{ index, proxy, state, probeOk, probeError, probeAt }], updatedAt }`；
+- 日志事件：`proxy.probe_start`（count）、`proxy.probe_result`（index、ok、detail）、`proxy.probe_done`（ok/failed、elapsedMs）；
+- `GET /api/admin/proxies` 返回值追加 `probeAt/probeOk/probeError` 字段（兼容：老字段不变）。
+
+### 11.4 调度任务
+
+- `scheduler.js` 的 `jobsFromEnv` 新增 `proxy-probe`：`args: ['probe','--proxy']`（CLI 子命令 `probe` 增加
+  `--proxy` 模式，逐条探测并输出汇总）、`intervalMin: 10`、`PROXY_PROBE_ENABLED !== '0'`；
+- 单轮时长：每条代理 ≤12s 超时，池上限 10 条 → 最坏 120s，正常 <5s；不挤占 Steam 配额（不请求 Steam 业务接口，
+  只做 CONNECT）；
+- 续跑/幂等：每次全量探测，无游标；失败条目照常写 probeError，下轮重试。
+
+### 11.5 前端（设置页健康表）
+
+- 表格列加「最近检测」；「刷新」旁新增「立即检测」按钮（loading 态，探测期间禁用）；
+- 状态映射：`ok`→正常（绿）/ `cooldown`→冷却中剩余（黄）/ `unknown`→**未检测**（灰）；
+- 「立即检测」完成后局部刷新该表并提示「已检测 N 条，M 条可用」。
+
+### 11.6 验收
+
+1. 新装（健康文件不存在）：健康表显示「未检测」，无「未知」字样；
+2. 点「立即检测」：每条代理得到探测结果（正常或失败原因，如 407/ECONNREFUSED/超时），表格状态与「最近检测」时间更新；
+3. 探测失败**不改变业务冷却**（构造：探测失败后 `GET /api/admin/proxies` 的 `fails/downUntil` 不变）；
+4. 定时任务：`proxy-probe` 每 10 分钟运行，`PROXY_PROBE_ENABLED=0` 关闭，`test/scheduler.test.js` 断言默认参数与开关；
+5. 探测与 API 输出里代理密码被 `redactProxy()` 脱敏，健康文件不含代理地址明文；
+6. 老配置（单条代理、旧健康文件字段）完全兼容；
+7. `npm test` 全绿（新增 `test/proxy-probe.test.js`：探测成功/失败/超时不进冷却/redact 断言）、
+   `npm run frontend:build`、`npm run scan`。
+
+### 11.7 本批不做
+
+- 自动测速/自动切换最优代理（仍按顺序 + 粘住成功者）；
+- 通用代理 `HTTPS_PROXY` 的探测；
+- 探测结果参与业务选路（探测失败不降级选路，业务仍按真实请求失败进冷却）。
+
