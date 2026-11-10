@@ -305,3 +305,25 @@ test('组件注册：ElPopover 进 main.js 三处（import / 样式 / app.use）
   assert.match(m, /popover\/style\/css/, '加载 popover 样式');
   assert.match(m, /ElPopover[,\]]/, 'app.use 数组含 ElPopover');
 });
+// BA 批（docs/RUN-SYNC-REDESIGN.md §4）：运行与同步页重设计——任务健康条 / 记录 6 列 + 5 轮折叠 / 固定高度日志面板。
+test('BA 批：运行与同步页——健康条、记录精简与 5 轮折叠、日志面板固定高度/行展开', () => {
+  const vue = read('../frontend/src/pages/AdminLogs.vue');
+  // ① 任务健康条：接 /api/admin/sync/status，chip 可过滤日志，60 秒自动刷新
+  assert.match(vue, /任务健康/, '健康条标题');
+  assert.match(vue, /api\/admin\/sync\/status/, '读调度器状态接口');
+  assert.match(vue, /v-for="j in jobs"[^>]*class="health-chip"/, '任务 chip 列表');
+  assert.match(vue, /toggleJobFilter\(j\.name\)/, '点 chip 过滤日志');
+  assert.match(vue, /setInterval\(\(\) => \{\s*if \(activeTab\.value === 'run' && !document\.hidden\) loadHealth\(\);/, '60 秒刷新健康条');
+  // ② 同步记录：6 列（时间/模式/状态/结果/耗时/备注）+ 默认 5 轮 + 展开全部
+  assert.match(vue, /label="结果"/, '合并结果列');
+  assert.doesNotMatch(vue, /label="请求数"/, '旧的请求数列已合并');
+  assert.doesNotMatch(vue, /label="总量"/);
+  assert.match(vue, /const visibleRuns = computed\(\(\) => \(showAllRuns\.value \? syncRuns\.value : syncRuns\.value\.slice\(0, 5\)\)\)/, '默认 5 轮');
+  assert.match(vue, /showAllRuns = !showAllRuns/, '展开/收起全部');
+  // ③ 日志面板：固定高度 55vh 内滚 + sticky 头 + 行点击展开完整字段
+  assert.match(vue, /\.log-panel-body\{max-height:55vh;overflow-y:auto/, '55vh 内部滚动');
+  assert.match(vue, /\.log-panel-head\{position:sticky/, '筛选条 sticky');
+  assert.match(vue, /@click="toggleLogExpanded\(index\)"/, '日志行点击展开');
+  assert.match(vue, /v-if="expandedLogs\.has\(index\)"/, '展开完整字段');
+  assert.match(vue, /@media \(max-width:760px\)\{\.log-panel-body\{max-height:50vh\}/, '移动端 50vh');
+});

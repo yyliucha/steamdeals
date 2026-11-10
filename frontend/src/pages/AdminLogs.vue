@@ -110,29 +110,58 @@
       <!-- 5. 运行与同步 -->
       <el-tab-pane name="run">
         <template #label><span>运行与同步<span v-if="counts.run != null" class="tab-count">{{ counts.run }}</span></span></template>
-        <div class="module-card table-card"><div class="card-heading padded"><div><h3>同步记录</h3><p>最近 20 轮数据任务：先看「跑了什么」，再看下方实时输出</p></div><el-button text :loading="loading.run" @click="loadSyncRuns">刷新</el-button></div>
-          <el-table :data="syncRuns" v-loading="loading.run" stripe :row-class-name="syncRunRowClass">
-            <el-table-column label="开始时间" min-width="155"><template #default="{ row }">{{ dateTime(row.started_at) }}</template></el-table-column>
-            <el-table-column label="模式" width="130"><template #default="{ row }"><el-tag size="small">{{ syncModeLabel(row.mode) }}</el-tag></template></el-table-column>
+        <!-- BA 批（docs/RUN-SYNC-REDESIGN.md）：任务健康条（点 chip 过滤日志） -->
+        <div class="module-card health-bar">
+          <div class="health-head"><div><h3>任务健康</h3><p>最近一次运行 · 点任务筛选日志 · 每 60 秒自动刷新</p></div><el-button text :loading="loading.health" @click="loadHealth">刷新</el-button></div>
+          <div class="health-chips">
+            <button v-for="j in jobs" :key="j.name" type="button" class="health-chip" :class="[jobState(j), { on: jobFilter === j.name }]" @click="toggleJobFilter(j.name)">
+              <span class="dot" /><strong>{{ jobLabel(j.name) }}</strong>
+              <span class="chip-state">{{ jobStateText(j) }}</span>
+              <span v-if="j.lastElapsedMs != null">{{ fmtDur(j.lastElapsedMs) }}</span>
+              <span class="chip-next">{{ nextRunText(j) }}</span>
+            </button>
+            <el-empty v-if="!jobs.length" description="调度器状态尚未生成（未启动？）" :image-size="40" />
+          </div>
+        </div>
+
+        <!-- 同步记录：6 列 · 默认最近 5 轮 -->
+        <div class="module-card table-card">
+          <div class="card-heading padded"><div><h3>同步记录</h3><p>最近 {{ visibleRuns.length }} / {{ syncRuns.length }} 轮数据任务</p></div><div class="heading-actions"><el-button text @click="showAllRuns = !showAllRuns">{{ showAllRuns ? '收起为最近 5 轮' : '展开全部（' + syncRuns.length + ' 轮）' }}</el-button><el-button text :loading="loading.run" @click="loadSyncRuns">刷新</el-button></div></div>
+          <el-table :data="visibleRuns" v-loading="loading.run" stripe :row-class-name="syncRunRowClass">
+            <el-table-column label="时间" min-width="155"><template #default="{ row }">{{ dateTime(row.started_at) }}</template></el-table-column>
+            <el-table-column label="模式" width="120"><template #default="{ row }"><el-tag size="small">{{ syncModeLabel(row.mode) }}</el-tag></template></el-table-column>
             <el-table-column label="状态" width="95"><template #default="{ row }"><el-tag :type="row.status === 'ok' ? 'success' : row.status === 'running' ? 'primary' : 'danger'" size="small">{{ { ok: '成功', running: '运行中', failed: '失败', stopped: '已停止' }[row.status] || row.status || '—' }}</el-tag></template></el-table-column>
-            <el-table-column label="请求数" width="80" align="right"><template #default="{ row }">{{ row.requests ?? '—' }}</template></el-table-column>
-            <el-table-column label="总量" width="80" align="right"><template #default="{ row }">{{ row.total ?? '—' }}</template></el-table-column>
-            <el-table-column label="成功" width="75" align="right"><template #default="{ row }">{{ row.ok ?? '—' }}</template></el-table-column>
-            <el-table-column label="跳过" width="75" align="right"><template #default="{ row }">{{ row.skipped ?? '—' }}</template></el-table-column>
-            <el-table-column label="失败" width="75" align="right"><template #default="{ row }"><span :class="row.failed > 0 ? 'text-danger' : ''">{{ row.failed ?? '—' }}</span></template></el-table-column>
+            <el-table-column label="结果" min-width="200"><template #default="{ row }">{{ runResult(row) }}</template></el-table-column>
             <el-table-column label="耗时" width="100"><template #default="{ row }">{{ syncDuration(row) }}</template></el-table-column>
-            <el-table-column label="备注" min-width="200" show-overflow-tooltip><template #default="{ row }">{{ row.fetch_note || String(row.output || '').split('\n').filter(Boolean).slice(-1)[0] || '—' }}</template></el-table-column>
+            <el-table-column label="备注" min-width="220" show-overflow-tooltip><template #default="{ row }">{{ row.fetch_note || String(row.output || '').split('\n').filter(Boolean).slice(-1)[0] || '—' }}</template></el-table-column>
           </el-table>
         </div>
-        <div class="module-card log-filters">
-          <el-select v-model="logScope" @change="loadLogs"><el-option label="所有模块" value="" /><el-option label="应用" value="app" /><el-option label="Steam 与同步" value="steam" /><el-option label="用户与登录" value="user" /><el-option label="错误" value="error" /></el-select>
-          <el-select v-model="logMinutes" @change="loadLogs"><el-option label="全部时间" value="0" /><el-option label="近 15 分钟" value="15" /><el-option label="近 1 小时" value="60" /><el-option label="近 24 小时" value="1440" /></el-select>
-          <el-input v-model="logQuery" clearable placeholder="搜索日志内容" @keyup.enter="loadLogs" />
-          <el-button type="primary" @click="loadLogs">刷新日志</el-button>
-          <el-checkbox v-model="autoLogs">每 10 秒自动刷新</el-checkbox>
+
+        <!-- 日志面板：固定高度内部滚动（sticky 筛选条） -->
+        <div class="module-card log-panel">
+          <div class="log-panel-head">
+            <div class="log-filters">
+              <el-select v-model="logScope" @change="loadLogs"><el-option label="所有模块" value="" /><el-option label="应用" value="app" /><el-option label="Steam 与同步" value="steam" /><el-option label="用户与登录" value="user" /><el-option label="错误" value="error" /></el-select>
+              <el-select v-model="logMinutes" @change="loadLogs"><el-option label="全部时间" value="0" /><el-option label="近 15 分钟" value="15" /><el-option label="近 1 小时" value="60" /><el-option label="近 24 小时" value="1440" /></el-select>
+              <el-input v-model="logQuery" clearable placeholder="搜索日志内容（点任务 chip 也会填这里）" @keyup.enter="loadLogs" />
+              <el-button type="primary" @click="loadLogs">刷新日志</el-button>
+              <el-checkbox v-model="autoLogs">每 10 秒自动刷新</el-checkbox>
+              <el-button v-if="jobFilter" text @click="clearJobFilter">清除任务筛选：{{ jobLabel(jobFilter) }}</el-button>
+            </div>
+            <div class="log-meta"><span>{{ logFiles.join('、') || '日志文件读取中' }}</span><strong>{{ logEntries.length }} 条</strong><el-button text @click="logEntries = []">清空当前显示</el-button></div>
+          </div>
+          <div class="log-panel-body">
+            <article v-for="(entry, index) in pagedLogEntries" :key="entry.ts + '-' + index" class="log-line" :class="String(entry.level || 'info').toLowerCase()" @click="toggleLogExpanded(index)">
+              <time>{{ dateTime(entry.ts || entry.time) }}</time>
+              <el-tag :type="logTag(entry.level)" size="small">{{ String(entry.level || 'info').toUpperCase() }}</el-tag>
+              <strong class="log-event">{{ entry.event || entry.msg || '日志事件' }}</strong>
+              <span class="log-brief">{{ logBrief(entry) }}</span>
+              <pre v-if="expandedLogs.has(index)" class="log-full">{{ logDetails(entry) }}</pre>
+            </article>
+            <el-empty v-if="!logEntries.length" description="没有匹配的日志" />
+          </div>
+          <div class="log-panel-foot"><PaginationBar v-model:page="logsPage" v-model:page-size="logsPageSize" :total="logEntries.length" /></div>
         </div>
-        <div class="module-card log-summary"><span>{{ logFiles.join('、') || '日志文件读取中' }}</span><strong>{{ logEntries.length }} 条</strong><el-button text @click="logEntries = []">清空当前显示</el-button></div>
-        <div class="log-list"><article v-for="(entry, index) in pagedLogEntries" :key="entry.ts + '-' + index" class="log-entry" :class="String(entry.level || 'info').toLowerCase()"><time>{{ dateTime(entry.ts || entry.time) }}</time><el-tag :type="logTag(entry.level)" size="small">{{ String(entry.level || 'info').toUpperCase() }}</el-tag><strong>{{ entry.event || entry.msg || '日志事件' }}</strong><pre>{{ logDetails(entry) }}</pre></article><el-empty v-if="!logEntries.length" description="没有匹配的日志" /><PaginationBar v-model:page="logsPage" v-model:page-size="logsPageSize" :total="logEntries.length" /></div>
       </el-tab-pane>
     </el-tabs>
 
@@ -186,7 +215,7 @@ function api(path, opts = {}) {
 }
 function notify(e) { ElMessage.error(e?.message || String(e)); }
 
-const loading = reactive({ user_deletions: false, bulk: false, steam: false, mail: false, run: false });
+const loading = reactive({ user_deletions: false, bulk: false, steam: false, mail: false, run: false, health: false });
 const loaded = reactive({ user_deletions: false, bulk: false, steam: false, mail: false, run: false });
 const counts = reactive({ user_deletions: null, bulk: null, steam: null, mail: null, run: null });
 
@@ -354,7 +383,7 @@ const logMinutes = ref('0');
 const autoLogs = ref(false);
 const logsPager = useListPagination(logEntries);
 const pagedLogEntries = logsPager.items, logsPage = logsPager.page, logsPageSize = logsPager.pageSize;
-function loadRun() { loadSyncRuns(); loadLogs(); }
+function loadRun() { loadSyncRuns(); loadLogs(); loadHealth(); }
 async function loadSyncRuns() {
   loading.run = true;
   try {
@@ -390,16 +419,98 @@ function logDetails(entry) {
   return Object.entries(entry).filter(([k]) => !['ts', 'time', 'level', 'event', 'msg'].includes(k)).map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join('  ');
 }
 
+// BA 批（docs/RUN-SYNC-REDESIGN.md §3）：任务健康条 + 记录精简 + 固定高度日志面板
+const jobs = ref([]);
+const showAllRuns = ref(false);
+const jobFilter = ref('');
+const expandedLogs = ref(new Set());
+const JOB_LABELS = {
+  'steam-prices': '价格刷新', 'steam-status': '状态判定', 'steam-accounts': 'Steam 账号', 'steam-claim': '愿望单认领',
+  catalog: '目录同步', backfill: '增量回填', rename: '重写名字', heat: '热度回填', discover: '发现队列',
+  images: '图片预取', sonkwo: '杉果', itad: 'ITAD', gog: 'GOG', humble: 'Humble', alerts: '到价提醒',
+  prune: '清理', backup: '备份', logs: '日志清理', report: '静态页', readmodel: '读模型对账', 'proxy-probe': '代理探测',
+};
+const jobLabel = (n) => JOB_LABELS[n] || n || '—';
+const visibleRuns = computed(() => (showAllRuns.value ? syncRuns.value : syncRuns.value.slice(0, 5)));
+function jobState(j) {
+  if (j.running) return 'idle';
+  if (j.openUntil) return 'failed';
+  if (j.lastResult === 'ok') return 'ok';
+  if (j.lastResult === 'failed') return 'failed';
+  return 'idle';
+}
+function jobStateText(j) {
+  if (j.running) return '运行中';
+  if (j.openUntil) return '熔断至 ' + dateTime(j.openUntil);
+  if (j.lastResult === 'ok') return '成功';
+  if (j.lastResult === 'failed') return '失败';
+  return j.lastRunAt ? '待运行' : '未运行';
+}
+function fmtDur(ms) {
+  const v = Number(ms);
+  if (!Number.isFinite(v) || v < 0) return '—';
+  if (v < 1000) return Math.round(v) + ' ms';
+  if (v < 60000) return (v / 1000).toFixed(1) + ' 秒';
+  const m = Math.floor(v / 60000), s = Math.round((v % 60000) / 1000);
+  return m + ' 分 ' + s + ' 秒';
+}
+function nextRunText(j) {
+  if (!j.nextRunAt) return '—';
+  const ms = new Date(j.nextRunAt).getTime() - Date.now();
+  if (!Number.isFinite(ms)) return '—';
+  if (ms <= 0) return '即将';
+  const min = Math.round(ms / 60000);
+  if (min < 60) return min + ' 分后';
+  const h = Math.round(min / 60);
+  return h < 24 ? h + ' 小时' : Math.round(h / 24) + ' 天';
+}
+async function loadHealth() {
+  loading.health = true;
+  try {
+    const d = await api('/api/admin/sync/status');
+    jobs.value = d.schedule && Array.isArray(d.schedule.jobs) ? d.schedule.jobs : [];
+  } catch (e) { notify(e); } finally { loading.health = false; }
+}
+function toggleJobFilter(name) {
+  if (jobFilter.value === name) return clearJobFilter();
+  jobFilter.value = name;
+  logQuery.value = name;
+  loadLogs();
+}
+function clearJobFilter() { jobFilter.value = ''; logQuery.value = ''; loadLogs(); }
+function runResult(row) {
+  const parts = [];
+  if (row.ok != null) parts.push('成功 ' + row.ok);
+  if (row.skipped != null) parts.push('跳过 ' + row.skipped);
+  if (row.failed != null) parts.push('失败 ' + row.failed);
+  return parts.length ? parts.join(' / ') : '—';
+}
+function logBrief(entry) {
+  return Object.entries(entry)
+    .filter(([k]) => !['ts', 'time', 'level', 'event', 'msg'].includes(k))
+    .map(([k, v]) => k + '=' + (typeof v === 'object' ? JSON.stringify(v) : String(v)))
+    .join('  ');
+}
+function toggleLogExpanded(i) {
+  const next = new Set(expandedLogs.value);
+  if (next.has(i)) next.delete(i); else next.add(i);
+  expandedLogs.value = next;
+}
 // 10 秒轮询：只在「运行与同步」tab 打开时跑（规格 Q3）
 const timer = setInterval(() => {
   if (activeTab.value === 'run' && autoLogs.value && !document.hidden) loadLogs();
 }, 10000);
+// BA 批：任务健康条每 60 秒刷新一次（只在页面可见且当前是运行与同步 tab）
+const healthTimer = setInterval(() => {
+  if (activeTab.value === 'run' && !document.hidden) loadHealth();
+}, 60000);
 
 onMounted(() => {
   if (!loaded[activeTab.value]) loadTab(activeTab.value);
 });
 onBeforeUnmount(() => {
   clearInterval(timer);
+  clearInterval(healthTimer);
   if (mobileQuery) { if (mobileQuery.removeEventListener) mobileQuery.removeEventListener('change', onMobileChange); else mobileQuery.removeListener(onMobileChange); }
 });
 </script>
@@ -438,4 +549,32 @@ onBeforeUnmount(() => {
 .tag-gap{margin:2px}
 .mail-log-tabs :deep(.el-tabs__header){margin:0 14px}
 .mail-log-tabs :deep(.el-tab-pane){padding:0 14px 8px}
-</style>
+/* BA 批（docs/RUN-SYNC-REDESIGN.md）：任务健康条 + 记录精简 + 固定高度日志面板 */
+.health-bar{display:flex;flex-direction:column;gap:10px}
+.health-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.health-head h3{margin:0;font-size:14px}
+.health-head p{margin:4px 0 0;font-size:12px;color:var(--fg-muted)}
+.health-chips{display:flex;gap:8px;flex-wrap:wrap}
+.health-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--panel-2);border-radius:10px;padding:7px 10px;font-size:12px;color:var(--fg-2);cursor:pointer;font:inherit}
+.health-chip:hover{border-color:var(--brand)}
+.health-chip.on{border-color:var(--brand);background:var(--brand-soft)}
+.health-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--fg-subtle);flex:none}
+.health-chip.ok .dot{background:var(--success)}
+.health-chip.failed .dot{background:var(--danger)}
+.health-chip .chip-state{color:var(--fg-muted);font-size:11px}
+.health-chip .chip-next{color:var(--fg-subtle);font-size:11px}
+.heading-actions{display:flex;gap:6px;align-items:center}
+.log-panel{display:flex;flex-direction:column;padding:0;overflow:hidden}
+.log-panel-head{position:sticky;top:0;z-index:2;background:var(--panel);border-bottom:1px solid var(--border);padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.log-meta{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--fg-muted)}
+.log-meta strong{color:var(--fg)}
+.log-panel-body{max-height:55vh;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:4px}
+.log-line{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;border:1px solid transparent;font-size:12px;cursor:pointer;min-width:0;flex-wrap:wrap}
+.log-line:hover{background:var(--panel-2)}
+.log-line.error,.log-line.fatal{border-color:var(--danger-bg);background:var(--danger-bg)}
+.log-line time{color:var(--fg-muted);font-size:11px;flex:none}
+.log-line .log-event{font-size:12px;color:var(--fg-2);flex:none}
+.log-line .log-brief{color:var(--fg-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.log-line .log-full{width:100%;margin:4px 0 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--fg-muted);white-space:pre-wrap;word-break:break-all}
+.log-panel-foot{border-top:1px solid var(--border);padding:6px 12px}
+@media (max-width:760px){.log-panel-body{max-height:50vh}.health-chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}.log-line .log-brief{white-space:normal}}</style>

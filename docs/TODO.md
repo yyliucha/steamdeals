@@ -956,7 +956,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BA. 待开发：运行与同步页重设计（任务健康条 + 记录精简 + 固定高度日志面板）
 
-**状态：待开发（2026-11-10，所有者确认方案 A）**
+**状态：已实现待发版（2026-11-10）**
 **依赖：** 无（复用 `/api/admin/sync/status`、`/api/admin/logs`、`/api/admin/sync/runs` 现有接口）
 **解锁：** 无
 **规格**：[RUN-SYNC-REDESIGN.md](RUN-SYNC-REDESIGN.md)
