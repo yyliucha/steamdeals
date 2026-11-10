@@ -193,7 +193,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   每日抽样对账任务；`READ_MODEL=legacy` 回滚开关。
   验证：`npm test` 75 个文件全绿、`node test/api.test.js` 22 项全绿、`frontend:build`、`scan` 干净；
   质检：AV ✅ 放行（[QA-READ-MODEL-AV.md](QA-READ-MODEL-AV.md)，通过 12 / 缺失 0 / 偏差 0 / 需人工确认 3）。
-  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  CI：docker-hub run 42746559809（test / smoke / publish 全绿）、docker-tcr run 42746559832（test / publish 全绿），
+  镜像已推送两源。
   **服务器部署待执行**（升级到 `2.6.0`）；部署后按 [READ-MODEL.md](READ-MODEL.md) §9 实测：列表 TTFB P95 < 150ms、
   零命中 < 150ms、`/api/games/count` < 30ms、EXPLAIN 命中 grs_region_* 索引；另注意首次启动的回填窗口与
   `readmodel.backfill_done` 日志。
