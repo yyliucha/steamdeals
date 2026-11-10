@@ -155,13 +155,31 @@ export function imageCandidates(appid, size) {
 
 /**
  * 从 CDN 取一张图并落盘（不覆盖已有文件以外的逻辑，调用方决定是否先查本地）。
- * 返回 { ok:true, bytes, contentType, url, file } 或 { ok:false, error }。
+ * AW 批（docs/IMAGE-FETCH.md §3.1）：
+ *   - preferredUrl：games.header_image 的直链，放在候选最前（仅 header 尺寸由调用方决定是否传）；
+ *   - 404/410 立即失败（同一资源换 CDN 还是 404），返回 { ok:false, notFound:true, status }；
+ *     preferredUrl 的 404 例外——回退老路径（header_image 可能过期，老路径或许仍有资源）；
+ *   - 总预算 totalBudgetMs：循环入口超预算即停止（单次请求可超出一个 timeoutMs）；
+ *   - 超时/网络错误照旧换候选，全部失败返回 { ok:false, timeout }。
  * fetchBuffer 注入：生产用 http.js 的实现，测试可注入假函数。
  */
-export async function downloadImage(appid, size, { fetchBuffer, logger = null, timeoutMs = 8000, env = process.env } = {}) {
+export async function downloadImage(
+  appid,
+  size,
+  { fetchBuffer, logger = null, timeoutMs = 3000, totalBudgetMs = 5000, preferredUrl = null, env = process.env } = {},
+) {
   if (!fetchBuffer) throw new Error('downloadImage 需要注入 fetchBuffer');
+  const candidates = [];
+  if (preferredUrl) candidates.push({ url: preferredUrl, forceDirect: false, preferred: true });
+  for (const c of imageCandidates(appid, size)) candidates.push(c);
   let lastError = null;
-  for (const cand of imageCandidates(appid, size)) {
+  const started = Date.now();
+  for (const cand of candidates) {
+    if (Date.now() - started > totalBudgetMs) {
+      lastError = new Error(`图片总预算超时（${totalBudgetMs}ms）`);
+      lastError.code = 'TOTAL_TIMEOUT';
+      break;
+    }
     try {
       const img = await fetchBuffer(cand.url, {
         logger,
@@ -174,7 +192,18 @@ export async function downloadImage(appid, size, { fetchBuffer, logger = null, t
       return { ok: true, bytes: img.bytes, contentType: img.contentType, url: cand.url, file, body: img.body };
     } catch (err) {
       lastError = err;
+      const status = Number(err?.status ?? 0);
+      if (cand.preferred) {
+        // header_image 直链失败（含 404）：回退老路径，不吞异常、不浪费候选
+        logger?.warn('steam.img_fallback', { appid, size, reason: status ? `HTTP ${status}` : String(err?.message ?? err).slice(0, 120) });
+        continue;
+      }
+      if (status === 404 || status === 410) {
+        logger?.info('steam.img_fast_fail', { appid, size, status });
+        return { ok: false, notFound: true, status, error: err };
+      }
     }
   }
-  return { ok: false, error: lastError };
+  const timedOut = Date.now() - started > totalBudgetMs;
+  return { ok: false, timeout: timedOut, error: lastError };
 }

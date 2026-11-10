@@ -869,17 +869,27 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ⑤ 写价后快照同轮更新、合并不失真、抽样对账 0 差异；⑥ `npm test` / `frontend:build` / `scan` 全绿。
 - **回滚**：`READ_MODEL=legacy` 切回旧 SQL，表保留。
 
+## AW. 封面图回源：404 快失败 + 超时收紧 + 负缓存分层 + `header_image` 直链
 
+**状态：已实现待发版（2026-11-10）**
+**依赖：** 无
+**解锁：** 无（与 AV 的列表读模型互补；HTTP/2 属部署侧 [NGINX-PERF.md](NGINX-PERF.md)）
+**规格**：[IMAGE-FETCH.md](IMAGE-FETCH.md)
 
-
-
-
-
-
-
-
-
-
-
-
+- **问题（2026-11-10 实测 + 服务器日志）**：出口正常——老游戏未预取的尺寸能 200 取到
+  （`400/library_hero` 2.82s、`400/capsule_616x353` 0.79s、`730/library_hero` 0.96s）；但 4 个新 appid
+  （4266020 / 4265920 / 4848110 / 4825080）全部 `steam.img_miss`：3 个 `HTTP 404`、1 个 `aborted`，
+  首页单张图要 2.0–6.6s 才 404。根因：`downloadImage` 对同一资源串行试 3 个 CDN 候选 × 8s（404 也重试）；
+  负缓存只有 5 分钟；新 appid 资产在 `store_item_assets` 新路径、老路径没有；预取只覆盖约 3%。
+- **方案**：404/410 立即失败不换候选；单候选 8s→3s、整次预算 5s；负缓存分层（404 24h / 其它 10min）；
+  `games.header_image`（列已存在）有值时优先直链（仅 `header` 尺寸，https + `.steamstatic.com` 白名单，
+  失败回退老路径）；前端失败显示 CSS 占位块（不再用 favicon 兜底）；`images pull` 复用同一逻辑并统计 `notFound`。
+- **落地内容（已实现待发版）**：`src/images.js` `downloadImage` 改造（preferredUrl 候选置顶、404/410 快失败
+  `notFound`、单候选 3000ms、总预算 5000ms、`steam.img_fast_fail`/`steam.img_fallback` 日志）；`src/server.js`
+  `IMG_MISS_TTL` 负缓存分层（notfound 24h / error 10min，实例级 Map + 测试可注入 TTL）+ header_image 直链白名单
+  `isAllowedSteamImageUrl`；`src/cli.js` `images pull` 统计 `notFound` 并入日志与摘要；`Home.vue` 封面失败/无 AppID
+  显示 `.cover-placeholder`（渐变 + 首字，桌面/移动/详情三处），删除 favicon 兜底；`test/images.test.js` +6 项。
+- **验收**：见规格 §5——① 404 只调 1 次；② 超时仍换候选（≥2 次）；③ 总预算 ≤5s；④ 负缓存分层生效；
+  ⑤ header_image 优先且白名单拦截非 steamstatic 域名；⑥ 前端无 favicon 兜底且有占位元素；
+  ⑦ 已缓存图仍 200、不触发网络；⑧ `npm test` / `frontend:build` / `scan` 全绿。
 

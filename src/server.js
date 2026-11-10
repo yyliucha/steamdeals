@@ -188,7 +188,21 @@ const toIso = (value) => {
 const imgMemCache = new Map(); // appid/size -> { contentType, body }
 const IMG_MEM_MAX = 300;
 // 取图失败缓存：5 分钟内不再重试，避免每次都拖满超时
-const imgMissCache = new Map(); // appid/size -> ts
+// AW 批（docs/IMAGE-FETCH.md §3.2/§3.3）：负缓存分层（404 永久性 24h，网络类 10min）；
+// header_image 直链白名单：只认 https + .steamstatic.com，防 SSRF。
+// TTL 是模块常量，供测试断言；实例缓存挂在每个 createApiServer 闭包里（多实例隔离）。
+export const IMG_MISS_TTL = { notfound: 24 * 3600 * 1000, error: 10 * 60 * 1000 };
+
+/** header_image 直链安全校验：https 且 host 为 steamstatic.com 或其子域。 */
+export function isAllowedSteamImageUrl(u) {
+  try {
+    const p = new URL(String(u));
+    if (p.protocol !== 'https:') return false;
+    return p.hostname === 'steamstatic.com' || p.hostname.endsWith('.steamstatic.com');
+  } catch {
+    return false;
+  }
+}
 
 function memoGetImage(key) {
   const hit = imgMemCache.get(key);
@@ -274,11 +288,14 @@ export function createApiServer({
   imageFetch = null, // 测试注入：() => { body, bytes, contentType }；默认用 http.js 的 fetchBuffer
   steamVerify = null, // 测试注入：verifyCallback 的替身 (url, opts) => Promise<steamId|null>；默认走 Steam OpenID 校验
   steamWishlistPush = null, // 测试注入：({steamId, apiKey, appid, action}) => Promise<{ok, reason}>；默认走 IWishlistService 推送
+  imgMissTtl = IMG_MISS_TTL, // 测试注入：负缓存 TTL 覆盖（避免等 24h）
 }) {
   const q = query;
-  // AV 批（docs/READ-MODEL.md §5.2）：/api/games/count 的 priced 计数 60 秒进程内缓存。
+  // AW 批（docs/READ-MODEL.md §5.2）：/api/games/count 的 priced 计数 60 秒进程内缓存。
   // 挂在每个服务实例闭包里（单实例；多副本各自缓存，数值偏差可接受）。
   const pricedCountCache = { value: null, at: 0 };
+  // AW 批（docs/IMAGE-FETCH.md §3.2）：图片负缓存也按实例隔离（测试多实例互不干扰）。
+  const imgMissCache = new Map(); // appid/size -> { at, kind }
   // 手动同步的进程内状态：同一时刻只允许一个同步任务
   let syncChild = null;
   let syncRun = null; // { id, mode, startedAt, params }
@@ -1130,15 +1147,26 @@ export function createApiServer({
           return;
         }
 
-        // 3) 本地没有：走三条 CDN 兜底取一次，成功后落盘
-        const missAt = imgMissCache.get(key);
-        if (missAt && Date.now() - missAt < 5 * 60 * 1000) {
+        // 3) 本地没有：走 CDN 兜底取一次，成功后落盘
+        const miss = imgMissCache.get(key);
+        if (miss && Date.now() - miss.at < Number(imgMissTtl[miss.kind] ?? 0)) {
           res.writeHead(404);
           res.end();
           return;
         }
         const fetcher = imageFetch ?? (await import('./http.js')).fetchBuffer;
-        const got = await images.downloadImage(appid, size, { fetchBuffer: fetcher, timeoutMs: 8000 });
+        // AW 批（docs/IMAGE-FETCH.md §3.3）：header 尺寸优先用 games.header_image 直链（白名单校验，
+        // 失败回退老路径；查询失败/为空不阻塞）。
+        let preferredUrl = null;
+        if (size === 'header') {
+          try {
+            const row = (await q('select header_image from games where steam_appid = $1', [Number(appid)])).rows[0];
+            if (row?.header_image && isAllowedSteamImageUrl(row.header_image)) preferredUrl = row.header_image;
+          } catch {
+            /* 查询失败回退老路径 */
+          }
+        }
+        const got = await images.downloadImage(appid, size, { fetchBuffer: fetcher, preferredUrl });
         if (got.ok) {
           memoPutImage(key, { contentType: got.contentType, body: got.body });
           logger?.info('steam.img_cached', { appid, size, bytes: got.bytes });
@@ -1146,9 +1174,17 @@ export function createApiServer({
           res.end(got.body);
           return;
         }
-        imgMissCache.set(key, Date.now());
+        // AW 批（docs/IMAGE-FETCH.md §3.2）：负缓存分层——404/410 记 notfound（24h），其余记 error（10min）
+        const kind = got.notFound ? 'notfound' : 'error';
+        imgMissCache.set(key, { at: Date.now(), kind });
         if (imgMissCache.size > 2000) imgMissCache.delete(imgMissCache.keys().next().value);
-        logger?.warn('steam.img_miss', { appid, size, message: String(got.error?.message ?? '').slice(0, 160) });
+        logger?.warn('steam.img_miss', {
+          appid,
+          size,
+          status: got.status ?? null,
+          kind: got.notFound ? 'notfound' : got.timeout ? 'timeout' : 'error',
+          message: String(got.error?.message ?? '').slice(0, 160),
+        });
         res.writeHead(404);
         res.end();
         return;
@@ -3597,8 +3633,9 @@ export function startApiServer({
   imageFetch = null,
   steamVerify = null,
   steamWishlistPush = null,
+  imgMissTtl = IMG_MISS_TTL,
 }) {
-  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, steamWishlistPush });
+  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, steamWishlistPush, imgMissTtl });
   // 黑名单定时刷新（管理端增删后也会即时刷新；unref 不阻止进程退出）
   const blockTimer = setInterval(() => {
     visitors.refreshBlocklist(query).catch(() => {});

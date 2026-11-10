@@ -2447,7 +2447,7 @@ async function cmdImages() {
   }
 
   console.log(`准备补图：${appids.length} 款 × ${sizes.length} 张（${sizes.join(' + ')}），每张间隔 ${sleepMs}ms`);
-  const stats = { downloaded: 0, skipped: 0, failed: 0 };
+  const stats = { downloaded: 0, skipped: 0, failed: 0, notFound: 0 };
   for (const appid of appids) {
     for (const size of sizes) {
       if (images.hasImage(appid, size)) {
@@ -2458,6 +2458,9 @@ async function cmdImages() {
       if (r.ok) {
         stats.downloaded += 1;
         if (stats.downloaded % 20 === 0) console.log(`  已下载 ${stats.downloaded} 张…（最近 ${appid}/${size}）`);
+      } else if (r.notFound) {
+        // AW 批（docs/IMAGE-FETCH.md §3.6）：404 快失败单计 notFound，不混进失败告警
+        stats.notFound += 1;
       } else {
         stats.failed += 1;
         logger.warn('images.failed', { appid, size, message: String(r.error?.message ?? '').slice(0, 160) });
@@ -2467,7 +2470,7 @@ async function cmdImages() {
   }
   const local = images.imageStats();
   logger.info('images.pull.done', { ...stats, images: local.images, games: local.games, bytes: local.bytes });
-  console.log(`完成：新下载 ${stats.downloaded} 张，跳过 ${stats.skipped} 张，失败 ${stats.failed} 张`);
+  console.log(`完成：新下载 ${stats.downloaded} 张，跳过 ${stats.skipped} 张，404 缺图 ${stats.notFound} 张，失败 ${stats.failed} 张`);
   console.log(`缓存合计：${local.images} 张 / ${local.games} 款游戏 / ${(local.bytes / 1024 / 1024).toFixed(1)} MB → ${local.root}`);
   // D2：补图后若设置了总量上限，自动按最旧清理
   const maxBytes = Math.max(0, Number(process.env.IMAGES_MAX_BYTES ?? '0') || 0);
