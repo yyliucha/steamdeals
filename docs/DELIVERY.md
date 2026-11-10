@@ -191,7 +191,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   （`/api/admin/visitors/by-ip` 时间窗/排序白名单 + 展开行、黑白名单统计列、设备按 device_id 聚合）。
   验证：`npm test` 79 文件 / 628 项全绿、`api.test` 22/22、`frontend:build`、`scan` 干净；
   质检：BE ✅ 放行（[QA-WISHLIST-SITE-ONLY.md](QA-WISHLIST-SITE-ONLY.md)）、BH ✅ 放行（[QA-VISIT-IP-STATS.md](QA-VISIT-IP-STATS.md)）。
-  CI：**待确认**（tag 推送后补双绿记录）。
+  CI：docker-hub [#42790991661](https://github.com/yyliucha/steamdeals/actions/runs/42790991661) 与 docker-tcr [#42790991580](https://github.com/yyliucha/steamdeals/actions/runs/42790991580) ✅（2026-11-10）。
   **服务器部署待执行**（升级到 `2.9.0`）；部署后按各规格验收（愿望单前台流程、后台清单/批量、IP 统计视图、设备聚合）。
 - **v2.8.0 已发布**（tag `v2.8.0`）：AZ 异常审核规则摘要精简（首规则 ×n · 共 N 条规则 + hover 全量规则）；
   BA 运行与同步页重设计（任务健康条 + 记录 6 列/5 轮折叠 + 55vh 固定高度日志面板）；
