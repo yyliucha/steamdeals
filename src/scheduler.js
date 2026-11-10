@@ -114,6 +114,15 @@ export function jobsFromEnv(env = process.env) {
       enabled: env.PRUNE_ENABLED !== '0',
     },
     {
+      name: 'proxy-probe',
+      // BB 批（docs/PROXY-POOL.md §11.4）：每 10 分钟 CONNECT 探测代理池一次；只做协议层 CONNECT，
+      // 不请求 Steam 业务接口（不占配额），探测失败不写业务冷却（避免误杀），结果落 health 文件 probe* 字段。
+      args: ['probe', '--proxy'],
+      intervalMin: num(env.PROXY_PROBE_INTERVAL_MIN, 10),
+      initialDelaySec: num(env.PROXY_PROBE_INITIAL_DELAY_SEC, 120),
+      enabled: env.PROXY_PROBE_ENABLED !== '0',
+    },
+    {
       name: 'readmodel',
       // AV 批（docs/READ-MODEL.md §8）：每日抽样对账 200 个 (game,region)，发现差异记 job 失败可观测
       args: ['readmodel', 'check', '--sample', String(num(env.READMODEL_SAMPLE, 200))],

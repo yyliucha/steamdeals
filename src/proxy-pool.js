@@ -7,6 +7,8 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { redactProxy, steamProxyUrls } from './proxy.js';
 
 /** 健康文件路径（可用 PROXY_HEALTH_FILE 覆盖，测试用；生产固定 data/proxy-health.json）。 */
@@ -231,6 +233,10 @@ export function proxyHealth(env = process.env, opts = {}) {
       lastError: rec?.lastError ?? null,
       lastErrorAt: rec?.lastErrorAt ?? null,
       lastOkAt: rec?.lastOkAt ?? null,
+      // BB 批（docs/PROXY-POOL.md §11.2）：主动探测结果（与业务冷却分离）
+      probeAt: rec?.probeAt ?? null,
+      probeOk: typeof rec?.probeOk === 'boolean' ? rec.probeOk : null,
+      probeError: rec?.probeError ?? null,
     };
   });
   const lastGoodIdx = pool.findIndex((u) => proxyKey(u) === state.lastGood);
@@ -239,4 +245,96 @@ export function proxyHealth(env = process.env, opts = {}) {
     lastGood: lastGoodIdx >= 0 ? lastGoodIdx + 1 : null,
     updatedAt: state.updatedAt,
   };
+}
+// ---------------------------------------------------------------- 主动探测（BB 批，docs/PROXY-POOL.md §11）
+// 与业务冷却分离：探测失败只更新 probe* 字段，绝不写 fails/downUntil（避免探测误杀真实链路）。
+
+export const PROBE_TARGET = 'store.steampowered.com:443';
+
+/**
+ * CONNECT 协议层探测：TCP 通 ≠ CONNECT 通（407 要账号密码、403 是代理禁目标、代理挂了是 ECONNREFUSED）。
+ * 必须用**未脱敏**地址探测（凭证在 URL 里）；返回 { ok, status, detail }，detail 不含代理地址。
+ */
+export function probeProxyConnect(proxyUrl, target = PROBE_TARGET, { timeoutMs = 12000 } = {}) {
+  let u;
+  try {
+    u = new URL(String(proxyUrl).includes('://') ? String(proxyUrl) : 'http://' + String(proxyUrl));
+  } catch {
+    return Promise.resolve({ ok: false, status: null, detail: '代理地址无法解析' });
+  }
+  const secure = u.protocol === 'https:';
+  const headers = { host: target };
+  if (u.username) {
+    const cred = `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}`;
+    headers['proxy-authorization'] = 'Basic ' + Buffer.from(cred).toString('base64');
+  }
+  return new Promise((done) => {
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      done({ target, ...result });
+    };
+    let req;
+    try {
+      req = (secure ? httpsRequest : httpRequest)(
+        { host: u.hostname, port: Number(u.port || (secure ? 443 : 80)), method: 'CONNECT', path: target, headers, timeout: timeoutMs },
+        (res) => {
+          res.resume();
+          finish({ ok: false, status: res.statusCode ?? null, detail: `CONNECT ${target} 被当成普通请求处理：HTTP ${res.statusCode}` });
+        },
+      );
+    } catch (err) {
+      finish({ ok: false, status: null, detail: String(err?.message ?? err).slice(0, 140) });
+      return;
+    }
+    req.on('connect', (res, sock) => {
+      sock.destroy();
+      const status = res.statusCode ?? null;
+      finish({ ok: status === 200, status, detail: status === 200 ? `CONNECT ${target} 成功（隧道已建立）` : `CONNECT ${target} → HTTP ${status}` });
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      finish({ ok: false, status: null, detail: `CONNECT ${target} 超时（${Math.round(timeoutMs / 1000)}s）` });
+    });
+    req.on('error', (err) => finish({ ok: false, status: null, detail: `CONNECT ${target} 失败：${String(err?.code ?? err?.message ?? err).slice(0, 120)}` }));
+    req.end();
+  });
+}
+
+/** 记录一次探测结果：只写 probe*，保留 fails/downUntil/lastOkAt/lastError（§11.2）。 */
+export function recordProbe(url, result, { file = healthFile(), logger = null } = {}) {
+  readHealth(file, logger);
+  const key = proxyKey(url);
+  const rec = state.proxies[key] ?? {};
+  const now = new Date();
+  state.proxies[key] = {
+    ...rec,
+    probeAt: now.toISOString(),
+    probeOk: Boolean(result?.ok),
+    probeError: result?.ok ? null : String(result?.detail ?? '探测失败').slice(0, 120),
+  };
+  state.updatedAt = now.toISOString();
+  scheduleSave(file, logger);
+  return state.proxies[key];
+}
+
+/** 逐条探测池内全部代理（顺序执行，单条失败不影响其它），写健康文件并返回汇总（地址脱敏）。 */
+export async function probeAllProxies(env = process.env, { file = healthFile(), logger = null, target = PROBE_TARGET, timeoutMs = 12000 } = {}) {
+  const pool = steamProxyUrls(env);
+  const started = Date.now();
+  if (!pool.length) return { proxies: [], updatedAt: null, probed: 0, ok: 0, failed: 0 };
+  logger?.info('proxy.probe_start', { count: pool.length, target });
+  let ok = 0;
+  for (let i = 0; i < pool.length; i += 1) {
+    const result = await probeProxyConnect(pool[i], target, { timeoutMs });
+    recordProbe(pool[i], result, { file, logger });
+    if (result.ok) ok += 1;
+    logger?.info('proxy.probe_result', { index: i + 1, proxy: redactProxy(pool[i]), ok: result.ok, status: result.status, detail: result.detail });
+  }
+  flushProxyHealth(logger);
+  const elapsedMs = Date.now() - started;
+  logger?.info('proxy.probe_done', { total: pool.length, ok, failed: pool.length - ok, elapsedMs });
+  const view = proxyHealth(env, { file, logger });
+  return { ...view, probed: pool.length, ok, failed: pool.length - ok, elapsedMs };
 }

@@ -1567,42 +1567,8 @@ async function cmdDiagnose() {
 
   // 代理"协议层"探测：TCP 通 ≠ CONNECT 通（407 要账号密码、403 是代理禁目标、代理挂了是 ECONNREFUSED）。
   // 关键点：必须用**未脱敏**的代理地址探测——凭证在 URL 里，拿 "http://***@host" 去探只会得到 407。
-  const probeProxyConnect = async (proxyUrl, target) => {
-    const u = new URL(proxyUrl.includes('://') ? proxyUrl : 'http://' + proxyUrl);
-    const secure = u.protocol === 'https:';
-    const headers = { host: target };
-    if (u.username) {
-      const cred = `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}`;
-      headers['proxy-authorization'] = 'Basic ' + Buffer.from(cred).toString('base64');
-    }
-    try {
-      const res = await new Promise((resolve, reject) => {
-        const req = (secure ? httpsRequest : httpRequest)(
-          {
-            host: u.hostname,
-            port: Number(u.port || (secure ? 443 : 80)),
-            method: 'CONNECT',
-            path: target,
-            headers,
-            timeout: 12000,
-          },
-          () => reject(new Error('代理没有返回 CONNECT 响应')),
-        );
-        req.on('connect', (r, sock) => {
-          sock.destroy();
-          resolve(r);
-        });
-        req.on('timeout', () => req.destroy(new Error('CONNECT 超时（12s）')));
-        req.on('error', reject);
-        req.end();
-      });
-      const status = res.statusCode;
-      const detail = status === 200 ? '成功：代理能建隧道' : proxyStatusHint(status);
-      return { ok: status === 200, detail: `CONNECT ${target} → ${status}（${detail}）` };
-    } catch (err) {
-      return { ok: false, detail: `CONNECT ${target} 失败：${String(err.message).slice(0, 140)}` };
-    }
-  };
+  // BB 批（docs/PROXY-POOL.md §11.1）：CONNECT 探测逻辑抽到 proxy-pool.js，diagnose 与定时任务共用同一实现。
+  const { probeProxyConnect } = await import('./proxy-pool.js');
 
   // socks5:// 之类会被 parseProxy 静默丢掉、回落直连——最难查的一类配置错误，单独报出来（AM-1：兼容多条）
   const rawSteamProxy = String(process.env.STEAM_PROXY ?? process.env.steam_proxy ?? '').trim();
@@ -2348,6 +2314,18 @@ async function cmdReport() {
   logger.info('report.price', { hours: rep.hours, changed: rep.changed, drops: rep.drops, rises: rep.rises, newLows: rep.newLows });
 }
 
+/** BB 批（docs/PROXY-POOL.md §11.4）：代理健康主动探测——调度器 `probe --proxy` 与人工排查共用。 */
+async function cmdProbe() {
+  if (args[1] !== '--proxy') throw new Error('用法: node src/cli.js probe --proxy');
+  const proxyPool = await import('./proxy-pool.js');
+  const r = await proxyPool.probeAllProxies(process.env, { logger });
+  console.log(`代理探测完成：${r.probed} 条，可用 ${r.ok}，失败 ${r.failed}，耗时 ${r.elapsedMs ?? 0} ms`);
+  for (const p of r.proxies || []) {
+    console.log(`  #${p.index} ${p.proxy} → ${p.probeOk ? '可用' : '不可用'}${p.probeError ? '（' + p.probeError + '）' : ''}`);
+  }
+  // 全部不可用 = 真故障，让调度任务标红（部分失败只记录，不算失败）
+  if (r.probed > 0 && r.ok === 0) throw new Error(`代理全部不可用（${r.failed} 条）`);
+}
 const commands = {
   init: cmdInit,
   bootstrap: cmdBootstrap,
@@ -2379,6 +2357,7 @@ const commands = {
   'steam-status': cmdSteamStatus,
   prune: cmdPrune,
   'proxy-check': cmdProxyCheck,
+  probe: cmdProbe,
   images: cmdImages,
   readmodel: cmdReadModel,
   report: cmdReport,

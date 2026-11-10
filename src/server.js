@@ -2765,6 +2765,18 @@ export function createApiServer({
         return json(res, 200, proxyPool.proxyHealth(process.env, { logger }));
       }
 
+      // BB 批（docs/PROXY-POOL.md §11.3）：立即检测——CONNECT 逐条探测代理池并写健康文件（不写业务冷却）
+      if (path === '/api/admin/proxies/probe' && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        try {
+          const out = await proxyPool.probeAllProxies(process.env, { logger });
+          return json(res, 200, out);
+        } catch (err) {
+          logger.error('proxy.probe_failed', { message: String(err?.message ?? err).slice(0, 200) });
+          return json(res, 500, { error: String(err?.message ?? err) });
+        }
+      }
+
       if (path === '/api/admin/views' && req.method === 'GET') {
         if (!requireAdmin()) return;
         const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 100) || 100, 1), 500);
