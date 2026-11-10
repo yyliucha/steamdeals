@@ -192,7 +192,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   验证：`npm test` 75 个文件全绿、`frontend:build`、`scan` 干净；质检：AW ✅ 放行
   （[QA-IMAGE-FETCH-AW.md](QA-IMAGE-FETCH-AW.md)，通过 8 / 需人工确认 1）、AX ✅ 放行
   （[QA-ADMIN-REVIEW-AX.md](QA-ADMIN-REVIEW-AX.md)，通过 5 / 需人工确认 1）。
-  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  CI：docker-hub run 42761550473（test / smoke / publish 全绿）、docker-tcr run 42761550478（test / publish 全绿），
+  镜像已推送两源。
   **服务器部署待执行**（升级到 `2.7.0`）；部署后按 [IMAGE-FETCH.md](IMAGE-FETCH.md) §6 实测：新 appid
   （4266020 等）首次请求 <1s 返回 404、老游戏未缓存图仍 200（日志 `steam.img_fast_fail` / `steam.img_fallback`）；
   控制台真机目视异常审核合并视图桌面展开与移动端卡片。
