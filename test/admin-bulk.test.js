@@ -76,22 +76,24 @@ function bulk(base, cookie, payload, ip = ADMIN_IP) {
 const adminGet = (base, cookie, path) =>
   fetch(base + path, { headers: { 'x-forwarded-for': ADMIN_IP, cookie } });
 
-test('前端：11 个列表都接入了多选与批量工具条', () => {
+test('前端：10 个表格列表 + 站点通知 + 异常审核合并视图都接入了多选与批量工具条', () => {
   const modules = readFileSync(fileURLToPath(new URL('../frontend/src/pages/AdminModules.vue', import.meta.url)), 'utf8');
   const extras = readFileSync(fileURLToPath(new URL('../frontend/src/pages/AdminExtras.vue', import.meta.url)), 'utf8');
   const consoleVue = readFileSync(fileURLToPath(new URL('../frontend/src/pages/Console.vue', import.meta.url)), 'utf8');
   const count = (text, needle) => text.split(needle).length - 1;
 
-  // 10 个表格列表有勾选列：游戏目录/访问明细/待审/最近设备/已封设备/黑名单/白名单/自动封禁 + 回收站/用户
-  assert.equal(count(modules, 'type="selection"'), 8, 'AdminModules 应有 8 个勾选列');
+  // 表格勾选列：游戏目录/访问明细/最近设备/已封设备/黑名单/白名单/自动封禁 + 回收站/用户；
+  // AX 批起异常审核只有按 IP 合并视图（勾选用 el-checkbox，不再有明细表 selection 列）
+  assert.equal(count(modules, 'type="selection"'), 7, 'AdminModules 应有 7 个勾选列');
   assert.equal(count(extras, 'type="selection"'), 2, 'AdminExtras 应有 2 个勾选列');
-  // 第 11 个是站点通知：卡片列表没有表格，用 el-checkbox 勾选
+  // 站点通知与异常审核合并视图：卡片/合并行没有表格勾选列，用 el-checkbox
   assert.match(modules, /sel\.announcements\.has\(a\)/, '站点通知卡片要有勾选框');
-  // 每个列表都要有工具条（AdminModules 9 个 + AdminExtras 2 个）
-  assert.equal(count(modules, '<BulkBar'), 9, 'AdminModules 应有 9 个批量工具条');
+  assert.match(modules, /mergedPicked\.has\(row\.key\)/, '异常审核合并视图要有勾选框（AX 批：默认唯一视图）');
+  // 每个列表都要有工具条（AdminModules 8 个 + AdminExtras 2 个）
+  assert.equal(count(modules, '<BulkBar'), 8, 'AdminModules 应有 8 个批量工具条');
   assert.equal(count(extras, '<BulkBar'), 2, 'AdminExtras 应有 2 个批量工具条');
-  // 翻页清空：服务端分页靠 load 清、客户端分页靠 watch 页码清
-  assert.match(modules, /sel\.reviews\.clear\(\)/, '翻页应清空选择');
+  // 翻页清空：合并视图翻页清空 IP 选择；服务端分页靠 load 清、其余客户端分页靠 watch 页码清
+  assert.match(modules, /watch\(mergedPage,\(\)=>mergedPicked\.value=new Set\(\)\)/, '合并视图翻页应清空选择');
   // 审计页入口（AT 批起）：批量操作记录并入「日志审计 / 操作日志」，旧书签 bulk-ops 映射到 op-logs&tab=bulk
   assert.match(consoleVue, /id:'op-logs'/, 'Console 侧栏要有「操作日志」');
   assert.match(consoleVue, /'bulk-ops': \{ section: 'op-logs', tab: 'bulk' \}/, '旧书签 bulk-ops 必须映射到 op-logs&tab=bulk（不 404）');

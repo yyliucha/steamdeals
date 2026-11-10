@@ -747,7 +747,8 @@ test('前端：待审状态列 4 种标签 + 口径 A 说明文案', () => {
   for (const label of ['>待审<', '>已封禁<', '>已忽略<', '>自动退出<']) {
     assert.ok(modules.includes(label), `状态列应有 ${label}`);
   }
-  assert.match(modules, /reviewStatusHint/, '状态列应有悬停提示（note/reviewed_at）');
+  // AX 批（docs/ADMIN-REVIEW-LISTS.md §4.5）：明细表已删，展开行仍能看到每条规则的规则/命中/路径/时间/状态
+  assert.match(modules, /class="merged-detail-row"/, '合并视图展开行保留逐条规则明细');
   assert.match(modules, /封禁期间产生的新异常仍会以「待审」出现/, '说明文案应为口径 A');
   assert.ok(!modules.includes('解封后自动恢复显示'), '旧口径文案应移除');
 });

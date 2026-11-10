@@ -893,3 +893,43 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ⑤ header_image 优先且白名单拦截非 steamstatic 域名；⑥ 前端无 favicon 兜底且有占位元素；
   ⑦ 已缓存图仍 200、不触发网络；⑧ `npm test` / `frontend:build` / `scan` 全绿。
 
+## AX. 异常审核「按 IP 合并」定为默认视图（去掉开关与明细表）
+
+**状态：已实现待发版（2026-11-10）**
+**依赖：** 无（AR 已发布 v2.2.0，本批是对它的修订）
+**解锁：** 无
+**规格**：[ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §4.5（修订口径）/ §4.1–§4.4（合并视图本身）
+
+- **需求（2026-11-10 所有者）**：异常审核默认按 IP 合并；页面上不再有「按 IP 合并」开关（截图红框处），
+  合并视图成为唯一视图。
+- **决策 A（所有者确认）**：删掉明细表后不再提供「只处置某一条规则」；处置一律按**整 IP**
+  （封 IP / 封设备 / 忽略），展开行仍能看到每条规则。
+- **方案**：`AdminModules.vue` 删 `el-switch` + `onMergeToggle` + `admin.reviewMerge` localStorage + 明细表与明细移动卡片 +
+  `sel.reviews` 多选 + `reviewsBulkActions` + 只服务明细的 `reviewAction`/`ignoreReview`；合并视图提为默认渲染；
+  标题说明补「同一 IP 合并为一行，展开看逐条规则」；`test/admin-review-lists.test.js` 把「有开关 + 有 localStorage」
+  断言改成「无开关、无 `admin.reviewMerge`、默认渲染合并表」。**无后端改动、无接口变化。**
+- **保留**：`只看待审 / 全部（审计）` 筛选、合并视图表头排序（`admin.reviewMergeSort`）、展开明细、
+  「已选 N 个 IP · M 条待审」批量栏、移动端卡片、分页。
+- **验收**：进入异常审核即合并视图、页面上没有「按 IP 合并」开关；同一 IP 多规则合并/展开/设备数正确；
+  「只看待审 / 全部」切换正常；整 IP 处置与确认弹窗条数一致；批量栏可用；移动端卡片正常；
+  `npm test` / `frontend:build` / `scan` 全绿。
+- **落地内容（已实现待发版）**：`AdminModules.vue` 删「按 IP 合并」开关与 localStorage 键、明细表与明细移动卡片、
+  `sel.reviews` 多选、`reviewsBulkActions`、逐条处置 `reviewAction`/`ignoreReview` 与明细表排序状态；
+  合并视图（聚合/展开/整 IP 处置/移动卡片/分页/`admin.reviewMergeSort` 排序）提为默认唯一渲染，翻页清空 IP 选择；
+  标题说明补「同一 IP 合并为一行，展开看逐条规则」。测试：`admin-review-lists.test.js` 改断言（无开关/无合并键/
+  默认合并表）、`admin-bulk.test.js` 计数随明细表移除更新、`reviews.test.js` 悬停提示断言改合并展开行。无后端改动。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
