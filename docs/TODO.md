@@ -895,7 +895,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AX. 异常审核「按 IP 合并」定为默认视图（去掉开关与明细表）
 
-**状态：已实现待发版（2026-11-10）**
+**状态：质检通过（2026-11-10，736e919；QA 报告 docs/QA-ADMIN-REVIEW-AX.md 未提交）**
 **依赖：** 无（AR 已发布 v2.2.0，本批是对它的修订）
 **解锁：** 无
 **规格**：[ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §4.5（修订口径）/ §4.1–§4.4（合并视图本身）
