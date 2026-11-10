@@ -287,7 +287,6 @@ export function createApiServer({
   getSetupState = null,
   imageFetch = null, // 测试注入：() => { body, bytes, contentType }；默认用 http.js 的 fetchBuffer
   steamVerify = null, // 测试注入：verifyCallback 的替身 (url, opts) => Promise<steamId|null>；默认走 Steam OpenID 校验
-  steamWishlistPush = null, // 测试注入：({steamId, apiKey, appid, action}) => Promise<{ok, reason}>；默认走 IWishlistService 推送
   imgMissTtl = IMG_MISS_TTL, // 测试注入：负缓存 TTL 覆盖（避免等 24h）
 }) {
   const q = query;
@@ -3571,10 +3570,9 @@ export function startApiServer({
   getSetupState = null,
   imageFetch = null,
   steamVerify = null,
-  steamWishlistPush = null,
   imgMissTtl = IMG_MISS_TTL,
 }) {
-  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, steamWishlistPush, imgMissTtl });
+  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, imgMissTtl });
   // 黑名单定时刷新（管理端增删后也会即时刷新；unref 不阻止进程退出）
   const blockTimer = setInterval(() => {
     visitors.refreshBlocklist(query).catch(() => {});

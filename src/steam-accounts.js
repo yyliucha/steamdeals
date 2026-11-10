@@ -381,7 +381,7 @@ export async function pushWishlistItem({ steamId, apiKey, appid, action = 'add',
 
 /**
  * 站点内手动愿望单（BE 批 docs/WISHLIST-SITE-ONLY.md §4.1）：只写本站 + 建「愿望单」自动到价提醒。
- * steamIds 参数保留仅为旧调用方兼容，**忽略不写、不推送**（列继续存在，新写入统一 '{}'）。
+ * 旧 `steamIds` 不再接收/写入（列继续存在以兼容历史值，新写入统一 '{}'）。
  */
 export async function addUserWishlist(q, { userId, gameId }) {
   await q(
@@ -416,16 +416,6 @@ export async function removeUserWishlist(q, { userId, gameId }) {
   return { removed: r.rowCount ?? 0, steamIds, watchesCleaned };
 }
 
-/** 该用户所有账号里愿望单含此 appid 的账号（移除时回推删除用）。 */
-export async function accountsWithWishlistAppid(q, { userId, appid }) {
-  const r = await q(
-    `select a.steam_id from steam_accounts a
-      where a.user_id = $1
-        and exists (select 1 from steam_wishlist sw where sw.steam_id = a.steam_id and sw.appid = $2)`,
-    [userId, appid],
-  );
-  return r.rows.map((row) => row.steam_id);
-}
 
 /** 写入/清空账号自配 API Key（密文由调用方加密；null 清空）。 */
 export async function setAccountApiKey(q, { steamId, apiKeyEnc, log = null }) {

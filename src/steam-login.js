@@ -58,7 +58,7 @@ export async function ensureSteamSchema(store) {
     ');',
   ].join('\n'));
   await exec('create index if not exists steam_wishlist_appid on steam_wishlist (appid)');
-  // 站点内手动愿望单：与 Steam 同步推导取并集；steam_ids 记用户选择推送的账号（移除时回推删除）
+  // 站点内手动愿望单：BE 批起只写本站（steam_ids 列保留兼容历史值、停止写入）；后台按 id 单条/批量删除
   await exec([
     'create table if not exists user_wishlist (',
     '  user_id    integer not null references users(id) on delete cascade,',

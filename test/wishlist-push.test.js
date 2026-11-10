@@ -104,10 +104,8 @@ async function apiSetup() {
     query: q,
     port: 0,
     host: '127.0.0.1',
-    steamWishlistPush: async ({ steamId, apiKey, appid, action }) => {
-      calls.push({ steamId, apiKey, appid, action });
-      return { ok: true };
-    },
+    // BE 批：推送注入已下线（愿望单只写本站）；calls 数组仅用于断言「一次都没调用」
+    steamWishlistPush: (args) => { calls.push(args); return { ok: true }; },
   });
   return { store, q, srv, base: `http://127.0.0.1:${srv.port}`, calls };
 }
