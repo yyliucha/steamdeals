@@ -1,6 +1,6 @@
 # 愿望单仅本站：去 Steam 关联 + 前后端清单 + 后台可删不可加（待开发）
 
-> 状态：**已实现待发版（2026-11-10）**（含 2026-11-10 修订 §4.4：每账号 API Key 改为账号同步用）。
+> 状态：**已实现并发布 v2.9.0（2026-11-10）**（含 §4.4 修订：每账号 API Key 改为账号同步用）。
 > 关联：[WISHLIST-OAUTH.md](WISHLIST-OAUTH.md)（AA 批：Steam 写接口 401 的定案与诚实口径）·
 > [STEAM-ACCOUNTS.md](STEAM-ACCOUNTS.md) §16 · [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md)（控制台 IA）·
 > [ADMIN-BULK-ACTIONS.md](ADMIN-BULK-ACTIONS.md)（批量处置白名单）· [WEB.md](WEB.md)

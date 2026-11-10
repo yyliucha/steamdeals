@@ -1,6 +1,6 @@
 # 访问记录按 IP 统计（访问明细 / 封禁与白名单 / 设备按设备码）（待开发）
 
-> 状态：**已实现待发版（2026-11-10）**。
+> 状态：**已实现并发布 v2.9.0（2026-11-10）**。
 > 关联：[WEB.md](WEB.md)（后台接口）· [BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md)（封禁口径）·
 > [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md)（异常审核按 IP 合并的交互先例）· [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md)
 

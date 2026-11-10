@@ -2,9 +2,9 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [2.9.0] - 2026-11-10
 
-BE 批：愿望单仅本站（规格 [docs/WISHLIST-SITE-ONLY.md](docs/WISHLIST-SITE-ONLY.md)，已实现待发版）。
+BE / BH 两批：愿望单仅本站（去 Steam 关联 + 后台清单）+ 访问记录按 IP 统计（默认 IP 视图 + 黑白名单统计列 + 设备按设备码）。
 
 ### 新增
 
@@ -24,18 +24,18 @@ BE 批：愿望单仅本站（规格 [docs/WISHLIST-SITE-ONLY.md](docs/WISHLIST-
 
 规格 [docs/VISIT-IP-STATS.md](docs/VISIT-IP-STATS.md)（已实现待发版）。
 
-#### 新增
+### 新增
 
 - `GET /api/admin/visitors/by-ip`（IP 统计视图：每 IP 一行，访问次数 / 首次→最近 / 独立路径 / 设备数 / 地区 / 状态；`days=1|7|30`、`sort=visits|lastAt|ip` 白名单、分页、关键词）与 `GET /api/admin/visitors/by-ip/:ip`（展开行：最近 20 条访问 + 路径 top5）。
 - 黑白名单列表每行追加近 7 天 `visits / last_at / devices`。
 - 设备列表按 `device_id` 聚合（无设备码回退指纹）：多 IP/UA 汇总、出现次数、封禁状态；封禁仍按指纹。
 
-#### 变更
+### 变更
 
 - 前台后台「访问明细」默认 IP 统计视图，可切回明细；时间窗 1/7/30 天同时作用于两个视图；明细接口新增 `days` 参数。
 - 设备表列改为「设备（按设备码聚合）/ IP / 出现次数 / 状态」，移动端卡片同步。
 
-#### 测试
+### 测试
 
 - 新增 `test/visitor-ip-stats.test.js`（窗口过滤/三种排序/状态/详情展开/黑白名单统计/设备聚合/前端静态接线），并入主链。
 ## [2.8.0] - 2026-11-10

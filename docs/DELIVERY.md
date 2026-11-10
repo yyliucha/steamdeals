@@ -180,12 +180,19 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-10 更新，v2.8.0 已发布：AZ 规则摘要 + BA 运行与同步页 + BB 代理探测 + BC 补图覆盖率）
+### 当前状态（2026-11-10 更新，v2.9.0 已发布：BE 愿望单仅本站 + BH 访问记录按 IP 统计）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 > **会话分工（2026-11-09）**：可直接开发的功能（AR、AO、AP、可选 F）见
 > [HANDOVER-DEV-2026-11-09.md](HANDOVER-DEV-2026-11-09.md)；运维排查结论见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) 与 TODO C 段。
 
+- **v2.9.0 已发布**（tag `v2.9.0`）：BE 愿望单仅本站（POST/DELETE /api/wishlist 只写本站 + 后台「愿望单」清单可删不可加 +
+  每账号 API Key 改账号同步用、不回退全局 key、绑定后不自动同步）；BH 访问记录按 IP 统计
+  （`/api/admin/visitors/by-ip` 时间窗/排序白名单 + 展开行、黑白名单统计列、设备按 device_id 聚合）。
+  验证：`npm test` 79 文件 / 628 项全绿、`api.test` 22/22、`frontend:build`、`scan` 干净；
+  质检：BE ✅ 放行（[QA-WISHLIST-SITE-ONLY.md](QA-WISHLIST-SITE-ONLY.md)）、BH ✅ 放行（[QA-VISIT-IP-STATS.md](QA-VISIT-IP-STATS.md)）。
+  CI：**待确认**（tag 推送后补双绿记录）。
+  **服务器部署待执行**（升级到 `2.9.0`）；部署后按各规格验收（愿望单前台流程、后台清单/批量、IP 统计视图、设备聚合）。
 - **v2.8.0 已发布**（tag `v2.8.0`）：AZ 异常审核规则摘要精简（首规则 ×n · 共 N 条规则 + hover 全量规则）；
   BA 运行与同步页重设计（任务健康条 + 记录 6 列/5 轮折叠 + 55vh 固定高度日志面板）；
   BB 代理健康主动探测（立即检测 + `probe --proxy` + 每 10 分钟 `proxy-probe`，探测不写业务冷却）；
