@@ -1,6 +1,6 @@
 # 运行与同步页重设计：任务健康条 + 记录精简 + 固定高度日志面板（待开发）
 
-> 状态：**需求与方案已确认（2026-11-10），待开发**（方案 A）。
+> 状态：**已实现待发版（2026-11-10，44942fd）**（方案 A：任务健康条 + 记录精简 + 固定高度日志面板）。
 > 关联：[AdminLogs.vue](../frontend/src/pages/AdminLogs.vue)（本页实现）· [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md)（AT 批：操作日志 5 tab）·
 > [WEB.md](WEB.md)（后台接口）· [DEPLOY.md](DEPLOY.md)
 

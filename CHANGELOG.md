@@ -2,6 +2,26 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+AZ / BA / BB / BC 四批（2026-11-10，均已「已实现待发版」，等构建指令）。
+
+### 新增
+
+- **异常审核规则摘要精简（AZ）**：列内只显示「首规则 ×n · 共 N 条规则」，悬停弹层列全部规则（单规则不弹），移动端同口径。
+- **运行与同步页重设计（BA）**：顶部任务健康条（点 chip 过滤日志、60 秒刷新）、同步记录精简为 6 列并默认 5 轮折叠、
+  日志面板固定 55vh 内部滚动（sticky 筛选条 + 行点击展开完整字段）。
+- **代理健康主动探测（BB）**：设置页「立即检测」+ `probe --proxy` 命令 + 每 10 分钟 `proxy-probe` 任务；
+  CONNECT 协议层探测，结果写 `probe*` 字段、与业务冷却分离；「未知」改为「未检测/探测失败」。
+- **封面图补图覆盖率（BC）**：`steam-status` 同一次 appdetails 顺带补 `header_image`、`backfill` 候选纳入
+  「有价但无 header_image」、`images.limit` 默认 500、后台「清除缺图缓存」（`POST /api/admin/images/reset-miss`）。
+
+### 测试
+
+- 新增 `test/proxy-probe.test.js`（成功/407/超时、不进业务冷却、脱敏、健康文件无明文）与
+  `test/image-coverage.test.js`（header_image 补齐不覆盖、默认 500、reset-miss 鉴权）；
+  `test/scheduler.test.js` 增 proxy-probe 与 images 500 断言；`test/admin-review-lists.test.js` /
+  `test/admin-console-ia.test.js` / `test/proxy-pool-ui.test.js` 增补静态断言。
 ## [2.7.0] - 2026-11-10
 
 AW 批：封面图回源（404 快失败 + 超时收紧 + 负缓存分层 + `header_image` 直链，规格 [docs/IMAGE-FETCH.md](docs/IMAGE-FETCH.md)）
