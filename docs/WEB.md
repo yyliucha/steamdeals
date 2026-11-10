@@ -201,7 +201,9 @@ POST /api/setup/complete
 - `GET /api/admin/users` → 用户列表（角色、最近登录）
 - `GET /api/admin/views` → 浏览排行（90 天前自动清理）
 - `POST /api/admin/users` → `{ username, password, role }` 建号
-- `GET /api/admin/visitors?page&pageSize&ip&path&sort&order` → 访问记录分页 + 今日汇总（访问数/独立 IP/黑名单数/高频 IP）；`sort=time|ip|status`、`order=asc|desc`（白名单，非法回落默认；AQ 批）
+- `GET /api/admin/visitors?page&pageSize&ip&path&sort&order` → 访问记录分页 + 今日汇总（访问数/独立 IP/黑名单数/高频 IP）；`sort=time|ip|status`
+- `GET /api/admin/visitors/by-ip?days=7&page&pageSize&q&sort` → IP 统计视图（每 IP 一行：访问次数/首次→最近/独立路径/设备数/状态），`days=1|7|30`、`sort=visits|lastAt|ip` 白名单；`GET /api/admin/visitors/by-ip/:ip` 返回最近访问与路径 top5（BH 批）
+- `GET /api/admin/devices` 按 `device_id` 聚合（无设备码回退指纹）：多 IP/UA 汇总、出现次数、是否已封禁（BH 批）、`order=asc|desc`（白名单，非法回落默认；AQ 批）
 - `GET /api/admin/images` → 封面图本地缓存统计（张数/覆盖游戏数/体积/目录）
 - `GET /api/admin/emails` → 验证码邮件记录（含 `subject`/`body`：用户收不到邮件时直接看验证码）
 - `GET /api/admin/blacklist` → 黑名单列表；`POST /api/admin/blacklist` → `{ ip, note }` 拉黑（支持 CIDR）；

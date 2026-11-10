@@ -2051,15 +2051,18 @@ export function visitorOrderClause(sort = 'time', order = 'desc') {
   return `id ${dir}`;
 }
 
-export async function listVisitorLogs(q, { page = 1, pageSize = 50, ip = null, path = null, filter = 'visits', sort = 'time', order = 'desc' } = {}) {
+export async function listVisitorLogs(q, { page = 1, pageSize = 50, ip = null, path = null, filter = 'visits', sort = 'time', order = 'desc', days = null } = {}) {
   const blockedCond = filter === 'blocked' ? 'and blocked' : filter === 'all' ? '' : 'and not blocked';
-  const where = `where ($1 = '' or ip = $1 or remote_ip = $1) and ($2 = '' or path like '%' || $2 || '%') ${blockedCond}`;
-  const cnt = await q(`select count(*)::int as n from visitor_logs ${where}`, [ip ?? '', path ?? '']);
+  // BH 批（docs/VISIT-IP-STATS.md §3.1）：时间窗与 IP 统计视图共用；days 由服务端白名单校验后传入
+  const where = `where ($1 = '' or ip = $1 or remote_ip = $1) and ($2 = '' or path like '%' || $2 || '%') ${blockedCond} and ($5::int is null or created_at >= now() - ($5::int * interval '1 day'))`;
+  // 计数查询只传 3 个参数：未被引用的 $3/$4 会让 PG 无法推断参数类型（42P18），所以把时间窗占位符换成 $3
+  const whereCount = where.replaceAll('$5', '$3');
+  const cnt = await q(`select count(*)::int as n from visitor_logs ${whereCount}`, [ip ?? '', path ?? '', days]);
   const rows = await q(
     `select id, ip, remote_ip, region, path, method, user_agent, status, blocked, block_reason, created_at
        from visitor_logs ${where}
       order by ${visitorOrderClause(sort, order)} limit $3 offset $4`,
-    [ip ?? '', path ?? '', pageSize, (page - 1) * pageSize],
+    [ip ?? '', path ?? '', pageSize, (page - 1) * pageSize, days],
   );
   return { total: cnt.rows[0]?.n ?? 0, rows: rows.rows };
 }
@@ -2081,8 +2084,81 @@ export async function visitorSummary(q) {
   return { ...today.rows[0], topIps: top.rows };
 }
 
+/** IP 统计视图（BH 批 docs/VISIT-IP-STATS.md §3.1）：时间窗内每 IP 一行，默认按访问次数倒序。 */
+export async function listVisitorsByIp(q, { days = 7, page = 1, pageSize = 20, q: kw = '', sort = 'visits' } = {}) {
+  const windowSql = `created_at >= now() - ($1::int * interval '1 day')`;
+  const kwSql = `($2 = '' or ip ilike '%' || $2 || '%')`;
+  const count = await q(`select count(distinct ip)::int as n from visitor_logs where ${windowSql} and ${kwSql}`, [days, kw]);
+  // 排序白名单：visits（默认）/ lastAt / ip；IP 用补零字符串做 IPv4 数值序（IPv6 退化为字典序）
+  const orderSql =
+    sort === 'lastAt'
+      ? 'order by last_at desc, visits desc'
+      : sort === 'ip'
+        ? `order by case when ip ~ '^[0-9]{1,3}(\\.[0-9]{1,3}){3}$'
+                       then lpad(split_part(ip,'.',1),3,'0')||lpad(split_part(ip,'.',2),3,'0')||lpad(split_part(ip,'.',3),3,'0')||lpad(split_part(ip,'.',4),3,'0')
+                       else 'zzz:' || ip end`
+        : 'order by visits desc, last_at desc';
+  const rows = await q(
+    `select ip,
+            count(*)::int as visits,
+            min(created_at) as first_at,
+            max(created_at) as last_at,
+            count(distinct path)::int as paths,
+            coalesce((select count(distinct coalesce(nullif(d.device_id, ''), d.fingerprint))::int
+                        from device_logs d
+                       where d.ip = visitor_logs.ip and d.created_at >= now() - ($1::int * interval '1 day')), 0) as devices,
+            (select l.region from visitor_logs l
+              where l.ip = visitor_logs.ip and l.region is not null
+              order by l.created_at desc limit 1) as region,
+            case when exists (select 1 from ip_blacklist b where b.ip = visitor_logs.ip) then 'blocked'
+                 when bool_or(blocked) then 'intercepted'
+                 else 'normal' end as status
+       from visitor_logs
+      where ${windowSql} and ${kwSql}
+      group by ip
+      ${orderSql}
+      limit $3 offset $4`,
+    [days, kw, pageSize, (page - 1) * pageSize],
+  );
+  return { total: count.rows[0]?.n ?? 0, rows: rows.rows };
+}
+
+/** 展开行：该 IP 时间窗内最近 20 条访问 + 访问最多的路径 top 5（BH 批 §3.1）。 */
+export async function visitorIpDetail(q, { ip, days = 7 } = {}) {
+  const recent = await q(
+    `select id, path, method, status, blocked, created_at
+       from visitor_logs
+      where ip = $1 and created_at >= now() - ($2::int * interval '1 day')
+      order by created_at desc limit 20`,
+    [ip, days],
+  );
+  const top = await q(
+    `select path, count(*)::int as n
+       from visitor_logs
+      where ip = $1 and created_at >= now() - ($2::int * interval '1 day')
+      group by path order by n desc, path limit 5`,
+    [ip, days],
+  );
+  return { recent: recent.rows, topPaths: top.rows };
+}
+/** 黑名单（BH 批）：每行追加近 7 天访问次数 / 最近访问 / 设备数（无记录为 0/null）。 */
 export async function listBlockedIps(q) {
-  const r = await q('select id, ip, note, created_at from ip_blacklist order by id desc');
+  const r = await q(
+    `select b.id, b.ip, b.note, b.created_at,
+            coalesce(v.visits, 0)::int as visits, v.last_at, coalesce(d.devices, 0)::int as devices
+       from ip_blacklist b
+       left join lateral (
+         select count(*)::int as visits, max(created_at) as last_at
+           from visitor_logs
+          where ip = b.ip and created_at >= now() - interval '7 days'
+       ) v on true
+       left join lateral (
+         select count(distinct coalesce(nullif(device_id, ''), fingerprint))::int as devices
+           from device_logs
+          where ip = b.ip and created_at >= now() - interval '7 days'
+       ) d on true
+      order by b.id desc`,
+  );
   return r.rows;
 }
 
@@ -2103,8 +2179,24 @@ export async function removeBlockedIp(q, ip) {
 
 // ---------------------------------------------------------------- IP 白名单 / 超频记录
 
+/** 白名单（BH 批）：每行追加近 7 天访问次数 / 最近访问 / 设备数。 */
 export async function listWhitelist(q) {
-  const r = await q('select ip, note, created_at from ip_whitelist order by created_at desc');
+  const r = await q(
+    `select w.ip, w.note, w.created_at,
+            coalesce(v.visits, 0)::int as visits, v.last_at, coalesce(d.devices, 0)::int as devices
+       from ip_whitelist w
+       left join lateral (
+         select count(*)::int as visits, max(created_at) as last_at
+           from visitor_logs
+          where ip = w.ip and created_at >= now() - interval '7 days'
+       ) v on true
+       left join lateral (
+         select count(distinct coalesce(nullif(device_id, ''), fingerprint))::int as devices
+           from device_logs
+          where ip = w.ip and created_at >= now() - interval '7 days'
+       ) d on true
+      order by w.created_at desc`,
+  );
   return r.rows;
 }
 
@@ -2227,20 +2319,39 @@ export async function insertDeviceLog(q, { ip = null, deviceId = null, fingerpri
   return Number(r.rows[0].id);
 }
 
-/** 最近设备：同一设备/指纹只保留最新一条。 */
+/**
+ * 最近设备（BH 批）：按设备码 `device_id` 聚合（无设备码的老记录按 fingerprint 归组），
+ * 返回 { key, deviceId, fingerprint, fingerprints, ips, userAgent, lastAt, count, banned }。
+ * 封禁仍按指纹（banned = 组内任一指纹在 device_bans）。
+ */
 export async function listDevices(q, { limit = 50 } = {}) {
   const r = await q(
-    `select * from (
-        select distinct on (coalesce(device_id, fingerprint))
-               id, ip, device_id, fingerprint, user_agent, details, created_at
-          from device_logs
-         order by coalesce(device_id, fingerprint), id desc
-     ) t
-     order by id desc
-     limit $1`,
+    `select coalesce(nullif(device_id, ''), fingerprint) as key,
+            max(nullif(device_id, '')) as device_id,
+            (array_agg(fingerprint order by created_at desc))[1] as fingerprint,
+            array_agg(distinct fingerprint) as fingerprints,
+            array_agg(distinct ip) filter (where ip is not null) as ips,
+            max(user_agent) as user_agent,
+            max(created_at) as last_at,
+            count(*)::int as count,
+            bool_or(exists (select 1 from device_bans b where b.fingerprint = device_logs.fingerprint)) as banned
+       from device_logs
+      group by 1
+      order by last_at desc
+      limit $1`,
     [Math.min(Math.max(Number(limit) || 50, 1), 200)],
   );
-  return r.rows;
+  return r.rows.map((row) => ({
+    key: row.key,
+    deviceId: row.device_id ?? null,
+    fingerprint: row.fingerprint,
+    fingerprints: (row.fingerprints ?? []).filter(Boolean),
+    ips: (row.ips ?? []).filter(Boolean),
+    userAgent: row.user_agent ?? null,
+    lastAt: row.last_at,
+    count: row.count,
+    banned: Boolean(row.banned),
+  }));
 }
 
 export async function activeDeviceBans(q) {

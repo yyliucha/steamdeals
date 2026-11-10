@@ -2778,11 +2778,34 @@ export function createApiServer({
         const rawSort = String(url.searchParams.get('sort') ?? '');
         const sort = ['time', 'ip', 'status'].includes(rawSort) ? rawSort : 'time';
         const order = String(url.searchParams.get('order') ?? '') === 'asc' ? 'asc' : 'desc';
-        const list = await db.listVisitorLogs(q, { page, pageSize, ip: ip || null, path: p || null, filter, sort, order });
+        const rawDays = Number(url.searchParams.get('days') ?? 0);
+        const days = [1, 7, 30].includes(rawDays) ? rawDays : null;
+        const list = await db.listVisitorLogs(q, { page, pageSize, ip: ip || null, path: p || null, filter, sort, order, days });
         const summary = await db.visitorSummary(q);
         return json(res, 200, { ...list, page, pageSize, filter, pages: Math.max(1, Math.ceil(list.total / pageSize)), summary });
       }
 
+      // BH 批（docs/VISIT-IP-STATS.md §3.1）：访问明细默认「IP 统计视图」——时间窗/排序白名单，不拼接用户输入
+      if (path === '/api/admin/visitors/by-ip' && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const rawDays = Number(url.searchParams.get('days') ?? 7);
+        const days = [1, 7, 30].includes(rawDays) ? rawDays : 7;
+        const page = Math.max(1, Number(url.searchParams.get('page') ?? 1) || 1);
+        const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize') ?? 20) || 20, 5), 100);
+        const kw = String(url.searchParams.get('q') ?? '').trim().slice(0, 80);
+        const rawSort = String(url.searchParams.get('sort') ?? '');
+        const sort = ['visits', 'lastAt', 'ip'].includes(rawSort) ? rawSort : 'visits';
+        const data = await db.listVisitorsByIp(q, { days, page, pageSize, q: kw, sort });
+        return json(res, 200, { items: data.rows, total: data.total, page, pageSize, days, sort, pages: Math.max(1, Math.ceil(data.total / pageSize)) });
+      }
+      const visitorIpMatch = path.match(/^\/api\/admin\/visitors\/by-ip\/(.+)$/);
+      if (visitorIpMatch && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const ip = decodeURIComponent(visitorIpMatch[1]).slice(0, 64);
+        const rawDays = Number(url.searchParams.get('days') ?? 7);
+        const days = [1, 7, 30].includes(rawDays) ? rawDays : 7;
+        return json(res, 200, { ip, days, ...(await db.visitorIpDetail(q, { ip, days })) });
+      }
       // ---- 管理员：封面图本地缓存统计 ----
       if (path === '/api/admin/images' && req.method === 'GET') {
         if (!requireAdmin()) return;
