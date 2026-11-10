@@ -45,11 +45,11 @@ function toggleTheme(){
     fetch('/api/prefs', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ theme: m }) }).catch(() => {});
   }
 }
-const nativeSections=['games','visitors','announcements','settings','stats'];
+const nativeSections=['games','visitors','announcements','wishlist','settings','stats'];
 // AT 批（docs/ADMIN-CONSOLE-IA.md §3）：侧栏删「批量操作记录」「运行日志」，新增「日志审计 / 操作日志」；
 // 旧书签 ?section=bulk-ops / ?section=sync 自动落到 op-logs 对应 tab，不 404（§7.4 验收 11）。
 const groups=[
-  {name:'内容运营',items:[{id:'games',label:'游戏管理',glyph:'▦',description:'维护游戏目录、采集计划与数据回填'},{id:'recycle',label:'回收站',glyph:'▤',description:'查看并恢复已删除的游戏'},{id:'announcements',label:'站点通知',glyph:'▱',description:'发布和管理网站公告'}]},
+  {name:'内容运营',items:[{id:'games',label:'游戏管理',glyph:'▦',description:'维护游戏目录、采集计划与数据回填'},{id:'recycle',label:'回收站',glyph:'▤',description:'查看并恢复已删除的游戏'},{id:'announcements',label:'站点通知',glyph:'▱',description:'发布和管理网站公告'},{id:'wishlist',label:'愿望单',glyph:'★',description:'全站用户愿望单，可查看与删除'}]},
   {name:'访问与安全',items:[{id:'visitors',label:'访问记录',glyph:'◉',description:'流量、异常请求和访问控制'}]},
   {name:'账号与服务',items:[{id:'users',label:'用户管理',glyph:'♙',description:'管理账号、角色与登录权限'},{id:'steam',label:'Steam 账号',glyph:'◈',description:'绑定多个 Steam 账号，同步游戏库与愿望单'},{id:'mail',label:'邮件服务',glyph:'✉',description:'配置 SMTP、邮件模板与发送测试'}]},
   {name:'日志审计',items:[{id:'op-logs',label:'操作日志',glyph:'☰',description:'用户删除 / 批量操作 / Steam 账号 / 邮件发送 / 运行与同步的审计记录'}]},

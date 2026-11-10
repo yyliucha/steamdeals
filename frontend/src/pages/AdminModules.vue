@@ -45,6 +45,23 @@
       </template>
     </template>
 
+    <!-- 愿望单（BE 批 docs/WISHLIST-SITE-ONLY.md §6）：只读 + 删除，不提供新增 -->
+    <template v-else-if="section==='wishlist'">
+      <div class="module-card"><div class="card-heading"><div><h3>全站愿望单</h3><p>只读 + 删除；新增请走前台「愿望单」按钮（后台不提供新增）。同一游戏的自动史低提醒在最后一个收藏被删时一起清理。</p></div><el-button :loading="loading" @click="loadWishlists">刷新</el-button></div>
+        <div class="inline-form"><el-input v-model="wishQuery" clearable placeholder="搜索用户名 / 游戏名 / AppID" style="max-width:360px" @keyup.enter="loadWishlists" @clear="loadWishlists"/><el-button :loading="loading" @click="loadWishlists">搜索</el-button><span class="muted">共 {{ wishlists.length }} 条（上限 200）</span></div>
+      </div>
+      <BulkBar :count="sel.wishlist.count" :actions="wishlistBulkActions" :running="bulkRunning" @run="(a)=>runBulk(a,sel.wishlist,{refresh:loadWishlists})" @clear="sel.wishlist.clear()"/>
+      <div v-if="isMobile" class="game-card-list"><div v-for="w in pagedWishlists" :key="w.id" class="admin-card"><div class="admin-card-pick"><el-checkbox :model-value="sel.wishlist.has(w)" @change="sel.wishlist.toggle(w)">选择</el-checkbox></div><div class="admin-card-main"><strong>{{ w.name||w.name_en||('appid:'+w.steam_appid) }}</strong><small>{{ w.username }} · 加入 {{ dateTime(w.created_at) }}</small><span class="muted">当前 {{ price(w.current_low) }} · 史低 {{ price(w.hist_low) }}</span></div><el-button type="danger" plain size="small" @click="removeWishlist(w)">删除</el-button></div><el-empty v-if="!wishlists.length" description="没有愿望单记录"/></div>
+      <div v-else class="module-card table-card"><el-table :data="pagedWishlists" v-loading="loading" stripe @selection-change="sel.wishlist.onSelectionChange">
+        <el-table-column type="selection" width="44"/>
+        <el-table-column prop="username" label="用户" min-width="120"/>
+        <el-table-column label="游戏" min-width="260"><template #default="{row}"><div class="game-name-row"><span class="game-name">{{ row.name||row.name_en||('appid:'+row.steam_appid) }}</span><span v-if="row.steam_appid" class="muted mono">{{ row.steam_appid }}</span></div></template></el-table-column>
+        <el-table-column label="当前价" width="110" align="right"><template #default="{row}">{{ price(row.current_low) }}</template></el-table-column>
+        <el-table-column label="史低" width="110" align="right"><template #default="{row}">{{ price(row.hist_low) }}</template></el-table-column>
+        <el-table-column label="加入时间" min-width="160"><template #default="{row}">{{ dateTime(row.created_at) }}</template></el-table-column>
+        <el-table-column label="操作" width="90"><template #default="{row}"><el-button link type="danger" @click="removeWishlist(row)">删除</el-button></template></el-table-column>
+      </el-table><PaginationBar v-model:page="wishPage" v-model:page-size="wishPageSize" :total="wishlists.length"/></div>
+    </template>
     <!-- 公告 -->
     <template v-else-if="section==='announcements'">
       <div class="module-card announcement-head"><div class="card-heading"><div><h3>站点通知</h3><p>这里只留公告列表；新建 / 编辑通知走右侧抽屉（带前台预览，不跳页）。</p></div><el-button type="primary" @click="openAnnouncementDrawer()">＋ 新建通知</el-button></div></div>
@@ -255,6 +272,7 @@ const sel={
   games:reactive(useBulkSelection((r)=>r.id,gamesTable)),
   visitors:reactive(useBulkSelection((r)=>r.ip,visitorsTable)),
   announcements:reactive(useBulkSelection((r)=>r.id,null)),
+  wishlist:reactive(useBulkSelection((r)=>r.id,null)),
   blacklist:reactive(useBulkSelection((r)=>r.ip,blacklistTable)),
   whitelist:reactive(useBulkSelection((r)=>r.ip,whitelistTable)),
   abuse:reactive(useBulkSelection((r)=>r.ip,abuseTable)),
@@ -265,6 +283,7 @@ const bulkResult=reactive({visible:false,result:null}),bulkRunning=ref('');
 const gamesBulkActions=[{key:'block',label:'禁用',target:'games',action:'block',risk:'high'},{key:'unblock',label:'启用',target:'games',action:'unblock'},{key:'delete',label:'删除（进回收站）',target:'games',action:'delete',risk:'high'}];
 const visitorsBulkActions=[{key:'ban-ip',label:'封 IP',target:'visitors',action:'ban-ip',risk:'high'},{key:'trust',label:'信任（加白）',target:'visitors',action:'trust'}];
 const announcementsBulkActions=[{key:'activate',label:'启用',target:'announcements',action:'activate'},{key:'deactivate',label:'停用',target:'announcements',action:'deactivate'},{key:'delete',label:'删除',target:'announcements',action:'delete',risk:'high'}];
+const wishlistBulkActions=[{key:'delete',label:'删除',target:'wishlists',action:'delete',risk:'high'}];
 const blacklistBulkActions=[{key:'unban',label:'解封',target:'blacklist',action:'unban'}];
 const whitelistBulkActions=[{key:'remove',label:'移出白名单',target:'whitelist',action:'remove'}];
 const abuseBulkActions=[{key:'unban',label:'解封',target:'abuse',action:'unban'}];
@@ -373,6 +392,15 @@ async function unbanAbuse(ip){await run(async()=>{await api(`/api/admin/abuse/${
 
 async function loadAnnouncements(){sel.announcements.clear();loading.value=true;try{const d=await api('/api/admin/announcements?limit=200');announcements.value=d.announcements||[];}catch(e){notifyError(e);}finally{loading.value=false;}}
 function levelLabel(level){return ({critical:'重要',warning:'提醒',info:'通知'})[level]||'通知';}
+// BE 批（docs/WISHLIST-SITE-ONLY.md §6）：全站愿望单只读 + 删除（无新增入口）
+const wishlists=ref([]), wishQuery=ref('');
+const wishPager=useListPagination(wishlists);
+const pagedWishlists=wishPager.items, wishPage=wishPager.page, wishPageSize=wishPager.pageSize;
+async function loadWishlists(){sel.wishlist.clear();loading.value=true;try{const qs=new URLSearchParams({limit:'200'});if(wishQuery.value.trim())qs.set('q',wishQuery.value.trim());const d=await api(`/api/admin/wishlists?${qs}`);wishlists.value=d.items||[];}catch(e){notifyError(e);}finally{loading.value=false;}}
+async function removeWishlist(row){
+  try{await ElMessageBox.confirm(`删除「${row.username}」的愿望单「${row.name||row.name_en||row.steam_appid}」？删除后前台不再显示，该游戏的自动史低提醒在无人收藏时一起清理。`,'删除愿望单',{type:'warning',confirmButtonText:'删除',cancelButtonText:'取消'});}catch{return;}
+  try{await api(`/api/admin/wishlists/${row.id}`,{method:'DELETE'});ElMessage.success('已删除');await loadWishlists();}catch(e){notifyError(e);}
+}
 // AT 批（docs/ADMIN-CONSOLE-IA.md §7.3）：抽屉状态与 URL 双向同步——
 // ?section=announcements&drawer=new[&id=…] 可直达；关闭去掉 drawer/id，保留其它参数。
 // 带 id 直达时等列表加载完再定位行（列表未就绪会闪一帧空表单）。
@@ -465,10 +493,10 @@ async function resetCircuit(row){await run(async()=>{const d=await api('/api/adm
 async function runTask(name){await run(async()=>{if(name==='steam-prices'||name==='catalog'){await api('/api/admin/sync',json('POST',{mode:name}));}else{await api(`/api/admin/${name}`,json('POST',{}));}ElMessage.success('任务已提交到服务器');await loadSyncStatus();});}
 async function stopCurrent(){await run(async()=>{const mode=syncStatus.value?.run?.mode||'';const path=mode==='rename'?'/api/admin/rename/stop':mode==='heat'?'/api/admin/heat/stop':'/api/admin/backfill/stop';await api(path,json('POST',{}));ElMessage.success('已请求停止');await loadSyncStatus();});}
 
-watch(()=>props.section,(section)=>{if(section==='games')loadGames(1);else if(section==='visitors')loadVisitorView();else if(section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(section==='settings')loadSettings();else if(section==='stats')loadStats();});
+watch(()=>props.section,(section)=>{if(section==='games')loadGames(1);else if(section==='visitors')loadVisitorView();else if(section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(section==='wishlist')loadWishlists();else if(section==='settings')loadSettings();else if(section==='stats')loadStats();});
 // AN 批（docs/UNSAVED-GUARD.md §4.4）：本组件注册三个编辑面——系统设置 / 站点通知 / 编辑游戏
 const unregisterUnsaved=[];
-onMounted(()=>{if(props.section==='games')loadGames(1);else if(props.section==='visitors')loadVisitorView();else if(props.section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(props.section==='settings'){loadSettings();loadProxyHealth();}else if(props.section==='stats')loadStats();startProxyTimer();unregisterUnsaved.push(registerUnsavedSource({id:'settings',label:'系统设置',isDirty:()=>settingsDirty.value,save:submitSettings,discard:discardSettings}),registerUnsavedSource({id:'edit-game',label:'编辑游戏',isDirty:gameDirty,save:submitGameSave,discard:closeGameDialog}));if(window.matchMedia){const mq=window.matchMedia('(max-width: 720px)');const on=()=>isMobile.value=mq.matches;mq.addEventListener?mq.addEventListener('change',on):mq.addListener(on);}});
+onMounted(()=>{if(props.section==='games')loadGames(1);else if(props.section==='visitors')loadVisitorView();else if(props.section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(props.section==='wishlist')loadWishlists();else if(props.section==='settings'){loadSettings();loadProxyHealth();}else if(props.section==='stats')loadStats();startProxyTimer();unregisterUnsaved.push(registerUnsavedSource({id:'settings',label:'系统设置',isDirty:()=>settingsDirty.value,save:submitSettings,discard:discardSettings}),registerUnsavedSource({id:'edit-game',label:'编辑游戏',isDirty:gameDirty,save:submitGameSave,discard:closeGameDialog}));if(window.matchMedia){const mq=window.matchMedia('(max-width: 720px)');const on=()=>isMobile.value=mq.matches;mq.addEventListener?mq.addEventListener('change',on):mq.addListener(on);}});
 const statusTimer=setInterval(()=>{if(props.section==='games'&&gameView.value==='tasks')loadSyncStatus();},8000);
 onBeforeUnmount(()=>{clearInterval(statusTimer);if(proxyTimer){clearInterval(proxyTimer);proxyTimer=null;}unregisterUnsaved.forEach((fn)=>fn());if(mobileQuery){if(mobileQuery.removeEventListener)mobileQuery.removeEventListener('change',onMobileChange);else mobileQuery.removeListener(onMobileChange);}});
 if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',onMobileChange);else mobileQuery.addListener(onMobileChange);}

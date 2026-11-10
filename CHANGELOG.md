@@ -2,6 +2,24 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+BE 批：愿望单仅本站（规格 [docs/WISHLIST-SITE-ONLY.md](docs/WISHLIST-SITE-ONLY.md)，已实现待发版）。
+
+### 新增
+
+- 后台「内容运营 → 愿望单」：全站清单（用户/游戏/当前价/史低/加入时间）+ 关键词/分页 + 单条/批量删除（max 200，复用 `bulk_ops` 审计），不提供新增入口。
+- 每账号 API Key 改为**账号同步用**（游戏库/愿望单）：未配置或无效直接报错、不回退全局 `STEAM_API_KEY`；系统采集任务仍用全局 key；绑定新账号后不再自动同步。
+
+### 变更
+
+- 愿望单加入/移除只写本站：`POST/DELETE /api/wishlist` 忽略旧 `steamIds`、不再推 Steam、不再写 `steam_wishlist`；
+  移除仍清自动史低提醒；`user_wishlist` 新增代理主键 `id`（只增列，复合主键保留）。
+- 前台 `Home.vue` 去掉 Steam 账号多选弹窗与卡片/详情账号展示，加入直写本站、移除二次确认；「愿望单」tab 不变。
+
+### 测试
+
+- 重写 `test/wishlist.test.js`（site-only 语义 + 旧字段兼容），新增 `test/wishlist-site-only.test.js`（后台清单/删除/批量/权限 + §4.4 静态接线），`test/admin-bulk.test.js` 计数 +1。
 ## [2.8.0] - 2026-11-10
 
 AZ / BA / BB / BC 四批：异常审核规则摘要精简、运行与同步页重设计、代理健康主动探测、封面图补图覆盖率。

@@ -1,6 +1,5 @@
-// 添加愿望单（docs/WISHLIST-FIX.md §6，AA 批）：失败账号 reason 透传（响应 + 日志）、
-// 空选仅本站、无 AppID 仅本站（gameId 路径）、未配 Key 拒推、解密失败原因、
-// 推送成功写 steam_wishlist、已在本站重复幂等；前端弹窗置灰/提示/仅加入本站（静态断言）。
+// BE 批（docs/WISHLIST-SITE-ONLY.md §4.1/§5）：愿望单只写本站——旧 steamIds 忽略不报错/不推送，
+// 加入建史低提醒、移除只删本站并清自动提醒；前台直加/确认移除（静态）。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -8,25 +7,22 @@ import { fileURLToPath } from 'node:url';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import { ensureSteamSchema } from '../src/steam-login.js';
-import { loadSecretKey, encryptSecret } from '../src/email-auth.js';
 import { startApiServer, resetLoginThrottleForTest } from '../src/server.js';
 
 process.env.CAPTCHA_ENABLED = '0';
 
-const events = [];
-const logger = {
-  trace() {},
-  debug() {},
-  info: (e, f) => events.push([e, f]),
-  warn: (e, f) => events.push([e, f]),
-  error: (e, f) => events.push([e, f]),
-};
+const read = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
-const pushCalls = [];
-async function setup({ pushImpl = null } = {}) {
+async function setup() {
   resetLoginThrottleForTest();
-  pushCalls.length = 0;
-  events.length = 0;
+  const events = [];
+  const logger = {
+    trace() {},
+    debug() {},
+    info: (e, f) => events.push([e, f]),
+    warn: (e, f) => events.push([e, f]),
+    error: (e, f) => events.push([e, f]),
+  };
   const store = await openStore('pglite:', {});
   await db.migrate(store);
   await ensureSteamSchema(store);
@@ -35,149 +31,130 @@ async function setup({ pushImpl = null } = {}) {
   const alice = (await q("select id from users where username = 'alice'")).rows[0];
   await q("insert into games (steam_appid, name) values (700001, '有AppID')");
   await q("insert into games (steam_appid, name) values (null, '无AppID')");
-  const pushWishlist = pushImpl
-    ? async (args) => { pushCalls.push(args); return pushImpl(args); }
-    : null;
-  const srv = await startApiServer({ query: q, port: 0, host: '127.0.0.1', logger, steamWishlistPush: pushWishlist });
+  const srv = await startApiServer({ query: q, port: 0, host: '127.0.0.1', logger });
   const base = `http://127.0.0.1:${srv.port}`;
   const loginRes = await fetch(`${base}/api/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ username: 'alice', password: 'k7Qw!2mXp3nZ' }),
   });
-  const cookie = (loginRes.headers.get('set-cookie') ?? '').split(';')[0];
-  const post = async (path, body) => {
+  assert.equal(loginRes.status, 200);
+  const cookie = loginRes.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+  const req = async (path, method, body) => {
     const res = await fetch(`${base}${path}`, {
-      method: 'POST',
+      method,
       headers: { 'content-type': 'application/json', cookie },
-      body: JSON.stringify(body),
+      body: body == null ? undefined : JSON.stringify(body),
     });
-    return { status: res.status, body: await res.json() };
+    return { status: res.status, body: await res.json().catch(() => null) };
   };
-  return { store, q, srv, post, alice };
+  return { store, q, srv, base, cookie, alice, events, req };
 }
 
-function failedLogFor(gameId, steamId) {
-  const evt = events.find(([e, f]) => e === 'steam.wishlist_manual_add' && f.gameId === gameId);
-  return evt?.[1] ?? null;
-}
+const wishRow = async (q, userId, gameId) =>
+  (await q('select steam_ids from user_wishlist where user_id = $1 and game_id = $2', [userId, gameId])).rows[0] ?? null;
+const watchCount = async (q, gameId) =>
+  Number((await q("select count(*)::int as n from watchlist where game_id = $1 and source = 'user_wishlist'", [gameId])).rows[0].n);
 
-test('验收 6：空选仅加入本站（不弹推送、不报错）；日志 failed 为空数组', async () => {
-  const { store, q, srv, post, alice } = await setup();
+test('加入：旧 steamIds 字段忽略——只写本站（steam_ids 存空）+ 建史低提醒，不写 steam_wishlist', async () => {
+  const ctx = await setup();
+  const game = (await ctx.q('select id from games where steam_appid = 700001')).rows[0];
   try {
-    const game = (await q("select id from games where steam_appid = 700001")).rows[0];
-    const r = await post('/api/wishlist', { appid: 700001 });
+    const r = await ctx.req('/api/wishlist', 'POST', { appid: 700001, steamIds: ['76561198000000001'] });
     assert.equal(r.status, 200);
-    assert.deepEqual(r.body, { ok: true, appid: 700001, added: [], alreadyIn: [], failed: [] });
-    const w = (await q('select * from user_wishlist where user_id = $1 and game_id = $2', [alice.id, game.id])).rows;
-    assert.equal(w.length, 1, '本站愿望单写入');
-    assert.equal(pushCalls.length, 0, '空选不推任何账号');
-    const log = failedLogFor(game.id, null);
-    assert.ok(log, 'steam.wishlist_manual_add 日志存在');
-    assert.deepEqual(log.failed, [], '失败列表为空数组（含 reason 结构）');
-    // 重复加入幂等（本站不重复插入）
-    await post('/api/wishlist', { appid: 700001 });
-    assert.equal((await q('select count(*)::int as n from user_wishlist')).rows[0].n, 1, '重复加入幂等');
+    assert.equal(r.body.ok, true);
+    assert.deepEqual(r.body.added, [], '不再推送');
+    assert.deepEqual(r.body.failed, []);
+    const row = await wishRow(ctx.q, ctx.alice.id, game.id);
+    assert.ok(row, '本站行已写入');
+    assert.deepEqual(row.steam_ids, [], 'steam_ids 不再落值');
+    assert.equal(await watchCount(ctx.q, game.id), 1, '建自动史低提醒');
+    assert.equal((await ctx.q('select count(*)::int as n from steam_wishlist')).rows[0].n, 0, '不写 Steam 同步表');
+    const added = ctx.events.find(([e]) => e === 'wishlist.added');
+    assert.ok(added, '日志 wishlist.added');
+    assert.equal(added[1].gameId, game.id);
   } finally {
-    await srv.close();
-    await store.close();
+    await ctx.srv.close();
+    await ctx.store.close();
   }
 });
 
-test('验收 5：未配 API Key 的账号 → failed.reason 透传（响应 + 日志都带原因）', async () => {
-  const { store, q, srv, post, alice } = await setup();
+test('加入：无 Steam AppID 走 gameId；重复加入幂等（不报错、不重复建提醒）', async () => {
+  const ctx = await setup();
+  const game = (await ctx.q("select id from games where name = '无AppID'")).rows[0];
   try {
-    const game = (await q("select id from games where steam_appid = 700001")).rows[0];
-    await q("insert into steam_accounts (steam_id, persona_name, user_id) values ('76561198000000001', 'A', $1)", [alice.id]);
-    const r = await post('/api/wishlist', { appid: 700001, steamIds: ['76561198000000001'] });
+    const first = await ctx.req('/api/wishlist', 'POST', { gameId: game.id });
+    assert.equal(first.status, 200);
+    assert.equal(first.body.appid, null);
+    const again = await ctx.req('/api/wishlist', 'POST', { gameId: game.id });
+    assert.equal(again.status, 200, '重复加入不报错');
+    assert.equal((await ctx.q('select count(*)::int as n from user_wishlist where game_id = $1', [game.id])).rows[0].n, 1);
+    assert.equal(await watchCount(ctx.q, game.id), 1, '提醒只有一条');
+  } finally {
+    await ctx.srv.close();
+    await ctx.store.close();
+  }
+});
+
+test('移除：按 appid 只删本站并清自动提醒（无 Steam 回推请求）', async () => {
+  const ctx = await setup();
+  const game = (await ctx.q('select id from games where steam_appid = 700001')).rows[0];
+  try {
+    await ctx.req('/api/wishlist', 'POST', { appid: 700001 });
+    const r = await ctx.req('/api/wishlist/700001', 'DELETE', { steamIds: ['76561198000000001'], siteWishlist: true });
     assert.equal(r.status, 200);
-    assert.equal(r.body.failed.length, 1);
-    assert.equal(r.body.failed[0].steamId, '76561198000000001');
-    assert.equal(r.body.failed[0].reason, '该账号未配置 API Key');
-    assert.equal(pushCalls.length, 0, '未配 Key 不推');
-    const log = failedLogFor(game.id, null);
-    assert.deepEqual(log.failed, [{ steamId: '76561198000000001', reason: '该账号未配置 API Key' }], '日志带原因（§4-1）');
+    assert.equal(r.body.siteRemoved, 1);
+    assert.equal(r.body.removedFromSteam.length, 0, '不再回推 Steam');
+    assert.equal(await wishRow(ctx.q, ctx.alice.id, game.id), null, '本站行已删');
+    assert.equal(await watchCount(ctx.q, game.id), 0, '自动提醒已清');
+    const removed = ctx.events.find(([e]) => e === 'wishlist.removed');
+    assert.ok(removed, '日志 wishlist.removed');
+    assert.equal(removed[1].siteRemoved, 1);
   } finally {
-    await srv.close();
-    await store.close();
+    await ctx.srv.close();
+    await ctx.store.close();
   }
 });
 
-test('验收 5：API Key 解密失败 → reason=API Key 解密失败（不静默变推送失败）', async () => {
-  const { store, q, srv, post, alice } = await setup();
+test('移除：按 gameId 路径；旧 body 的 siteWishlist:false 也忽略（统一只删本站）', async () => {
+  const ctx = await setup();
+  const game = (await ctx.q("select id from games where name = '无AppID'")).rows[0];
   try {
-    await q("insert into steam_accounts (steam_id, user_id, api_key_enc) values ('76561198000000002', $1, 'not-valid-cipher')", [alice.id]);
-    const r = await post('/api/wishlist', { appid: 700001, steamIds: ['76561198000000002'] });
-    assert.equal(r.body.failed[0].reason, 'API Key 解密失败');
-    assert.equal(pushCalls.length, 0);
-  } finally {
-    await srv.close();
-    await store.close();
-  }
-});
-
-test('验收 2：推送成功 → added + steam_wishlist 写入；已在愿望单 → alreadyIn 不重复推', async () => {
-  const { store, q, srv, post, alice } = await setup({ pushImpl: async () => ({ ok: true }) });
-  try {
-    const secret = loadSecretKey();
-    await q("insert into steam_accounts (steam_id, user_id, api_key_enc) values ('76561198000000003', $1, $2)", [alice.id, encryptSecret('REALKEY', secret)]);
-    const r = await post('/api/wishlist', { appid: 700001, steamIds: ['76561198000000003'] });
-    assert.deepEqual(r.body.added, ['76561198000000003'], 'added 含账号');
-    assert.equal(r.body.failed.length, 0);
-    assert.equal(pushCalls.length, 1);
-    assert.equal(pushCalls[0].appid, 700001);
-    const sw = (await q("select * from steam_wishlist where steam_id = '76561198000000003' and appid = 700001")).rows;
-    assert.equal(sw.length, 1, 'steam_wishlist 乐观写入');
-    // 已在 Steam 愿望单 → alreadyIn，不再调推送
-    const r2 = await post('/api/wishlist', { appid: 700001, steamIds: ['76561198000000003'] });
-    assert.deepEqual(r2.body.alreadyIn, ['76561198000000003']);
-    assert.equal(pushCalls.length, 1, '不重复推送');
-  } finally {
-    await srv.close();
-    await store.close();
-  }
-});
-
-test('验收 2：推送失败 → reason 透传（响应与日志）', async () => {
-  const { store, q, srv, post, alice } = await setup({ pushImpl: async () => ({ ok: false, reason: 'Steam 拒绝：403 Forbidden' }) });
-  try {
-    const secret = loadSecretKey();
-    await q("insert into steam_accounts (steam_id, user_id, api_key_enc) values ('76561198000000004', $1, $2)", [alice.id, encryptSecret('REALKEY', secret)]);
-    const r = await post('/api/wishlist', { appid: 700001, steamIds: ['76561198000000004'] });
-    assert.equal(r.body.failed[0].reason, 'Steam 拒绝：403 Forbidden');
-    const game = (await q("select id from games where steam_appid = 700001")).rows[0];
-    const log = failedLogFor(game.id, null);
-    assert.deepEqual(log.failed, [{ steamId: '76561198000000004', reason: 'Steam 拒绝：403 Forbidden' }]);
-  } finally {
-    await srv.close();
-    await store.close();
-  }
-});
-
-test('验收 6：无 Steam AppID 的条目走 gameId 路径 → appid=null、仅本站，不报错', async () => {
-  const { store, q, srv, post, alice } = await setup();
-  try {
-    const game = (await q("select id from games where steam_appid is null")).rows[0];
-    const r = await post('/api/wishlist', { gameId: game.id, steamIds: ['76561198000000005'] });
+    await ctx.req('/api/wishlist', 'POST', { gameId: game.id });
+    const r = await ctx.req(`/api/wishlist/id/${game.id}`, 'DELETE', { siteWishlist: false });
     assert.equal(r.status, 200);
-    assert.equal(r.body.appid, null, 'appid=null 是前端「仅本站」提示的信号');
-    assert.deepEqual(r.body.added, []);
-    assert.equal((await q('select count(*)::int as n from user_wishlist where game_id = $1', [game.id])).rows[0].n, 1, '本站写入');
+    assert.equal(r.body.siteRemoved, 1, 'body 被忽略，仍删本站');
+    assert.equal(await wishRow(ctx.q, ctx.alice.id, game.id), null);
+    // 不存在的游戏 → 404
+    const miss = await ctx.req('/api/wishlist/id/999999', 'DELETE', {});
+    assert.equal(miss.status, 404);
   } finally {
-    await srv.close();
-    await store.close();
+    await ctx.srv.close();
+    await ctx.store.close();
   }
 });
 
-test('前端（静态断言）：无 AppID 直达仅本站、无账号直达并提示可绑定、失败提示带 reason、弹窗置灰与文案', () => {
-  const src = readFileSync(fileURLToPath(new URL('../frontend/src/pages/Home.vue', import.meta.url)), 'utf8');
-  assert.match(src, /if\(!game\.steam_appid\)return addWishlist\(game,\[\]\)/, '§4-6 无 AppID 不弹多选');
-  assert.match(src, /if\(!steamAccounts\.value\.length\)return addWishlist\(game,\[\],\{siteOnlyHint:'已加入本站愿望单；绑定 Steam 账号可同步推送'\}\)/, '§4-4 无账号提示可绑定');
-  assert.match(src, /已加入本站愿望单（Steam 推送暂不支持）/, '方案 A：失败提示改诚实口径（含「暂不支持」）');
-  assert.doesNotMatch(src, /推送失败/, '方案 A：提示不再出现「失败」字样');
-  assert.match(src, /未配置 API Key，不可推送/, '§4-3 未配 Key 账号注明不可推送');
-  assert.match(src, /:disabled="!acc\.api_key_set \|\| wishAccAlready\(acc\)"/, '§4-3 未配 Key 置灰');
-  assert.match(src, /confirmWishlist\(true\)">仅加入本站</, '§4-5 空选「仅加入本站」按钮');
-  assert.match(src, /已加入本站愿望单（该条目无 Steam AppID，仅本站）/, '§4-6 无 AppID 成功提示');
-  assert.match(src, /Steam 已停止接受第三方写入，账号推送暂不支持（仅本站保存）/, '方案 A：弹窗说明诚实口径');
+test('鉴权：未登录访问 /api/wishlist（POST/DELETE）→ 401', async () => {
+  const ctx = await setup();
+  try {
+    const anon = (path, method) => fetch(`${ctx.base}${path}`, { method, headers: { 'content-type': 'application/json' }, body: '{}' });
+    assert.equal((await anon('/api/wishlist', 'POST')).status, 401);
+    assert.equal((await anon('/api/wishlist/700001', 'DELETE')).status, 401);
+  } finally {
+    await ctx.srv.close();
+    await ctx.store.close();
+  }
+});
+
+test('前端（静态）：去 Steam 多选弹窗/账号展示，加入直写本站、移除确认后只删本站', () => {
+  const home = read('../frontend/src/pages/Home.vue');
+  assert.doesNotMatch(home, /wishlistPick|wishlistRemovePick/, '不再有愿望单多选弹窗');
+  assert.doesNotMatch(home, /openWishlistRemove|confirmWishlist/, '不再有 Steam 账号选择流程');
+  assert.doesNotMatch(home, /wishlistByText|愿望单账号/, '卡片/详情不再拼接 Steam 账号名');
+  assert.doesNotMatch(home, /steamAccounts/, '前台不再加载 Steam 账号列表');
+  assert.match(home, /async function addWishlist\(game\)/, '加入只接收游戏');
+  assert.match(home, /await request\('\/api\/wishlist',\{method:'POST'/, '直接 POST 本站');
+  assert.match(home, /ElMessageBox\.confirm\(`确定从本站愿望单移除/, '移除有确认');
+  assert.match(home, /method:'DELETE',body:'\{\}'/, '移除只传空 body（只删本站）');
+  assert.match(home, /本站愿望单/, '详情只显示本站愿望单标签');
 });

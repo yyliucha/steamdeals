@@ -1181,12 +1181,13 @@ async function cmdOwned() {
 /** 批量同步所有已绑定 Steam 账号的库 + 愿望单（调度器每日任务；账号间间隔 ≥ 1s，单个失败不阻断）。 */
 async function cmdSteamAccounts() {
   const sleepMs = Math.max(1000, Number(flag('sleep', String(process.env.STEAM_ACCOUNTS_SLEEP_MS ?? 1000))) || 1000);
-  const apiKey = String(process.env.STEAM_API_KEY ?? '').trim();
-  if (!apiKey) throw new Error('未配置 STEAM_API_KEY（Steam Web API Key）');
   const mod = await import('./steam-accounts.js');
+  const auth = await import('./email-auth.js');
+  const secretKey = (() => { try { return auth.loadSecretKey(); } catch { return null; } })();
   let accounts = [];
   let ok = 0;
   let failed = 0;
+  let skipped = 0;
   await withStore(async (store) => {
     const q = (sql, p) => store.query(sql, p);
     accounts = await mod.listAllBoundAccounts(q);
@@ -1194,6 +1195,20 @@ async function cmdSteamAccounts() {
       const account = accounts[i];
       // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：调度器批量同步落审计（actor=scheduler；失败也不中断）
       const log = { actor: 'scheduler', userId: account.user_id, username: account.username ?? null, personaName: account.persona_name ?? null };
+      // BE 批（docs/WISHLIST-SITE-ONLY.md §4.4）：每个账号用自己的 API Key；没配就跳过并记日志，**不回退**全局 key。
+      const encRow = await q('select api_key_enc from steam_accounts where steam_id = $1', [account.steam_id]);
+      let apiKey = null;
+      try {
+        apiKey = auth.decryptSecret(encRow.rows[0]?.api_key_enc, secretKey);
+      } catch {
+        apiKey = null;
+      }
+      if (!apiKey) {
+        skipped += 1;
+        logger.warn('steam.account_sync_skipped', { steamId: account.steam_id, reason: 'no_api_key' });
+        if (i < accounts.length - 1) await sleep(sleepMs);
+        continue;
+      }
       try {
         await mod.syncAccountLibrary(q, { steamId: account.steam_id, apiKey, logger, log });
         // 库同步后补全目录类型（GetOwnedGames 不带类型字段，类型未知数靠 app_type；只挑缺失的，天然收敛）
@@ -1202,16 +1217,19 @@ async function cmdSteamAccounts() {
         ok += 1;
       } catch (err) {
         failed += 1;
-        logger.warn('sync.steam_account_failed', { steamId: account.steam_id, message: String(err.message).slice(0, 160) });
+        if (err?.status === 401 || err?.status === 403) {
+          logger.error('steam.account_sync_invalid_key', { steamId: account.steam_id, status: err.status });
+        } else {
+          logger.warn('sync.steam_account_failed', { steamId: account.steam_id, message: String(err.message).slice(0, 160) });
+        }
       }
       // 串行 + 账号间间隔（规格 §8：逐个串行，间隔 ≥ 1s）
       if (i < accounts.length - 1) await sleep(sleepMs);
     }
   });
-  logger.info('sync.steam_accounts_done', { accounts: accounts.length, ok, failed });
-  console.log(`Steam 账号同步完成：${ok} 成功 / ${failed} 失败（共 ${accounts.length} 个账号）。`);
+  logger.info('sync.steam_accounts_done', { accounts: accounts.length, ok, failed, skipped });
+  console.log(`Steam 账号同步完成：${ok} 成功 / ${failed} 失败 / ${skipped} 跳过（缺 API Key，共 ${accounts.length} 个账号）。`);
 }
-
 /** 认领未归属的 Steam 账号（迁移用；幂等，归属他人时报错）。 */
 async function cmdSteamClaim() {
   const username = String(args[1] ?? '').trim();

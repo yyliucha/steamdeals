@@ -379,13 +379,15 @@ export async function pushWishlistItem({ steamId, apiKey, appid, action = 'add',
   }
 }
 
-/** 站点内手动愿望单：写入 user_wishlist（含选择推送的账号），并建「愿望单」自动到价提醒（目标价空=史低）。 */
-export async function addUserWishlist(q, { userId, gameId, steamIds = [] }) {
-  const ids = [...new Set((steamIds ?? []).map((s) => String(s)).filter((s) => /^\d{17}$/.test(s)))];
+/**
+ * 站点内手动愿望单（BE 批 docs/WISHLIST-SITE-ONLY.md §4.1）：只写本站 + 建「愿望单」自动到价提醒。
+ * steamIds 参数保留仅为旧调用方兼容，**忽略不写、不推送**（列继续存在，新写入统一 '{}'）。
+ */
+export async function addUserWishlist(q, { userId, gameId }) {
   await q(
-    'insert into user_wishlist (user_id, game_id, steam_ids) values ($1, $2, $3) ' +
-      'on conflict (user_id, game_id) do update set steam_ids = excluded.steam_ids',
-    [userId, gameId, ids],
+    "insert into user_wishlist (user_id, game_id, steam_ids) values ($1, $2, '{}') " +
+      'on conflict (user_id, game_id) do nothing',
+    [userId, gameId],
   );
   await q(
     "insert into watchlist (game_id, region, target_cents, note, source) values ($1, 'cn', null, '愿望单', 'user_wishlist') " +
@@ -401,11 +403,17 @@ export async function addUserWishlist(q, { userId, gameId, steamIds = [] }) {
 export async function removeUserWishlist(q, { userId, gameId }) {
   const r = await q('delete from user_wishlist where user_id = $1 and game_id = $2 returning steam_ids', [userId, gameId]);
   const steamIds = r.rows[0]?.steam_ids ?? [];
-  const watch = await q(
-    "delete from watchlist where game_id = $1 and region = 'cn' and source = 'user_wishlist' and target_cents is null",
-    [gameId],
-  );
-  return { removed: r.rowCount ?? 0, steamIds, watchesCleaned: watch.rowCount ?? 0 };
+  // BE 批（docs/WISHLIST-SITE-ONLY.md §4.1）：其他人还收藏同一游戏时，别把全局自动提醒清掉
+  const left = await q('select 1 from user_wishlist where game_id = $1 limit 1', [gameId]);
+  let watchesCleaned = 0;
+  if (!left.rows.length) {
+    const watch = await q(
+      "delete from watchlist where game_id = $1 and region = 'cn' and source = 'user_wishlist' and target_cents is null",
+      [gameId],
+    );
+    watchesCleaned = watch.rowCount ?? 0;
+  }
+  return { removed: r.rowCount ?? 0, steamIds, watchesCleaned };
 }
 
 /** 该用户所有账号里愿望单含此 appid 的账号（移除时回推删除用）。 */
@@ -445,4 +453,61 @@ export async function setAccountApiKey(q, { steamId, apiKeyEnc, log = null }) {
     });
     throw err;
   }
+}
+
+/** 后台愿望单清单（BE 批 §4.2）：用户 / 游戏 / 当前价 / 史低 / 加入时间。 */
+export async function listWishlists(q, { limit = 200, keyword = '', userId = null } = {}) {
+  const kw = String(keyword ?? '').trim().slice(0, 80);
+  const params = [];
+  const where = [];
+  if (userId != null) {
+    params.push(Number(userId));
+    where.push(`uw.user_id = $${params.length}`);
+  }
+  if (kw) {
+    params.push(`%${kw}%`);
+    const like = `$${params.length}`;
+    params.push(kw);
+    const exact = `$${params.length}`;
+    where.push(`(u.username ilike ${like} or g.name ilike ${like} or g.name_en ilike ${like} or cast(g.steam_appid as text) = ${exact})`);
+  }
+  const size = Math.min(Math.max(Number(limit) || 200, 1), 500);
+  params.push(size);
+  const rows = (await q(
+    `select uw.id, uw.user_id, uw.game_id, uw.created_at,
+            u.username, g.name, g.name_en, g.steam_appid,
+            rs.price_cents as current_low, rs.hist_low_cents as hist_low
+       from user_wishlist uw
+       join users u on u.id = uw.user_id
+       join games g on g.id = uw.game_id
+       left join game_region_snapshot rs on rs.game_id = uw.game_id and rs.region = 'cn'
+      ${where.length ? 'where ' + where.join(' and ') : ''}
+      order by uw.created_at desc
+      limit $${params.length}`,
+    params,
+  )).rows;
+  return { items: rows, total: rows.length };
+}
+
+/**
+ * 后台删除愿望单（单条 + 批量共用）：删 user_wishlist 行；若该游戏已无任何用户收藏，
+ * 清掉全局自动提醒（watchlist source=user_wishlist / target 为空 / cn）——保留用户手动设过的目标价。
+ */
+export async function deleteWishlistsByIds(q, ids) {
+  const list = [...new Set((ids ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (!list.length) return { deleted: [], gameIds: [], watchesCleaned: 0 };
+  const rows = (await q('delete from user_wishlist where id = any($1::bigint[]) returning id, user_id, game_id', [list])).rows;
+  const gameIds = [...new Set(rows.map((r) => Number(r.game_id)))];
+  let watchesCleaned = 0;
+  if (gameIds.length) {
+    const cleaned = await q(
+      `delete from watchlist w
+        where w.source = 'user_wishlist' and w.target_cents is null and w.region = 'cn'
+          and w.game_id = any($1::bigint[])
+          and not exists (select 1 from user_wishlist uw where uw.game_id = w.game_id)`,
+      [gameIds],
+    );
+    watchesCleaned = cleaned.rowCount ?? 0;
+  }
+  return { deleted: rows, gameIds, watchesCleaned };
 }

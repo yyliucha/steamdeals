@@ -69,6 +69,9 @@ export async function ensureSteamSchema(store) {
     ');',
   ].join('\n'));
   await exec('create index if not exists user_wishlist_user on user_wishlist (user_id)');
+  // BE 批（docs/WISHLIST-SITE-ONLY.md §4.2）：后台按单条删除需要代理主键（复合主键保留不动）
+  await exec('alter table user_wishlist add column if not exists id bigserial');
+  await exec('create unique index if not exists user_wishlist_id_key on user_wishlist (id)');
   // Steam 账号操作审计（docs/ADMIN-CONSOLE-IA.md §5，AT 批）：
   // 7 类动作（bind/unbind/claim/sync-library/sync-wishlist/api-key/delete-cascade）。
   // user_id 故意不挂外键——用户被删后这条证据要留下；保留 180 天，由 prune 任务清理。

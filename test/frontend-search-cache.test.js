@@ -18,16 +18,28 @@ function lineOf(fnName) {
   return src.slice(i, lineEnd);
 }
 
-test('AF：addWishlist 成功后先失效缓存再 loadGames', () => {
-  const line = lineOf('addWishlist');
-  assert.ok(line.includes('invalidateSearchCache()'), '加愿望单必须失效缓存');
-  assert.ok(line.indexOf('invalidateSearchCache()') < line.indexOf('loadGames(page.value)'), '失效必须在 loadGames 之前');
+/** 取多行 async function 的函数体（到下一个单独一行的 } 为止）。 */
+function blockOf(fnName) {
+  const i = src.indexOf(`async function ${fnName}(`);
+  assert.ok(i >= 0, `应有 ${fnName}`);
+  const end = src.indexOf('\n}', i);
+  return src.slice(i, end);
+}
+
+test('AF：addWishlist 成功后经统一刷新先失效缓存再 loadGames', () => {
+  const block = blockOf('addWishlist');
+  assert.ok(block.includes('await refreshAfterWishlistChange(game)'), '加愿望单后走统一刷新');
+  const refresh = blockOf('refreshAfterWishlistChange');
+  assert.ok(refresh.includes('invalidateSearchCache()'), '必须失效缓存');
+  assert.ok(refresh.indexOf('invalidateSearchCache()') < refresh.indexOf('loadGames(page.value)'), '失效必须在 loadGames 之前');
 });
 
-test('AF：confirmWishlistRemove 成功后先失效缓存再 loadGames', () => {
-  const line = lineOf('confirmWishlistRemove');
-  assert.ok(line.includes('invalidateSearchCache()'));
-  assert.ok(line.indexOf('invalidateSearchCache()') < line.indexOf('loadGames(page.value)'));
+test('AF：removeWishlist 成功后经统一刷新先失效缓存再 loadGames（BE 批改名）', () => {
+  const block = blockOf('removeWishlist');
+  assert.ok(block.includes('await refreshAfterWishlistChange(game)'));
+  const refresh = blockOf('refreshAfterWishlistChange');
+  assert.ok(refresh.includes('invalidateSearchCache()'));
+  assert.ok(refresh.indexOf('invalidateSearchCache()') < refresh.indexOf('loadGames(page.value)'));
 });
 
 test('AF：setGameFlag 游客与登录两个分支都失效（两个 loadGames 各配一个失效）', () => {

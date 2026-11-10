@@ -193,7 +193,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   `images.limit` 默认 500 + 后台「清除缺图缓存」）。
   验证：`npm test` 77 文件 / 617 项全绿、`api.test` 22/22、`frontend:build`、`scan` 干净；
   质检：AZ/BA/BB/BC ✅ 放行（[QA-AZ-BA-BB-BC.md](QA-AZ-BA-BB-BC.md)）。
-  CI：**待确认**（tag 推送后补双绿记录）。
+  CI：docker-hub [#42775398971](https://github.com/yyliucha/steamdeals/actions/runs/42775398971) 与 docker-tcr [#42775398970](https://github.com/yyliucha/steamdeals/actions/runs/42775398970) ✅（2026-11-10）。
   **服务器部署待执行**（升级到 `2.8.0`）；部署后按各规格验收（AZ hover、BA 一屏/移动端、BB 立即检测、BC 补图）。
 - **v2.7.0 已发布**（tag `v2.7.0`）：AW 批封面图回源（404 快失败 + 单候选 8s→3s + 整次预算 5s + 负缓存分层
   notfound 24h/error 10min + `header_image` 直链白名单 + 前端占位块 + `images pull` 统计 notFound）+
