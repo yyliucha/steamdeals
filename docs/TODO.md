@@ -942,7 +942,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AZ. 待开发：异常审核「规则摘要」列精简（首规则 ×n · 共 N 条规则 + hover 弹层）
 
-**状态：质检通过（2026-11-10，4c5c98d；QA 报告 docs/QA-AZ-BA-BB-BC.md 未提交）**
+**状态：已发布 v2.8.0（2026-11-10，4c5c98d；QA 报告 docs/QA-AZ-BA-BB-BC.md）**
 **依赖：** AX（已发布 v2.7.0）
 **解锁：** 无
 **规格**：[ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §4.6
@@ -956,7 +956,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BA. 待开发：运行与同步页重设计（任务健康条 + 记录精简 + 固定高度日志面板）
 
-**状态：质检通过（2026-11-10，44942fd；QA 报告 docs/QA-AZ-BA-BB-BC.md 未提交）**
+**状态：已发布 v2.8.0（2026-11-10，44942fd；QA 报告 docs/QA-AZ-BA-BB-BC.md）**
 **依赖：** 无（复用 `/api/admin/sync/status`、`/api/admin/logs`、`/api/admin/sync/runs` 现有接口）
 **解锁：** 无
 **规格**：[RUN-SYNC-REDESIGN.md](RUN-SYNC-REDESIGN.md)
@@ -972,7 +972,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BB. 待开发：代理健康主动探测（立即检测按钮 + 每 10 分钟定时任务）
 
-**状态：质检通过（2026-11-10，96d28a9；QA 报告 docs/QA-AZ-BA-BB-BC.md 未提交）**
+**状态：已发布 v2.8.0（2026-11-10，96d28a9；QA 报告 docs/QA-AZ-BA-BB-BC.md）**
 **依赖：** AM-1 / AM-2（代理池，已发布）
 **解锁：** 无
 **规格**：[PROXY-POOL.md](PROXY-POOL.md) §11
@@ -987,7 +987,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BC. 待开发：封面图补图覆盖率（header_image 补全 + 预取扩大 + 缺图缓存可手动清）
 
-**状态：质检通过（2026-11-10，3ebc515；QA 报告 docs/QA-AZ-BA-BB-BC.md 未提交）**
+**状态：已发布 v2.8.0（2026-11-10，3ebc515；QA 报告 docs/QA-AZ-BA-BB-BC.md）**
 **依赖：** AW（已发布 v2.7.0；本批在其上提高覆盖率，占位块保留为兜底）
 **解锁：** 无
 **规格**：[IMAGE-COVERAGE.md](IMAGE-COVERAGE.md)

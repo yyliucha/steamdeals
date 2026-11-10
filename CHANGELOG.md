@@ -2,9 +2,9 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [2.8.0] - 2026-11-10
 
-AZ / BA / BB / BC 四批（2026-11-10，均已「已实现待发版」，等构建指令）。
+AZ / BA / BB / BC 四批：异常审核规则摘要精简、运行与同步页重设计、代理健康主动探测、封面图补图覆盖率。
 
 ### 新增
 

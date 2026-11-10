@@ -180,12 +180,21 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-10 更新，v2.7.0 已发布：AW 封面图回源 + AX 异常审核合并视图默认）
+### 当前状态（2026-11-10 更新，v2.8.0 已发布：AZ 规则摘要 + BA 运行与同步页 + BB 代理探测 + BC 补图覆盖率）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 > **会话分工（2026-11-09）**：可直接开发的功能（AR、AO、AP、可选 F）见
 > [HANDOVER-DEV-2026-11-09.md](HANDOVER-DEV-2026-11-09.md)；运维排查结论见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) 与 TODO C 段。
 
+- **v2.8.0 已发布**（tag `v2.8.0`）：AZ 异常审核规则摘要精简（首规则 ×n · 共 N 条规则 + hover 全量规则）；
+  BA 运行与同步页重设计（任务健康条 + 记录 6 列/5 轮折叠 + 55vh 固定高度日志面板）；
+  BB 代理健康主动探测（立即检测 + `probe --proxy` + 每 10 分钟 `proxy-probe`，探测不写业务冷却）；
+  BC 封面图补图覆盖率（`steam-status` 顺带补 `header_image` + `backfill` 候选纳入有价无图 +
+  `images.limit` 默认 500 + 后台「清除缺图缓存」）。
+  验证：`npm test` 77 文件 / 617 项全绿、`api.test` 22/22、`frontend:build`、`scan` 干净；
+  质检：AZ/BA/BB/BC ✅ 放行（[QA-AZ-BA-BB-BC.md](QA-AZ-BA-BB-BC.md)）。
+  CI：**待确认**（tag 推送后补双绿记录）。
+  **服务器部署待执行**（升级到 `2.8.0`）；部署后按各规格验收（AZ hover、BA 一屏/移动端、BB 立即检测、BC 补图）。
 - **v2.7.0 已发布**（tag `v2.7.0`）：AW 批封面图回源（404 快失败 + 单候选 8s→3s + 整次预算 5s + 负缓存分层
   notfound 24h/error 10min + `header_image` 直链白名单 + 前端占位块 + `images pull` 统计 notFound）+
   AX 批异常审核（合并视图默认唯一、去开关与明细表、整 IP 处置）。

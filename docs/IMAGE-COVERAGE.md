@@ -1,6 +1,6 @@
 # 封面图补图覆盖率：header_image 补全 + 预取扩大 + 缺图负缓存可手动清（待开发）
 
-> 状态：**已实现待发版（2026-11-10，3ebc515）**（提高补图覆盖率；占位块保留为兜底）。
+> 状态：**已实现并发布 v2.8.0（2026-11-10，3ebc515）**（提高补图覆盖率；占位块保留为兜底）。
 > 关联：[IMAGE-FETCH.md](IMAGE-FETCH.md)（AW 批：404 快失败 / 负缓存分层 / header_image 直链，已发布 v2.7.0）·
 > [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md) · [DEPLOY.md](DEPLOY.md)
 
