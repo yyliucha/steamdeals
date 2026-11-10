@@ -180,12 +180,22 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-10 更新，v2.6.0 已发布：AV 批——首页列表读模型）
+### 当前状态（2026-11-10 更新，v2.7.0 已发布：AW 封面图回源 + AX 异常审核合并视图默认）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 > **会话分工（2026-11-09）**：可直接开发的功能（AR、AO、AP、可选 F）见
 > [HANDOVER-DEV-2026-11-09.md](HANDOVER-DEV-2026-11-09.md)；运维排查结论见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) 与 TODO C 段。
 
+- **v2.7.0 已发布**（tag `v2.7.0`）：AW 批封面图回源（404 快失败 + 单候选 8s→3s + 整次预算 5s + 负缓存分层
+  notfound 24h/error 10min + `header_image` 直链白名单 + 前端占位块 + `images pull` 统计 notFound）+
+  AX 批异常审核（合并视图默认唯一、去开关与明细表、整 IP 处置）。
+  验证：`npm test` 75 个文件全绿、`frontend:build`、`scan` 干净；质检：AW ✅ 放行
+  （[QA-IMAGE-FETCH-AW.md](QA-IMAGE-FETCH-AW.md)，通过 8 / 需人工确认 1）、AX ✅ 放行
+  （[QA-ADMIN-REVIEW-AX.md](QA-ADMIN-REVIEW-AX.md)，通过 5 / 需人工确认 1）。
+  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  **服务器部署待执行**（升级到 `2.7.0`）；部署后按 [IMAGE-FETCH.md](IMAGE-FETCH.md) §6 实测：新 appid
+  （4266020 等）首次请求 <1s 返回 404、老游戏未缓存图仍 200（日志 `steam.img_fast_fail` / `steam.img_fallback`）；
+  控制台真机目视异常审核合并视图桌面展开与移动端卡片。
 - **v2.6.0 已发布**（tag `v2.6.0`）：AV 批首页列表读模型——新表 `game_region_snapshot`（(game, region) 一行，
   入库时维护价格/折扣/史低/新史低，`ingestOffers`/`mergeGames` 两个写入方同库强一致）；`gameSearch` 与
   `/api/games/count` 改读快照（去掉两个全库 CTE 与 exists(daily_prices)，count 加 60s 缓存）；

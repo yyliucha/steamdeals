@@ -1,6 +1,6 @@
-# 封面图回源：404 快失败 + 超时收紧 + 负缓存分层 + `header_image` 直链（已实现待发版）
+# 封面图回源：404 快失败 + 超时收紧 + 负缓存分层 + `header_image` 直链（已实现并发布 v2.7.0）
 
-> 状态：**已实现待发版（2026-11-10）**（所有者 2026-11-10 确认「要的」）
+> 状态：**已实现并发布 v2.7.0（2026-11-10，cb3fbf1；QA ✅ 放行 docs/QA-IMAGE-FETCH-AW.md，上线实测 1 项待部署后核对）**
 > 关联：[TODO.md](TODO.md) 的 AW 条目 · [NGINX-PERF.md](NGINX-PERF.md)（HTTP/2 缓解图片挤占连接）·
 > [READ-MODEL.md](READ-MODEL.md)（AV 批：列表查询，与本批互补）
 

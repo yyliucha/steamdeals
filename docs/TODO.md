@@ -869,9 +869,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ⑤ 写价后快照同轮更新、合并不失真、抽样对账 0 差异；⑥ `npm test` / `frontend:build` / `scan` 全绿。
 - **回滚**：`READ_MODEL=legacy` 切回旧 SQL，表保留。
 
-## AW. 封面图回源：404 快失败 + 超时收紧 + 负缓存分层 + `header_image` 直链
+## AW. ~~封面图回源：404 快失败 + 超时收紧 + 负缓存分层 + `header_image` 直链~~ → **已实现并发布 v2.7.0（2026-11-10）**
 
-**状态：质检通过（2026-11-10，cb3fbf1；QA 报告 docs/QA-IMAGE-FETCH-AW.md 未提交）**
+**状态：已发布 v2.7.0（2026-11-10，cb3fbf1；QA 报告 docs/QA-IMAGE-FETCH-AW.md）**
 **依赖：** 无
 **解锁：** 无（与 AV 的列表读模型互补；HTTP/2 属部署侧 [NGINX-PERF.md](NGINX-PERF.md)）
 **规格**：[IMAGE-FETCH.md](IMAGE-FETCH.md)
@@ -893,9 +893,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ⑤ header_image 优先且白名单拦截非 steamstatic 域名；⑥ 前端无 favicon 兜底且有占位元素；
   ⑦ 已缓存图仍 200、不触发网络；⑧ `npm test` / `frontend:build` / `scan` 全绿。
 
-## AX. 异常审核「按 IP 合并」定为默认视图（去掉开关与明细表）
+## AX. ~~异常审核「按 IP 合并」定为默认视图（去掉开关与明细表）~~ → **已实现并发布 v2.7.0（2026-11-10）**
 
-**状态：质检通过（2026-11-10，736e919；QA 报告 docs/QA-ADMIN-REVIEW-AX.md 未提交）**
+**状态：已发布 v2.7.0（2026-11-10，736e919；QA 报告 docs/QA-ADMIN-REVIEW-AX.md）**
 **依赖：** 无（AR 已发布 v2.2.0，本批是对它的修订）
 **解锁：** 无
 **规格**：[ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §4.5（修订口径）/ §4.1–§4.4（合并视图本身）

@@ -1,6 +1,6 @@
 # 后台访问/异常列表：排序 + 按 IP 合并（已确认待开发）
 
-> 状态：**AQ / AR 已发布 v2.2.0（2026-11-09）；AX 已实现待发版（2026-11-10，§4.5：按 IP 合并改为默认且唯一视图）**。
+> 状态：**AQ / AR 已发布 v2.2.0（2026-11-09）；AX 已发布 v2.7.0（2026-11-10，736e919；QA ✅ 放行 docs/QA-ADMIN-REVIEW-AX.md，§4.5：按 IP 合并为默认且唯一视图）**。
 > 关联：[WEB.md](WEB.md)、[ADMIN-BULK-ACTIONS.md](ADMIN-BULK-ACTIONS.md)（批量处置白名单）、[BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md)（待审口径）。
 > 编号待入 [TODO.md](TODO.md) 时落定（暂记 AQ / AR）。
 

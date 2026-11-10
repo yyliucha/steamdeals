@@ -2,6 +2,34 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.7.0] - 2026-11-10
+
+AW 批：封面图回源（404 快失败 + 超时收紧 + 负缓存分层 + `header_image` 直链，规格 [docs/IMAGE-FETCH.md](docs/IMAGE-FETCH.md)）
++ AX 批：异常审核「按 IP 合并」定为默认唯一视图（规格 [docs/ADMIN-REVIEW-LISTS.md](docs/ADMIN-REVIEW-LISTS.md) §4.5）。
+
+### 新增
+
+- **封面图 404 快失败**：同一张不存在的图不再连试 3 个 CDN——`downloadImage` 遇到 404/410 立即失败
+  （返回 `notFound`），首页缺图从 2–6.6s 降到 1 次请求；超时单候选 8s→3s、整次兜底预算 5s（不再累加到 24s），
+  超时/网络错误照旧换候选。
+- **负缓存分层**：404/410 记 24 小时、超时/网络错误记 10 分钟（`IMG_MISS_TTL`），期内重复请求不再触发网络。
+- **`header_image` 直链**：header 尺寸优先用 Steam 新资产完整 URL（仅 `https` + `.steamstatic.com` 白名单，
+  防 SSRF；直链 404 回退老路径），解决 2024 后上架游戏老路径无资产的问题。
+- **封面占位块**：首页卡片/移动卡片/详情弹窗封面失败或无 AppID 时显示 CSS 占位块（渐变 + 游戏名首字），
+  不再用站点 favicon 兜底。
+- **`images pull` 统计 notFound**：预取 404 缺图单独计数（`404 缺图 N 张`），不混进失败告警。
+- **异常审核合并视图默认唯一**：进入「异常审核」直接是按 IP 合并视图；删除「按 IP 合并」开关与
+  `admin.reviewMerge` localStorage、明细表与逐条处置——处置一律按整 IP（封 IP / 封设备 / 忽略作用于该 IP
+  全部待审记录，确认弹窗写明条数）；保留只看待审/全部筛选、合并视图排序、展开逐条规则、批量栏
+  「已选 N 个 IP · M 条待审」、移动端卡片与分页。
+
+### 测试
+
+- `test/images.test.js` +6 项：404 单次调用 / 超时换候选 / 总预算 / 负缓存分层（TTL 注入）/ 直链白名单与回退 /
+  前端占位与 pull 统计静态断言。
+- `test/admin-review-lists.test.js`：断言改为「无开关、无 `admin.reviewMerge`、默认渲染合并表」；
+  `test/admin-bulk.test.js` 勾选列与工具条计数随明细表移除更新；`test/reviews.test.js` 悬停提示断言改合并展开行。
+
 ## [2.6.0] - 2026-11-10
 
 AV 批：首页列表读模型——`game_region_snapshot` 把「每请求全库聚合」改成「入库时算一次、读的时候只查一行」
