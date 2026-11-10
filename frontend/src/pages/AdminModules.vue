@@ -540,7 +540,11 @@ if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('ch
 .settings-tabs :deep(.el-tabs__nav-wrap){overflow-x:auto}
 .price-change-cell{cursor:default}
 .announcement-head .card-heading{margin-bottom:0}
-.rule-summary{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rule-pop>div{font-size:12px;line-height:1.8;white-space:nowrap}</style>
+.rule-summary{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rule-pop>div{font-size:12px;line-height:1.8;white-space:nowrap}/* BH 批（docs/VISIT-IP-STATS.md §3.1）：IP 统计展开行 */
+.ip-detail h4{margin:6px 0 4px;font-size:13px;font-weight:600}
+.ip-detail .log-line{display:flex;gap:12px;font-size:12px;line-height:1.7;align-items:center}
+.ip-detail .log-line span:first-child{min-width:150px;color:var(--muted)}
+</style>
 
 
 

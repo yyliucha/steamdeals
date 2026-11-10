@@ -135,6 +135,12 @@ test('GET /api/admin/visitors/by-ip：401/403/200；days 与 sort 白名单回�
     const weird = await getJson(`${base}/api/admin/visitors/by-ip?days=999&sort=evil`, admin);
     assert.equal(weird.body.days, 7, 'days 非法回落 7');
     assert.equal(weird.body.sort, 'visits', 'sort 非法回落默认');
+    // 明细视图同样受时间窗约束（接受「切回明细后过滤/分页与原来一致」+ 时间窗绑定两视图）
+    const d7 = await getJson(`${base}/api/admin/visitors?days=7&pageSize=100&filter=all`, admin);
+    assert.equal(d7.status, 200);
+    assert.ok(!d7.body.rows.some((r) => r.ip === IP_B), '明细 7 天不含 10 天前的记录');
+    const d30 = await getJson(`${base}/api/admin/visitors?days=30&pageSize=100&filter=all`, admin);
+    assert.ok(d30.body.rows.some((r) => r.ip === IP_B), '明细 30 天包含 10 天前的记录');
     const detail = await getJson(`${base}/api/admin/visitors/by-ip/${IP_A}?days=7`, admin);
     assert.equal(detail.status, 200);
     assert.equal(detail.body.recent.length, 3);
