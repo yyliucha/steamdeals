@@ -291,7 +291,8 @@ export function probeProxyConnect(proxyUrl, target = PROBE_TARGET, { timeoutMs =
     req.on('connect', (res, sock) => {
       sock.destroy();
       const status = res.statusCode ?? null;
-      finish({ ok: status === 200, status, detail: status === 200 ? `CONNECT ${target} 成功（隧道已建立）` : `CONNECT ${target} → HTTP ${status}` });
+      const hint = status === 407 ? '需要账号密码' : status === 403 ? '代理拒绝该目标' : '';
+      finish({ ok: status === 200, status, detail: status === 200 ? 'CONNECT ' + target + ' 成功（隧道已建立）' : 'CONNECT ' + target + ' → ' + status + (hint ? '（' + hint + '）' : '') });
     });
     req.on('timeout', () => {
       req.destroy();

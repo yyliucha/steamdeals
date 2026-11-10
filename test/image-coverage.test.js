@@ -3,6 +3,7 @@
 // ② images.limit 默认 500；③ POST /api/admin/images/reset-miss 清空缺图负缓存（鉴权 + cleared）。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import { startApiServer } from '../src/server.js';
@@ -94,4 +95,14 @@ test('POST /api/admin/images/reset-miss：匿名 401、普通用户 403、管理
     await store.close();
     process.env = savedEnv;
   }
+});
+// 回归：BC 批的回填候选必须是「OR 扩展」，不能写成独立 AND（那样反而收窄候选、补不到图）
+test('backfill 候选 SQL：header_image 条件并入描述/报价的 OR 组', () => {
+  const src = readFileSync(new URL('../src/cli.js', import.meta.url), 'utf8');
+  assert.match(
+    src,
+    /or \(g\.header_image is null and exists \(select 1 from offers o where o\.game_id = g\.id\)\)\)/,
+    'header_image 条件在括号内以 OR 连接',
+  );
+  assert.doesNotMatch(src, /"and \(g\.header_image is null and exists/, '不能是独立的 AND 条件');
 });

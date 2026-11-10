@@ -1786,9 +1786,10 @@ async function cmdBackfill() {
           // 处理过的（backfill_at 非空）一天内不再选：否则"没有 steam 报价"的游戏会被每批反复选中，
           // 10000 条进度其实只是同一批游戏跑了 100 遍。
           "and (g.backfill_at is null or g.backfill_at < now() - interval '1 day') " +
-          "and (g.description is null or g.description = '' or not exists (select 1 from offers o where o.game_id = g.id and o.platform_code = 'steam')) " +
-          // BC 批（docs/IMAGE-COVERAGE.md §3.1）：有价但 header_image 为空也进回填队列（补封面直链）
-          "and (g.header_image is null and exists (select 1 from offers o where o.game_id = g.id)) " +
+          // BC 批（docs/IMAGE-COVERAGE.md §3.1）：有价但 header_image 为空也进回填队列（补封面直链）——
+          // 与「缺描述 / 缺 Steam 报价」并列成 OR 条件（扩大候选，而不是要求同时满足）。
+          "and (g.description is null or g.description = '' or not exists (select 1 from offers o where o.game_id = g.id and o.platform_code = 'steam') " +
+          "or (g.header_image is null and exists (select 1 from offers o where o.game_id = g.id))) " +
           // AC-3/AC9（docs/SYNC-FAILURE-MODES.md）：新游戏优先入回填队列（按收录时间倒序），不再按 id 排队数周
           'order by g.created_at desc nulls last, g.id desc limit $1',
         [size],
