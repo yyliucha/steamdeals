@@ -13,7 +13,8 @@ description: F:\dsh\gameprice（SteamDeals 跨平台游戏比价）的开发规�
 > 别的机器 clone 后如需 DSH 发现该技能，按同样方式建 junction；**不要再维护第二份副本**。
 >
 > **分工**：聊需求、定方案、写规格用 `gameprice-requirements`；本技能只负责把规格变成代码 + 测试；
-> 验收核对用 `gameprice-qa`（提交推 main 后**直接调用**、不用问所有者；它会输出「功能清单」表；打回项补齐才算交付）。
+> 验收核对用 `gameprice-qa`（提交推 main 后**直接调用**、不用问所有者；它会输出「功能清单」表；打回项补齐才算交付）；
+> 构建发版用 `gameprice-build`（收到所有者「构建」指令后加载执行，版本号自动推算，本技能 §8 已改为引用它）。
 > 拿到的是交接单（`docs/<TOPIC>.md` + TODO 条目）时，先按它的「范围 / 落点 / 验收」核对，再动手。
 
 项目：包名 `steamdeals`（当前版本以 `package.json` 为准）。Node ≥22.5（ESM）+ PostgreSQL 15 + Vue 3/Vite/Element Plus + Docker Compose。
@@ -160,26 +161,14 @@ node --check src/xxx.js         # 新增/大改文件先过语法
 ❌ 打回项必须补齐（修复照常提交推 main）并复检通过，拿到 ✅/⚠️ 结论后，
 才把「待发版」状态写进 `docs/DELIVERY.md` 末尾「当前状态」，停手等指令，**不要提前改版本号**。
 
-**听到「构建」指令后，按这个顺序一次做完**（对应 `docs/DELIVERY.md` §3）：
+**听到「构建」指令后 → 加载 `gameprice-build` 技能执行**（2026-11-10 起发版职责独立成技能）：
 
-1. **文档先落地，和代码进同一个 commit**（这是「构建」的一部分，不是可选项）：
-   - `CHANGELOG.md` 顶部加 `## [X.Y.Z] - YYYY-MM-DD`，按 Keep a Changelog 分「新增 / 修复 / 测试」，写清为什么；
-   - `README.md` 功能表（状态标 ✅ 并写边界与限制）、命令参考、已知限制；
-   - `docs/PROJECT-OVERVIEW.md` 的功能与代码落点表 + 验证记录；
-   - 本次规格文档状态改「已实现并发布 vX.Y.Z」，`docs/TODO.md` 条目标题同步改已发布；
-   - `docs/DELIVERY.md`「当前状态」补版本、tag、验证结果和「服务器部署待执行」。
-2. **版本号**：`npm version <X.Y.Z> --no-git-tag-version`（只改 `package.json` + `package-lock.json`，不自动打 tag）。
-   规则：`X.0.0` 大版本 / `X.Y.0` 新功能 / `X.Y.Z` 修 bug；每次发版恰好一个 tag，tag 名固定 `vX.Y.Z`。
-3. **验证（全绿才继续）**：`npm test`、`npm run frontend:build`、`npm run scan`；动过 API/权限/标记再单独跑
-   `node test/api.test.js`。失败就修，不要带着红字打 tag。
-4. **提交推 main**：`git add <具体路径>`（**不要 `git add -A`**——工作区常有其它会话的改动；
-   技能已随仓库提交，改技能单独 add）→ `git commit -m "release: vX.Y.Z <一句话摘要>"` → `git push origin main`。
-5. **打 tag 推 tag（= 触发构建）**：`git tag -a vX.Y.Z -m "SteamDeals X.Y.Z：<摘要>"` → `git push origin vX.Y.Z`。
-6. **盯 CI**：`gh auth switch --user yyliucha`（有 workflow 权限的账号）→ `gh run list --limit 2` →
-   `gh run view <id> --json jobs` 确认 publish 与 `Verify manifests` 都是 success →
-   `gh auth switch --user boxiang-sun_shortcut` 切回默认账号。
-7. **汇报**：版本号、commit、tag、两个 workflow 的结果；并提醒服务器升级由**部署人员**按 `docs/DEPLOY.md` 执行
-   （开发侧不碰服务器，仓库不保存服务器凭据）。
+- 发版全流程（版本号自动推算 / 构建门禁 / 文档落地 / 验证 / 提交推 main / 打 tag 推 tag / 盯 CI / 汇报）以
+  `gameprice-build` 的 SKILL.md 为准，本技能不再重复维护这段；
+- 版本号规则（所有者 2026-11-10 确认）：只说「构建」时自动推算——修复/文档 +补丁、新功能 +1 小版本、
+  改动特别大（≥3 个功能条目或 diff ≥2000 行）跳一个小版本；「构建 vX.Y.Z」用指定版本；**任何构建都必须有版本号**；
+- 构建门禁：只有 `质检通过` 的条目进版本，存在 `质检打回` / 未质检条目时拒绝构建并列出；
+- 开发侧照旧：质检通过后停手等指令，**不要提前改版本号、不要打 tag**。
 
 ## 9. 已知坑速查
 
@@ -214,17 +203,9 @@ node --check src/xxx.js         # 新增/大改文件先过语法
 📋 功能清单：见质检汇报的「功能清单」表（本批全部功能，一条一行）
 🔖 提交：<短哈希> 已提交并推 main（推 main 不触发构建）
 📄 文档：docs/PROJECT-OVERVIEW.md 已同步（改了哪些表/段落）
-⏸ 待命：未打 tag、未触发构建，等"构建 vX.Y.Z"指令
+⏸ 待命：未打 tag、未触发构建，等"构建"指令（版本号由 gameprice-build 自动推算）
 ```
 
-**发版完成（按 §8 跑完整套）**：
-
-```
-📦 版本：vX.Y.Z（package.json / package-lock.json 已改）
-🔖 tag：vX.Y.Z 已推送，main 已同步
-✅ 验证：npm test 全绿（N 个文件）/ frontend:build / scan 干净
-🚀 CI：docker-hub <run-id> <结论>；docker-tcr <run-id> <结论>
-🖥 服务器：待部署人员按 docs/DEPLOY.md 升级到 X.Y.Z（开发侧不执行）
-```
+**发版完成**：汇报格式以 `gameprice-build` 技能的 §4 为准（版本号 + 推算依据 + tag/CI + 服务器待部署 + 未发布条目清单）。
 
 任何没跑过的验证都要明说"未验证，仅目检"——这是本项目最忌讳的失败模式（历史上出现过三次"代码看着对、数据其实错"）。
