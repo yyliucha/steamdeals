@@ -2673,6 +2673,11 @@ export async function listSteamStatusCandidates(q, { limit = 30 } = {}) {
  * - 分级字段传 null → 不覆盖已有值（coalesce 保留旧值）；
  * - adultFlag / matureFlag 传 null → 不覆盖（false/true 显式写）。
  */
+/** BC 批（docs/IMAGE-COVERAGE.md §3.1）：补 header_image——只在库内为空时写，不覆盖已有值。 */
+export async function fillHeaderImage(q, { steamAppid, url }) {
+  if (!steamAppid || !url) return { rowCount: 0 };
+  return q('update games set header_image = $2 where steam_appid = $1 and header_image is null', [steamAppid, url]);
+}
 export async function setSteamStatus(q, {
   steamAppid,
   status = null,

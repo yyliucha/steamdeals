@@ -42,9 +42,20 @@ export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = nu
     requiredAge != null || descriptorIds.length > 0 || Object.keys(ratings).length > 0;
   const rating = classifyContentRating({ requiredAge, descriptorIds, ratings });
 
+  // BC 批（docs/IMAGE-COVERAGE.md §3.1）：同一次 appdetails 响应里已带 header_image，顺带补齐（零额外请求）
+  let headerImageFilled = false;
+  if (meta?.headerImage) {
+    try {
+      const filled = await db.fillHeaderImage(q, { steamAppid: appid, url: String(meta.headerImage) });
+      headerImageFilled = (filled?.rowCount ?? 0) > 0;
+      if (headerImageFilled) logger?.info?.('steam-status.header_image_filled', { appid });
+    } catch (err) {
+      logger?.warn?.('steam-status.header_image_failed', { appid, message: String(err?.message ?? err).slice(0, 160) });
+    }
+  }
   if (status == null && !hasRating) {
     // 什么都没拿到：不写库（GetItems 且无分级字段的路径）
-    return { status, rating, wroteStatus: false, offerWritten: false };
+    return { status, rating, wroteStatus: false, offerWritten: false, headerImageFilled };
   }
   const row = await db.setSteamStatus(q, {
     steamAppid: appid,
@@ -88,7 +99,7 @@ export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = nu
       logger?.warn?.('steam-status.offer_failed', { appid, message: String(err?.message ?? err).slice(0, 160) });
     }
   }
-  return { status, rating, wroteStatus, offerWritten };
+  return { status, rating, wroteStatus, offerWritten, headerImageFilled };
 }
 
 /**
@@ -108,6 +119,8 @@ export async function runSteamStatusRound(q, { limit = 6000, batch = 30, rateMs 
   const step = Math.min(Math.max(Number(batch) || 30, 1), 100);
   let attempted = 0;
   let wrote = 0;
+  // BC 批（docs/IMAGE-COVERAGE.md §3.1）：顺带补齐 header_image 的条数（零额外请求）
+  let headerFilled = 0;
   let skipped = 0;
   let failed = 0;
   let requests = 0;
@@ -163,6 +176,7 @@ export async function runSteamStatusRound(q, { limit = 6000, batch = 30, rateMs 
       }
       const outcome = await applySteamDetails(q, { appid, cnEntry, hkEntry, meta, logger });
       attempted += 1;
+      if (outcome.headerImageFilled) headerFilled += 1;
       if (outcome.wroteStatus) {
         wrote += 1;
         if (outcome.status) counts[outcome.status] = (counts[outcome.status] ?? 0) + 1;
@@ -175,9 +189,10 @@ export async function runSteamStatusRound(q, { limit = 6000, batch = 30, rateMs 
           logger?.warn?.('steam-status.write_miss', { appid, status: outcome.status });
         }
       }
-      onProgress?.({ attempted, wrote, skipped, failed, counts, offers });
+      onProgress?.({ attempted, wrote, skipped, failed, counts, offers, headerFilled });
     }
     if (aborted429) break;
   }
-  return { wrote, skipped, failed, requests, counts, offers, aborted429, attempted };
+  if (headerFilled > 0) logger?.info?.('steam-status.header_image_done', { filled: headerFilled });
+  return { wrote, skipped, failed, requests, counts, offers, headerFilled, aborted429, attempted };
 }

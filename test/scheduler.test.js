@@ -92,7 +92,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   const args = (name) => jobs.find((j) => j.name === name).args;
   assert.deepEqual(args('discover'), ['discover', 'sonkwo', '--ahead', '60', '--max-misses', '12']);
   assert.deepEqual(args('backup'), ['backup']);
-  assert.deepEqual(args('images'), ['images', 'pull', '--limit', '200', '--sleep', '300']);
+  assert.deepEqual(args('images'), ['images', 'pull', '--limit', '500', '--sleep', '300'], 'BC 批：每轮补图默认 500');
   assert.deepEqual(args('steam-prices'), ['sync', 'steam-prices', '--limit', '200000']);
   assert.deepEqual(args('heat'), ['heat', '--limit', '20000', '--sleep', '1700']);
   assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '6000', '--rate', '1500']);

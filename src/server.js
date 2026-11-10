@@ -2886,6 +2886,15 @@ export function createApiServer({
         return json(res, 200, { images: images.imageStats() });
       }
 
+      // BC 批（docs/IMAGE-COVERAGE.md §3.3）：清空进程内「缺图」负缓存——补了 header_image 后不必等 24h
+      if (path === '/api/admin/images/reset-miss' && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const cleared = imgMissCache.size;
+        imgMissCache.clear();
+        logger?.info('steam.img_miss_cleared', { cleared });
+        return json(res, 200, { cleared });
+      }
+
       // ---- 管理员：价格变动报表（涨跌榜 + 悬停线图序列 + CSV 导出）----
       if (path === '/api/admin/reports/price' && req.method === 'GET') {
         if (!requireAdmin()) return;

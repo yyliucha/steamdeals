@@ -179,7 +179,7 @@ export const SETTINGS = [
   def('images.enabled', 'IMAGES_ENABLED', 'advanced', '启用封面图补缓存', 'bool', true, { advanced: true, help: '定时把游戏封面下载到 data/images，之后不再依赖 Steam CDN。' }),
   def('images.intervalMin', 'IMAGES_INTERVAL_MIN', 'advanced', '补图间隔（分钟）', 'int', 240, { min: 0, max: 10080, advanced: true }),
   def('images.initialDelaySec', 'IMAGES_INITIAL_DELAY_SEC', 'advanced', '补图首轮延迟（秒）', 'int', 1200, { min: 0, max: 86400, advanced: true }),
-  def('images.limit', 'IMAGES_LIMIT', 'advanced', '每轮补图数量', 'int', 200, { min: 1, max: 5000, advanced: true }),
+  def('images.limit', 'IMAGES_LIMIT', 'advanced', '每轮补图数量', 'int', 500, { min: 1, max: 5000, advanced: true, help: 'BC 批：默认 500，单轮约 20–25 分钟；生产已保存旧值时在设置页改。' }),
   def('images.sleepMs', 'IMAGES_SLEEP_MS', 'advanced', '每张图间隔（毫秒）', 'int', 300, { min: 0, max: 60000, advanced: true }),
   def('images.maxBytes', 'IMAGES_MAX_BYTES', 'advanced', '封面图缓存总量上限（字节，0=不限）', 'int', 0, { min: 0, max: 100 * 1024 * 1024 * 1024, advanced: true, help: '缓存超过该值后按最旧文件清理（D2 批）；0 表示不限制。生产约 3200 张图 ≈ 90MB，可设 5GB 量级。' }),
 ];

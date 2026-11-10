@@ -197,7 +197,7 @@ export function jobsFromEnv(env = process.env) {
         'images',
         'pull',
         '--limit',
-        String(num(env.IMAGES_LIMIT, 200)),
+        String(num(env.IMAGES_LIMIT, 500)),
         '--sleep',
         String(num(env.IMAGES_SLEEP_MS, 300)),
       ],

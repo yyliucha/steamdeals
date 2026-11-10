@@ -1787,6 +1787,8 @@ async function cmdBackfill() {
           // 10000 条进度其实只是同一批游戏跑了 100 遍。
           "and (g.backfill_at is null or g.backfill_at < now() - interval '1 day') " +
           "and (g.description is null or g.description = '' or not exists (select 1 from offers o where o.game_id = g.id and o.platform_code = 'steam')) " +
+          // BC 批（docs/IMAGE-COVERAGE.md §3.1）：有价但 header_image 为空也进回填队列（补封面直链）
+          "and (g.header_image is null and exists (select 1 from offers o where o.game_id = g.id)) " +
           // AC-3/AC9（docs/SYNC-FAILURE-MODES.md）：新游戏优先入回填队列（按收录时间倒序），不再按 id 排队数周
           'order by g.created_at desc nulls last, g.id desc limit $1',
         [size],
