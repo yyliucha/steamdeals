@@ -942,7 +942,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## AZ. 待开发：异常审核「规则摘要」列精简（首规则 ×n · 共 N 条规则 + hover 弹层）
 
-**状态：已实现待发版（2026-11-10，4c5c98d）**
+**状态：质检通过（2026-11-10，4c5c98d；QA 报告 docs/QA-AZ-BA-BB-BC.md 未提交）**
 **依赖：** AX（已发布 v2.7.0）
 **解锁：** 无
 **规格**：[ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §4.6
@@ -956,7 +956,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BA. 待开发：运行与同步页重设计（任务健康条 + 记录精简 + 固定高度日志面板）
 
-**状态：已实现待发版（2026-11-10，44942fd）**
+**状态：质检通过（2026-11-10，44942fd；QA 报告 docs/QA-AZ-BA-BB-BC.md 未提交）**
 **依赖：** 无（复用 `/api/admin/sync/status`、`/api/admin/logs`、`/api/admin/sync/runs` 现有接口）
 **解锁：** 无
 **规格**：[RUN-SYNC-REDESIGN.md](RUN-SYNC-REDESIGN.md)
@@ -972,7 +972,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BB. 待开发：代理健康主动探测（立即检测按钮 + 每 10 分钟定时任务）
 
-**状态：已实现待发版（2026-11-10，96d28a9）**
+**状态：质检通过（2026-11-10，96d28a9；QA 报告 docs/QA-AZ-BA-BB-BC.md 未提交）**
 **依赖：** AM-1 / AM-2（代理池，已发布）
 **解锁：** 无
 **规格**：[PROXY-POOL.md](PROXY-POOL.md) §11
@@ -987,7 +987,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BC. 待开发：封面图补图覆盖率（header_image 补全 + 预取扩大 + 缺图缓存可手动清）
 
-**状态：已实现待发版（2026-11-10，3ebc515）**
+**状态：质检通过（2026-11-10，3ebc515；QA 报告 docs/QA-AZ-BA-BB-BC.md 未提交）**
 **依赖：** AW（已发布 v2.7.0；本批在其上提高覆盖率，占位块保留为兜底）
 **解锁：** 无
 **规格**：[IMAGE-COVERAGE.md](IMAGE-COVERAGE.md)
@@ -1027,7 +1027,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ⑤ 保留加入即建史低提醒。
 - **服务端**：`POST /api/wishlist` 只收 `{appid|gameId}`（旧 `steamIds` 忽略不报错、不推 Steam）；`DELETE /api/wishlist/*`
   只删本站 + 清提醒；新增 `GET /api/admin/wishlists`（join 用户/游戏/快照价，筛选+分页）、`DELETE /api/admin/wishlists/:id`、
-  批量 `wishlists/delete`（BulkActions，max 200）；**不提供新增接口**。每账号「推送 API Key」随本批下线（数据列保留，见规格 §4.4）。
+  批量 `wishlists/delete`（BulkActions，max 200）；**不提供新增接口**。另：每账号 API Key 改为**账号同步用**
+  （游戏库/愿望单各自用自己账号的 key，未配置/无效直接报错、不回退；全局 key 仅系统级任务；绑定后不自动同步；
+  后台列改名「API Key」——见规格 §4.4）。
 - **前台**：`Home.vue` 去弹窗/去账号多选/去 Steam 账号展示；加入直接写本站；移除确认后只删本站；「愿望单」tab 不变。
 - **后台**：`Console.vue` 内容运营组加「愿望单」菜单；`AdminModules.vue` 新 section（用户/游戏/当前价/史低/加入时间/删除，
   关键词+分页，BulkBar 批量删除，移动端卡片，**无新增入口**）。
@@ -1045,8 +1047,8 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `offers.risk_level` 107050 行全 'A'（只写不读）；`steam_accounts.api_key_enc` 2 行（Happy/FF，推送 key 已失效）；
   `user_wishlist.steam_ids` 1 行非空；`games.content_descriptors` 6222 / `age_ratings` 26016 非空（保留）。
 - **处理**：A 组（与 BE 无关，可立即做）= 删 `steam_sessions` 表、`users.steam_id` 列+索引、`offers.risk_level` 列
-  （含删 INSERT 字段与 SELECT）；B 组（依赖 BE 发布）= 删 `steam_accounts.api_key_enc`、`user_wishlist.steam_ids` 两列；
-  保留 `content_descriptors`/`age_ratings`/`interested`/`owned`/`hide_uninterested`。
+  （含删 INSERT 字段与 SELECT）；B 组（依赖 BE 发布）= 删 `user_wishlist.steam_ids` 列；保留 `steam_accounts.api_key_enc`
+  （2026-11-10 修订：改为账号同步用 key）、`content_descriptors`/`age_ratings`/`interested`/`owned`/`hide_uninterested`。
 - **关键**：代码 DDL 与库同步删（否则 `create table if not exists`/`add column if not exists` 会重建或写回报错）；
   部署期 SQL 幂等、放部署侧，先只读核对再写。
 - **验收**：见规格 §4——新库不再出现被删对象、grep 无代码引用、业务回归、部署 SQL 幂等、`npm test` 全绿。
