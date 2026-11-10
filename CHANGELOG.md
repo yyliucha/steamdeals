@@ -2,6 +2,33 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.6.0] - 2026-11-10
+
+AV 批：首页列表读模型——`game_region_snapshot` 把「每请求全库聚合」改成「入库时算一次、读的时候只查一行」
+（规格 [docs/READ-MODEL.md](docs/READ-MODEL.md)）。
+
+### 新增
+
+- **读模型表 `game_region_snapshot`**：`(game_id, region)` 一行的当前价 / 折扣 / Steam 价 / 平台标签 /
+  史低 / 新史低 / 更新时间，覆盖全部区服 + 4 条索引（折扣/价格/最近可见/单游戏）；迁移时表空则一次性回填
+  （offers ∪ daily_prices 并集，日志 `readmodel.backfill_start/done`，失败不吞异常），首次启动会慢一次。
+- **入库时维护（同库强一致）**：`ingestOffers` 每个 offer 写库后 `refreshGameRegionPrices`（1–3ms 重算该游戏
+  全部区服当前价列，列表同一轮可见）；日聚合写入后 `touchDailyAggregate`（日界切换维护 `hist_low` /
+  `prev_hist_low` / `hist_low_day`，c2c 不进史低）；`mergeGames` 尾部刷新 from/to 两个游戏（价格 + 史低取并集）。
+- **读路径切换**：`gameSearch`（compact 与非 compact 两分支）与 `/api/games/count` 改读快照——
+  去掉 `price_rollup` / `daily_rollup` 两个全库 CTE 与逐行 `exists(daily_prices)`；`/api/games/count` 的
+  priced 计数加 60 秒进程内缓存（口径不变）；`READ_MODEL=legacy` 环境变量一键回滚旧 SQL（表保留）。
+- **对账与重建**：`node src/cli.js readmodel check --sample 200 [--fix]`（抽样实时聚合逐字段比对，差异非零退出）/
+  `readmodel rebuild [--region cn]`（全量重建）；新增每日调度任务 `readmodel`（抽样 200，差异记任务失败可观测）。
+
+### 测试
+
+- 新增 `test/game-search-read-model.test.js`（8 项，入 `npm test` 主链）：新旧实现 20 组筛选组合
+  （sort/type/released/marks/关键词/游客与登录 + 非 compact）total 与首页 id 顺序完全一致；
+  写价后快照同轮更新；跨天 prev_hist_low 日界切换；合并后 from/to 快照正确；禁用/回收站/成人 hide 过滤；
+  抽样对账 0 差异 + corrupt 发现 + `--fix`/`rebuild` 修复；`READ_MODEL=legacy` 回滚可用。
+- `test/scheduler.test.js` 补 `readmodel` 任务默认参数/开关断言；既有测试的原始 SQL 种价点补读模型刷新。
+
 ## [2.5.0] - 2026-11-09
 
 AU 批：`pg_trgm` 搜索索引 + 封面图缓存总量上限 + 愿望单诚实口径（AA 方案 A）。见 [docs/TODO.md](docs/TODO.md) 的 AU 条目。

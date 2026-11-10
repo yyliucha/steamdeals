@@ -841,9 +841,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ③ `images pull` 后按上限自动清理；④ 愿望单提示不含「失败」、文档口径一致；⑤ `npm test` / `frontend:build` / `scan` 全绿。
 - **待线上验证**：生产库 `\dx` 有 `pg_trgm`、`EXPLAIN` 对关键词查询命中 Bitmap Index Scan（本机无 PG 15，标 🔎）。
 
-## AV. 首页列表读模型：`game_region_snapshot`（把每请求全库聚合改成入库时维护）
+## AV. ~~首页列表读模型：`game_region_snapshot`（把每请求全库聚合改成入库时维护）~~ → **已实现并发布 v2.6.0（2026-11-10）**
 
-**状态：质检通过（2026-11-09，9d588fe；QA 报告 docs/QA-READ-MODEL-AV.md 未提交；3 项性能验收转上线实测）**
+**状态：已发布 v2.6.0（2026-11-10，9d588fe；QA 报告 docs/QA-READ-MODEL-AV.md；性能 3 项验收转上线实测）**
 **依赖：** 无
 **解锁：** 无（首页性能专项；与后续「nginx gzip」部署侧改动独立）
 **规格**：[READ-MODEL.md](READ-MODEL.md)

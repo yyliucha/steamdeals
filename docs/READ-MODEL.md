@@ -1,7 +1,7 @@
-# 首页列表读模型：`game_region_snapshot`（已实现待发版）
+# 首页列表读模型：`game_region_snapshot`（已实现并发布 v2.6.0）
 
-> 状态：**已实现待发版（2026-11-09）**——所有者确认：① 覆盖全部区服；② 允许一次性回填；
-> ③ 「新史低」接受跨天口径（实现用日界增量，另留夜间对账兜底）。
+> 状态：**已实现并发布 v2.6.0（2026-11-10，9d588fe；QA ✅ 放行 docs/QA-READ-MODEL-AV.md，性能 3 项转上线实测）**——
+> 所有者确认：① 覆盖全部区服；② 允许一次性回填；③ 「新史低」接受跨天口径（实现用日界增量，另留夜间对账兜底）。
 > 关联：[ARCHITECTURE.md](ARCHITECTURE.md) · [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md) · [DEPLOY.md](DEPLOY.md) ·
 > [HANDOVER.md](HANDOVER.md) · [TODO.md](TODO.md) 的 AV 条目
 

@@ -180,12 +180,23 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-09 更新，v2.5.0 已发布：AU 批——搜索索引 + 图片缓存上限 + 愿望单诚实口径）
+### 当前状态（2026-11-10 更新，v2.6.0 已发布：AV 批——首页列表读模型）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 > **会话分工（2026-11-09）**：可直接开发的功能（AR、AO、AP、可选 F）见
 > [HANDOVER-DEV-2026-11-09.md](HANDOVER-DEV-2026-11-09.md)；运维排查结论见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) 与 TODO C 段。
 
+- **v2.6.0 已发布**（tag `v2.6.0`）：AV 批首页列表读模型——新表 `game_region_snapshot`（(game, region) 一行，
+  入库时维护价格/折扣/史低/新史低，`ingestOffers`/`mergeGames` 两个写入方同库强一致）；`gameSearch` 与
+  `/api/games/count` 改读快照（去掉两个全库 CTE 与 exists(daily_prices)，count 加 60s 缓存）；
+  迁移表空时一次性回填（**首次启动会慢一次，估 10–60 秒**，失败不吞异常）；`readmodel check/rebuild` +
+  每日抽样对账任务；`READ_MODEL=legacy` 回滚开关。
+  验证：`npm test` 75 个文件全绿、`node test/api.test.js` 22 项全绿、`frontend:build`、`scan` 干净；
+  质检：AV ✅ 放行（[QA-READ-MODEL-AV.md](QA-READ-MODEL-AV.md)，通过 12 / 缺失 0 / 偏差 0 / 需人工确认 3）。
+  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  **服务器部署待执行**（升级到 `2.6.0`）；部署后按 [READ-MODEL.md](READ-MODEL.md) §9 实测：列表 TTFB P95 < 150ms、
+  零命中 < 150ms、`/api/games/count` < 30ms、EXPLAIN 命中 grs_region_* 索引；另注意首次启动的回填窗口与
+  `readmodel.backfill_done` 日志。
 - **v2.5.0 已发布**（tag `v2.5.0`）：AU 批——① D1 `pg_trgm` 搜索索引（迁移建扩展 + 3 条表达式 GIN 索引，
   与搜索归一化逐字一致，本地 pglite 无扩展静默跳过）；② D2 封面图缓存总量上限（设置 `images.maxBytes`，
   超限按最旧清理 + `images prune --max-bytes` + `images pull` 后自动清理）；③ AA 方案 A 愿望单诚实口径

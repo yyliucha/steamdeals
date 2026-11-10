@@ -150,6 +150,7 @@
 | **单款历史 CSV** | ⏸ | 前端入口已移除，接口默认 404（`HISTORY_CSV_ENABLED=1` 可临时打开） |
 | **后台信息架构改版（AT 批）** | ✅ | 新建用户 / 新建·编辑站点通知改右侧抽屉（不跳页、列表不刷新、URL 直达、临时密码抽屉内一次性展示、通知带前台预览）；新菜单「操作日志」一页 5 tab（用户删除 / 批量操作 / Steam 账号 / 邮件发送 / 运行与同步，?tab= 直达、懒加载+缓存）；邮件服务 3 tab（配置/模板/发送测试）；系统设置折叠改 6 tab；价格变化悬停「变化」列弹近 7 天线图（无逐行请求）；旧书签 bulk-ops/sync 自动映射不 404（v2.4.0） |
 | **Steam 账号操作审计** | ✅ | 绑定 / 解绑 / 认领 / 同步库 / 同步愿望单 / 换 API Key / 级联删除 7 类动作落 `steam_account_logs`（失败带原因与耗时、用户被删后日志仍在），后台「操作日志 → Steam 账号」可查；保留 180 天并入每周 prune（v2.4.0） |
+| **首页列表读模型** | ✅ | `game_region_snapshot` 入库时算好价格/折扣/史低/新史低，列表与计数不再每次全库聚合（`READ_MODEL=legacy` 可回滚旧 SQL；`readmodel check/rebuild` 对账与重建 + 每日抽样对账任务）；**性能目标**（部署后实测）：列表 TTFB P95 < 150ms、零命中 < 150ms、`/api/games/count` < 30ms（v2.6.0） |
 | **多区服同屏并排** | 🚧 | 列表可按区服切换；同屏多区并排展示未做（采集与 `compare` 命令已支持） |
 
 ## 设计原则
@@ -379,6 +380,7 @@ node src/cli.js chart --db pglite:./data/demo-pgdata --out out
 | `steam-accounts` | 同步所有已绑定 Steam 账号的游戏库与愿望单（差集删除 + 愿望单→价提醒对账；`--sleep 1000` 账号间隔）✅ |
 | `steam-claim <用户名> <SteamID>` | 认领未归属的 Steam 账号（迁移用；幂等，已归属他人时报错）✅ |
 | `prune` | 定期清理：访问记录/采集与任务记录/验证码/Steam 账号日志（`--visitor-days 180 --run-days 90 --email-days 7 --steam-days 180`） |
+| `readmodel` | 首页列表读模型对账/重建：`check [--sample 200] [--fix]`（差异非零退出）、`rebuild [--region cn]` |
 | `diagnose` | 环境/数据库/网络自检，报告落盘 `logs/diagnose-*.json` |
 | `probe` | 目标可达性探针，见下 |
 
@@ -635,11 +637,11 @@ node test/secrets.test.js    # 5 项：凭据扫描器自身的正确性 + 当�
 
 > 本段由 [docs/TODO.md](docs/TODO.md) 自动生成，请勿手改；改完待办状态后运行 `npm run todo:progress` 更新。
 
-**当前版本：v2.5.0** · 进行中 1 · 接下来 0
+**当前版本：v2.6.0** · 进行中 0 · 接下来 0
 
 **进行中**
 
-- `AV` 首页列表读模型：game_region_snapshot（把每请求全库聚合改成入库时维护） —— 质检通过，待发版
+- 暂无
 
 **接下来**
 
@@ -647,11 +649,11 @@ node test/secrets.test.js    # 5 项：凭据扫描器自身的正确性 + 当�
 
 **最近完成**
 
+- `AV` 首页列表读模型：game_region_snapshot（把每请求全库聚合改成入库时维护） —— v2.6.0
 - `AU` pg_trgm 搜索索引 + 封面图缓存总量上限 + 愿望单诚实口径（AA 方案 A） —— v2.5.0
 - `AT` 后台信息架构改版（新增改抽屉 / 操作日志合并 5 tab / 邮件与设置 tab / 价格走势线图） —— v2.4.0
 - `AS` README 开发进度摘要（自动生成） —— v2.3.0
 - `AR` 异常审核「按 IP 合并」视图（下一期） —— v2.2.0
-- `AQ` 后台访问/异常列表排序（数值 IP + 上限 500） —— v2.2.0
 <!-- TODO-PROGRESS:END -->
 
 产品方向与未排期想法见 [docs/ROADMAP.md](docs/ROADMAP.md)；完整排期与依据见 [docs/TODO.md](docs/TODO.md)。
