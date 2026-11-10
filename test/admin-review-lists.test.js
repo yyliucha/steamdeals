@@ -74,3 +74,19 @@ test('AX 批：合并视图默认且唯一——无开关、无合并 localStora
   assert.match(css, /\.merged-detail-row/);
   assert.match(css, /\.merge-bar/);
 });
+// AZ（docs/ADMIN-REVIEW-LISTS.md §4.6）：规则摘要列精简——只显示首规则×n + 规则总数，全部规则进 hover 弹层。
+test('AZ 批：规则摘要列只显示首规则 ×n · 共 N 条规则，全部规则在 el-popover，移动端同口径', () => {
+  const vue = read('../frontend/src/pages/AdminModules.vue');
+  // 列固定宽 + 单行省略（不再随规则数变长）
+  assert.match(vue, /label="规则摘要" width="250"/);
+  assert.match(vue, /省略|\.rule-summary/, '单行省略样式');
+  // 首规则 + 规则总数（表格与移动卡片两处）
+  const brief = vue.match(/共 \{\{ row\.ruleCount \}\} 条规则/g) || [];
+  assert.ok(brief.length >= 2, `首规则+总数文案应出现在表格与移动卡片（实际 ${brief.length} 处）`);
+  assert.match(vue, /row\.rules\[0\]\?\.rule/);
+  // hover 弹层列出全部规则，单规则不弹（disabled）
+  assert.match(vue, /<el-popover[^>]*trigger="hover"[^>]*:disabled="!row\.rules \|\| row\.rules\.length<=1"/);
+  assert.match(vue, /<div v-for="r in row\.rules" :key="r\.rule">\{\{ r\.rule \}\} ×\{\{ r\.n \}\}<\/div>/);
+  // 旧的全量拼接已移除
+  assert.doesNotMatch(vue, /row\.rules\.map\(r=>r\.rule/, '移动端不再逐条拼接全部规则');
+});
