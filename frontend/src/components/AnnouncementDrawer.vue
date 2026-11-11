@@ -48,7 +48,9 @@ const open = computed({ get: () => props.visible, set: (v) => emit('update:visib
 
 const form = reactive({ id: null, title: '', body: '', level: 'info', active: true, startsAt: null, endsAt: null });
 const saving = ref(false);
-let snapshot = '';
+// BG 批（docs/UNSAVED-GUARD.md §11）：初始快照 = 初始表单——抽屉未打开时不算脏；
+// fillFrom()（抽屉打开/编辑）仍会重置快照。
+let snapshot = JSON.stringify(form);
 
 function fillFrom(a) {
   Object.assign(form, {

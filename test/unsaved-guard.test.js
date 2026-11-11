@@ -68,6 +68,14 @@ test('五个编辑面全部注册（§4.4），且保存回调是抛错版（失
   assert.match(userDrawer, /role !== 'user'/, '新建用户角色默认不算脏');
 });
 
+test('BG 回归（2026-11-10）：站点通知抽屉初始快照 = 初始表单，未打开不误报脏', () => {
+  // 根因（docs/UNSAVED-GUARD.md §11）：snapshot 初始为空串时，'' !== JSON.stringify(form) 恒 true，
+  // 页面一挂载就把「站点通知」判成脏来源，切菜单必弹未保存确认。
+  assert.match(announceDrawer, /let snapshot = JSON\.stringify\(form\);/, '初始快照 = 初始表单（锁住 §11 修复）');
+  assert.doesNotMatch(announceDrawer, /let snapshot = ''/, '初始快照不得再写回空串');
+  assert.match(announceDrawer, /snapshot = JSON\.stringify\(form\);/, 'fillFrom 内仍重置快照（打开抽屉以填充后表单为新基线）');
+});
+
 test('边界：不拦刷新/关闭（无 beforeunload，决策 3）；菜单当前项有脏来源时显示小圆点', () => {
   for (const [name, src] of [['composable', composable], ['Console', consoleJs]]) {
     assert.ok(!src.includes('beforeunload'), `${name} 不得注册 beforeunload`);
