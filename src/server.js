@@ -491,11 +491,12 @@ export function createApiServer({
         let state = { banned: false };
         if (!whitelisted) {
           const devBan = deviceId ? devices.isBanned({ deviceId }) : null;
-          const rateUntil = ip ? ratelimit.bannedUntil(ip) : null;
           const ipBlocked = ip ? visitors.blockedBy(ip) : null;
+          const rateUntil = ip ? ratelimit.bannedUntil(ip) : null;
+          // BJ 批 A1：类型优先级 设备 → 黑名单 → 自动封禁（与拦截链一致；黑名单 IP 不再被报成 rate）
           if (devBan) state = { banned: true, type: 'device', until: devBan.until ? new Date(devBan.until).toISOString() : null };
-          else if (rateUntil) state = { banned: true, type: 'rate', until: new Date(rateUntil).toISOString() };
           else if (ipBlocked) state = { banned: true, type: 'ip', until: null };
+          else if (rateUntil) state = { banned: true, type: 'rate', until: new Date(rateUntil).toISOString() };
         }
         return json(res, 200, state, { 'cache-control': 'no-store' });
       }
@@ -506,6 +507,17 @@ export function createApiServer({
         logger?.warn('device.denied', { ip, deviceId, until: deviceBan.until });
         logBlocked({ ip, req, path, status: 403, reason: '设备已被封禁' });
         return denyBanned(req, res, { status: 403, until: deviceBan.until, reason: '设备已被封禁', ip });
+      }
+
+      // BJ 批 A1（docs/BAN-AND-SECURITY-FIXES.md §10.4.1）：IP 黑名单检查提到频率限制**之前**——
+      // 黑名单 IP 在计数之前被拦下：不计数、不三振、不升级、不写 ip_abuse / abuse_reviews，
+      // 响应固定 403（不再出现"先 403、超 60 次后变 429"）。
+      const hit = ip && !adminBypass && !whitelisted ? visitors.blockedBy(ip) : null;
+      if (hit && !appealPage) {
+        if (req.method === 'GET' && isFrontendAsset(path)) return serveFrontendStatic(res, frontendDir, outDir, path);
+        logger?.warn('block.ip_denied', { ip, path, rule: hit });
+        logBlocked({ ip, req, path, status: 403, reason: `IP 黑名单（${hit}）` });
+        return denyBanned(req, res, { status: 403, reason: '访问被拒绝', ip });
       }
 
       // 频率限制：白名单/管理员不参与三振；内网/本机（反代、健康检查）不计数
@@ -538,14 +550,6 @@ export function createApiServer({
           logBlocked({ ip, req, path, status: 429, reason: verdict.reason });
           return denyBanned(req, res, { status: 429, until, reason: verdict.reason, ip });
         }
-      }
-
-      const hit = ip && !adminBypass && !whitelisted ? visitors.blockedBy(ip) : null;
-      if (hit && !appealPage) {
-        if (req.method === 'GET' && isFrontendAsset(path)) return serveFrontendStatic(res, frontendDir, outDir, path);
-        logger?.warn('block.ip_denied', { ip, path, rule: hit });
-        logBlocked({ ip, req, path, status: 403, reason: `IP 黑名单（${hit}）` });
-        return denyBanned(req, res, { status: 403, reason: '访问被拒绝', ip });
       }
 
       // ---- 路径守卫：白名单 / 扫描器签名 / 未知路径计数 ----
@@ -662,9 +666,10 @@ export function createApiServer({
       const banState = () => {
         if (adminBypass || whitelisted) return null;
         if (deviceBan) return { type: 'device', until: deviceBan.until };
+        // BJ 批 A1：黑名单优先级高于自动封禁（与拦截链一致）
+        if (hit) return { type: 'ip', rule: hit };
         const rateUntil = ip ? ratelimit.bannedUntil(ip) : null;
         if (rateUntil) return { type: 'rate', until: rateUntil };
-        if (hit) return { type: 'ip', rule: hit };
         return null;
       };
       if (BAN_ONLY_PAGES.has(path) && banState() === null) {
@@ -2938,8 +2943,16 @@ export function createApiServer({
       // ---- 管理员：超频/临时封禁记录 + 手动解封 ----
       if (path === '/api/admin/abuse' && req.method === 'GET') {
         if (!requireAdmin()) return;
+        const status = String(url.searchParams.get('status') ?? 'active');
+        const rows = await db.listAbuse(q, { limit: Number(url.searchParams.get('limit') ?? 50), status });
+        // BJ 批 B1：逐行补「已在黑名单」标注（运行时 matchesIpEntry，含 CIDR 覆盖）
+        for (const row of rows) {
+          const entry = visitors.blockedBy(row.ip);
+          row.in_blacklist = Boolean(entry);
+          row.blacklist_entry = entry ?? null;
+        }
         return json(res, 200, {
-          abuse: await db.listAbuse(q, { limit: Number(url.searchParams.get('limit') ?? 50) }),
+          abuse: rows,
           config: ratelimit.currentConfig(),
         });
       }
@@ -2948,9 +2961,11 @@ export function createApiServer({
       if (abuseUnban && req.method === 'DELETE') {
         if (!requireAdmin()) return;
         const target = decodeURIComponent(abuseUnban[1]);
-        const removed = await ratelimit.unban(q, target);
-        await visitors.refreshBlocklist(q).catch(() => {});
-        logger?.info('api.abuse_unbanned', { ip: target, removed, by: user.username });
+        // BJ 批 C1：只清 ip_abuse（含内存态），绝不动 ip_blacklist
+        const before = (await q('select banned_until from ip_abuse where ip = $1', [target])).rows[0];
+        const wasActive = Boolean(before?.banned_until && new Date(before.banned_until).getTime() > Date.now());
+        const removed = await ratelimit.clearAbuse(q, target);
+        logger?.info('api.abuse_unbanned', { ip: target, removed, wasActive, blacklistKept: true, by: user.username });
         return json(res, 200, { removed });
       }
 
@@ -3292,6 +3307,9 @@ async function banIpExclusiveSql(q, ip, note, kind, { refresh = true, markReview
   if (kind === 'ban') {
     const row = await db.addBlockedIp(q, { ip, note });
     if (row.removedFromWhitelist) ratelimit.removeWhitelist(ip);
+    // BJ 批 D1：黑名单优先——写黑名单时清掉该 IP 的临时封禁（行保留做审计；与加白清单同一先例）
+    await db.clearAbuseBan(q, ip).catch(() => {});
+    ratelimit.clearBanMemory(ip);
     if (refresh) await visitors.refreshBlocklist(q).catch(() => {});
     if (markReviews) await db.markReviewsAutoBanned(q, { ip, note: '手动封禁' }).catch(() => {});
     return { ip: row.ip, removedFromWhitelist: row.removedFromWhitelist };
@@ -3461,11 +3479,11 @@ async function bulkDeviceBanRemove({ q, keys }) {
 }
 
 async function bulkAbuseUnban({ q, keys }) {
-  const { ok, results, touched } = await bulkEach(keys, async (ip) => {
-    const removed = await ratelimit.unban(q, ip);
+  // BJ 批 C1：批量同口径——只清 ip_abuse（含内存态），绝不动 ip_blacklist；审计由 admin_bulk_ops 负责
+  const { ok, results } = await bulkEach(keys, async (ip) => {
+    const removed = await ratelimit.clearAbuse(q, ip);
     return removed ? 'done' : '没有临时封禁记录';
   });
-  if (touched) await visitors.refreshBlocklist(q).catch(() => {});
   return { ok, results };
 }
 

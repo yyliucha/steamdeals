@@ -476,7 +476,7 @@ curl -sS -o /dev/null -D - -A 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac 
 
 ## 10. 2026-11-11 修订（BJ）：黑名单 IP 不再写入自动封禁 + 自动封禁记录口径 + 解封语义拆分
 
-> 状态：**已确认待开发（2026-11-11，所有者确认 15 项细节）**。编号 **BJ**。
+> 状态：**已实现待发版（2026-11-11，待质检）**。编号 **BJ**。
 > 关联：[TODO.md](TODO.md) 的 BJ 条目、[VISIT-IP-STATS.md](VISIT-IP-STATS.md) §8（BI 的「封禁中 / 已封禁」口径先例）、
 > [ADMIN-BULK-ACTIONS.md](ADMIN-BULK-ACTIONS.md)（批量处置回执与审计）、[WEB.md](WEB.md)（接口表）、
 > [ROADMAP.md](ROADMAP.md)（不做项）。

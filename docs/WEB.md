@@ -207,7 +207,10 @@ POST /api/setup/complete
 - `GET /api/admin/images` → 封面图本地缓存统计（张数/覆盖游戏数/体积/目录）
 - `GET /api/admin/emails` → 验证码邮件记录（含 `subject`/`body`：用户收不到邮件时直接看验证码）
 - `GET /api/admin/blacklist` → 黑名单列表；`POST /api/admin/blacklist` → `{ ip, note }` 拉黑（支持 CIDR）；
-  `DELETE /api/admin/blacklist/:ip` → 移出。增删后内存黑名单即时刷新。
+  `DELETE /api/admin/blacklist/:ip` → 移出（**BJ 批起只删黑名单，不恢复该 IP 的自动封禁记录**）。增删后内存黑名单即时刷新。
+- `GET /api/admin/abuse?status=active|expired|all&limit` → 自动封禁记录（BJ 批起默认只列生效中）；每行带 `active` 与
+  `in_blacklist`/`blacklist_entry`（运行时 CIDR 匹配，「已在黑名单」标注用）；`DELETE /api/admin/abuse/:ip` → 只清
+  `ip_abuse`（含内存态），**绝不移除 IP 黑名单**。
   **黑/白名单双向互斥**：加黑自动移白（回执 `removedFromWhitelist`）、加白自动移黑（回执 `removedFromBlacklist`），
   存量冲突由启动迁移按白名单优先清理
 - `GET /api/ban/state` → **只读封禁状态**（无需登录、豁免拦截链与频率计数）：`{ banned, type, until }`；

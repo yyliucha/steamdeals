@@ -273,3 +273,73 @@ test('互斥（HTTP 层 + 内存态）：加黑后信任同一 IP → 立即恢�
     await store.close();
   }
 });
+// ---------------------------------------------------------------- BJ 批（docs/BAN-AND-SECURITY-FIXES.md §10.6 验收 3/6/7）
+
+test('BJ：listAbuse 三种 status 口径与 active 字段（B1）', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    await q("insert into ip_abuse (ip, strikes, banned_until) values ('203.0.113.1', 2, now() + interval '30 minutes')");
+    await q("insert into ip_abuse (ip, strikes, banned_until) values ('203.0.113.2', 1, now() - interval '1 hour')");
+    await q("insert into ip_abuse (ip, strikes, banned_until) values ('203.0.113.3', 3, null)");
+    const active = await db.listAbuse(q, { status: 'active' });
+    assert.deepEqual(active.map((r) => r.ip), ['203.0.113.1'], '默认只列生效中');
+    assert.equal(active[0].active, true);
+    const expired = await db.listAbuse(q, { status: 'expired' });
+    assert.deepEqual(expired.map((r) => r.ip).sort(), ['203.0.113.2', '203.0.113.3'], '过期与仅计数都在 expired 里');
+    const all = await db.listAbuse(q, { status: 'all' });
+    assert.equal(all.length, 3, 'all 为并集');
+    const fallback = await db.listAbuse(q, { status: 'garbage' });
+    assert.equal(fallback.length, 1, '非法值回落到 active');
+  } finally {
+    await store.close();
+  }
+});
+
+test('BJ：clearAbuseBan 只清被黑名单覆盖的行，行保留；迁移幂等（D1/H1）', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    await q("insert into ip_abuse (ip, strikes, banned_until, ban_source) values ('203.0.113.1', 2, now() + interval '30 minutes', 'rate')");
+    await q("insert into ip_abuse (ip, strikes, banned_until, ban_source) values ('203.0.113.2', 1, now() + interval '10 minutes', 'path')");
+    await db.addBlockedIp(q, { ip: '203.0.113.1', note: '审核通过' });
+    // 决策 14：审核通过写黑名单时清该 IP 临时封禁字段（行保留）
+    const changed = await db.clearAbuseBan(q, '203.0.113.1');
+    assert.equal(changed, true);
+    const row = (await q("select banned_until, ban_source from ip_abuse where ip = '203.0.113.1'")).rows[0];
+    assert.equal(row.banned_until, null, '被黑名单覆盖的 IP 不再显示封禁中');
+    assert.equal(row.ban_source, null);
+    assert.equal((await q("select count(*)::int as n from ip_abuse where ip = '203.0.113.1'")).rows[0].n, 1, '行保留做审计');
+    const untouched = (await q("select banned_until from ip_abuse where ip = '203.0.113.2'")).rows[0];
+    assert.ok(untouched.banned_until, '未被覆盖的行不动');
+    // 迁移幂等：migrate() 再跑一次不炸、第二次清 0 行
+    await db.migrate(store);
+    assert.equal((await q("select count(*)::int as n from ip_abuse where ip = '203.0.113.1' and banned_until is not null")).rows[0].n, 0);
+  } finally {
+    await store.close();
+  }
+});
+
+test('BJ：purgeOldRows 自动封禁保留期——91 天前删、未过期不删、仅计数旧行删（H1）', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const { ensureEmailSchema } = await import('../src/email-auth.js');
+  await ensureEmailSchema(store);
+  const { ensureSteamSchema } = await import('../src/steam-login.js');
+  await ensureSteamSchema(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    await q("insert into ip_abuse (ip, strikes, banned_until, updated_at) values ('203.0.113.1', 2, now() - interval '91 days', now() - interval '91 days')");
+    await q("insert into ip_abuse (ip, strikes, banned_until, updated_at) values ('203.0.113.2', 2, now() + interval '30 minutes', now())");
+    await q("insert into ip_abuse (ip, strikes, banned_until, updated_at) values ('203.0.113.3', 1, null, now() - interval '91 days')");
+    await q("insert into ip_abuse (ip, strikes, banned_until, updated_at) values ('203.0.113.4', 1, null, now())");
+    const r = await db.purgeOldRows(q, { abuseDays: 90 });
+    assert.equal(r.ipAbuse, 2, '只删 91 天前的过期行与很旧的仅计数行');
+    const left = (await q('select ip from ip_abuse order by ip')).rows.map((x) => x.ip);
+    assert.deepEqual(left, ['203.0.113.2', '203.0.113.4'], '未过期行与较新的仅计数行保留');
+  } finally {
+    await store.close();
+  }
+});

@@ -111,8 +111,33 @@ test('手动解封清掉临时封禁（不再产生永久黑名单）', async ()
   }
   assert.equal(blacklist.has(ip), false, '自动流程不写永久黑名单');
   assert.ok(ratelimit.bannedUntil(ip), '应处于临时封禁中');
-  await ratelimit.unban(q, ip);
+  await ratelimit.clearAbuse(q, ip);
   assert.equal(ratelimit.bannedUntil(ip), null);
+});
+
+test('BJ：clearAbuse 只清 ip_abuse，不再删 ip_blacklist（解封语义拆分）', async () => {
+  ratelimit.resetState();
+  const { q, abuse, blacklist } = fakeQ();
+  // 模拟「该 IP 同时在自动封禁与黑名单里」：黑名单行先存在，abuse 行由 fakeQ 的 insert 分支记
+  blacklist.add('203.0.113.88');
+  abuse.set('203.0.113.88', 2);
+  ratelimit.applyExternalBan('203.0.113.88', Date.now() + 600_000);
+  const removed = await ratelimit.clearAbuse(q, '203.0.113.88');
+  assert.equal(removed, true);
+  assert.equal(blacklist.has('203.0.113.88'), true, '黑名单行必须保留');
+  assert.equal(ratelimit.bannedUntil('203.0.113.88'), null, '内存临时封禁已清');
+});
+
+test('BJ：clearBanMemory 只清封禁内存，不碰窗口计数与黑名单', async () => {
+  ratelimit.resetState();
+  ratelimit.configure({ enabled: true, max: 60, windowSec: 60 });
+  const { q, blacklist } = fakeQ();
+  blacklist.add('203.0.113.99');
+  ratelimit.applyExternalBan('203.0.113.99', Date.now() + 600_000);
+  await ratelimit.hit(q, '203.0.113.99'); // 封禁期内计数（不会真写库）
+  ratelimit.clearBanMemory('203.0.113.99');
+  assert.equal(ratelimit.bannedUntil('203.0.113.99'), null, '内存封禁已清');
+  assert.equal(blacklist.has('203.0.113.99'), true, '黑名单不在此函数职责内');
 });
 
 test('禁用后完全不限流', async () => {

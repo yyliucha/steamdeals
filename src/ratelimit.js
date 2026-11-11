@@ -292,8 +292,12 @@ export async function hit(q, ip, { bucket = 'page' } = {}) {
   return { limited: true, until: ban.until, reason: ban.reason, strikes, permanent: false, needsReview: Boolean(ban.needsReview) };
 }
 
-/** 管理员手动解封。返回是否清掉了记录。 */
-export async function unban(q, ip) {
+/**
+ * 管理员在「自动封禁记录」页解除封禁 / 清除记录（BJ 批 C1，docs/BAN-AND-SECURITY-FIXES.md §10.4.3）：
+ * 只清 `ip_abuse`（含内存态），**绝不动 `ip_blacklist`**——黑名单是审核/人工封禁的产物，
+ * 只有黑名单页的解封才能删它。返回是否删掉了记录。
+ */
+export async function clearAbuse(q, ip) {
   const key = String(ip);
   deleteWindowEntry(windowHits, key);
   deleteWindowEntry(assetHits, key);
@@ -304,13 +308,23 @@ export async function unban(q, ip) {
   let removed = 0;
   try {
     const r = await q('delete from ip_abuse where ip = $1', [key]);
-    removed += r.rowCount ?? 0;
-    const b = await q('delete from ip_blacklist where ip = $1', [key]);
-    removed += b.rowCount ?? 0;
+    removed = r.rowCount ?? 0;
   } catch {
     /* 忽略 */
   }
   return removed > 0;
+}
+
+/**
+ * 审核通过 / 手动封 IP 写黑名单时清内存临时封禁（BJ 批 D1）：banUntil/pathBanned/dayBanned/blockedHits
+ * 全清；窗口计数（windowHits/assetHits）保留——黑名单检查已在限流之前，这些计数不会再被用上。
+ */
+export function clearBanMemory(ip) {
+  const key = String(ip);
+  blockedHits.delete(key);
+  banUntil.delete(key);
+  pathBanned.delete(key);
+  dayBanned.delete(key);
 }
 
 /** 测试用：清空内存状态。 */

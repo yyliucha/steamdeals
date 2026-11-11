@@ -480,3 +480,88 @@ test('批量互斥回执：批量封禁移除白名单、批量信任移除黑�
     await close();
   }
 });
+// ---------------------------------------------------------------- BJ 批（docs/BAN-AND-SECURITY-FIXES.md §10.6 验收 1/5/4/9）
+
+test('BJ：黑名单 IP 连续 200 次请求全 403，不写 ip_abuse、不新增 pending、采样日志 ≤1 条/分钟（A1）', async () => {
+  const { q, base, close } = await boot();
+  try {
+    const cookie = await login(base, 'admin', 'admin123456');
+    await bulk(base, cookie, { target: 'visitors', action: 'ban-ip', keys: ['203.0.113.77'], options: { note: 'BJ测试' }, confirmCount: 1 });
+    for (let i = 0; i < 200; i += 1) {
+      const res = await fetch(base + '/', { headers: { 'x-forwarded-for': '203.0.113.77' } });
+      assert.equal(res.status, 403, `第 ${i + 1} 次应 403（不得出现 429）`);
+    }
+    assert.equal((await q('select count(*)::int as n from ip_abuse where ip = $1', ['203.0.113.77'])).rows[0].n, 0, '黑名单 IP 不再写 ip_abuse');
+    assert.equal((await q("select count(*)::int as n from abuse_reviews where ip = $1 and status = 'pending'", ['203.0.113.77'])).rows[0].n, 0, '不新增 pending 审核');
+    const logs = (await q('select count(*)::int as n from visitor_logs where ip = $1 and blocked = true', ['203.0.113.77'])).rows[0].n;
+    assert.ok(logs >= 1 && logs <= 2, `采样拦截日志应存在且每分钟 ≤1 条（200 次请求最多 2 条跨分钟），实得 ${logs}`);
+  } finally {
+    await close();
+  }
+});
+
+test('BJ：批量 abuse/unban 只清 ip_abuse，黑名单仍在、该 IP 仍 403（C1）', async () => {
+  const { q, base, close } = await boot();
+  try {
+    const cookie = await login(base, 'admin', 'admin123456');
+    const ip = '203.0.113.88';
+    await q("insert into ip_abuse (ip, strikes, banned_until) values ($1, 2, now() + interval '30 minutes')", [ip]);
+    await bulk(base, cookie, { target: 'visitors', action: 'ban-ip', keys: [ip], options: { note: 'BJ' }, confirmCount: 1 });
+    // 决策 14：加黑名单时把该 IP 的临时封禁字段清掉（行保留）
+    const afterBan = (await q('select banned_until, ban_source from ip_abuse where ip = $1', [ip])).rows[0];
+    assert.equal(afterBan.banned_until, null, '加黑名单后临时封禁字段应为空');
+    assert.equal(afterBan.ban_source, null);
+    const r = await bulk(base, cookie, { target: 'abuse', action: 'unban', keys: [ip] });
+    const body = await r.json();
+    assert.equal(r.status, 200);
+    assert.equal(body.ok, 1);
+    assert.equal((await q('select count(*)::int as n from ip_abuse where ip = $1', [ip])).rows[0].n, 0, 'ip_abuse 已清');
+    assert.equal((await q('select count(*)::int as n from ip_blacklist where ip = $1', [ip])).rows[0].n, 1, '黑名单必须保留');
+    const res = await fetch(base + '/', { headers: { 'x-forwarded-for': ip } });
+    assert.equal(res.status, 403, '该 IP 仍被黑名单拦截');
+  } finally {
+    await close();
+  }
+});
+
+test('BJ：批量 blacklist/unban 不动 ip_abuse（C1）', async () => {
+  const { q, base, close } = await boot();
+  try {
+    const cookie = await login(base, 'admin', 'admin123456');
+    const ip = '203.0.113.89';
+    await q("insert into ip_abuse (ip, strikes, banned_until) values ($1, 1, null)", [ip]);
+    await bulk(base, cookie, { target: 'visitors', action: 'ban-ip', keys: [ip], options: { note: 'BJ' }, confirmCount: 1 });
+    const r = await bulk(base, cookie, { target: 'blacklist', action: 'unban', keys: [ip] });
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).ok, 1);
+    assert.equal((await q('select count(*)::int as n from ip_blacklist where ip = $1', [ip])).rows[0].n, 0, '黑名单已删');
+    assert.equal((await q('select count(*)::int as n from ip_abuse where ip = $1', [ip])).rows[0].n, 1, 'ip_abuse 不受影响');
+  } finally {
+    await close();
+  }
+});
+
+test('BJ：/api/admin/abuse 逐行标注「已在黑名单」（含 CIDR 覆盖），删黑名单后 tag 消失（B1）', async () => {
+  const { q, base, close } = await boot();
+  try {
+    const cookie = await login(base, 'admin', 'admin123456');
+    await q("insert into ip_abuse (ip, strikes, banned_until) values ('203.0.113.9', 1, null)");
+    await bulk(base, cookie, { target: 'visitors', action: 'ban-ip', keys: ['203.0.113.0/24'], options: { note: 'BJ' }, confirmCount: 1 });
+    const get = async () => {
+      const res = await fetch(base + '/api/admin/abuse?status=all', { headers: { 'x-forwarded-for': ADMIN_IP, cookie } });
+      assert.equal(res.status, 200);
+      return (await res.json()).abuse;
+    };
+    const rows1 = await get();
+    const row = rows1.find((x) => x.ip === '203.0.113.9');
+    assert.ok(row, '仅计数行在 all 视图可见');
+    assert.equal(row.in_blacklist, true, 'CIDR 黑名单覆盖的 IP 应标注已在黑名单');
+    assert.equal(row.blacklist_entry, '203.0.113.0/24', 'hover 条目应为命中的 CIDR');
+    // 删掉黑名单条目后 tag 消失
+    await fetch(base + '/api/admin/blacklist/' + encodeURIComponent('203.0.113.0/24'), { method: 'DELETE', headers: { 'x-forwarded-for': ADMIN_IP, cookie } });
+    const rows2 = await get();
+    assert.equal(rows2.find((x) => x.ip === '203.0.113.9')?.in_blacklist, false, '删除黑名单后标注消失');
+  } finally {
+    await close();
+  }
+});

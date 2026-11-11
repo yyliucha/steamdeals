@@ -2046,14 +2046,16 @@ async function cmdPrune() {
   const runDays = Math.max(1, Number(flag('run-days', '90')) || 90);
   const emailDays = Math.max(1, Number(flag('email-days', '7')) || 7);
   const steamDays = Math.max(1, Number(flag('steam-days', '180')) || 180);
+  // BJ 批 H1：自动封禁记录保留 90 天，并入现有 prune（不新建定时任务）
+  const abuseDays = Math.max(1, Number(flag('abuse-days', '90')) || 90);
   const result = await withStore((store) =>
-    db.purgeOldRows((sql, p) => store.query(sql, p), { visitorDays, runDays, emailDays, steamDays }),
+    db.purgeOldRows((sql, p) => store.query(sql, p), { visitorDays, runDays, emailDays, steamDays, abuseDays }),
   );
   console.log(
-    `清理完成：访问记录 ${result.visitorLogs} 条、采集记录 ${result.fetchRuns} 条、任务记录 ${result.syncRuns} 条、验证码 ${result.emailCodes} 条、Steam 账号日志 ${result.steamAccountLogs} 条` +
-      `（保留：访问 ${visitorDays} 天 / 采集与任务 ${runDays} 天 / 验证码 ${emailDays} 天 / Steam 日志 ${steamDays} 天）`,
+    `清理完成：访问记录 ${result.visitorLogs} 条、采集记录 ${result.fetchRuns} 条、任务记录 ${result.syncRuns} 条、验证码 ${result.emailCodes} 条、Steam 账号日志 ${result.steamAccountLogs} 条、自动封禁记录 ${result.ipAbuse} 条` +
+      `（保留：访问 ${visitorDays} 天 / 采集与任务 ${runDays} 天 / 验证码 ${emailDays} 天 / Steam 日志 ${steamDays} 天 / 自动封禁 ${abuseDays} 天）`,
   );
-  logger.info('maintenance.cleanup', { ...result, visitorDays, runDays, emailDays, steamDays });
+  logger.info('maintenance.cleanup', { ...result, visitorDays, runDays, emailDays, steamDays, abuseDays });
 }
 
 // 首页列表读模型对账/重建（docs/READ-MODEL.md §7，AV 批）

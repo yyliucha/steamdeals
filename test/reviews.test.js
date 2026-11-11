@@ -241,6 +241,9 @@ test('管理员审批：封 IP 后整站 403，浏览器拿到多语言提示页
     const review = list.reviews.find((r) => r.ip === '198.51.100.10');
     assert.ok(review, '待审核列表里应该有这个 IP');
 
+    // BJ 批 D1 前置：给该 IP 造一条「生效中的临时封禁」行，审批后应被清空（行保留）
+    await q("insert into ip_abuse (ip, strikes, banned_until, ban_source) values ('198.51.100.10', 2, now() + interval '30 minutes', 'rate')");
+
     const approve = await fetch(base + '/api/admin/reviews/approve', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie, 'x-forwarded-for': '203.0.113.77' },
@@ -248,6 +251,11 @@ test('管理员审批：封 IP 后整站 403，浏览器拿到多语言提示页
     });
     assert.equal(approve.status, 200);
     assert.ok((await q("select count(*)::int as n from ip_blacklist where ip = '198.51.100.10'")).rows[0].n >= 1, '审批后应进黑名单');
+    // BJ 批 D1：审核通过写黑名单时，把该 IP 的临时封禁字段清掉（行保留做审计）
+    const abuseRow = (await q("select banned_until, ban_source from ip_abuse where ip = '198.51.100.10'")).rows[0];
+    assert.ok(abuseRow, 'ip_abuse 行必须保留');
+    assert.equal(abuseRow.banned_until, null, '被黑名单覆盖的 IP 不再有临时封禁时间');
+    assert.equal(abuseRow.ban_source, null, '封禁来源一并清空');
 
     const api = await get(base, '198.51.100.10', '/api/games');
     assert.equal(api.status, 403);

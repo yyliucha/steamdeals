@@ -420,6 +420,16 @@ export async function migrate(store, { logger = null } = {}) {
        from ip_whitelist w
       where a.ip = w.ip and a.banned_until is not null`,
   );
+  // BJ 批 H1（docs/BAN-AND-SECURITY-FIXES.md §10.4.5）：同样清掉被黑名单覆盖的临时封禁字段
+  // （行保留做审计；只处理精确相等，CIDR 覆盖由运行时判定）。幂等：第二次跑清 0 行。
+  await store.query(
+    `update ip_abuse a
+        set banned_until = null,
+            ban_source   = null,
+            updated_at   = now()
+       from ip_blacklist b
+      where a.ip = b.ip and a.banned_until is not null`,
+  );
   // 免费游戏一次性置位（docs/STEAM-SYNC-STATUS-AND-RATING.md §3/§6）：is_free 已已知，
   // 免费永远无价，不需要再发请求；置位后 9.2 万「待同步」立刻拆出 2.3 万免费。
   await store.query(`update games set steam_status = 'free' where is_free and steam_status is null`);
@@ -2013,8 +2023,8 @@ export async function recordView(q, { userId = null, path, appid = null }) {
   await q('insert into page_views (user_id, path, appid) values ($1, $2, $3)', [userId, path, appid]);
 }
 
-/** 定期清理：访问记录/采集与任务记录/验证码/Steam 账号日志（调度器周任务）。返回各表删除行数。 */
-export async function purgeOldRows(q, { visitorDays = 180, runDays = 90, emailDays = 7, steamDays = 180 } = {}) {
+/** 定期清理：访问记录/采集与任务记录/验证码/Steam 账号日志/自动封禁记录（调度器周任务）。返回各表删除行数。 */
+export async function purgeOldRows(q, { visitorDays = 180, runDays = 90, emailDays = 7, steamDays = 180, abuseDays = 90 } = {}) {
   const del = async (sql, p) => (await q(sql, p)).rowCount ?? 0;
   const visitorLogs = await del("delete from visitor_logs where created_at < now() - ($1 || ' days')::interval", [String(visitorDays)]);
   const fetchRuns = await del("delete from fetch_runs where started_at < now() - ($1 || ' days')::interval", [String(runDays)]);
@@ -2022,7 +2032,15 @@ export async function purgeOldRows(q, { visitorDays = 180, runDays = 90, emailDa
   const emailCodes = await del("delete from email_codes where created_at < now() - ($1 || ' days')::interval", [String(emailDays)]);
   // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：Steam 账号日志保留 180 天，并入现有 prune（不新建定时任务）
   const steamAccountLogs = await del("delete from steam_account_logs where created_at < now() - ($1 || ' days')::interval", [String(steamDays)]);
-  return { visitorLogs, fetchRuns, syncRuns, emailCodes, steamAccountLogs };
+  // BJ 批 H1（docs/BAN-AND-SECURITY-FIXES.md §10.4.5）：自动封禁记录保留 90 天——
+  // 过期行（banned_until 已过 90 天）与「仅计数」行（banned_until 为空且 updated_at 很旧）都清掉。
+  const ipAbuse = await del(
+    `delete from ip_abuse
+      where (banned_until is not null and banned_until < now() - ($1 || ' days')::interval)
+         or (banned_until is null and updated_at < now() - ($1 || ' days')::interval)`,
+    [String(abuseDays)],
+  );
+  return { visitorLogs, fetchRuns, syncRuns, emailCodes, steamAccountLogs, ipAbuse };
 }
 
 /** 清理过期浏览记录（默认保留 90 天）。 */
@@ -2264,17 +2282,43 @@ export async function removeWhitelistIp(q, ip) {
   return r.rowCount ?? 0;
 }
 
-/** 超频/路径封禁记录：谁被临时封了、封到什么时候、几次了、哪套规则封的。 */
-export async function listAbuse(q, { limit = 50 } = {}) {
+/**
+ * 超频/路径封禁记录（BJ 批 B1，docs/BAN-AND-SECURITY-FIXES.md §10.4.2）：
+ * status = active（默认，仅生效中）/ expired（过期或无封禁时间）/ all（全部）；
+ * 每行带 active（banned_until > now()）与 blacklist_note（精确等值子查询，CIDR 覆盖由服务端运行时补）。
+ */
+export async function listAbuse(q, { limit = 50, status = 'active' } = {}) {
+  const mode = ['active', 'expired', 'all'].includes(String(status)) ? String(status) : 'active';
+  const where =
+    mode === 'active'
+      ? 'where a.banned_until is not null and a.banned_until > now()'
+      : mode === 'expired'
+        ? 'where a.banned_until is null or a.banned_until <= now()'
+        : '';
+  const order = mode === 'active' ? 'order by a.banned_until asc' : 'order by a.banned_until desc nulls last, a.updated_at desc';
   const r = await q(
     `select a.ip, a.strikes, a.path_strikes, a.ban_source, a.banned_until, a.updated_at,
+            coalesce(a.banned_until > now(), false) as active,
             (select note from ip_blacklist b where b.ip = a.ip) as blacklist_note
        from ip_abuse a
-      order by a.banned_until desc nulls last, a.updated_at desc
-      limit $1`,
+       ${where}
+       ${order}
+       limit $1`,
     [Math.min(Math.max(Number(limit) || 50, 1), 200)],
   );
   return r.rows;
+}
+
+/**
+ * BJ 批 D1（docs/BAN-AND-SECURITY-FIXES.md §10.4.4）：黑名单优先——写黑名单时把该 IP 的
+ * 临时封禁字段置空（行保留做审计，与加白名单清临时封禁同一先例）。返回是否改到行。
+ */
+export async function clearAbuseBan(q, ip) {
+  const r = await q(
+    'update ip_abuse set banned_until = null, ban_source = null, updated_at = now() where ip = $1 and banned_until is not null',
+    [ip],
+  );
+  return (r.rowCount ?? 0) > 0;
 }
 
 /**
