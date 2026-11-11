@@ -1003,7 +1003,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BD. 待开发：后台链接抽屉「最低价」醒目（方案 A：整卡高亮 + 角标）
 
-**状态：质检通过（2026-11-10，0124f79；QA 报告 docs/QA-LINKS-LOWEST-BD.md 未提交）**
+**状态：已发布 v2.8.0（2026-11-10，0124f79；QA 报告 docs/QA-LINKS-LOWEST-BD.md）**
 **依赖：** AO（链接抽屉，已发布 v2.1.0）
 **解锁：** 无
 **规格**：[ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md) §12
