@@ -1,12 +1,12 @@
 # 开发会话交接：BF / BG / AY（2026-11-11）
 
-> 用途：把三个待办分别丢进**独立开发会话**执行。每个会话自包含，不需要读别的会话上下文；
+> 用途：把三个待办丢进**一个合并开发会话**（推荐，见 §1），或按附录拆成三个独立会话。每个提示自包含；
 > 但都必须先读 [HANDOVER.md](HANDOVER.md) 并加载 `gameprice-dev` 技能（项目硬规则以它为准）。
 >
 > 当前看板（2026-11-11）：`进行中 1`（AY 质检通过待发版）· `接下来 2`（BF、BG 待开发）· 已发布 v2.10.0。
 > 三个会话的**写集互不重叠**（BF：后端 DDL/读写；BG：前端抽屉 + 测试；AY：只读复测 + 文档），可并行。
 
-## 0. 三个会话共用规则（每个会话开头都要遵守）
+## 0. 共用规则（合并会话/拆分会话开头都要遵守）
 
 1. 工作目录 `F:\dsh\gameprice`；先读 `docs/HANDOVER.md`，按 `gameprice-dev` 技能流程做。
 2. **`docs/TODO.md` 是唯一事实源**：开工把条目状态改「开发中」，完工改「已实现待发版」，绝不改别人的条目。
@@ -19,7 +19,67 @@
 
 ---
 
-## 1. 会话 BF：数据库遗留对象清理
+## 1. 合并会话（推荐：单会话同时开发 BF + BG + AY）
+
+```text
+你是 SteamDeals（F:\dsh\gameprice）的开发会话，本会话同时推进三个 TODO 条目：
+BF（数据库遗留对象清理）、BG（站点通知页误报未保存）、AY（搜索性能部署后复测与收尾）。
+
+第一步（必读）：
+- docs/HANDOVER.md + 加载 gameprice-dev 技能（项目硬规则以它为准）；
+- 规格：docs/DB-LEGACY-CLEANUP.md（BF）、docs/UNSAVED-GUARD.md §11（BG）、docs/READ-MODEL.md §9+§12（AY）；
+- 开工前 git status + 检查 TODO/INDEX 是否正被其他会话编辑（2 分钟内写入则停手上报）；
+  只 git add 自己改的文件，绝不 git add -A（工作区常有其他会话的未提交 QA 报告/文档）。
+
+任务与顺序（BF → BG → AY）：
+
+【BF】代码与库同步清理（规格 §3/§5）
+- A 组：src/steam-login.js 删 steam_sessions 建表 DDL、users_steam_uniq 索引；src/store/pg.js 删
+  users.steam_id 的 add column、offers INSERT 的 risk_level 字段与列 DDL、后台用户列表 SELECT 的 steam_id；
+  grep 清干净残留。
+- B 组（BE 已发布 v2.9.0，已解锁）：src/steam-accounts.js 删 addUserWishlist 的 steam_ids 写入、
+  removeUserWishlist 的 returning steam_ids、任何读取；src/steam-login.js 的 user_wishlist DDL 删 steam_ids 列。
+- 同步更新引用 steam_ids 的测试：test/wishlist.test.js（辅助查询 :55 与断言 :70）、
+  test/wishlist-push.test.js（schema 列检查 :67、:135-136），改为不依赖该列。
+- 新增迁移断言测试：新库 migrate 后 information_schema 无 steam_sessions / users.steam_id /
+  offers.risk_level / user_wishlist.steam_ids。
+- 保留：games.content_descriptors/age_ratings、games.interested/owned、user_prefs.hide_uninterested、
+  steam_accounts.api_key_enc（规格 §6）。部署侧清理 SQL 不由你执行；代码须容忍生产列仍在的过渡期（不读不写）。
+
+【BG】单文件修复（规格 §11）
+- frontend/src/components/AnnouncementDrawer.vue：snapshot 初始改为 JSON.stringify(form)
+  （fillFrom 内重置逻辑不动）；test/unsaved-guard.test.js 增补静态断言；不动 useUnsavedGuard 与其他编辑面。
+
+【AY】代码已完成（71d0f87 + ffda3a9），只做部署后复测与收尾
+- 先确认新版本已构建部署（curl 生产 /api/site 的 version；未部署则记录「待部署复测」并告知所有者，
+  不要自己构建/部署/打 tag）；
+- 已部署：按 READ-MODEL §12 的 6 条 EXPLAIN 与三项门槛复测（关键词查询不应 Seq Scan on games、
+  默认列表不应 external merge、搜索<150ms/零命中<150ms/count<30ms），结果写入 READ-MODEL §12 与 TODO AY；
+- 不达标时按 §12 排查清单继续（查索引/候选路径/缓存），任何新改动照常走测试与提交。
+
+验证（必须真跑并贴输出）：
+- npm test、node test/api.test.js、npm run frontend:build、npm run scan、npm run todo:progress:check。
+- 状态：BF/BG 开工改「开发中」，完工改「已实现待发版」；AY 保持「质检通过」，复测结论写进条目。
+
+提交（按条目分开，不要混）：
+1) feat(db): BF …（代码+测试+文档）
+2) fix(admin): BG …（组件+测试）
+3) docs(perf): AY 复测记录（若已部署）
+提交前 git status 核对只含自己的文件；推 main。
+
+质检：三个条目都推送后，调用 gameprice-qa 一次，覆盖 BF + BG（+ AY 若已完成复测）；按其报告处理打回项。
+汇报：按 HANDOVER §3 输出「已做/未做/状态更新/质检/提交」，逐条列 BF、BG、AY 的结论与阻塞。
+注意：不碰服务器、不动生产数据、没有「构建 vX.Y.Z」指令不发版。
+```
+
+### 1.1 依赖与并行说明
+
+- BF、BG 互不依赖，可同会话连续做；AY 的「复测」依赖下个版本构建 + 部署，未部署时只记录阻塞，不臆测结果。
+- 三个条目在 `docs/TODO.md` 里各自独立，状态分别回写；一次 `gameprice-qa` 覆盖多条。
+
+---
+
+## 附录 A：BF 单需求提示（拆分会话备用）
 
 ```text
 你是 SteamDeals（F:\dsh\gameprice）的开发会话，任务 = TODO 条目 BF。
@@ -57,7 +117,7 @@
 
 ---
 
-## 2. 会话 BG：站点通知页误报「未保存的修改」
+## 附录 B：BG 单需求提示（拆分会话备用）
 
 ```text
 你是 SteamDeals（F:\dsh\gameprice）的开发会话，任务 = TODO 条目 BG（BUG）。
@@ -84,7 +144,7 @@
 
 ---
 
-## 3. 会话 AY：搜索性能（部署后复测与收尾）
+## 附录 C：AY 单需求提示（拆分会话备用）
 
 ```text
 你是 SteamDeals（F:\dsh\gameprice）的开发会话，任务 = TODO 条目 AY（状态：质检通过，待发版/待复测）。
@@ -115,7 +175,7 @@
 
 ---
 
-## 4. 依赖与建议顺序
+## 附录 D：依赖与建议顺序
 
 | 会话 | 依赖 | 可否并行 | 说明 |
 |---|---|---|---|
