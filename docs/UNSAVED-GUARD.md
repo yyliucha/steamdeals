@@ -142,3 +142,31 @@ bypassNextGuard()                                     // 放过下一次导航�
 
 无。范围、三按钮交互、不拦刷新关闭、文案风格已于 2026-11-06 确认。
 2026-11-09 追加确认见 §2 决策 5；剩余动作只有「服务器升级到 v2.2.0 后真机复验」，不另立需求。
+
+## 11. 2026-11-10 修订（BG）：站点通知页误报「未保存的修改」
+
+**现象（所有者截图，2026-11-10）**：打开「内容运营 → 站点通知」页、未做任何编辑，切菜单即弹「还有没保存的修改 / 站点通知还有修改没保存」，侧栏当前项显示「●」未保存小圆点。
+
+**根因（已定位）**：`frontend/src/components/AnnouncementDrawer.vue` 的脏判定快照初始化为空串：
+
+```js
+let snapshot = '';                       // ← 错误：初始快照为空
+function isDirty() { return JSON.stringify(form) !== snapshot; }  // '' !== '{...}' → 恒 true
+```
+
+`snapshot` 只在 `fillFrom()` 里赋值，而 `fillFrom` 仅在抽屉可见时被调用；页面挂载、抽屉关闭时 `isDirty()` 恒为 true，于是守卫把「站点通知」当成了脏来源。
+
+**修复**：初始快照 = 初始表单：
+
+```js
+let snapshot = JSON.stringify(form);     // 打开抽屉时 fillFrom 会再重置
+```
+
+**回归断言**：`test/unsaved-guard.test.js` 增加静态断言（`AnnouncementDrawer.vue` 里 snapshot 初始为 `JSON.stringify(form)`，且 `fillFrom` 内仍重置快照），防止再写回空串。
+
+**验收**
+
+1. 打开站点通知页：侧栏不出现「●」未保存圆点、切菜单不弹确认；
+2. 打开「新建通知/编辑」抽屉后修改任一字段才变脏；点取消/遮罩/✕ 会弹「保存并离开 / 放弃修改 / 留在本页」，三按钮行为不变；
+3. 其余四个编辑面（系统设置/编辑游戏/新建用户/邮件设置）行为不变；
+4. `npm test` 全绿（主链，含 unsaved-guard）、`npm run frontend:build`、`npm run scan`。
