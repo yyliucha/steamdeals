@@ -923,7 +923,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   默认合并表）、`admin-bulk.test.js` 计数随明细表移除更新、`reviews.test.js` 悬停提示断言改合并展开行。无后端改动。
 ## AY. 待排查：AV 读模型上线后性能未达门槛（列表 340ms / 零命中 1.59s / count 163ms）
 
-**状态：已实现待发版（2026-11-11，生产 EXPLAIN 已定位；见下方结论）**
+**状态：质检通过（2026-11-11，71d0f87；QA 报告 docs/QA-SEARCH-PERF-AY.md 未提交；性能门槛待部署复测）**
 **依赖：** AV（已发布 v2.6.0）
 **解锁：** 无
 **规格**：[READ-MODEL.md](READ-MODEL.md) §9 性能门槛
