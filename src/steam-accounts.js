@@ -155,7 +155,7 @@ export async function cleanupAutoWatches(q, userId) {
   return r.rowCount ?? 0;
 }
 
-/** 解绑：删库/愿望单/账号行（steam_sessions 已停用不清理），随后对账自动提醒。 */
+/** 解绑：删库/愿望单/账号行，随后对账自动提醒。 */
 export async function unbindAccount(q, { steamId, userId, logger = null, log = null }) {
   const ctx = logCtx(log);
   const started = Date.now();
@@ -381,11 +381,11 @@ export async function pushWishlistItem({ steamId, apiKey, appid, action = 'add',
 
 /**
  * 站点内手动愿望单（BE 批 docs/WISHLIST-SITE-ONLY.md §4.1）：只写本站 + 建「愿望单」自动到价提醒。
- * 旧 `steamIds` 不再接收/写入（列继续存在以兼容历史值，新写入统一 '{}'）。
+ * steam_ids 列已随 BF 批删除（部署侧 SQL 先置空历史值再删列）。
  */
 export async function addUserWishlist(q, { userId, gameId }) {
   await q(
-    "insert into user_wishlist (user_id, game_id, steam_ids) values ($1, $2, '{}') " +
+    'insert into user_wishlist (user_id, game_id) values ($1, $2) ' +
       'on conflict (user_id, game_id) do nothing',
     [userId, gameId],
   );
@@ -397,12 +397,11 @@ export async function addUserWishlist(q, { userId, gameId }) {
 }
 
 /**
- * 移除站点手动愿望单：删 user_wishlist 行（返回当时选择推送的账号）并清理自动提醒；
+ * 移除站点手动愿望单：删 user_wishlist 行并清理自动提醒；
  * 用户手动设过目标价的提醒（source 已翻转为 manual）保留。
  */
 export async function removeUserWishlist(q, { userId, gameId }) {
-  const r = await q('delete from user_wishlist where user_id = $1 and game_id = $2 returning steam_ids', [userId, gameId]);
-  const steamIds = r.rows[0]?.steam_ids ?? [];
+  const r = await q('delete from user_wishlist where user_id = $1 and game_id = $2', [userId, gameId]);
   // BE 批（docs/WISHLIST-SITE-ONLY.md §4.1）：其他人还收藏同一游戏时，别把全局自动提醒清掉
   const left = await q('select 1 from user_wishlist where game_id = $1 limit 1', [gameId]);
   let watchesCleaned = 0;
@@ -413,7 +412,7 @@ export async function removeUserWishlist(q, { userId, gameId }) {
     );
     watchesCleaned = watch.rowCount ?? 0;
   }
-  return { removed: r.rowCount ?? 0, steamIds, watchesCleaned };
+  return { removed: r.rowCount ?? 0, watchesCleaned };
 }
 
 

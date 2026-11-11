@@ -1278,7 +1278,7 @@ export function createApiServer({
       }
 
       // ---- 管理员：用户管理（编辑 / 改密码 / 禁用）----
-      // ---- Steam 多账号绑定 / 游戏库 / 愿望单（身份由站点会话决定，steam_sessions 已停用）----
+      // ---- Steam 多账号绑定 / 游戏库 / 愿望单（身份由站点会话决定）----
       const steamMod = await import('./steam-login.js');
       const steamAccountsMod = await import('./steam-accounts.js');
       const steamLogMod = await import('./steam-log.js');

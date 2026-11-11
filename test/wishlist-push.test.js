@@ -64,7 +64,8 @@ test('schema：user_wishlist 表与 steam_accounts.api_key_enc 都在', async ()
     const cols = async (table) =>
       (await q('select column_name from information_schema.columns where table_name = $1', [table])).rows.map((r) => r.column_name);
     const uw = await cols('user_wishlist');
-    for (const name of ['user_id', 'game_id', 'steam_ids', 'created_at']) assert.ok(uw.includes(name), `user_wishlist 应有 ${name}`);
+    for (const name of ['user_id', 'game_id', 'created_at']) assert.ok(uw.includes(name), `user_wishlist 应有 ${name}`);
+    assert.ok(!uw.includes('steam_ids'), 'user_wishlist 不应再有 steam_ids（BF 批删除）');
     assert.ok((await cols('steam_accounts')).includes('api_key_enc'), 'steam_accounts 应有 api_key_enc');
   } finally {
     await store.close();
@@ -132,8 +133,8 @@ test('添加愿望单：只写本站 + 建自动提醒；steamIds 忽略（不�
     assert.deepEqual(body.added, [], '不再推送 Steam');
     assert.deepEqual(body.failed, []);
     assert.equal(calls.length, 0, '整条推送路径不再触发');
-    const uw = (await q('select steam_ids from user_wishlist where user_id = (select id from users where username = $1)', ['alice'])).rows[0];
-    assert.deepEqual([...(uw.steam_ids ?? [])], [], '选择账号不再落库（steamIds 忽略）');
+    const uw = (await q('select 1 as n from user_wishlist where user_id = (select id from users where username = $1)', ['alice'])).rows[0];
+    assert.equal(uw.n, 1, '选择账号不再落库（steamIds 忽略，steam_ids 列已删除）');
     assert.equal((await q('select count(*)::int as n from steam_wishlist')).rows[0].n, 0, '不写 Steam 同步表');
     const watch = (await q("select source, target_cents, note from watchlist where game_id = (select id from games where steam_appid = 730)")).rows[0];
     assert.equal(watch.source, 'user_wishlist');

@@ -1,5 +1,5 @@
 // Steam OpenID 绑定 + 账号数据 schema。
-// 身份由站点会话决定：Steam 账号归属站点用户（steam_accounts.user_id），steam_sessions 已停用。
+// 身份由站点会话决定：Steam 账号归属站点用户（steam_accounts.user_id）。
 // 绑定（OpenID）不需要 API Key；游戏库/愿望单同步需要 STEAM_API_KEY，且账号资料必须公开。
 import { fetchText, fetchJson } from './http.js';
 import { randomBytes } from 'node:crypto';
@@ -7,11 +7,9 @@ import { isPrivateAddress, matchesIpEntry } from './visitors.js';
 
 const OPENID_ENDPOINT = 'https://steamcommunity.com/openid/login';
 
-/** 建表（幂等）。steam_accounts 归属站点用户（user_id），一账号只属一人；steam_sessions 已停用（保留表不再写入）。 */
+/** 建表（幂等）。steam_accounts 归属站点用户（user_id），一账号只属一人。 */
 export async function ensureSteamSchema(store) {
   const exec = (sql) => (store.exec ? store.exec(sql) : store.query(sql));
-  await exec('alter table users add column if not exists steam_id text');
-  await exec('create unique index if not exists users_steam_uniq on users (steam_id) where steam_id is not null');
   await exec([
     'create table if not exists steam_accounts (',
     '  steam_id text primary key,',
@@ -29,13 +27,6 @@ export async function ensureSteamSchema(store) {
   // 账号自配的 Steam Web API Key（写愿望单等写操作必须用账号自己的 key），AES-256-GCM 加密
   await exec('alter table steam_accounts add column if not exists api_key_enc text');
   await exec('create index if not exists steam_accounts_user on steam_accounts (user_id)');
-  await exec([
-    'create table if not exists steam_sessions (',
-    '  token text primary key,',
-    '  steam_id text not null references steam_accounts(steam_id) on delete cascade,',
-    '  created_at timestamptz not null default now()',
-    ');',
-  ].join('\n'));
   await exec([
     'create table if not exists steam_games (',
     '  steam_id text not null,',
@@ -58,12 +49,11 @@ export async function ensureSteamSchema(store) {
     ');',
   ].join('\n'));
   await exec('create index if not exists steam_wishlist_appid on steam_wishlist (appid)');
-  // 站点内手动愿望单：BE 批起只写本站（steam_ids 列保留兼容历史值、停止写入）；后台按 id 单条/批量删除
+  // 站点内手动愿望单：BE 批起只写本站（steam_ids 列已随 BF 批删除，历史值由部署侧 SQL 置空后删列）；后台按 id 单条/批量删除
   await exec([
     'create table if not exists user_wishlist (',
     '  user_id    integer not null references users(id) on delete cascade,',
     '  game_id    bigint not null references games(id) on delete cascade,',
-    '  steam_ids  text[] not null default \'{}\',',
     '  created_at timestamptz not null default now(),',
     '  primary key (user_id, game_id)',
     ');',

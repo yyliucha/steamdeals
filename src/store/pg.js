@@ -51,7 +51,6 @@ create table if not exists offers (
   discount_pct   integer not null default 0,
   in_stock       boolean not null default true,
   buy_url        text,
-  risk_level     text not null default 'A',
   first_seen_at  timestamptz not null default now(),
   last_seen_at   timestamptz not null default now(),
   unique (game_id, platform_code, product_type, region)
@@ -353,7 +352,6 @@ const ALTERS = [
   'alter table users add column if not exists display_name text',
   'alter table users add column if not exists email text',
   'alter table users add column if not exists email_verified boolean not null default false',
-  'alter table users add column if not exists steam_id text',
   // AK-1（docs/AUTH-REDESIGN.md §3）：密码系统补列
   'alter table users add column if not exists must_change_password boolean not null default false',
   'alter table users add column if not exists failed_login_count integer not null default 0',
@@ -575,8 +573,8 @@ export async function findOffer(q, { gameId, platformCode, productType, region }
 export async function insertOffer(q, offer) {
   const r = await q(
     `insert into offers (game_id, platform_code, product_type, region, currency, price_cents,
-                         original_cents, discount_pct, in_stock, buy_url, risk_level)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning id`,
+                         original_cents, discount_pct, in_stock, buy_url)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
     [
       offer.gameId,
       offer.platformCode,
@@ -588,7 +586,6 @@ export async function insertOffer(q, offer) {
       offer.discountPct,
       offer.inStock,
       offer.buyUrl,
-      offer.riskLevel ?? 'A',
     ],
   );
   return Number(r.rows[0].id);
@@ -1740,7 +1737,7 @@ export async function findUserByName(q, username) {
 
 export async function listUsers(q) {
   const r = await q(
-    'select u.id, u.username, u.display_name, u.email, u.email_verified, u.steam_id, u.role, u.disabled, u.created_at, u.last_login_at, ' +
+    'select u.id, u.username, u.display_name, u.email, u.email_verified, u.role, u.disabled, u.created_at, u.last_login_at, ' +
       'u.must_change_password, u.weak_password, u.locked_until, u.failed_login_count, ' +
       '(select count(*)::int from sessions s where s.user_id = u.id) as sessions, ' +
       '(select count(*)::int from steam_accounts a where a.user_id = u.id) as steam_accounts ' +

@@ -52,11 +52,11 @@ async function setup() {
 }
 
 const wishRow = async (q, userId, gameId) =>
-  (await q('select steam_ids from user_wishlist where user_id = $1 and game_id = $2', [userId, gameId])).rows[0] ?? null;
+  (await q('select 1 as n from user_wishlist where user_id = $1 and game_id = $2', [userId, gameId])).rows[0] ?? null;
 const watchCount = async (q, gameId) =>
   Number((await q("select count(*)::int as n from watchlist where game_id = $1 and source = 'user_wishlist'", [gameId])).rows[0].n);
 
-test('加入：旧 steamIds 字段忽略——只写本站（steam_ids 存空）+ 建史低提醒，不写 steam_wishlist', async () => {
+test('加入：旧 steamIds 字段忽略——只写本站 + 建史低提醒，不写 steam_wishlist', async () => {
   const ctx = await setup();
   const game = (await ctx.q('select id from games where steam_appid = 700001')).rows[0];
   try {
@@ -67,7 +67,8 @@ test('加入：旧 steamIds 字段忽略——只写本站（steam_ids 存空）
     assert.deepEqual(r.body.failed, []);
     const row = await wishRow(ctx.q, ctx.alice.id, game.id);
     assert.ok(row, '本站行已写入');
-    assert.deepEqual(row.steam_ids, [], 'steam_ids 不再落值');
+    const uwCols = (await ctx.q("select column_name from information_schema.columns where table_name = 'user_wishlist'")).rows.map((c) => c.column_name);
+    assert.ok(!uwCols.includes('steam_ids'), 'user_wishlist.steam_ids 列已随 BF 批删除');
     assert.equal(await watchCount(ctx.q, game.id), 1, '建自动史低提醒');
     assert.equal((await ctx.q('select count(*)::int as n from steam_wishlist')).rows[0].n, 0, '不写 Steam 同步表');
     const added = ctx.events.find(([e]) => e === 'wishlist.added');
