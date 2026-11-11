@@ -204,3 +204,54 @@ on conflict (game_id, region) do update set ...;
 | 回填时间超预期 | 首次启动慢 | 日志 + `DEPLOY` 注明；可离线预先回填 |
 | 新索引让写变慢 | 采集写放大 | 只有 3 个索引，单行 upsert；采集本身限速 1.6s/次 |
 | 行为差异（如「有历史无现价」的游戏） | 列表条数变化 | 回填取 `offers ∪ daily_prices` 并集，§5.3 逐条核对 |
+
+## 12. 2026-11-11 修订（AY）：搜索性能未达门槛的定位与修复
+
+**问题（2026-11-10 外网实测）**：`POST /api/games/search` 默认筛选 337–343ms（服务端 ≈265ms，目标 <150ms）；
+`q=zzzzzz` 零命中 1.59s（服务端 ≈1.52s，零命中反而比有结果慢约 5 倍）；`GET /api/games/count` 163ms（目标 <30ms）。
+
+**生产 EXPLAIN 实测（2026-11-11，`EXPLAIN (ANALYZE, BUFFERS)`）**
+
+| 查询 | 实测 | 计划要点 |
+|---|---|---|
+| 列表 count（空关键词） | **111ms** | `Parallel Hash Join`：`games` 198k 全扫 + `game_region_snapshot`(cn) 107k 全扫，26k buffers |
+| 列表数据（空关键词） | **94ms** | `games` 全扫 → 3 worker `Sort by heat` **external merge 落盘 4.5MB** → 归并 → 逐行 join 快照 → Incremental Sort → limit 20 |
+| 列表 count（零命中） | **797ms**（JIT **221ms**） | `Seq Scan snapshot(107k) → games_pkey 回表 ×107,025`，每行 2 次 `replace/lower` LIKE + 别名探测，400k buffers |
+| 列表数据（零命中） | **875ms**（JIT **343ms**） | 同上；JIT 因代价估算 7.5e7 被自动触发 |
+| `/api/games/count` | priced 50ms + catalog **76ms** | priced 已缓存；catalog `count(*)` 全扫 198k |
+
+**根因**
+
+1. **关键词条件不可索引**：`replace(replace(lower(...))) LIKE` 原本已与 trigram 表达式索引完全一致，但 SQL 是
+   `LIKE(name) OR LIKE(name_en) OR EXISTS(别名)`——OR 里混了不可索引的 `EXISTS(子查询)`，PostgreSQL 无法拼
+   `BitmapOr`，整段退化成逐行过滤（实测单独两臂 `BitmapOr` 只要 **2.4ms**，别名一条 **1.2ms**）。
+2. **默认排序没有匹配索引**：现有 `idx_games_heat` 是 btree `(heat DESC)`（= NULLS FIRST），查询是
+   `heat DESC NULLS LAST`，顺序不匹配 → 外部排序。
+3. **count 重复扫表**：列表 count 与列表数据各扫一遍 `games`+`snapshot`；`/api/games/count` 的 catalog 又扫一遍且没缓存。
+4. **JIT 放大**：代价估算过高触发 JIT，零命中两条各多 221ms / 343ms。
+
+**修复（本批）**
+
+1. `gameSearch` 关键词**两段式**：先按名称/英文名/别名三臂各走 trigram 索引 union 取候选 ID（上限 5000）；
+   - 候选为 0 → **直接返回空**（不跑 count、不跑列表）；
+   - 候选 ≤ 上限 → 用 `g.id = any($n::bigint[])`（主键 ScalarArrayOp）替代逐行 LIKE，原 LIKE 语义由候选集保证；
+   - 候选 > 上限（宽泛词）→ 回落原 LIKE 条件，保证 `total` 精确；
+   - 纯数字关键词仍包含 `steam_appid` 精确臂；`$2` 保留引用以满足参数类型推断（userJoin 固定 `$3`）。
+2. 迁移新增部分索引：`games_heat_live on games (heat desc nulls last) where not deleted and not adult_flag and not blocked`
+   ——与列表过滤谓词完全一致，消除外部排序（取满 20 条即可停）。
+3. `/api/games/count` 的 **priced + catalog 一起缓存 60 秒**（原只缓存 priced），避免每次刷新扫两遍全表。
+4. 计划修好后代价回落，JIT 不再触发（不需要全局关 JIT）。
+
+**预期（上线后用同样 6 条 EXPLAIN 复测）**
+
+- 默认列表服务端 **≈131ms → 目标 <150ms**（count 111 + 列表 15–25）；
+- 零命中 **875ms → 10–20ms**（候选 0 直接返回；候选查询本身 2–3ms）；
+- `/api/games/count` **163ms → 命中缓存 ~0ms**（首次 ≈126ms）；
+- 生产索引随 `migrate` 自动创建（`create index if not exists`），大表建索引期间写锁需注意部署窗口。
+
+**验收增补（§9 之外）**
+
+13. 零命中关键词 **不执行** count/列表全表扫（测试：计数 SQL 调用次数 = 0）；
+14. 关键词命中语义不变：中文名/英文名（空格归一化）/平台别名/纯数字 AppID 各一例；
+15. `pg.test` 断言 `games_heat_live` 部分索引谓词与列表过滤一致；
+16. 复测 `EXPLAIN` 后不出现 `Seq Scan on games`（关键词查询）与 `Sort Method: external merge`（默认列表）。

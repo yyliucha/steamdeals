@@ -290,9 +290,10 @@ export function createApiServer({
   imgMissTtl = IMG_MISS_TTL, // 测试注入：负缓存 TTL 覆盖（避免等 24h）
 }) {
   const q = query;
-  // AW 批（docs/READ-MODEL.md §5.2）：/api/games/count 的 priced 计数 60 秒进程内缓存。
+  // AW 批（docs/READ-MODEL.md §5.2）/ AY 批（§10）：/api/games/count 的 priced + catalog 计数
+  // 60 秒进程内缓存（原只缓存 priced，catalog 每次全表扫 198k 行 ≈76ms）。
   // 挂在每个服务实例闭包里（单实例；多副本各自缓存，数值偏差可接受）。
-  const pricedCountCache = { value: null, at: 0 };
+  const gameCountCache = { value: null, at: 0 };
   // AW 批（docs/IMAGE-FETCH.md §3.2）：图片负缓存也按实例隔离（测试多实例互不干扰）。
   const imgMissCache = new Map(); // appid/size -> { at, kind }
   // 手动同步的进程内状态：同一时刻只允许一个同步任务
@@ -986,19 +987,20 @@ export function createApiServer({
       // AV 批（docs/READ-MODEL.md §5.2）：priced 改读读模型（distinct game_id，跨区服去重口径不变）
       // + 60 秒进程内缓存；READ_MODEL=legacy 保留旧查询。catalog 口径不变。
       if (path === '/api/games/count' && req.method === 'GET') {
-        let priced;
         if (process.env.READ_MODEL === 'legacy') {
-          priced = (await q('select count(*)::int as n from (select distinct game_id from daily_prices) x')).rows[0]?.n ?? 0;
-        } else {
-          const now = Date.now();
-          if (pricedCountCache.value == null || now - pricedCountCache.at > 60_000) {
-            pricedCountCache.value = (await q('select count(distinct game_id)::int as n from game_region_snapshot')).rows[0]?.n ?? 0;
-            pricedCountCache.at = now;
-          }
-          priced = pricedCountCache.value;
+          const priced = (await q('select count(*)::int as n from (select distinct game_id from daily_prices) x')).rows[0]?.n ?? 0;
+          const catalog = (await q('select count(*)::int as n from games where not deleted and not blocked')).rows[0]?.n ?? 0;
+          return json(res, 200, { priced, catalog });
         }
-        const catalog = await q('select count(*)::int as n from games where not deleted and not blocked');
-        return json(res, 200, { priced, catalog: catalog.rows[0]?.n ?? 0 });
+        // AY 批（docs/READ-MODEL.md §10）：两个计数一起缓存 60 秒，避免前台每次刷新都扫两遍全表
+        const now = Date.now();
+        if (gameCountCache.value == null || now - gameCountCache.at > 60_000) {
+          const priced = (await q('select count(distinct game_id)::int as n from game_region_snapshot')).rows[0]?.n ?? 0;
+          const catalog = (await q('select count(*)::int as n from games where not deleted and not blocked')).rows[0]?.n ?? 0;
+          gameCountCache.value = { priced, catalog };
+          gameCountCache.at = now;
+        }
+        return json(res, 200, gameCountCache.value);
       }
 
       // ---- 公告已读（登录用户写表；游客只存浏览器本地，不调用）----

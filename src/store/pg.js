@@ -442,6 +442,13 @@ export async function migrate(store, { logger = null } = {}) {
   } catch (err) {
     // 本地 pglite（WASM 版）没有 pg_trgm：静默跳过，生产建索引
   }
+  // AY 批（docs/READ-MODEL.md §10）：首页默认排序是 `g.heat desc nulls last`，而现有
+  // idx_games_heat 是 btree (heat DESC)（= NULLS FIRST），顺序不匹配用不上，生产实测
+  // 3 个 worker 各自 external merge（落盘 4.5MB）再归并。按查询口径建 live 行部分索引。
+  await store.exec(
+    'create index if not exists games_heat_live on games (heat desc nulls last) ' +
+      'where not deleted and not adult_flag and not blocked',
+  );
   // AV 批（docs/READ-MODEL.md §3/§6）：首页列表读模型——(game, region) 粒度的价格/史低快照。
   // 表空时一次性回填（offers ∪ daily_prices 并集）；回填失败必须报错不吞（列表暂时为空需人工介入，规格 §7）。
   await store.exec(GAME_REGION_SNAPSHOT_DDL);
@@ -1302,12 +1309,45 @@ export async function gameSearch(
   // AV 批（docs/READ-MODEL.md §5）：读模型模式下「有历史/有报价」的语义由快照行存在承担，
   // 去掉 exists(daily_prices)；READ_MODEL=legacy 保留旧 SQL 作回滚开关（表保留不删数据）。
   const useReadModel = process.env.READ_MODEL !== 'legacy';
+  // AY 批（docs/READ-MODEL.md §10）：关键词先走三张 trigram 表达式索引取候选 ID——
+  // 零命中直接返回（生产实测原「逐行 LIKE + 别名 EXISTS」零命中 800ms+，还触发 JIT +220ms）；
+  // 命中数在阈值内用 g.id = any($n)（主键 ScalarArrayOp）替代逐行函数计算；
+  // 超过阈值（宽泛词）才回落原 LIKE 条件，保证 total 精确。
+  const KEYWORD_CANDIDATE_CAP = 5000;
+  let keywordCond;
+  if (kw) {
+    const norm = (expr) => `replace(replace(lower(coalesce(${expr}, '')), ' ', ''), '　', '')`;
+    const kwNorm = `replace(replace(lower($1), ' ', ''), '　', '')`;
+    const appidArm = /^\d{1,10}$/.test(kw) ? ' union select g.id from games g where g.steam_appid = $1::int' : '';
+    const found = await q(
+      `select id from (
+          select g.id from games g
+           where ${norm('g.name')} like '%' || ${kwNorm} || '%'
+              or ${norm('g.name_en')} like '%' || ${kwNorm} || '%'
+          union
+          select a.game_id as id from game_aliases a
+           where ${norm('a.platform_title')} like '%' || ${kwNorm} || '%'
+          ${appidArm}
+        ) t limit $2`,
+      [kw, KEYWORD_CANDIDATE_CAP],
+    );
+    const ids = found.rows.map((r) => Number(r.id)).filter((n) => Number.isFinite(n) && n > 0);
+    if (!ids.length) {
+      return { rows: [], total: 0, page: pg, pageSize: size, pages: 1 };
+    }
+    if (ids.length >= KEYWORD_CANDIDATE_CAP) {
+      keywordCond = /^\d{1,10}$/.test(kw) ? gameKeywordSql('$2', { appidAsInt: true }) : gameKeywordSql('$2');
+    } else {
+      // 保留 $2 引用：userJoin 固定用 $3，参数编号不能变，未被引用的 $2 会让 PG 无法推断类型（42P18）
+      keywordCond = `$2::text is not null and g.id = any(${bindFilter(ids)}::bigint[])`;
+    }
+  } else {
+    keywordCond = gameKeywordSql('$2');
+  }
   const conds = [
     ...(useReadModel ? [] : ['exists (select 1 from daily_prices d where d.game_id = g.id and d.region = $1)']),
     'not g.deleted',
-    // AD 批（SEARCH-I18N.md）：关键词条件收敛到 gameKeywordSql（name/name_en/平台别名 + 空格归一化）。
-    // 纯数字关键词按 AppID 精确匹配（走索引）；否则只按名称三源模糊匹配。
-    /^\d{1,10}$/.test(kw) ? gameKeywordSql('$2', { appidAsInt: true }) : gameKeywordSql('$2'),
+    keywordCond,
   ];
   // 成人内容展示策略（docs/STEAM-SYNC-STATUS-AND-RATING.md §5.2）：
   // hide=前台不展示（默认），badge/show 不过滤（展示方式由前端角标决定）。只做平台标签映射，不做法律定性。

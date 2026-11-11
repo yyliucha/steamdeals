@@ -322,3 +322,48 @@ test('READ_MODEL=legacy 回滚开关：旧 SQL 路径仍可用（表保留）', 
     await store.close();
   }
 });
+test('AY：关键词先走候选 ID——零命中不跑 count/列表；名称/英文名/别名/AppID 命中不变', async () => {
+  const { store, q } = await fresh();
+  try {
+    const { ids } = await seedMixed({ store, q });
+    // 平台别名：只应通过 game_aliases 命中
+    await q(
+      "insert into game_aliases (game_id, platform_code, platform_product_id, platform_title) values ($1, 'sonkwo', 'SK-1', '蒸汽传送门')",
+      [ids.portal],
+    );
+    const base = { region: 'cn', compact: true, pageSize: 20, sort: 'discount', interest: 'all', owned: 'include', blocked: 'exclude', typeFilter: 'all', released: 'all', marks: 'any', adult: 'hide' };
+    // 统计 count 查询次数：零命中必须一次都不跑（原实现要扫两遍全表）
+    let countQueries = 0;
+    const wrapped = (sql, params) => {
+      if (/^\s*select count/i.test(String(sql))) countQueries += 1;
+      return q(sql, params);
+    };
+    const zero = await db.gameSearch(wrapped, { ...base, keyword: 'zzzzzz' });
+    assert.equal(zero.total, 0, '零命中 total=0');
+    assert.deepEqual(zero.rows, [], '零命中不返回行');
+    assert.equal(zero.pages, 1, '零命中分页兜底 1 页');
+    assert.equal(countQueries, 0, '零命中直接返回，不再跑 count 全表扫');
+    // 名称（含空格归一化：『反恐 精英』应命中『反恐精英 2』）
+    const byName = await db.gameSearch(q, { ...base, keyword: '反恐 精英' });
+    assert.deepEqual(byName.rows.map((r) => Number(r.id)), [ids.cs], '中文名命中（空格归一化）');
+    // 英文名
+    const byEn = await db.gameSearch(q, { ...base, keyword: 'portal' });
+    assert.deepEqual(byEn.rows.map((r) => Number(r.id)), [ids.portal], '英文名命中');
+    // 平台别名
+    const byAlias = await db.gameSearch(q, { ...base, keyword: '蒸汽传送门' });
+    assert.deepEqual(byAlias.rows.map((r) => Number(r.id)), [ids.portal], '平台别名命中');
+    // AppID（纯数字）
+    const byAppid = await db.gameSearch(q, { ...base, keyword: '7002' });
+    assert.deepEqual(byAppid.rows.map((r) => Number(r.id)), [ids.portal], 'AppID 精确命中');
+    // 命中路径仍然跑一次 count（分页 total 正确）
+    countQueries = 0;
+    const hit = await db.gameSearch(wrapped, { ...base, keyword: '反恐精英' });
+    assert.equal(hit.total, 1);
+    assert.equal(countQueries, 1, '命中时 count 只跑一次');
+    // 过滤条件仍然生效：已禁用/成人/回收站不因关键词候选混进来
+    const filtered = await db.gameSearch(q, { ...base, keyword: '成人游戏' });
+    assert.equal(filtered.total, 0, '成人内容默认 hide，不进结果');
+  } finally {
+    await store.close();
+  }
+});

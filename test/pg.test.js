@@ -61,6 +61,9 @@ test('D1：migrate 含 pg_trgm 表达式索引（与搜索归一化同表达式�
   assert.match(src, /game_aliases_title_trgm on game_aliases using gin/, '平台别名表达式索引');
   assert.ok(src.includes("replace(replace(lower(coalesce(name,'')),' ',''),'　','') gin_trgm_ops"), '归一化表达式与 gameKeywordSql 字段侧一致');
   assert.ok(src.includes("replace(replace(lower(coalesce(platform_title,'')),' ',''),'　','') gin_trgm_ops"), '别名归一化表达式一致');
+  // AY 批（docs/READ-MODEL.md §10）：默认排序按 heat DESC NULLS LAST + live 行部分索引
+  assert.match(src, /games_heat_live on games \(heat desc nulls last\)/, '默认排序部分索引存在');
+  assert.match(src, /where not deleted and not adult_flag and not blocked/, '部分索引谓词与列表过滤一致');
   // 本地 pglite 无 pg_trgm：migrate 必须静默跳过而不是中断
   const store = await freshStore();
   try {

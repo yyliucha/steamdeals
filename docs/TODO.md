@@ -923,7 +923,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   默认合并表）、`admin-bulk.test.js` 计数随明细表移除更新、`reviews.test.js` 悬停提示断言改合并展开行。无后端改动。
 ## AY. 待排查：AV 读模型上线后性能未达门槛（列表 340ms / 零命中 1.59s / count 163ms）
 
-**状态：待排查（2026-11-10，外网实测已取，缺生产 EXPLAIN）**
+**状态：已实现待发版（2026-11-11，生产 EXPLAIN 已定位；见下方结论）**
 **依赖：** AV（已发布 v2.6.0）
 **解锁：** 无
 **规格**：[READ-MODEL.md](READ-MODEL.md) §9 性能门槛
@@ -939,6 +939,15 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   （`count(*) over()`）或给 count 加短缓存。
 - **验收**：三项回到 §9 门槛（列表 P95<150ms、零命中<150ms、count<30ms），且列表 total/排序/筛选不变
   （复用 `test/game-search-read-model.test.js` 的组合一致性用例）。
+- **结论（2026-11-11，生产 EXPLAIN）**：根因 4 条——① 关键词 `OR LIKE(名称/英文名) OR EXISTS(别名)` 混入不可索引
+  子查询，trigram 索引失效（实测单独两臂 BitmapOr 仅 2.4ms、别名 1.2ms）；② 默认排序 `heat DESC NULLS LAST`
+  与 `idx_games_heat`（NULLS FIRST）不匹配 → 外部排序落盘 4.5MB（94ms）；③ 列表 count 与列表数据各扫一遍
+  `games`(198k)+`snapshot`(107k)（111ms），catalog 计数 76ms 且无缓存；④ 计划代价过高触发 JIT（零命中 +221/343ms）。
+- **修复（已实现待发版）**：关键词两段式（三臂 trigram union 取候选 ID，零命中直接返回，命中 ≤5000 用
+  `g.id = any()`，超限回落原 LIKE）+ 新增部分索引 `games_heat_live (heat desc nulls last) where live` +
+  `/api/games/count` 的 priced+catalog 合并 60s 缓存。详见 [READ-MODEL.md](READ-MODEL.md) §12。
+- **复测（部署后）**：用 §12 的 6 条 `EXPLAIN (ANALYZE, BUFFERS)` 复核（不再出现 `Seq Scan on games` 与
+  `Sort Method: external merge`），并按 §9 三项门槛实测。
 
 ## AZ. 待开发：异常审核「规则摘要」列精简（首规则 ×n · 共 N 条规则 + hover 弹层）
 

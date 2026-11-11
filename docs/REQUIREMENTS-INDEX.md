@@ -33,7 +33,7 @@
 | **AV** | 首页列表读模型 `game_region_snapshot`（每请求全库聚合 → 入库时维护） | [READ-MODEL.md](READ-MODEL.md) | 已发布 v2.6.0（2026-11-10） | ✅ 本轮已给 |
 | **AW** | 封面图回源：404 快失败 + 超时收紧 + 负缓存分层 + `header_image` 直链 | [IMAGE-FETCH.md](IMAGE-FETCH.md) | 已发布 v2.7.0（2026-11-10） | ✅ 本轮已给 |
 | **AX** | 异常审核「按 IP 合并」定为默认视图（去开关、去明细表、不做逐条处置） | [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §4.5 | 已发布 v2.7.0（2026-11-10） | ✅ 本轮已给 |
-| **AY** | AV 读模型上线后性能未达门槛（列表 340ms / 零命中 1.59s / count 163ms） | [READ-MODEL.md](READ-MODEL.md) §9 | 待排查（2026-11-10） | ✅ 本轮已给 |
+| **AY** | AV 读模型上线后性能未达门槛（列表 340ms / 零命中 1.59s / count 163ms） | [READ-MODEL.md](READ-MODEL.md) §12 | 已实现待发版（2026-11-11） | ✅ 本轮已给 |
 | **AZ** | 异常审核「规则摘要」列精简（首规则 ×n · 共 N 条规则 + hover 弹层） | [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §4.6 | 已发布 v2.8.0（2026-11-10） | ✅ 本轮已给 |
 | **BA** | 运行与同步页重设计（任务健康条 + 记录精简折叠 + 固定高度日志面板） | [RUN-SYNC-REDESIGN.md](RUN-SYNC-REDESIGN.md) | 已发布 v2.8.0（2026-11-10） | ✅ 本轮已给 |
 | **BB** | 代理健康主动探测（立即检测按钮 + 每 10 分钟定时任务） | [PROXY-POOL.md](PROXY-POOL.md) §11 | 已发布 v2.8.0（2026-11-10） | ✅ 本轮已给 |

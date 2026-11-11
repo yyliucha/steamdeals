@@ -2,6 +2,22 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+AY 批：AV 读模型搜索性能未达门槛的修复（规格 [docs/READ-MODEL.md](docs/READ-MODEL.md) §12）。
+
+### 变更
+
+- 搜索关键词改**两段式**：名称/英文名/平台别名三臂各走 `pg_trgm` 表达式索引 union 取候选 ID（上限 5000）；
+  零命中直接返回（不再跑 count/列表全表扫），命中用 `g.id = any()` 收敛；超上限回落原 LIKE 保证 total 精确。
+- 迁移新增部分索引 `games_heat_live (heat desc nulls last) where not deleted and not adult_flag and not blocked`，
+  消除默认列表的外部排序（原 `idx_games_heat` 是 NULLS FIRST，与 `DESC NULLS LAST` 不匹配用不上）。
+- `/api/games/count` 的 priced + catalog 两个计数合并为 60 秒进程内缓存（原只缓存 priced，catalog 每次扫 198k 行）。
+
+### 测试
+
+- `test/game-search-read-model.test.js` 增补关键词候选用例（零命中不跑 count、名称/英文名/别名/AppID 命中、过滤仍生效）；
+  `test/pg.test.js` 断言 `games_heat_live` 部分索引谓词与列表过滤一致。
 ## [2.10.0] - 2026-11-11
 
 BI 批：访问明细 IP 统计——自动临时封禁显示（封禁中 + 剩余时间）与状态筛选（规格 [docs/VISIT-IP-STATS.md](docs/VISIT-IP-STATS.md) §8）。
