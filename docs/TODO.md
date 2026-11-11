@@ -1115,6 +1115,42 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **验收**：见规格 §8——自动封禁显示「封禁中 + 剩余时间」、过期回落、黑名单优先显示「已封禁」、
   状态筛选与时间窗/分页/关键词叠加正确、`npm test` / `frontend:build` / `scan` 全绿。
 
+## BJ. 待开发：黑名单 IP 不再写入自动封禁 + 自动封禁记录口径 + 解封语义拆分
+
+**状态：待开发（2026-11-11，所有者确认 15 项细节）**
+**依赖：** 无（BI 已发布 v2.10.0，其「封禁中 / 已封禁」状态口径可复用）
+**解锁：** 无
+**规格**：[BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md) §10
+
+- **现象（2026-11-11 所有者截图，生产 v2.10.0「访问记录 → 封禁与白名单」）**：已审核封禁的 IP 仍出现在「自动封禁记录」里
+  （`45.138.12.10` 审核通过 rate-limit、`45.138.12.6` 审核通过 vcs-dir）；自动封禁记录中
+  `45.138.12.10`（rate、封禁至 2026/11/02 10:01）、`34.65.66.120` / `34.65.89.81`（rate-day）、
+  `142.86.110.204`、`34.156.56.208`、`34.70.39.109` 等「封禁至」早已过期却仍显示。
+  白名单 `101.82.244.116` / `223.166.239.55` 本批不涉及。
+- **根因（代码证据）**：① 限流计数 `ratelimit.hit`（`src/server.js:515`）在 IP 黑名单检查（`:543`）之前，
+  `hit` 只豁免白名单（`src/ratelimit.js:244`），黑名单 IP 照样计数，封禁期内再打满 `blockedEscalate=100` 就升级并
+  `applyBan` 再写 `ip_abuse`（`:198-205`，还把 pending 审核标 `auto_banned`）；② `listAbuse`
+  （`src/store/pg.js:2268-2278`）不按 `banned_until` 过滤，过期行永远显示，前端也没有状态列/「已在黑名单」标注
+  （`AdminModules.vue:50`）；③ 审核通过只写 `ip_blacklist`、不清 `ip_abuse`（`src/server.js:3253` → `:3291-3303` →
+  `src/store/pg.js:2213-2220`）；④ 自动封禁页「解封」调 `ratelimit.unban`，它**同时删 `ip_abuse` 和 `ip_blacklist`**
+  （`src/ratelimit.js:296-314`），会把审核封禁一起解除。
+- **已确认决策（15 项：A1 / B1 / H1 / C1 / D1 / E1）**：① 黑名单检查提到限流之前，命中不计数、不三振、不升级、
+  不写 `ip_abuse`、不写异常审核，仍保留每分钟 1 条的采样拦截日志；白名单/管理员/内网/申诉页豁免不变；
+  ② 自动封禁记录默认只显示「生效中」+ 状态列（生效中/已过期/仅计数）+「已在黑名单」标注（运行时 `matchesIpEntry`，含 CIDR）
+  + 状态筛选；③ 存量只清「已被黑名单覆盖」的 `banned_until`/`ban_source`（行保留），过期行并入现有 `prune` 保留 90 天
+  （不新建定时任务）；④ 自动封禁页「解除封禁 / 清除记录」只清 `ip_abuse`，黑名单页「解封」只删 `ip_blacklist`，批量同口径；
+  ⑤ 审核通过 / 手动封 IP / 批量封 IP 写黑名单时把该 IP 的 `ip_abuse.banned_until` 置空（行保留）；
+  ⑥ 本批不改三振阈值/时长/档位、设备封禁、白名单逻辑、访问明细统计，也不清理 `setBanUntil`/`applyExternalBan` 死代码。
+- **改动**：`src/server.js`（拦截链换序、`/api/admin/abuse` 加 `status` 与 `in_blacklist`/`blacklist_entry`、
+  `DELETE /api/admin/abuse/:ip` 改 `clearAbuse`、`banIpExclusiveSql` 加清临时封禁、`banState` 类型优先级）、
+  `src/ratelimit.js`（`clearAbuse` / `clearBanMemory`，`unban` 退场）、`src/store/pg.js`（`listAbuse` 的 status/active/排序、
+  `clearAbuseBan`、`purgeOldRows` 加 `abuseDays=90`、`migrate()` 加黑名单覆盖清理 SQL）、`src/cli.js`（prune 输出计数）、
+  `frontend/src/pages/AdminModules.vue`（筛选/状态列/标注/按钮文案/确认框/空态）、对应测试。
+- **验收**：见规格 §10.6——黑名单 IP 连续 200 次请求**全 403** 且 `ip_abuse` 无新行；默认只列生效中、状态筛选与
+  「已在黑名单」标注（含 CIDR）；解封粒度不再互删；审核通过后 `ip_abuse.banned_until` 为空且行保留；迁移幂等、
+  prune 保留 90 天；权限 401/403、审计事件与批量回执；`npm test` / `frontend:build` / `scan` 全绿。
+  部署侧按规格 §10.7 三条只读 SQL 复核。
+
 
 
 
