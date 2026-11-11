@@ -191,7 +191,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   user_wishlist.steam_ids 的 DDL 与读写，保留 api_key_enc 等）；BG 站点通知页未编辑误报未保存修复。
   验证：`npm test` 全绿、`api.test` 22/22、`frontend:build`、`scan` 干净、`todo:progress:check` 一致；
   质检：AY ✅（[QA-SEARCH-PERF-AY.md](QA-SEARCH-PERF-AY.md)）、BF/BG ✅（[QA-BF-BG-2026-11-11.md](QA-BF-BG-2026-11-11.md)）。
-  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  CI：docker-hub [#42964296670](https://github.com/yyliucha/steamdeals/actions/runs/42964296670)（test/smoke/publish 全绿）、
+  docker-tcr [#42964296570](https://github.com/yyliucha/steamdeals/actions/runs/42964296570)（test/publish 全绿）（2026-11-11）。
   **服务器部署待执行**（升级到 `2.10.1`）；部署后重点：
   ① AY——按 [READ-MODEL.md](READ-MODEL.md) §12 的 6 条 `EXPLAIN (ANALYZE, BUFFERS)` 与 §9 三项门槛复测；
   ② BF——部署人员按 [DB-LEGACY-CLEANUP.md](DB-LEGACY-CLEANUP.md) §3 先只读核对再执行清理 SQL；
