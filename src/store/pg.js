@@ -1313,7 +1313,8 @@ export async function gameSearch(
   // 零命中直接返回（生产实测原「逐行 LIKE + 别名 EXISTS」零命中 800ms+，还触发 JIT +220ms）；
   // 命中数在阈值内用 g.id = any($n)（主键 ScalarArrayOp）替代逐行函数计算；
   // 超过阈值（宽泛词）才回落原 LIKE 条件，保证 total 精确。
-  const KEYWORD_CANDIDATE_CAP = 5000;
+  // 上限可用环境变量覆盖（测试专用；生产默认 5000）：命中数达到上限时回退原 LIKE，保证 total 精确。
+  const KEYWORD_CANDIDATE_CAP = Math.max(1, Number(process.env.SEARCH_KEYWORD_CANDIDATE_CAP) || 5000);
   let keywordCond;
   if (kw) {
     const norm = (expr) => `replace(replace(lower(coalesce(${expr}, '')), ' ', ''), '　', '')`;

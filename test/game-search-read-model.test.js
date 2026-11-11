@@ -360,6 +360,17 @@ test('AY：关键词先走候选 ID——零命中不跑 count/列表；名称/�
     const hit = await db.gameSearch(wrapped, { ...base, keyword: '反恐精英' });
     assert.equal(hit.total, 1);
     assert.equal(countQueries, 1, '命中时 count 只跑一次');
+    // 候选数达到上限 → 回退原 LIKE 路径（total 仍精确）；用环境变量把上限压到 1 来锁这条分支
+    process.env.SEARCH_KEYWORD_CANDIDATE_CAP = '1';
+    try {
+      countQueries = 0;
+      const fallback = await db.gameSearch(wrapped, { ...base, keyword: '反恐精英' });
+      assert.equal(fallback.total, 1, '回退路径 total 仍精确');
+      assert.deepEqual(fallback.rows.map((r) => Number(r.id)), [ids.cs]);
+      assert.equal(countQueries, 1, '回退路径照常跑 count');
+    } finally {
+      delete process.env.SEARCH_KEYWORD_CANDIDATE_CAP;
+    }
     // 过滤条件仍然生效：已禁用/成人/回收站不因关键词候选混进来
     const filtered = await db.gameSearch(q, { ...base, keyword: '成人游戏' });
     assert.equal(filtered.total, 0, '成人内容默认 hide，不进结果');
