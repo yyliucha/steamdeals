@@ -2,9 +2,9 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [2.10.0] - 2026-11-11
 
-BI 批：访问明细 IP 统计——自动临时封禁显示与状态筛选（规格 [docs/VISIT-IP-STATS.md](docs/VISIT-IP-STATS.md) §8）。
+BI 批：访问明细 IP 统计——自动临时封禁显示（封禁中 + 剩余时间）与状态筛选（规格 [docs/VISIT-IP-STATS.md](docs/VISIT-IP-STATS.md) §8）。
 
 ### 新增
 

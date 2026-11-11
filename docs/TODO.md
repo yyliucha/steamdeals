@@ -1089,7 +1089,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BI. 待开发：访问明细 IP 统计——自动临时封禁显示与状态筛选
 
-**状态：质检通过（2026-11-11，be91c43；QA 报告 docs/QA-IP-BAN-STATUS.md 未提交）**
+**状态：已发布 v2.10.0（2026-11-11，be91c43；QA 报告 docs/QA-IP-BAN-STATUS.md）**
 **依赖：** BH（已发布 v2.9.0：IP 统计视图）
 **解锁：** 无
 **规格**：[VISIT-IP-STATS.md](VISIT-IP-STATS.md) §8

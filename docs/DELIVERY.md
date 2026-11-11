@@ -180,12 +180,17 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-10 更新，v2.9.0 已发布：BE 愿望单仅本站 + BH 访问记录按 IP 统计）
+### 当前状态（2026-11-11 更新，v2.10.0 已发布：BI 访问明细 IP 统计自动封禁显示与状态筛选）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 > **会话分工（2026-11-09）**：可直接开发的功能（AR、AO、AP、可选 F）见
 > [HANDOVER-DEV-2026-11-09.md](HANDOVER-DEV-2026-11-09.md)；运维排查结论见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) 与 TODO C 段。
 
+- **v2.10.0 已发布**（tag `v2.10.0`）：BI 访问明细 IP 统计——状态四态（已封禁 / 封禁中 + 剩余时间 / 被拦截 / 正常），
+  手动黑名单优先于自动临时封禁；接口追加 `ban_until` / `ban_source` 与 `status` 白名单筛选（与时间窗/关键词/分页叠加）。
+  验证：`npm test` 79 文件 / 629 项全绿、`api.test` 22/22、`frontend:build`、`scan` 干净；
+  质检：BI ✅ 放行（[QA-IP-BAN-STATUS.md](QA-IP-BAN-STATUS.md)）。CI：**待确认**（tag 推送后补双绿记录）。
+  **服务器部署待执行**（升级到 `2.10.0`）；部署后可手工往 `ip_abuse` 造一条未过期封禁验证「封禁中」显示。
 - **v2.9.0 已发布**（tag `v2.9.0`）：BE 愿望单仅本站（POST/DELETE /api/wishlist 只写本站 + 后台「愿望单」清单可删不可加 +
   每账号 API Key 改账号同步用、不回退全局 key、绑定后不自动同步）；BH 访问记录按 IP 统计
   （`/api/admin/visitors/by-ip` 时间窗/排序白名单 + 展开行、黑白名单统计列、设备按 device_id 聚合）。
