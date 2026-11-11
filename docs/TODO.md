@@ -948,6 +948,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `/api/games/count` 的 priced+catalog 合并 60s 缓存。详见 [READ-MODEL.md](READ-MODEL.md) §12。
 - **复测（部署后）**：用 §12 的 6 条 `EXPLAIN (ANALYZE, BUFFERS)` 复核（不再出现 `Seq Scan on games` 与
   `Sort Method: external merge`），并按 §9 三项门槛实测。
+- **部署状态（2026-11-11 复核）**：生产 `https://sd.yyliucha.cn/api/site` 仍为 **v2.10.0**；本批修复提交
+  `71d0f87` / `ffda3a9` 尚未随任何 tag 发布（`git tag --contains 71d0f87` 为空）→ **待部署复测**：
+  下个包含本批的版本部署后，按上面两条复测并把结果回写本条目（状态保持「质检通过」不变）。
 
 ## AZ. 待开发：异常审核「规则摘要」列精简（首规则 ×n · 共 N 条规则 + hover 弹层）
 

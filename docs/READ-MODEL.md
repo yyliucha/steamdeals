@@ -255,3 +255,8 @@ on conflict (game_id, region) do update set ...;
 14. 关键词命中语义不变：中文名/英文名（空格归一化）/平台别名/纯数字 AppID 各一例；
 15. `pg.test` 断言 `games_heat_live` 部分索引谓词与列表过滤一致；
 16. 复测 `EXPLAIN` 后不出现 `Seq Scan on games`（关键词查询）与 `Sort Method: external merge`（默认列表）。
+
+**部署状态（2026-11-11 复核）**：生产 `https://sd.yyliucha.cn/api/site` 仍为 **v2.10.0**，本批提交
+`71d0f87` / `ffda3a9` 尚未随任何 tag 发布（`git tag --contains 71d0f87` 为空）→ **待部署复测**：
+下个包含本批的版本部署后，按本节 6 条 `EXPLAIN (ANALYZE, BUFFERS)` 与 §9 三项门槛复测，
+结果回写本节与 [TODO.md](TODO.md) 的 AY 条目。
