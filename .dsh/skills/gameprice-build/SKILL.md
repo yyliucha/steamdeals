@@ -80,12 +80,20 @@ git status --short                 # 其它会话的未提交改动，记录下�
 - 本批规格文档状态改「已实现并发布 vX.Y.Z」；`docs/TODO.md` 条目标题同步改 `~~…~~ → 已发布 vX.Y.Z`、
   状态行写 `已发布 vX.Y.Z（<短哈希>；QA 报告 …）`；
 - `docs/REQUIREMENTS-INDEX.md` 对应行同步；`docs/DELIVERY.md`「当前状态」加新版本条目
-  （验证结果 + 「CI 待确认」+「服务器部署待执行」）；
-- `npm run todo:progress` + `npm run todo:progress:check`（README 进度块与 TODO 一致）。
+  （验证结果 + 「CI 待确认」+「服务器部署待执行」）。
+- **不要在这里跑 `npm run todo:progress`**——README 块里的「当前版本」读的是 `package.json`，
+  必须等 §3.2 版本号改完再生成（顺序写反 = `docs-progress` 必红，2026-11-11 BJ 批实测）。
 
-### 3.2 版本号
+### 3.2 版本号与 README 进度块（顺序不能反）
 
-`npm version X.Y.Z --no-git-tag-version`（只改 `package.json` + `package-lock.json`，不自动打 tag）。
+```powershell
+npm version X.Y.Z --no-git-tag-version   # 只改 package.json + package-lock.json，不自动打 tag
+npm run todo:progress                    # ★ 必须在版本号之后：块里写「当前版本：vX.Y.Z」
+npm run todo:progress:check              # 不一致就别往下走（CI docs-progress 会红）
+```
+
+> 2026-11-11 教训：BJ 批发版时先跑生成器、后 bump 版本号，README 块停在 `v2.10.1`，
+> `docs-progress` 连红 3 次（`#41/#42/#43`），最后补 `6eadc18` 才恢复。两个动作的**顺序**就是全部区别。
 
 ### 3.3 验证（全绿才继续，失败就修）
 
