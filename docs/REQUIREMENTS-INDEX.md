@@ -40,8 +40,8 @@
 | **BC** | 封面图补图覆盖率（header_image 补全 + 预取扩大 + 缺图缓存可手动清） | [IMAGE-COVERAGE.md](IMAGE-COVERAGE.md) | 已发布 v2.8.0（2026-11-10） | ✅ 本轮已给 |
 | **BD** | 后台链接抽屉「最低价」醒目（方案 A：整卡高亮 + 角标） | [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md) §12 | 已发布 v2.8.0（2026-11-10） | ✅ 本轮已给 |
 | **BE** | 愿望单仅本站：去 Steam 关联 + 前后端清单 + 后台可删不可加 | [WISHLIST-SITE-ONLY.md](WISHLIST-SITE-ONLY.md) | 已发布 v2.9.0（2026-11-10） | ✅ 本轮已给 |
-| **BF** | 数据库遗留对象清理（已下线功能的表/列） | [DB-LEGACY-CLEANUP.md](DB-LEGACY-CLEANUP.md) | 已实现待发版（2026-11-11） | ✅ 本轮已给 |
-| **BG** | BUG：站点通知页未编辑即误报「未保存的修改」 | [UNSAVED-GUARD.md](UNSAVED-GUARD.md) §11 | 已实现待发版（2026-11-11） | ✅ 本轮已给 |
+| **BF** | 数据库遗留对象清理（已下线功能的表/列） | [DB-LEGACY-CLEANUP.md](DB-LEGACY-CLEANUP.md) | 质检通过（b46896e） | ✅ 本轮已给 |
+| **BG** | BUG：站点通知页未编辑即误报「未保存的修改」 | [UNSAVED-GUARD.md](UNSAVED-GUARD.md) §11 | 质检通过（4a4ecd2） | ✅ 本轮已给 |
 | **BH** | 访问记录按 IP 统计（访问明细默认 IP 视图 + 黑白名单统计列 + 设备按设备码） | [VISIT-IP-STATS.md](VISIT-IP-STATS.md) | 已发布 v2.9.0（2026-11-10） | ✅ 本轮已给 |
 | **BI** | 访问明细 IP 统计：自动临时封禁显示（封禁中 + 剩余时间）与状态筛选 | [VISIT-IP-STATS.md](VISIT-IP-STATS.md) §8 | 已发布 v2.10.0（2026-11-11） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |

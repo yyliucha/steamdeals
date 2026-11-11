@@ -1050,7 +1050,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BF. 待开发：数据库遗留对象清理（已下线功能的表/列）
 
-**状态：已实现待发版（2026-11-11）**
+**状态：质检通过（2026-11-11，b46896e；QA 报告 docs/QA-BF-BG-2026-11-11.md）**
 **依赖：** BE（仅 B 组两列需等 BE 发布；A 组可立即做）
 **解锁：** 无
 **规格**：[DB-LEGACY-CLEANUP.md](DB-LEGACY-CLEANUP.md)
@@ -1067,7 +1067,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BG. 待开发：BUG——站点通知页未编辑即误报「未保存的修改」
 
-**状态：已实现待发版（2026-11-11）**
+**状态：质检通过（2026-11-11，4a4ecd2；QA 报告 docs/QA-BF-BG-2026-11-11.md）**
 **依赖：** AN（未保存守卫）/ AT（站点通知抽屉），均已发布
 **解锁：** 无
 **规格**：[UNSAVED-GUARD.md](UNSAVED-GUARD.md) §11
