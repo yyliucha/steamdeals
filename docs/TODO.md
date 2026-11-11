@@ -921,9 +921,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   合并视图（聚合/展开/整 IP 处置/移动卡片/分页/`admin.reviewMergeSort` 排序）提为默认唯一渲染，翻页清空 IP 选择；
   标题说明补「同一 IP 合并为一行，展开看逐条规则」。测试：`admin-review-lists.test.js` 改断言（无开关/无合并键/
   默认合并表）、`admin-bulk.test.js` 计数随明细表移除更新、`reviews.test.js` 悬停提示断言改合并展开行。无后端改动。
-## AY. 待排查：AV 读模型上线后性能未达门槛（列表 340ms / 零命中 1.59s / count 163ms）
+## AY. ~~待排查：AV 读模型上线后性能未达门槛（列表 340ms / 零命中 1.59s / count 163ms）~~ → **已实现并发布 v2.10.1（2026-11-11）**
 
-**状态：质检通过（2026-11-11，71d0f87；QA 报告 docs/QA-SEARCH-PERF-AY.md 未提交；性能门槛待部署复测）**
+**状态：已发布 v2.10.1（2026-11-11，71d0f87；QA 报告 docs/QA-SEARCH-PERF-AY.md 未提交；性能门槛待部署复测）**
 **依赖：** AV（已发布 v2.6.0）
 **解锁：** 无
 **规格**：[READ-MODEL.md](READ-MODEL.md) §9 性能门槛
@@ -948,9 +948,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `/api/games/count` 的 priced+catalog 合并 60s 缓存。详见 [READ-MODEL.md](READ-MODEL.md) §12。
 - **复测（部署后）**：用 §12 的 6 条 `EXPLAIN (ANALYZE, BUFFERS)` 复核（不再出现 `Seq Scan on games` 与
   `Sort Method: external merge`），并按 §9 三项门槛实测。
-- **部署状态（2026-11-11 复核）**：生产 `https://sd.yyliucha.cn/api/site` 仍为 **v2.10.0**；本批修复提交
-  `71d0f87` / `ffda3a9` 尚未随任何 tag 发布（`git tag --contains 71d0f87` 为空）→ **待部署复测**：
-  下个包含本批的版本部署后，按上面两条复测并把结果回写本条目（状态保持「质检通过」不变）。
+- **部署状态（2026-11-11 复核）**：生产 `https://sd.yyliucha.cn/api/site` 在复核时为 v2.10.0；本批修复已随
+  **v2.10.1** 发布（`71d0f87` / `ffda3a9`）→ **待部署复测**：服务器升级到 v2.10.1 后，按上面两条复测并把结果
+  回写本条目。
 
 ## AZ. 待开发：异常审核「规则摘要」列精简（首规则 ×n · 共 N 条规则 + hover 弹层）
 
@@ -1048,9 +1048,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **验收**：见规格 §8——加入不弹多选只写本站并建史低提醒；详情/卡片无 Steam 账号；前台 tab 过滤正常；后台列表/筛选/分页正确；
   单条+批量删除生效且清自动提醒、无新增入口；权限 401/403、旧 steamIds 请求兼容；`npm test` / `frontend:build` / `scan` 全绿。
 
-## BF. 待开发：数据库遗留对象清理（已下线功能的表/列）
+## BF. ~~待开发：数据库遗留对象清理（已下线功能的表/列）~~ → **已实现并发布 v2.10.1（2026-11-11）**
 
-**状态：质检通过（2026-11-11，b46896e；QA 报告 docs/QA-BF-BG-2026-11-11.md）**
+**状态：已发布 v2.10.1（2026-11-11，b46896e；QA 报告 docs/QA-BF-BG-2026-11-11.md）**
 **依赖：** BE（仅 B 组两列需等 BE 发布；A 组可立即做）
 **解锁：** 无
 **规格**：[DB-LEGACY-CLEANUP.md](DB-LEGACY-CLEANUP.md)
@@ -1065,9 +1065,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   部署期 SQL 幂等、放部署侧，先只读核对再写。
 - **验收**：见规格 §4——新库不再出现被删对象、grep 无代码引用、业务回归、部署 SQL 幂等、`npm test` 全绿。
 
-## BG. 待开发：BUG——站点通知页未编辑即误报「未保存的修改」
+## BG. ~~待开发：BUG——站点通知页未编辑即误报「未保存的修改」~~ → **已实现并发布 v2.10.1（2026-11-11）**
 
-**状态：质检通过（2026-11-11，4a4ecd2；QA 报告 docs/QA-BF-BG-2026-11-11.md）**
+**状态：已发布 v2.10.1（2026-11-11，4a4ecd2；QA 报告 docs/QA-BF-BG-2026-11-11.md）**
 **依赖：** AN（未保存守卫）/ AT（站点通知抽屉），均已发布
 **解锁：** 无
 **规格**：[UNSAVED-GUARD.md](UNSAVED-GUARD.md) §11

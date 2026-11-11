@@ -18,6 +18,32 @@ AY 批：AV 读模型搜索性能未达门槛的修复（规格 [docs/READ-MODEL
 
 - `test/game-search-read-model.test.js` 增补关键词候选用例（零命中不跑 count、名称/英文名/别名/AppID 命中、过滤仍生效）；
   `test/pg.test.js` 断言 `games_heat_live` 部分索引谓词与列表过滤一致。
+## [2.10.1] - 2026-11-11
+
+修复批：AY 搜索性能修复 + BF 数据库遗留对象清理 + BG 站点通知未保存误报。
+
+### 修复
+
+- **搜索性能（AY 批）**：关键词两段式——三臂 trigram 候选收敛（名称/英文名/平台别名，上限 5000），
+  候选为 0 直接返回空（零命中不再全表扫）、命中 ≤5000 用 `g.id = any()`、超限回落原 LIKE；新增部分索引
+  `games_heat_live (heat desc nulls last) where live` 消除默认排序的外部归并落盘；`/api/games/count`
+  priced+catalog 合并 60 秒缓存。性能门槛（列表 <150ms / 零命中 <150ms / count <30ms）**待部署后复测**
+  （[README-MODEL.md](docs/READ-MODEL.md) §12）。
+- **数据库遗留对象清理（BF 批）**：删除已下线对象的建表/加列 DDL 与读写——
+  `steam_sessions` 表、`users.steam_id` 列与 `users_steam_uniq` 索引、`offers.risk_level` 列与 INSERT 字段、
+  后台用户列表的 `steam_id` 选择、`user_wishlist.steam_ids` 列及其读写；保留 `steam_accounts.api_key_enc`
+  （账号同步用 key）与 `content_descriptors`/`age_ratings`/`interested`/`owned`/`hide_uninterested`；
+  生产库清理 SQL 见 [DB-LEGACY-CLEANUP.md](docs/DB-LEGACY-CLEANUP.md) §3（部署侧执行，幂等）。
+- **站点通知未保存误报（BG 批）**：抽屉脏判定初始快照从空串改为初始表单，打开站点通知页未做任何编辑
+  不再误报「还有没保存的修改」；打开抽屉编辑后守卫照常生效。
+
+### 测试
+
+- 新增 `test/db-legacy-cleanup.test.js`（3 项：新库 migrate 后遗留对象不重建、保留对象仍在、offers INSERT 可跑通）
+  并接入 `npm test` 主链；
+- `test/unsaved-guard.test.js` 增 BG 回归（初始快照 = 初始表单、不得空串、fillFrom 仍重置）；
+- `test/wishlist.test.js` / `test/wishlist-push.test.js` 断言改为不依赖 `user_wishlist.steam_ids` 列。
+
 ## [2.10.0] - 2026-11-11
 
 BI 批：访问明细 IP 统计——自动临时封禁显示（封禁中 + 剩余时间）与状态筛选（规格 [docs/VISIT-IP-STATS.md](docs/VISIT-IP-STATS.md) §8）。

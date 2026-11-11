@@ -180,12 +180,22 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-11 更新，v2.10.0 已发布：BI 访问明细 IP 统计自动封禁显示与状态筛选）
+### 当前状态（2026-11-11 更新，v2.10.1 已发布：AY 搜索性能修复 + BF 数据库遗留对象清理 + BG 通知误报修复）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 > **会话分工（2026-11-09）**：可直接开发的功能（AR、AO、AP、可选 F）见
 > [HANDOVER-DEV-2026-11-09.md](HANDOVER-DEV-2026-11-09.md)；运维排查结论见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) 与 TODO C 段。
 
+- **v2.10.1 已发布**（tag `v2.10.1`）：AY 搜索性能修复（关键词 trigram 候选收敛 + 零命中快返 + `games_heat_live`
+  部分索引 + count 60s 合并缓存）；BF 数据库遗留对象清理（删 steam_sessions / users.steam_id / offers.risk_level /
+  user_wishlist.steam_ids 的 DDL 与读写，保留 api_key_enc 等）；BG 站点通知页未编辑误报未保存修复。
+  验证：`npm test` 全绿、`api.test` 22/22、`frontend:build`、`scan` 干净、`todo:progress:check` 一致；
+  质检：AY ✅（[QA-SEARCH-PERF-AY.md](QA-SEARCH-PERF-AY.md)）、BF/BG ✅（[QA-BF-BG-2026-11-11.md](QA-BF-BG-2026-11-11.md)）。
+  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  **服务器部署待执行**（升级到 `2.10.1`）；部署后重点：
+  ① AY——按 [READ-MODEL.md](READ-MODEL.md) §12 的 6 条 `EXPLAIN (ANALYZE, BUFFERS)` 与 §9 三项门槛复测；
+  ② BF——部署人员按 [DB-LEGACY-CLEANUP.md](DB-LEGACY-CLEANUP.md) §3 先只读核对再执行清理 SQL；
+  ③ BG——站点通知页目视：打开不弹未保存、抽屉编辑后守卫照常。
 - **v2.10.0 已发布**（tag `v2.10.0`）：BI 访问明细 IP 统计——状态四态（已封禁 / 封禁中 + 剩余时间 / 被拦截 / 正常），
   手动黑名单优先于自动临时封禁；接口追加 `ban_until` / `ban_source` 与 `status` 白名单筛选（与时间窗/关键词/分页叠加）。
   验证：`npm test` 79 文件 / 629 项全绿、`api.test` 22/22、`frontend:build`、`scan` 干净；
