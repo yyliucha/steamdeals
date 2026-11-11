@@ -200,7 +200,9 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   时清该 IP 临时封禁字段（行保留）+ 迁移幂等存量清理；自动封禁记录 prune 保留 90 天。
   验证：`npm test` 77 个文件全绿、`frontend:build`、`scan` 干净；
   质检：BJ ✅ 放行（[QA-BAN-BJ.md](QA-BAN-BJ.md)，3 项转部署后验收）。
-  CI：待补（发布后）。**服务器部署待执行**（升级到 `2.10.2`）；部署后按规格 §10.7 三条只读 SQL 复核
+  CI：`docker-hub` run 42975522492（test/smoke/publish 全绿）、`docker-tcr` run 42975522471
+  （test 7m56s + publish 7m11s，`Verify manifests` success），两个镜像源均已推送。
+  **服务器部署待执行**（升级到 `2.10.2`）；部署后按规格 §10.7 三条只读 SQL 复核
   （黑名单 IP 的 `ip_abuse.updated_at` 24 小时不变、「生效中」为空、存量被覆盖行 `banned_until` 已清）。
 - **v2.10.1 已发布**（tag `v2.10.1`）：AY 搜索性能修复（关键词 trigram 候选收敛 + 零命中快返 + `games_heat_live`
   部分索引 + count 60s 合并缓存）；BF 数据库遗留对象清理（删 steam_sessions / users.steam_id / offers.risk_level /
