@@ -123,7 +123,7 @@ test('visitorIpDetail：最近 20 条访问（倒序）+ 路径 top 5', async ()
 });
 
 test('GET /api/admin/visitors/by-ip：401/403/200；days 与 sort 白名单回落；返回 items/total', async () => {
-  const { store, srv, base, admin, alice } = await setup();
+  const { store, q, srv, base, admin, alice } = await setup();
   try {
     assert.equal((await getJson(`${base}/api/admin/visitors/by-ip`)).status, 401, '匿名 401');
     assert.equal((await getJson(`${base}/api/admin/visitors/by-ip`, alice)).status, 403, '普通用户 403');
@@ -132,9 +132,17 @@ test('GET /api/admin/visitors/by-ip：401/403/200；days 与 sort 白名单回�
     assert.ok(Array.isArray(ok.body.items) && ok.body.items.length > 0, 'items');
     assert.ok(ok.body.total >= 2);
     assert.equal(ok.body.sort, 'visits');
-    const weird = await getJson(`${base}/api/admin/visitors/by-ip?days=999&sort=evil`, admin);
+    assert.equal(ok.body.status, 'all', '默认状态 = 全部');
+    const weird = await getJson(`${base}/api/admin/visitors/by-ip?days=999&sort=evil&status=evil`, admin);
     assert.equal(weird.body.days, 7, 'days 非法回落 7');
     assert.equal(weird.body.sort, 'visits', 'sort 非法回落默认');
+    assert.equal(weird.body.status, 'all', 'status 非法回落 all');
+    // BI 批：status 筛选（自动封禁中的 IP 只出现在 banned）
+    await q("insert into ip_abuse (ip, strikes, banned_until, ban_source) values ($1, 1, now() + interval '10 minutes', 'rate')", [IP_A]);
+    const bannedOnly = await getJson(`${base}/api/admin/visitors/by-ip?days=7&status=banned`, admin);
+    assert.deepEqual(bannedOnly.body.items.map((r) => r.ip), [IP_A], 'banned 只返回自动封禁中的 IP');
+    const interceptedOnly = await getJson(`${base}/api/admin/visitors/by-ip?days=7&status=intercepted`, admin);
+    assert.ok(!interceptedOnly.body.items.some((r) => r.ip === IP_A), '封禁中的不算被拦截');
     // 明细视图同样受时间窗约束（接受「切回明细后过滤/分页与原来一致」+ 时间窗绑定两视图）
     const d7 = await getJson(`${base}/api/admin/visitors?days=7&pageSize=100&filter=all`, admin);
     assert.equal(d7.status, 200);
@@ -145,6 +153,38 @@ test('GET /api/admin/visitors/by-ip：401/403/200；days 与 sort 白名单回�
     assert.equal(detail.status, 200);
     assert.equal(detail.body.recent.length, 3);
     assert.equal(detail.body.ip, IP_A);
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('BI：自动临时封禁「封禁中」/ 黑名单优先「已封禁」/ 过期回落「被拦截」', async () => {
+  const { store, q, srv } = await setup();
+  try {
+    // A：自动封禁中（未过期）
+    await q("insert into ip_abuse (ip, strikes, banned_until, ban_source) values ($1, 1, now() + interval '10 minutes', 'rate')", [IP_A]);
+    let rows = (await db.listVisitorsByIp(q, { days: 7 })).rows;
+    const a = rows.find((r) => r.ip === IP_A);
+    assert.equal(a.status, 'banned', '自动封禁中 → banned');
+    assert.ok(a.ban_until, '返回封禁到期时间');
+    assert.equal(a.ban_source, 'rate', '返回封禁来源');
+    assert.equal((await db.listVisitorsByIp(q, { days: 7, status: 'banned' })).total, 1);
+    // 手动黑名单优先
+    await q('insert into ip_blacklist (ip) values ($1)', [IP_A]);
+    rows = (await db.listVisitorsByIp(q, { days: 7, status: 'blocked' })).rows;
+    assert.equal(rows[0].ip, IP_A);
+    assert.equal(rows[0].status, 'blocked', '黑名单优先于自动封禁');
+    assert.equal((await db.listVisitorsByIp(q, { days: 7, status: 'banned' })).total, 0, '已有黑名单的不再算封禁中');
+    // 清黑名单 + 封禁过期 → 回落「被拦截」（A 有 blocked 采样行）
+    await q('delete from ip_blacklist where ip = $1', [IP_A]);
+    await q("update ip_abuse set banned_until = now() - interval '1 minute' where ip = $1", [IP_A]);
+    rows = (await db.listVisitorsByIp(q, { days: 7 })).rows;
+    const expired = rows.find((r) => r.ip === IP_A);
+    assert.equal(expired.status, 'intercepted', '过期回落被拦截');
+    assert.equal(expired.ban_until, null, '过期后不返回到期时间');
+    // 正常状态
+    assert.ok((await db.listVisitorsByIp(q, { days: 7, status: 'normal' })).rows.some((r) => r.ip === IP_C));
   } finally {
     await srv.close();
     await store.close();
@@ -205,9 +245,17 @@ test('前端（静态）：默认 IP 统计视图 + 展开行、两张表统计�
   assert.match(modules, /type="expand"/, 'IP 行可展开');
   assert.match(modules, /最近访问（\{\{ visitDays \}\} 天内最多 20 条）/, '展开行显示最近访问');
   assert.match(modules, /访问最多的路径/, '展开行显示路径 top');
-  for (const label of ['访问次数', '独立路径', '设备数', '已封禁', '被拦截']) {
+  for (const label of ['访问次数', '独立路径', '设备数', '已封禁', '被拦截', '封禁中']) {
     assert.ok(modules.includes(label), `IP 统计列/状态含 ${label}`);
   }
+  // BI 批：自动临时封禁显示 + 状态筛选
+  assert.match(modules, /ipStatus=ref\('all'\)/, '状态筛选默认全部');
+  assert.match(modules, /status:ipStatus\.value/, '查询带 status 参数');
+  assert.match(modules, /<el-option label="封禁中" value="banned"\/>/, '筛选含封禁中');
+  assert.match(modules, /<el-option label="已封禁" value="blocked"\/>/, '筛选含已封禁');
+  assert.match(modules, /'封禁中 · '\+banLeft\(row\)/, '封禁中显示剩余时间');
+  assert.match(modules, /function banLeft\(row\)/, '剩余时间计算');
+  assert.match(modules, /row\.status==='banned'/, '状态列区分自动封禁');
   // 两张表统计列（黑名单/白名单各一份）
   assert.equal((modules.match(/label="访问" width="80" align="right"/g) || []).length, 2, '黑白名单各加访问列');
   assert.equal((modules.match(/label="最近访问" width="150"/g) || []).length, 2, '黑白名单各加最近访问列');

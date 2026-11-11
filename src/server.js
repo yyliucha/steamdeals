@@ -2795,8 +2795,20 @@ export function createApiServer({
         const kw = String(url.searchParams.get('q') ?? '').trim().slice(0, 80);
         const rawSort = String(url.searchParams.get('sort') ?? '');
         const sort = ['visits', 'lastAt', 'ip'].includes(rawSort) ? rawSort : 'visits';
-        const data = await db.listVisitorsByIp(q, { days, page, pageSize, q: kw, sort });
-        return json(res, 200, { items: data.rows, total: data.total, page, pageSize, days, sort, pages: Math.max(1, Math.ceil(data.total / pageSize)) });
+        // BI 批（docs/VISIT-IP-STATS.md §8）：状态筛选白名单（全部/正常/被拦截/封禁中/已封禁）
+        const rawStatus = String(url.searchParams.get('status') ?? '');
+        const status = ['normal', 'intercepted', 'banned', 'blocked'].includes(rawStatus) ? rawStatus : 'all';
+        const data = await db.listVisitorsByIp(q, { days, page, pageSize, q: kw, sort, status });
+        return json(res, 200, {
+          items: data.rows,
+          total: data.total,
+          page,
+          pageSize,
+          days,
+          sort,
+          status,
+          pages: Math.max(1, Math.ceil(data.total / pageSize)),
+        });
       }
       const visitorIpMatch = path.match(/^\/api\/admin\/visitors\/by-ip\/(.+)$/);
       if (visitorIpMatch && req.method === 'GET') {

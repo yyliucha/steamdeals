@@ -2085,21 +2085,13 @@ export async function visitorSummary(q) {
 }
 
 /** IP 统计视图（BH 批 docs/VISIT-IP-STATS.md §3.1）：时间窗内每 IP 一行，默认按访问次数倒序。 */
-export async function listVisitorsByIp(q, { days = 7, page = 1, pageSize = 20, q: kw = '', sort = 'visits' } = {}) {
+export async function listVisitorsByIp(q, { days = 7, page = 1, pageSize = 20, q: kw = '', sort = 'visits', status = 'all' } = {}) {
   const windowSql = `created_at >= now() - ($1::int * interval '1 day')`;
   const kwSql = `($2 = '' or ip ilike '%' || $2 || '%')`;
-  const count = await q(`select count(distinct ip)::int as n from visitor_logs where ${windowSql} and ${kwSql}`, [days, kw]);
-  // 排序白名单：visits（默认）/ lastAt / ip；IP 用补零字符串做 IPv4 数值序（IPv6 退化为字典序）
-  const orderSql =
-    sort === 'lastAt'
-      ? 'order by last_at desc, visits desc'
-      : sort === 'ip'
-        ? `order by case when ip ~ '^[0-9]{1,3}(\\.[0-9]{1,3}){3}$'
-                       then lpad(split_part(ip,'.',1),3,'0')||lpad(split_part(ip,'.',2),3,'0')||lpad(split_part(ip,'.',3),3,'0')||lpad(split_part(ip,'.',4),3,'0')
-                       else 'zzz:' || ip end`
-        : 'order by visits desc, last_at desc';
-  const rows = await q(
-    `select ip,
+  // BI 批（docs/VISIT-IP-STATS.md §8）：状态四态 + 状态筛选；手动黑名单优先于自动临时封禁
+  const statusSql = `($3 = 'all' or status = $3)`;
+  const base = `
+     select ip,
             count(*)::int as visits,
             min(created_at) as first_at,
             max(created_at) as last_at,
@@ -2110,15 +2102,32 @@ export async function listVisitorsByIp(q, { days = 7, page = 1, pageSize = 20, q
             (select l.region from visitor_logs l
               where l.ip = visitor_logs.ip and l.region is not null
               order by l.created_at desc limit 1) as region,
+            (select a.banned_until from ip_abuse a
+              where a.ip = visitor_logs.ip and a.banned_until > now()
+              order by a.banned_until desc limit 1) as ban_until,
+            (select a.ban_source from ip_abuse a
+              where a.ip = visitor_logs.ip and a.banned_until > now()
+              limit 1) as ban_source,
             case when exists (select 1 from ip_blacklist b where b.ip = visitor_logs.ip) then 'blocked'
+                 when exists (select 1 from ip_abuse a where a.ip = visitor_logs.ip and a.banned_until > now()) then 'banned'
                  when bool_or(blocked) then 'intercepted'
                  else 'normal' end as status
        from visitor_logs
       where ${windowSql} and ${kwSql}
-      group by ip
-      ${orderSql}
-      limit $3 offset $4`,
-    [days, kw, pageSize, (page - 1) * pageSize],
+      group by ip`;
+  const count = await q(`with agg as (${base}) select count(*)::int as n from agg where ${statusSql}`, [days, kw, status]);
+  // 排序白名单：visits（默认）/ lastAt / ip；IP 用补零字符串做 IPv4 数值序（IPv6 退化为字典序）
+  const orderSql =
+    sort === 'lastAt'
+      ? 'order by last_at desc, visits desc'
+      : sort === 'ip'
+        ? `order by case when ip ~ '^[0-9]{1,3}(\\.[0-9]{1,3}){3}$'
+                       then lpad(split_part(ip,'.',1),3,'0')||lpad(split_part(ip,'.',2),3,'0')||lpad(split_part(ip,'.',3),3,'0')||lpad(split_part(ip,'.',4),3,'0')
+                       else 'zzz:' || ip end`
+        : 'order by visits desc, last_at desc';
+  const rows = await q(
+    `with agg as (${base}) select * from agg where ${statusSql} ${orderSql} limit $4 offset $5`,
+    [days, kw, status, pageSize, (page - 1) * pageSize],
   );
   return { total: count.rows[0]?.n ?? 0, rows: rows.rows };
 }

@@ -2,6 +2,21 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+BI 批：访问明细 IP 统计——自动临时封禁显示与状态筛选（规格 [docs/VISIT-IP-STATS.md](docs/VISIT-IP-STATS.md) §8）。
+
+### 新增
+
+- IP 统计状态扩展为四态：`已封禁`（手动黑名单，红）/ `封禁中`（自动临时封禁未过期，橙 + 剩余时间）/
+  `被拦截`（时间窗内有拦截采样，黄描边）/ `正常`（灰）；手动黑名单优先于自动封禁。
+- 接口 `GET /api/admin/visitors/by-ip` 追加 `ban_until` / `ban_source` 字段与 `status` 筛选参数
+  （`all | normal | intercepted | banned | blocked`，白名单，与时间窗/关键词/分页叠加）。
+- 前端 IP 统计顶部加状态筛选下拉；状态列显示「封禁中 · 剩余 m:ss（>1 小时显示 h 小时 m 分）」。
+
+### 测试
+
+- `test/visitor-ip-stats.test.js` 增补：自动封禁中 / 黑名单优先 / 过期回落 / 状态筛选 / 前端静态接线。
 ## [2.9.0] - 2026-11-10
 
 BE / BH 两批：愿望单仅本站（去 Steam 关联 + 后台清单）+ 访问记录按 IP 统计（默认 IP 视图 + 黑白名单统计列 + 设备按设备码）。
