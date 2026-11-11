@@ -44,7 +44,7 @@
 | **BG** | BUG：站点通知页未编辑即误报「未保存的修改」 | [UNSAVED-GUARD.md](UNSAVED-GUARD.md) §11 | 已发布 v2.10.1（2026-11-11） | ✅ 本轮已给 |
 | **BH** | 访问记录按 IP 统计（访问明细默认 IP 视图 + 黑白名单统计列 + 设备按设备码） | [VISIT-IP-STATS.md](VISIT-IP-STATS.md) | 已发布 v2.9.0（2026-11-10） | ✅ 本轮已给 |
 | **BI** | 访问明细 IP 统计：自动临时封禁显示（封禁中 + 剩余时间）与状态筛选 | [VISIT-IP-STATS.md](VISIT-IP-STATS.md) §8 | 已发布 v2.10.0（2026-11-11） | ✅ 本轮已给 |
-| **BJ** | 黑名单 IP 不再写入自动封禁 + 自动封禁记录默认口径（生效中/状态列/已在黑名单）+ 解封语义拆分 | [BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md) §10 | 质检通过（9bc665e，待发版） | ✅ 本轮已给 |
+| **BJ** | 黑名单 IP 不再写入自动封禁 + 自动封禁记录默认口径（生效中/状态列/已在黑名单）+ 解封语义拆分 | [BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md) §10 | 已发布 v2.10.2 | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |
 | **AC** | 同步不可达的未保证项（AC1–AC11） | [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) | AC-1 已发布 v1.18.0；AC-2/AC-3/AC-4 已发布 v2.1.0（2026-11-09） | ✅ 已在对话给出 |
 | **AE** | 版本检测按服务器 IP 选镜像仓库（TCR/Hub） | [VERSION-SOURCE.md](VERSION-SOURCE.md) | 已发布 v1.18.0 | ✅ 已在对话给出 |

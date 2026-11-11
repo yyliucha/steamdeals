@@ -180,12 +180,20 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-11 更新，v2.10.1 已发布：AY 搜索性能修复 + BF 数据库遗留对象清理 + BG 通知误报修复）
+### 当前状态（2026-11-11 更新，v2.10.2 已发布：BJ 黑名单 IP 不再写入自动封禁 + 自动封禁记录口径 + 解封语义拆分）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 > **会话分工（2026-11-09）**：可直接开发的功能（AR、AO、AP、可选 F）见
 > [HANDOVER-DEV-2026-11-09.md](HANDOVER-DEV-2026-11-09.md)；运维排查结论见 [WISHLIST-OAUTH.md](WISHLIST-OAUTH.md) 与 TODO C 段。
 
+- **v2.10.2 已发布**（tag `v2.10.2`）：BJ 批——拦截链黑名单前置（黑名单 IP 一律立即 403，不再计数/
+  不写 `ip_abuse`/不写待审核，采样拦截日志保留）；自动封禁记录默认只列生效中 + 状态列 +「已在黑名单」
+  标注（CIDR）；解封语义拆分（自动封禁只清 `ip_abuse`、黑名单只删 `ip_blacklist`，批量同口径）；写黑名单
+  时清该 IP 临时封禁字段（行保留）+ 迁移幂等存量清理；自动封禁记录 prune 保留 90 天。
+  验证：`npm test` 77 个文件全绿、`frontend:build`、`scan` 干净；
+  质检：BJ ✅ 放行（[QA-BAN-BJ.md](QA-BAN-BJ.md)，3 项转部署后验收）。
+  CI：待补（发布后）。**服务器部署待执行**（升级到 `2.10.2`）；部署后按规格 §10.7 三条只读 SQL 复核
+  （黑名单 IP 的 `ip_abuse.updated_at` 24 小时不变、「生效中」为空、存量被覆盖行 `banned_until` 已清）。
 - **v2.10.1 已发布**（tag `v2.10.1`）：AY 搜索性能修复（关键词 trigram 候选收敛 + 零命中快返 + `games_heat_live`
   部分索引 + count 60s 合并缓存）；BF 数据库遗留对象清理（删 steam_sessions / users.steam_id / offers.risk_level /
   user_wishlist.steam_ids 的 DDL 与读写，保留 api_key_enc 等）；BG 站点通知页未编辑误报未保存修复。

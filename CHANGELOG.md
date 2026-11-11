@@ -4,20 +4,32 @@
 
 ## [Unreleased]
 
-AY 批：AV 读模型搜索性能未达门槛的修复（规格 [docs/READ-MODEL.md](docs/READ-MODEL.md) §12）。
+## [2.10.2] - 2026-11-11
 
-### 变更
+修复批：BJ 黑名单 IP 不再写入自动封禁 + 自动封禁记录口径 + 解封语义拆分（规格 [docs/BAN-AND-SECURITY-FIXES.md](docs/BAN-AND-SECURITY-FIXES.md) §10）。
 
-- 搜索关键词改**两段式**：名称/英文名/平台别名三臂各走 `pg_trgm` 表达式索引 union 取候选 ID（上限 5000）；
-  零命中直接返回（不再跑 count/列表全表扫），命中用 `g.id = any()` 收敛；超上限回落原 LIKE 保证 total 精确。
-- 迁移新增部分索引 `games_heat_live (heat desc nulls last) where not deleted and not adult_flag and not blocked`，
-  消除默认列表的外部排序（原 `idx_games_heat` 是 NULLS FIRST，与 `DESC NULLS LAST` 不匹配用不上）。
-- `/api/games/count` 的 priced + catalog 两个计数合并为 60 秒进程内缓存（原只缓存 priced，catalog 每次扫 198k 行）。
+### 修复
+
+- **拦截链黑名单前置**：IP 黑名单检查提到频率限制之前——黑名单 IP 一律立即 403（不再先被限流计数、
+  打满阈值后变 429）；命中不计数、不三振、不升级、不写 `ip_abuse` / 异常审核；采样拦截日志保留
+  （同 IP 每分钟 ≤1 条）；`/api/ban/state` 与封禁页判定类型优先级改 设备 → 黑名单 → 自动封禁。
+- **自动封禁记录口径**：`GET /api/admin/abuse` 默认只列生效中（`status=active|expired|all`），每行带
+  `active` 与 `in_blacklist`/`blacklist_entry`（运行时 CIDR 匹配）；后台新增状态列（生效中/已过期/仅计数）、
+  筛选下拉与红色「已在黑名单」标注（悬停显示命中的 CIDR 条目与备注），移出黑名单后标注消失。
+- **解封语义拆分**：自动封禁页「解除封禁/清除记录」只清 `ip_abuse`（含内存态），黑名单页解封只删
+  `ip_blacklist`，批量同口径（`ratelimit.unban` 退场，改 `clearAbuse`/`clearBanMemory`）；两处按钮都带
+  确认框说明不越界。
+- **黑名单优先**：审核通过 / 手动封 IP / 批量封 IP 写黑名单时，清掉该 IP 的 `ip_abuse.banned_until`/
+  `ban_source`（行保留做审计）；迁移幂等清理存量「已被黑名单覆盖」的临时封禁字段。
+- **自动封禁记录保留 90 天**：并入现有 prune（`--abuse-days` 可覆盖），过期行与很旧的仅计数行自动清理。
 
 ### 测试
 
-- `test/game-search-read-model.test.js` 增补关键词候选用例（零命中不跑 count、名称/英文名/别名/AppID 命中、过滤仍生效）；
-  `test/pg.test.js` 断言 `games_heat_live` 部分索引谓词与列表过滤一致。
+- `test/admin-bulk.test.js` +4（黑名单 IP 200 次全 403 零写入、双向解封粒度、CIDR 标注消失）；
+  `test/visitors.test.js` +3（listAbuse 三口径、clearAbuseBan 与迁移幂等、purge 保留期）；
+  `test/ratelimit.test.js` 改 clearAbuse/clearBanMemory；`test/reviews.test.js` 审批清临时封禁断言；
+  新增 `test/bj-abuse-views.test.js`（前端静态断言，入主链）。
+
 ## [2.10.1] - 2026-11-11
 
 修复批：AY 搜索性能修复 + BF 数据库遗留对象清理 + BG 站点通知未保存误报。
