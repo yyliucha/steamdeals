@@ -38,7 +38,7 @@ export function maskEmail(email) {
 }
 
 /** 返回 true 表示这个请求已被本模块处理。captcha 由 server.js 传入（AK-3 注册用）。 */
-export async function handleEmailAuth({ path, req, res, q, logger, json, readBody, captcha = null }) {
+export async function handleEmailAuth({ path, req, res, q, logger, json, readBody, captcha = null, ip = null }) {
   if (req.method !== 'POST') return false;
 
   // ---------------- 发送验证码 ----------------
@@ -246,7 +246,14 @@ export async function handleEmailAuth({ path, req, res, q, logger, json, readBod
       return true;
     }
     const { createSession } = await import('./store/pg.js');
-    const token = await createSession(q, { userId: account.id });
+    const { ipSessionKey, uaSessionKey } = await import('./session-fingerprint.js');
+    const token = await createSession(q, {
+      userId: account.id,
+      ip,
+      ipKey: ipSessionKey(ip),
+      userAgent: req.headers['user-agent'] ?? null,
+      uaKey: uaSessionKey(req.headers['user-agent']),
+    });
     logger?.info('auth.otp_verified', { email: maskEmail(email), purpose: 'login', username: account.username });
     json(
       res,
@@ -428,9 +435,16 @@ export async function handleEmailAuth({ path, req, res, q, logger, json, readBod
     }
     try {
       const { createUser, createSession } = await import('./store/pg.js');
+      const { ipSessionKey, uaSessionKey } = await import('./session-fingerprint.js');
       const created = await createUser(q, { username, password, role: 'user', email });
       await q('update users set email_verified = true where id = $1', [created.id]);
-      const token = await createSession(q, { userId: created.id });
+      const token = await createSession(q, {
+        userId: created.id,
+        ip,
+        ipKey: ipSessionKey(ip),
+        userAgent: req.headers['user-agent'] ?? null,
+        uaKey: uaSessionKey(req.headers['user-agent']),
+      });
       logger?.info('auth.registered', { userId: created.id, username });
       json(
         res,

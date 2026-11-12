@@ -20,7 +20,7 @@ async function fresh() {
 }
 
 test('设置定义完整：58 项、7 个密钥、关键分组都在', () => {
-  assert.equal(settings.SETTINGS.length, 59, 'AK-3 新增 auth.registrationEnabled + D2 新增 images.maxBytes');
+  assert.equal(settings.SETTINGS.length, 62, 'AK-3 registrationEnabled + D2 images.maxBytes + BK 会话 3 项');
   assert.equal(settings.SETTINGS.filter((d) => d.secret).length, 7);
   const tz = settings.SETTINGS.find((d) => d.key === 'system.timezone');
   assert.ok(tz, '要有 system.timezone（时区设置化）');

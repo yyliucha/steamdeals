@@ -211,6 +211,11 @@ POST /api/setup/complete
 - `GET /api/admin/abuse?status=active|expired|all&limit` → 自动封禁记录（BJ 批起默认只列生效中）；每行带 `active` 与
   `in_blacklist`/`blacklist_entry`（运行时 CIDR 匹配，「已在黑名单」标注用）；`DELETE /api/admin/abuse/:ip` → 只清
   `ip_abuse`（含内存态），**绝不移除 IP 黑名单**。
+- `GET /api/admin/sessions?user=&ip=&includeExpired=&limit=&offset=` → 登录会话列表（BK 批，默认只列未过期；
+  每行 `{id,username,role,disabled,ip,region,userAgent,deviceId,createdAt,lastSeenAt,expiresAt,current}`，**绝不返回 token**；
+  `DELETE /api/admin/sessions/:id` 踢单条；`DELETE /api/admin/users/:username/sessions` 踢该用户全部（目标是当前
+  管理员自己时保留当前会话）；批量走 `/api/admin/bulk` 的 `sessions/kick`）。
+- `POST /api/user/sessions/revoke-others` → 前台「退出其它所有设备」（保留当前会话，返回 `{removed}`）。
   **黑/白名单双向互斥**：加黑自动移白（回执 `removedFromWhitelist`）、加白自动移黑（回执 `removedFromBlacklist`），
   存量冲突由启动迁移按白名单优先清理
 - `GET /api/ban/state` → **只读封禁状态**（无需登录、豁免拦截链与频率计数）：`{ banned, type, until }`；

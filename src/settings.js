@@ -147,6 +147,18 @@ export const SETTINGS = [
   def('auth.registrationEnabled', 'AUTH_REGISTRATION_ENABLED', 'auth', '开放用户注册', 'bool', true, {
     help: '关闭后注册接口返回 403；SMTP 未配置时注册同样不可用（503）。',
   }),
+  // BK 批（docs/SESSION-MANAGEMENT.md §3.7）：会话空闲超时与 IP/UA 绑定
+  def('auth.sessionIdleDays', 'AUTH_SESSION_IDLE_DAYS', 'auth', '会话空闲失效天数（0=关闭）', 'int', 7, {
+    min: 0,
+    max: 90,
+    help: '登录会话空闲超过该天数后失效（下次请求时判定，行删除交给 prune）；0 表示不限制空闲。',
+  }),
+  def('auth.sessionBindIp', 'AUTH_SESSION_BIND_IP', 'auth', '会话绑定 IP（/24、/64 前缀）', 'bool', true, {
+    help: 'IP 网段变化（IPv4 /24、IPv6 /64 之外）时会话失效，防会话被盗用；关闭后不再校验 IP。',
+  }),
+  def('auth.sessionBindUa', 'AUTH_SESSION_BIND_UA', 'auth', '会话绑定浏览器（家族+主版本）', 'bool', true, {
+    help: '浏览器家族或主版本变化时会话失效；小版本升级不影响。',
+  }),
 
   // ---- 网络 ----
   def('network.steamProxy', 'STEAM_PROXY', 'network', 'Steam 专用代理', 'secret', '', {

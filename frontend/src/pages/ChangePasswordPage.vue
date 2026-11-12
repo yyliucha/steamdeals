@@ -28,6 +28,11 @@
         </label>
         <el-alert v-if="topError" :title="topError" type="error" :closable="false" class="auth-top-error" />
         <el-button type="primary" class="auth-submit" :loading="loading" native-type="submit">修改密码</el-button>
+        <section v-if="!forced" class="session-card">
+          <h3>登录设备</h3>
+          <p class="muted">退出其它所有设备：保留当前设备；其它设备需要重新登录。</p>
+          <el-button :loading="revoking" @click="revokeOthers">退出其它所有设备</el-button>
+        </section>
       </form>
     </main>
   </div>
@@ -38,7 +43,7 @@
 // forced=1 时顶部不可关闭的「首次登录请修改初始密码」；成功后提示并回首页。
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 
 const router = useRouter();
 const route = useRoute();
@@ -94,6 +99,25 @@ async function submit() {
   }
 }
 
+// BK 批（docs/SESSION-MANAGEMENT.md §3.4）：前台「退出其它所有设备」——保留当前会话
+const revoking = ref(false);
+async function revokeOthers() {
+  try {
+    await ElMessageBox.confirm('退出其它所有设备？当前设备保持登录，其它设备需要重新登录。', '退出其它设备', { type: 'warning' });
+  } catch {
+    return;
+  }
+  revoking.value = true;
+  try {
+    const d = await api('/api/user/sessions/revoke-others', { method: 'POST', body: JSON.stringify({}) });
+    ElMessage.success(`已退出 ${d.removed ?? 0} 台设备`);
+  } catch (e) {
+    ElMessage.error(e.message || '操作失败');
+  } finally {
+    revoking.value = false;
+  }
+}
+
 onMounted(async () => {
   try {
     const d = await api('/api/me');
@@ -117,5 +141,8 @@ onUnmounted(() => { clearTimeout(strengthTimer); });
 .auth-top-error{margin-bottom:12px}
 .auth-submit{width:100%;margin-top:4px}
 .muted{color:var(--fg-muted);font-size:13px;line-height:1.7}
+.session-card{margin-top:22px;border-top:1px solid var(--border);padding-top:16px}
+.session-card h3{font-size:13px;margin:0 0 6px}
+.session-card p{margin:0 0 12px}
 @media (max-width:900px){.auth-submit{min-height:44px}}
 </style>

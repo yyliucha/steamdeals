@@ -35,6 +35,7 @@ import * as proxyPool from './proxy-pool.js';
 import * as passwordPolicy from './password-policy.js';
 import { maskEmail } from './auth-routes.js';
 import { auditJobs as auditSchedulerJobs, resetCircuit } from './scheduler.js';
+import { ipSessionKey, uaSessionKey } from './session-fingerprint.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -54,6 +55,8 @@ const DEVICE_COOKIE = 'gp_device';
 const mailTestCooldown = new Map();
 // AK-1（docs/AUTH-REDESIGN.md §4.1）：/api/password/check 匿名限流计数（每 IP 每分钟 30 次，内存态）
 const passwordCheckHits = new Map();
+// BK 批（docs/SESSION-MANAGEMENT.md §3.2）：last_seen_at 写节流——同一 token 5 分钟最多写一次（内存态）
+const sessionSeenAt = new Map();
 // AK-2（docs/AUTH-REDESIGN.md §4.3）：登录 IP 限速（同 IP 15 分钟失败 ≥20 次 → 429，内存计数、重启清零）
 const loginIpFails = new Map(); // ip -> { count, windowStart }
 
@@ -456,6 +459,62 @@ export function createApiServer({
       // ---- 访问者 IP + 黑名单 + 频率限制（整站拦截，静态资源也一样拦）----
       const ip = visitors.clientIp(req);
 
+      // BK 批（docs/SESSION-MANAGEMENT.md §3.2）：会话解析收敛——同一请求最多查一次 userBySession，
+      // 结果缓存到局部 promise（adminBypass / 公告已读 / 主 user 三处共享）。
+      // 空闲超时 / IP・UA 绑定不一致时删行、清 cookie、视为未登录（公开接口不受影响，只影响 requireUser/Admin）。
+      let sessUserPromise = null;
+      const resolveSession = async () => {
+        if (!sessUserPromise) {
+          sessUserPromise = (async () => {
+            if (!token) return null;
+            let row = null;
+            try {
+              row = await db.userBySession(q, token);
+            } catch {
+              return null;
+            }
+            if (!row) return null;
+            // BK-3：空闲超时（auth.sessionIdleDays，0=关闭）
+            const idleDays = Math.max(0, Number(process.env.AUTH_SESSION_IDLE_DAYS ?? '7') || 0);
+            if (idleDays > 0 && row.last_seen_at) {
+              const idleMs = Date.now() - new Date(row.last_seen_at).getTime();
+              if (idleMs > idleDays * 86400_000) {
+                await db.deleteSessionByToken(q, token).catch(() => {});
+                res.setHeader('set-cookie', sessionCookie(req, '', 0));
+                logger?.info('session.idle_expired', { id: row.sess_id, username: row.username, lastSeenAt: row.last_seen_at, idleDays });
+                return null;
+              }
+            }
+            // BK-3：绑定校验——老会话（key 为 null）跳过，不误踢；两个开关默认开
+            const bindIp = process.env.AUTH_SESSION_BIND_IP !== '0';
+            const bindUa = process.env.AUTH_SESSION_BIND_UA !== '0';
+            const curIpKey = ipSessionKey(ip);
+            const curUaKey = uaSessionKey(req.headers['user-agent']);
+            if (bindIp && row.ip_key && curIpKey && row.ip_key !== curIpKey) {
+              await db.deleteSessionByToken(q, token).catch(() => {});
+              res.setHeader('set-cookie', sessionCookie(req, '', 0));
+              logger?.warn('session.bound_mismatch', { id: row.sess_id, username: row.username, field: 'ip', hit: curIpKey });
+              return null;
+            }
+            if (bindUa && row.ua_key && curUaKey && row.ua_key !== curUaKey) {
+              await db.deleteSessionByToken(q, token).catch(() => {});
+              res.setHeader('set-cookie', sessionCookie(req, '', 0));
+              logger?.warn('session.bound_mismatch', { id: row.sess_id, username: row.username, field: 'ua', hit: curUaKey });
+              return null;
+            }
+            // BK-2：last_seen_at 节流写（同一会话 5 分钟最多一次，内存节流，不新建任务）
+            const lastWrite = sessionSeenAt.get(token) ?? 0;
+            if (Date.now() - lastWrite > 5 * 60_000) {
+              sessionSeenAt.set(token, Date.now());
+              if (sessionSeenAt.size > 50_000) sessionSeenAt.clear();
+              db.touchSession(q, token).catch(() => {});
+            }
+            return row;
+          })();
+        }
+        return sessUserPromise;
+      };
+
       // 白名单：不计数、不受黑名单限制
       const whitelisted = ratelimit.isWhitelisted(ip);
 
@@ -463,7 +522,7 @@ export function createApiServer({
       let adminBypass = false;
       if (token) {
         try {
-          const u = await db.userBySession(q, token);
+          const u = await resolveSession();
           adminBypass = u?.role === 'admin';
         } catch {
           adminBypass = false;
@@ -722,7 +781,7 @@ export function createApiServer({
       if (path === '/api/announcements' && req.method === 'GET') {
         const rows = await db.listAnnouncements(q, { activeOnly: true, limit: 200 });
         // 登录用户附带服务端已读 id（跨设备跟随账号）；游客本地记录，接口只给空数组
-        const sessUser = token ? await db.userBySession(q, token) : null;
+        const sessUser = await resolveSession();
         let readIds = [];
         if (sessUser) {
           const reads = await q('select announcement_id from announcement_reads where user_id = $1', [sessUser.id]);
@@ -769,7 +828,7 @@ export function createApiServer({
         return json(res, 200, { ok: true, fingerprint: fingerprint.slice(0, 16) }, { 'set-cookie': cookie });
       }
 
-      const user = token ? await db.userBySession(q, token) : null;
+      const user = await resolveSession();
       // Steam 账号相关表幂等建表（一次后为 no-op）。列表/详情的「已拥有推导」SQL 会 join
       // steam_games / steam_accounts / steam_wishlist，必须先于任何查询存在——不能只放在
       // Steam 路由块里，否则该块之前的路由（如 /api/games/search）在全新库上会 500。
@@ -812,6 +871,65 @@ export function createApiServer({
         }
         return true;
       };
+
+      // ---- BK 批（docs/SESSION-MANAGEMENT.md §3.3/§3.4）：会话列表 / 踢下线 / 退出其它设备 ----
+      if (path === '/api/admin/sessions' && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const list = await db.listSessions(q, {
+          user: String(url.searchParams.get('user') ?? '').trim(),
+          ip: String(url.searchParams.get('ip') ?? '').trim(),
+          includeExpired: url.searchParams.get('includeExpired') === '1',
+          limit: Number(url.searchParams.get('limit') ?? 20),
+          offset: Number(url.searchParams.get('offset') ?? 0),
+        });
+        // 绝不把 token 下发前端；region 只读缓存，不触发外部归属地查询
+        return json(res, 200, {
+          sessions: list.rows.map((r) => ({
+            id: Number(r.id),
+            username: r.username,
+            role: r.role,
+            disabled: Boolean(r.disabled),
+            ip: r.ip ?? null,
+            region: r.ip ? visitors.cachedRegion(r.ip) : null,
+            userAgent: r.user_agent ?? null,
+            deviceId: r.device_id ?? null,
+            createdAt: r.created_at,
+            lastSeenAt: r.last_seen_at,
+            expiresAt: r.expires_at,
+            current: Boolean(token && user && Number(r.id) === Number(user.sess_id)),
+          })),
+          total: list.total,
+        });
+      }
+
+      const sessKick = path.match(/^\/api\/admin\/sessions\/(\d+)$/);
+      if (sessKick && req.method === 'DELETE') {
+        if (!requireAdmin()) return;
+        const row = await db.deleteSessionById(q, Number(sessKick[1]));
+        if (!row) return json(res, 404, { error: '会话不存在或已过期' });
+        logger?.info('session.kicked', { id: row.id, username: row.username, by: user.username, current: token === row.token });
+        return json(res, 200, { removed: 1 });
+      }
+
+      const kickAllMatch = path.match(/^\/api\/admin\/users\/([^/]+)\/sessions$/);
+      if (kickAllMatch && req.method === 'DELETE') {
+        if (!requireAdmin()) return;
+        const targetName = decodeURIComponent(kickAllMatch[1]);
+        const trow = (await q('select id, username from users where username = $1', [targetName])).rows[0];
+        if (!trow) return json(res, 404, { error: '没有该用户' });
+        // 目标是当前管理员自己时保留当前会话（规格 §3.3）
+        const removed = await db.deleteSessionsOfUser(q, trow.id, { exceptToken: trow.id === user.id ? token : null });
+        logger?.info('session.kick_all', { username: targetName, removed, by: user.username });
+        return json(res, 200, { removed });
+      }
+
+      // BK-3（§3.4）：前台「退出其它所有设备」——保留当前会话
+      if (path === '/api/user/sessions/revoke-others' && req.method === 'POST') {
+        if (!requireUser()) return;
+        const removed = await db.deleteSessionsOfUser(q, user.id, { exceptToken: token });
+        logger?.info('session.revoke_others', { userId: user.id, removed });
+        return json(res, 200, { removed });
+      }
 
       // 黑/白名单互斥（docs/BAN-AND-SECURITY-FIXES.md §4）：加黑移白、加白移黑，含内存态同步。
       // 单条/审核/批量四个入口都走这里，保证口径一致、不会再出现"同一 IP 两边都在"。
@@ -901,7 +1019,16 @@ export function createApiServer({
         await q('update users set weak_password = $1 where id = $2', [!weak.ok, found.id]);
         // 记住我：勾选 30 天，不勾 7 天（决策）
         const days = body.rememberMe ? 30 : 7;
-        const sessionToken = await db.createSession(q, { userId: found.id, days });
+        const sessionToken = await db.createSession(q, {
+          userId: found.id,
+          days,
+          // BK 批：建会话记录客户端指纹（IP/UA 归一化键 + 设备码）
+          ip,
+          ipKey: ipSessionKey(ip),
+          userAgent: req.headers['user-agent'] ?? null,
+          uaKey: uaSessionKey(req.headers['user-agent']),
+          deviceId,
+        });
         logger?.info('auth.login_ok', { userId: found.id, username: found.username, rehashed, weak: !weak.ok, days });
         return json(
           res,
@@ -1978,6 +2105,11 @@ export function createApiServer({
           disabled: body.disabled,
         });
         if (!row) return json(res, 404, { error: '没有该用户或没有要改的字段' });
+        // BK-1（docs/SESSION-MANAGEMENT.md §3.6-1）：单条禁用立即踢会话（与批量禁用同口径）
+        if (row.disabled && !before.disabled) {
+          const removed = await db.deleteSessionsOfUser(q, row.id).catch(() => 0);
+          logger?.info('user.disabled_sessions_revoked', { username, removed, by: user.username });
+        }
         logger?.info('api.user_updated', { username, by: user.username, ...body });
         // AJ 批：字段实际变化才发通知；一次请求最多一封，优先级 disabled > role > display_name
         // （docs/USER-LIFECYCLE.md §4.2）。快操作 await 发送，结果进响应；失败不影响已保存的修改。
@@ -3281,6 +3413,7 @@ const BULK_ACTIONS = {
   'whitelist/remove': { max: 200, risk: 'low', keyType: 'ip', run: bulkWhitelistRemove },
   'device-bans/unban': { max: 200, risk: 'low', keyType: 'fingerprint', run: bulkDeviceBanRemove },
   'abuse/unban': { max: 200, risk: 'low', keyType: 'ip', run: bulkAbuseUnban },
+  'sessions/kick': { max: 200, risk: 'low', keyType: 'id', run: bulkSessionKick },
   'devices/ban': { max: 50, risk: 'high', keyType: 'fingerprint', run: bulkDeviceBan },
   'users/disable': { max: 50, risk: 'high', keyType: 'id', guard: bulkGuardUserDisable, run: bulkUserDisable },
   'users/enable': { max: 200, risk: 'low', keyType: 'id', run: bulkUserEnable },
@@ -3483,6 +3616,15 @@ async function bulkAbuseUnban({ q, keys }) {
   const { ok, results } = await bulkEach(keys, async (ip) => {
     const removed = await ratelimit.clearAbuse(q, ip);
     return removed ? 'done' : '没有临时封禁记录';
+  });
+  return { ok, results };
+}
+
+// BK 批（docs/SESSION-MANAGEMENT.md §3.3）：批量踢会话——按对外 id 逐条删，审计走 admin_bulk_ops
+async function bulkSessionKick({ q, keys }) {
+  const { ok, results } = await bulkEach(keys, async (id) => {
+    const row = await db.deleteSessionById(q, Number(id));
+    return row ? 'done' : '会话不存在或已过期';
   });
   return { ok, results };
 }

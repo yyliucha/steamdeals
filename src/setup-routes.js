@@ -6,6 +6,7 @@ import * as settings from './settings.js';
 import { normalizeEmail } from './email-auth.js';
 import { sessionCookie } from './session-cookie.js';
 import { passwordPolicyError } from './password-policy.js';
+import { ipSessionKey, uaSessionKey } from './session-fingerprint.js';
 
 const jsonError = (json, res, status, message) => json(res, status, { error: message });
 
@@ -115,7 +116,15 @@ export async function handleSetupRoutes({
         }
         await settings.saveSettings(tx, patch, { updatedBy: admin.username, secretKey });
         await settings.markSetupComplete(tx, { by: admin.username });
-        const session = await db.createSession(tx, { userId: user.id });
+        const setupIp = String(req.headers['x-forwarded-for'] ?? '').split(',')[0]?.trim() || null;
+        const session = await db.createSession(tx, {
+          userId: user.id,
+          // BK 批：初始化会话也记 UA/IP 指纹（IP 拿不到就留空=不校验绑定）
+          ip: setupIp || null,
+          ipKey: ipSessionKey(setupIp),
+          userAgent: req.headers['user-agent'] ?? null,
+          uaKey: uaSessionKey(req.headers['user-agent']),
+        });
         return { user, session };
       });
 

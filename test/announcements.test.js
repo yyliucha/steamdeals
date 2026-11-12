@@ -129,7 +129,7 @@ test('公告已读：登录用户读状态存服务端并随账号（换设备�
     // alice 标记第一条已读 → 服务端存表；换会话（模拟换浏览器）仍恢复
     const mark = await fetch(base + '/api/announcements/read', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', cookie: alice },
+      headers: { 'content-type': 'application/json', ...headers, cookie: alice },
       body: JSON.stringify({ ids: [1, 999] }),
     });
     assert.equal(mark.status, 200);
@@ -145,7 +145,7 @@ test('公告已读：登录用户读状态存服务端并随账号（换设备�
     assert.equal(
       (await fetch(base + '/api/announcements/read', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', cookie: alice },
+        headers: { 'content-type': 'application/json', ...headers, cookie: alice },
         body: JSON.stringify({ ids: [1] }),
       })).status,
       200,
