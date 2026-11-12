@@ -192,7 +192,9 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   过期会话并入 prune；前台改密页「退出其它所有设备」。
   验证：`npm test` 78 个文件全绿、`frontend:build`、`scan` 干净；
   质检：BK ✅ 放行（[QA-SESSION-BK.md](QA-SESSION-BK.md)，3 项转部署后验收）。
-  CI：待补（发布后）。**服务器部署待执行**（升级到 `2.11.0`）；部署后重点：
+  CI：`docker-hub` run 43185124260（test/smoke/publish 全绿）、`docker-tcr` run 43185124244
+  （test 6m32s + publish 30m41s——今日出网偏慢但成功，`Verify manifests` ✓），两个镜像源均已推送。
+  **服务器部署待执行**（升级到 `2.11.0`）；部署后重点：
   ① 后台会话列表与踢下线目视（筛选/分页/当前会话标记/批量）；
   ② 生产 `session.*` 审计事件字段；
   ③ 空闲 7 天与 IP/UA 绑定实际体验——如掉线率高，按 [SESSION-MANAGEMENT.md](SESSION-MANAGEMENT.md) §7 调比较粒度或开关。
