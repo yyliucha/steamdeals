@@ -1151,6 +1151,43 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   prune 保留 90 天；权限 401/403、审计事件与批量回执；`npm test` / `frontend:build` / `scan` 全绿。
   部署侧按规格 §10.7 三条只读 SQL 复核。
 
+## BK. 待开发：会话治理（登录会话列表/踢下线 + 过期清理 + 空闲超时与绑定）
+
+**状态：待开发（2026-11-12，所有者确认 12 项细节）**
+**依赖：** 无（BK-1 / BK-2 可独立开工；BK-3 依赖 BK-2，见下方批次表）
+**解锁：** 无
+**规格**：[SESSION-MANAGEMENT.md](SESSION-MANAGEMENT.md)
+
+- **现状（2026-11-12 核对）**：系统是服务端有状态会话——登录即写 `sessions` 行（`src/store/pg.js:1954-1963`），
+  cookie `gp_session`（HttpOnly/SameSite=Lax，仅 https 加 Secure），每次请求按 `expires_at > now()` 校验
+  （`pg.js:1966-1975`）；密码登录 7 天 / 勾「记住我」30 天（`server.js:902-904`）。但：① 没有会话列表与踢下线；
+  ② **单条禁用用户不踢会话**（批量禁用会踢，`server.js:3517-3520`），且 `userBySession` 不查 `users.disabled`
+  → 被禁用者旧 cookie 可继续用到 7/30 天后；③ 过期会话行无人清理（`purgeOldRows` 不含 sessions），
+  用户列表「登录会话」计数也不过期过滤（`pg.js:1752`）→ 数字虚高、看着像"永不下线"；④ 只有 7/30 天固定到期，
+  **没有空闲超时、没有 IP/UA 绑定**。
+- **已确认决策（12 项）**：①「过一段时间必须重新登录」= **空闲超时 7 天** + 保持绝对上限（不勾记住我 7 天 / 勾 30 天）；
+  ② 会话可视化与踢下线**只做后台**：全局列表 + 单条/批量踢 + 按用户踢全部；③ 列表全字段（IP/归属地、UA 摘要、
+  设备码、创建、最近活动、到期、当前会话）+ 最近活动**每 token 每 5 分钟最多写一次**；④ 清理**并入现有 `prune`**
+  （每周，不新建任务）；⑤ 审计 `session.*`；⑥ **IP 变化即失效**、**UA 变化即失效**；⑦ 前台加「退出其它所有设备」按钮；
+  ⑧ 改密/重置全踢（现状）保持；⑨ B 组修复：单条禁用立即踢、`userBySession` 过滤 `disabled`、会话计数只算未过期、
+  `prune` 清过期行；⑩ 不引入新依赖、不改记住我 7/30、不做前台设备列表页。
+- **批次（顺序 BK-1 → BK-2 → BK-3）**：
+  - **BK-1（B，独立，先做）**：单条禁用踢会话 + `userBySession` 过滤 `disabled` + 用户列表会话计数口径 + `prune` 清过期行；
+  - **BK-2（A，独立）**：`sessions` 加列迁移（id/ip/ip_key/ua/ua_key/device_id/last_seen_at + 索引）、解析收敛为一次/请求、
+    后台「账号与服务 → 登录会话」列表 + 单条/批量/按用户踢 + `last_seen_at` 节流 + 审计；
+  - **BK-3（C，依赖 BK-2）**：空闲超时 7 天、IP/UA 绑定（失败即删会话）、`auth.sessionIdleDays` / `auth.sessionBindIp` /
+    `auth.sessionBindUa` 设置项、前台「退出其它所有设备」、`prune` 扩展清空闲会话。
+- **改动落点**：`src/store/pg.js`（migrate 加列、`userBySession`/`createSession`/会话列表与删除 SQL、`listUsers` 计数、
+  `purgeOldRows`）、`src/server.js`（解析收敛、后台会话接口 + 单条禁用踢会话、`/api/user/sessions/revoke-others`、
+  `BULK_ACTIONS['sessions/kick']`）、`src/cli.js`（prune 输出）、`src/settings.js`（3 个 auth 设置项）、
+  `frontend/src/pages/Console.vue`（菜单）、`AdminModules.vue`（会话列表/批量/移动卡片）、`ChangePasswordPage.vue`（退出其它设备）、
+  测试（新增 `test/sessions.test.js` 接入主链）。
+- **验收**：见规格 §4——BK-1：禁用即踢 + 401、`disabled` 兜底、会话计数只算未过期、`prune` 删除过期行且幂等；
+  BK-2：列表字段/筛选/分页/当前会话标记、**响应不含 token**、单条/批量/按用户踢生效且 401、权限 401/403、
+  `last_seen_at` 5 分钟节流；BK-3：空闲 7 天失效（可设 0 关闭）、IPv4 /24 与 IPv6 /64 同段不误踢、UA 家族+主版本、
+  老会话不被绑定校验踢掉、前台退出其它设备、改密/重置行为不倒退、`prune` 扩展、`npm test` / `frontend:build` / `scan` 全绿。
+
+
 
 
 
