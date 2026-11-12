@@ -37,14 +37,12 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
 - **输入来自待办清单（2026-11-06 所有者要求）**：开发者说"做完了"时必须给出 **TODO 编号**；
   质检按该编号在 [docs/TODO.md](../../../docs/TODO.md) 找到条目与规格，不接受"你去看我提交"这种转述。
 - **检查完必须回写状态**：把该条目从 `待质检` 改成 `质检通过` 或 `质检打回`（打回时在条目里写一句打回摘要），
-  并在 `docs/REQUIREMENTS-INDEX.md` 同步；**质检不写 `已发布`**（那是发版后的事）。回写状态后
-  **先改状态、后生成**：运行 `npm run todo:progress` → `npm run todo:progress:check` 通过才提交
-  （README「开发进度」块由 CI `docs-progress` 校验，反序或漏跑都会红；规则见 [docs/TODO-PROGRESS.md](../../../docs/TODO-PROGRESS.md)）。
+  并在 `docs/REQUIREMENTS-INDEX.md` 同步；**质检不写 `已发布`**（那是发版后的事）。回写即可——
+  README 不再有「开发进度」生成块（2026-11-12 起下线，没有 `todo:progress` 命令与 `docs-progress` 门禁）。
 - **并发写 TODO（2026-11-09 所有者新规）**：回写状态前先探测占用（`git status --short` + `LastWriteTime`
   2 分钟内被改过 + `.git/index.lock`）；**被占用就跳过状态回写**，照常完成判定、报告与结论（报告里注明
   「状态回写待补」）；状态由**收尾复盘**补——本批最后提交的会话重读两份文件全文、用 `edit` 定点替换回写
-  `质检通过 / 质检打回` 并运行 `npm run todo:progress` + `npm run todo:progress:check`。完整规则见
-  [docs/HANDOVER.md](../../../docs/HANDOVER.md) §10。
+  `质检通过 / 质检打回`。完整规则见 [docs/HANDOVER.md](../../../docs/HANDOVER.md) §10。
 
 ## 2. 输入：判据与证据，都不信转述
 

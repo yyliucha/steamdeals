@@ -1,6 +1,16 @@
 # README 开发进度摘要（自动生成）
 
 > 状态：**已确认待开发（2026-11-09）；已实现并发布 v2.3.0（2026-11-09）**。编号 **AS**。方案 A（README 自动进度块）由所有者确认。
+> **2026-11-12 由所有者决定下线（方案 B）**：删除生成块、脚本、CI 与测试；本文档保留为决策历史，见 §0。
+
+## 0. 2026-11-12 下线说明（方案 B）
+
+- **原因**：`docs-progress` 依赖「改完 TODO 状态后手动跑 `npm run todo:progress`」这一人工步骤；BJ 批与 BK 批共红了 5 次
+  （`#41/#42/#43` + `#47/#48`），规则写进 4 份文档与 4 个 skill 仍未拦住；该检查不参与镜像构建，红了只产生噪音。
+- **决定**：删除 `scripts/todo-progress.js`、`.github/workflows/docs-progress.yml`、`test/todo-progress.test.js`
+  与 `package.json` 的两个 script；README 的生成块替换为一条指向 [docs/TODO.md](TODO.md) 的链接。
+- **影响**：README 不再显示摘要（进度以 TODO 为唯一来源）；`docs/TODO.md` 仍是排期与状态的唯一事实来源；
+  §1–§13 的脚本/CI/测试细节保留为历史，不再执行。
 > 关联：[TODO.md](TODO.md)（唯一排期与状态来源）、[../README.md](../README.md)、[ROADMAP.md](ROADMAP.md)。
 
 ## 1. 已确认的决策（2026-11-09 所有者）

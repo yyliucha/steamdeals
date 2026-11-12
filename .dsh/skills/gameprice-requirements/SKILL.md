@@ -178,13 +178,13 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
 2. **在 `docs/REQUIREMENTS-INDEX.md` 加一行**：编号 / 主题 / 规格 / 状态 / 是否有开发描述；
 3. **本轮回复给开发描述**（上面三行）；
 4. 若需求里有真机/线上证据，写进 TODO 条目或规格（开发本机可能复现不了）。
-5. **改完 TODO / INDEX 后运行 `npm run todo:progress`**，保持 README「开发进度」块与 TODO 一致（CI `docs-progress` 会校验，规则见 [docs/TODO-PROGRESS.md](../../../docs/TODO-PROGRESS.md)）。**顺序 = 先改状态、后生成**（README 块是生成物；发版还改了 `package.json` 版本号时，生成必须放在版本号之后，否则 `docs-progress` 必红）。
+5. **不需要同步 README**：2026-11-12 起 README 不再有「开发进度」摘要（只有一条指向 TODO 的链接），也没有 `todo:progress` 命令；进度以 `docs/TODO.md` 为准。
 
 **并发写 TODO（2026-11-09 所有者新规）**：建条目 / 加 INDEX 行之前先探测占用
 （`git status --short docs/TODO.md docs/REQUIREMENTS-INDEX.md`、`LastWriteTime` 2 分钟内被改过、`.git/index.lock`）；
 **被占用就跳过 TODO / INDEX 的写入**——规格与开发描述照常产出，把「待建条目 / 待改状态」写进开发描述与对话，
-开发照常派发；条目由**收尾复盘**补——本批最后提交的会话重读两份文件全文、用 `edit` 定点替换补建 / 补状态，
-并运行 `npm run todo:progress`。完整规则见 [docs/HANDOVER.md](../../../docs/HANDOVER.md) §10。
+开发照常派发；条目由**收尾复盘**补——本批最后提交的会话重读两份文件全文、用 `edit` 定点替换补建 / 补状态
+（README 自 2026-11-12 起不再有进度摘要，无需同步）。完整规则见 [docs/HANDOVER.md](../../../docs/HANDOVER.md) §10。
 
 > 不要在主对话里当"唯一的传话人"：对话会丢，TODO 不会。任何"以后要做"的结论，
 > 只要没进 TODO，就等于没记。

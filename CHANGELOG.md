@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### 移除
+
+- README「开发进度」自动摘要与 `docs-progress` 门禁下线（2026-11-12 所有者决定，见 [docs/TODO-PROGRESS.md](docs/TODO-PROGRESS.md) §0）：
+  README 只保留指向 `docs/TODO.md` 的链接；删除 `scripts/todo-progress.js`、`.github/workflows/docs-progress.yml`、
+  `test/todo-progress.test.js` 与两个 npm script。原因：该检查依赖人工步骤、反复变红、且不参与镜像构建。
+
 ## [2.11.0] - 2026-11-12
 
 新功能批：BK 会话治理——登录会话列表/踢下线 + 过期清理 + 空闲超时与 IP·UA 绑定（规格 [docs/SESSION-MANAGEMENT.md](docs/SESSION-MANAGEMENT.md)）。

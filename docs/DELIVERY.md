@@ -38,10 +38,8 @@ npm run frontend:dev           # 另开终端：Vite 5174，/api 代理到 8090�
 4. **写日志**：新增采集/后台逻辑用 `域.动作` 事件名，失败路径带原因。
 5. **测试分两链**：主链 `npm test`（44 个文件）；链外 `test/email-auth.test.js`、`test/api.test.js`、`test/cli-dispatch.test.js` 改相关代码时单独跑。
 6. 凭据扫描 `npm run scan`（公开仓库前自检）。
-7. **README「开发进度」块是生成物**：任何改 `docs/TODO.md` 状态（含 QA 回写、发版改 `已发布 vX.Y.Z`）或
-   `package.json` 版本号的提交，**必须同一次提交里**跑 `npm run todo:progress` 并让 `todo:progress:check` 通过；
-   顺序 = **先改状态 / 改版本号，最后生成**（反了就把旧状态写进 README）。漏跑 CI `docs-progress` 直接红
-   （AS 批 v2.3.0 起；2026-11-11 BJ 批连红 3 次就是反例）。
+7. **README 没有进度摘要**（2026-11-12 起）：进度只看 [docs/TODO.md](TODO.md)（README 只保留一条链接），
+   不再有 `todo:progress` 脚本与 `docs-progress` CI（原因见 [TODO-PROGRESS.md](TODO-PROGRESS.md) §0）。
 
 ## 3. 提交与发版（构建镜像）完整步骤
 
@@ -65,20 +63,16 @@ node test/api.test.js          # 若动过 API/权限/标记
 # ③ 版本号（改 package.json + package-lock.json，不自动打 tag）
 npm version <X.Y.Z> --no-git-tag-version
 
-# ④ README 进度块（生成物，**必须在 ③ 之后**——块里的「当前版本」读的就是 package.json）
-npm run todo:progress
-npm run todo:progress:check     # 不一致就别提交（CI docs-progress 会红）
-
-# ⑤ 提交并推送 main
+# ④ 提交并推送 main
 git add -A
 git commit -m "feat(范围): 摘要"
 git push origin main
 
-# ⑥ 打 annotated tag 并推送（= 触发构建；**必须先收到"构建 vX.Y.Z"的人工指令**）
+# ⑤ 打 annotated tag 并推送（= 触发构建；**必须先收到"构建 vX.Y.Z"的人工指令**）
 git tag -a vX.Y.Z -m "SteamDeals X.Y.Z：<一句话摘要>"
 git push origin vX.Y.Z
 
-# ⑦ 盯 CI（gh 先切到有 workflow 权限的账号）
+# ⑥ 盯 CI（gh 先切到有 workflow 权限的账号）
 gh auth switch --user yyliucha
 gh run list --limit 2
 ```

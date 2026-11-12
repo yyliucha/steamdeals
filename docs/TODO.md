@@ -8,7 +8,7 @@
 >
 > **状态词（唯一口径）**：`待开发` / `依赖阻塞` / `开发中` / `已实现待发版` / `待质检` / `质检通过` / `质检打回` / `已发布 vX.Y.Z` / `待排查` / `待决策` / `已过时`。
 > **每个待办条目必须有一行 `**状态：…**`**——本文件是开发、质检两个 skill 的**唯一事实来源**，靠这一行判断是否可开工、是否已交付。
-> **README 摘要**：改完状态后运行 `npm run todo:progress` 更新 README 的「开发进度」块（CI `docs-progress` 会校验）；**顺序 = 先改状态、发版先 bump 版本号，最后生成**，`npm run todo:progress:check` 通过再提交；规则见 [TODO-PROGRESS.md](TODO-PROGRESS.md)（含 §13 生成时机）。
+> **README 进度**：本文件是唯一排期与状态来源；README 只放一条指向本页的链接，**不再生成摘要**（2026-11-12 所有者决定删除 `docs-progress` 门禁与自动生成，原因见 [TODO-PROGRESS.md](TODO-PROGRESS.md) §0）。
 
 ---
 

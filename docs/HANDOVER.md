@@ -35,12 +35,10 @@
 5. **收尾**：
    - 改 TODO：该条目 `**状态：已实现待发版**`，补提交哈希；
    - 改规格文档头部的状态行；
-   - **跑 `npm run todo:progress` → `npm run todo:progress:check`**：README「开发进度」块是**生成物**，
-     必须与刚改的状态进**同一次提交**；顺序固定 = **先改状态、后生成**（反过来会把旧状态写进 README）；
+   - README 不再有「开发进度」生成块（2026-11-12 下线），改状态只需改本文件 + INDEX；
    - 同步 `PROJECT-OVERVIEW.md` / `CHANGELOG.md` / `DELIVERY.md`（按规格要求）；
    - 调 `gameprice-qa` 质检；打回就修，直到 `质检通过`；
-6. **发版**：只有收到所有者的「构建 vX.Y.Z」指令才打 tag；发版后把 TODO 状态改成 `已发布 vX.Y.Z`，
-   **并重跑 `npm run todo:progress` + `--check`**（版本号已变，README 块必然过期，见 §6）。
+6. **发版**：只有收到所有者的「构建 vX.Y.Z」指令才打 tag；发版后把 TODO 状态改成 `已发布 vX.Y.Z`。
 
 ## 3. 汇报格式（对话里必须给，缺一段都算没汇报）
 
@@ -53,15 +51,6 @@
 ```
 
 **"未做"必须写，哪怕原因是"没排到"**——所有者靠这两行知道清单的真实进度。
-
-**改过 TODO 状态（或发版 bump 了版本号）时，汇报里必须多一行**：
-
-```
-📈 进度块：npm run todo:progress 已跑，todo:progress:check 通过
-```
-
-这一行不是形式：`docs-progress` CI 校验的是「README 进度块 == 由 docs/TODO.md + package.json 生成的结果」，
-漏跑就红（2026-11-11 BJ 批连红 3 次，见 §6）。
 
 ## 4. 当前可开工清单（2026-11-06 15:30 快照，实时以 TODO.md 为准）
 
@@ -98,15 +87,9 @@
 
 质检会话（`gameprice-qa`）只负责 `待质检 → 质检通过 / 质检打回`，**不写"已发布"**。
 
-**改状态 = 连带改 README 进度块**（2026-11-11 补规则，BJ 批实测）：
-
-- 任何 `**状态：…**` 变更（含 QA 的 `质检通过 / 质检打回`、发版的 `已发布 vX.Y.Z`）**都必须**在同一次提交里
-  跑 `npm run todo:progress`，并确认 `npm run todo:progress:check` 通过；
-- **顺序不能反**：先改完 TODO（发版还要先 bump `package.json` 版本号），**最后**再生成——README 块里的
-  `当前版本` 读的是 `package.json`，版本号改完再生成才对；
-- 反例（真实发生）：2026-11-11 BJ 批 14:29 开发改状态、14:30 质检改状态、14:52 发版既改状态又 bump 版本号，
-  三次都没重跑生成器 → `docs-progress` 连红 3 次（`#41/#42/#43`），最后用 `6eadc18` 补生成才恢复；
-- 这不是"文档洁癖"：README 是仓库首页，历史上手写进度就漂到过自相矛盾（见 [TODO-PROGRESS.md](TODO-PROGRESS.md) §2）。
+**改状态只改两处**（2026-11-12 简化）：`docs/TODO.md` 的状态行 + `docs/REQUIREMENTS-INDEX.md` 对应行。
+README 不再有「开发进度」生成块、也没有 `docs-progress` 门禁（2026-11-12 所有者决定下线：它依赖容易漏掉的手工步骤，
+反复变红且不参与构建；详见 [TODO-PROGRESS.md](TODO-PROGRESS.md) §0）。
 
 ## 7. 新需求进来时，给开发会话只发这一句
 
@@ -222,8 +205,7 @@ Test-Path .git/index.lock                  # True = 有 git 操作在跑
 1. 等对方提交（`git pull --rebase`）或确认对方已停笔；
 2. **重读两份文件全文**，吸收别人的新增——"没读到就改"必然冲掉内容；
 3. 用 `edit` **定点替换**补上本批状态 / 条目 / INDEX 行；**禁止整文件 `write` 覆盖**；
-4. 跑 `npm run todo:progress` 同步 README 进度块，再跑 `npm run todo:progress:check`；
-5. 核对全量状态：本批条目状态、`依赖：` / `解锁：` 联动、INDEX 行、README 块一致；
+4. 核对全量状态：本批条目状态、`依赖：` / `解锁：` 联动、INDEX 行；
    发现别人的内容被冲掉 → 停手、保留现场上报所有者，不自行"补回"。
 
 ### 10.4 已经撞车（覆盖已发生）
