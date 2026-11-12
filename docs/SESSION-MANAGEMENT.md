@@ -1,6 +1,6 @@
-# 会话治理：登录会话列表 / 踢下线 / 过期清理 / 空闲超时与绑定（质检通过）
+# 会话治理：登录会话列表 / 踢下线 / 过期清理 / 空闲超时与绑定（已发布 v2.11.0）
 
-> 状态：**质检通过（dc5c1c2，2026-11-12，待发版）**。编号 **BK**（BK-1 / BK-2 / BK-3）。
+> 状态：**已发布 v2.11.0（2026-11-12）**。编号 **BK**（BK-1 / BK-2 / BK-3）。
 > 关联：[AUTH-REDESIGN.md](AUTH-REDESIGN.md)（会话 7 天、改密踢会话的既有决策）、[WEB.md](WEB.md)（接口表）、
 > [ADMIN-BULK-ACTIONS.md](ADMIN-BULK-ACTIONS.md)（批量处置回执与审计）、[VISIT-IP-STATS.md](VISIT-IP-STATS.md) §8（IP 归属地口径）、
 > [TODO.md](TODO.md) 的 BK 条目。

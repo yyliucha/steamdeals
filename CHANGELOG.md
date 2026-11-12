@@ -4,6 +4,35 @@
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-11-12
+
+新功能批：BK 会话治理——登录会话列表/踢下线 + 过期清理 + 空闲超时与 IP·UA 绑定（规格 [docs/SESSION-MANAGEMENT.md](docs/SESSION-MANAGEMENT.md)）。
+
+### 新增
+
+- **登录会话列表与踢下线（后台）**：`GET /api/admin/sessions`（用户名/IP 筛选、`includeExpired`、分页；
+  每行 `{id,username,role,disabled,ip,region,userAgent,deviceId,createdAt,lastSeenAt,expiresAt,current}`，**绝不返回 token**）；
+  单条踢 `DELETE /api/admin/sessions/:id`、按用户踢 `DELETE /api/admin/users/:username/sessions`
+  （目标是自己时保留当前会话）、批量踢走 `/api/admin/bulk` 的 `sessions/kick`；后台「账号与服务 → 登录会话」页
+  （列齐全、当前会话标记、批量确认）；`last_seen_at` 每会话 5 分钟内存节流写。
+- **空闲超时 + IP/UA 绑定**：`auth.sessionIdleDays`（默认 7，0=关闭）空闲失效；`auth.sessionBindIp`（IPv4 /24、
+  IPv6 /64 前缀比较，`src/session-fingerprint.js`）与 `auth.sessionBindUa`（浏览器家族+主版本）绑定校验；
+  不一致即删行、清 cookie、记 `session.idle_expired` / `session.bound_mismatch`；升级前的老会话（无指纹键）不误踢。
+- **前台「退出其它所有设备」**：改密页新增卡片 + `POST /api/user/sessions/revoke-others`（保留当前会话）。
+- **会话解析收敛**：同一请求最多查一次会话（原 3 处 `userBySession` 收敛为 `resolveSession`）。
+
+### 修复
+
+- **单条禁用用户立即踢会话**（此前只有批量禁用会踢）；`userBySession` 兜底过滤 `disabled`；
+  用户列表「登录会话 N 个」只统计未过期。
+- **过期会话行无人清理**：并入现有 `prune`（每周），输出「登录会话 N 条」，连跑幂等；
+  空闲兜底分支随 `auth.sessionIdleDays` 生效。
+
+### 测试
+
+- 新增 `test/sessions.test.js`（10 用例覆盖规格 §4 验收 1–19，入主链）；修正 3 个既有测试的计数断言
+  与「换设备」用例的 IP 头（绑定语义下旧测试漏带 `x-forwarded-for` 会被正确踢掉）。
+
 ## [2.10.2] - 2026-11-11
 
 修复批：BJ 黑名单 IP 不再写入自动封禁 + 自动封禁记录口径 + 解封语义拆分（规格 [docs/BAN-AND-SECURITY-FIXES.md](docs/BAN-AND-SECURITY-FIXES.md) §10）。
