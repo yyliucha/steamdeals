@@ -70,13 +70,27 @@ const chart = computed(() => {
   const minV = Math.min(...list.map((p) => p.price_cents));
   const maxV = Math.max(...list.map((p) => p.price_cents));
   const span = maxV - minV || 1;
+  // BN 批（docs/PRICE-HISTORY-REPORT.md §10.3）：点坐标一次算好并保留数组，
+  // 模板不再对 points 字符串做 split(' ') 二次解析（低点圆点也直接复用 pts）。
   const pts = list.map((p, i) => {
     const x = list.length === 1 ? W / 2 : pad + ((W - 2 * pad) * i) / (list.length - 1);
     const y = H - pad - ((p.price_cents - minV) / span) * (H - 2 * pad);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
+    return { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)) };
   });
+  const points = pts.map((d) => `${d.x},${d.y}`).join(' ');
   const low = lowDays.value.length ? lowDays.value[lowDays.value.length - 1] : null;
-  return { points: pts.join(' '), area: `${pad},${H} ${pts.join(' ')} ${W - pad},${H}`, lowLabel: low ? `${money(histLow.value)} · ${low}` : '' };
+  return { pts, points, area: `${pad},${H} ${points} ${W - pad},${H}`, lowLabel: low ? `${money(histLow.value)} · ${low}` : '' };
+});
+
+// BN 批（docs/PRICE-HISTORY-REPORT.md §10.1/§10.2）：史低圆点在 JS 里一次算好（数据 + 坐标），
+// 模板只保留 v-for——原写法把 v-for 与 v-if 写在同一个 <circle> 上，Vue 3 里 v-if 优先级更高，
+// 编译后判断被提到 renderList 外、引用循环变量 p → 运行时 TypeError → 整个报表组件渲染失败。
+const lowDots = computed(() => {
+  if (!chart.value) return [];
+  const list = filtered.value;
+  return chart.value.pts
+    .map((pt, i) => ({ ...pt, p: list[i] }))
+    .filter((d) => d.p && d.p.price_cents === histLow.value);
 });
 </script>
 
@@ -106,8 +120,8 @@ const chart = computed(() => {
         <svg viewBox="0 0 840 76" preserveAspectRatio="none" role="img" aria-label="价格趋势">
           <polygon :points="chart.area" fill="rgba(139,130,245,.12)" />
           <polyline :points="chart.points" fill="none" stroke="#8b82f5" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
-          <circle v-for="(p, i) in filtered" v-if="p.price_cents === histLow" :key="'dot' + i" :cx="chart.points.split(' ')[i].split(',')[0]" :cy="chart.points.split(' ')[i].split(',')[1]" r="3.5" fill="#34c39b">
-            <title>{{ p.day }} · {{ money(p.price_cents) }}</title>
+          <circle v-for="(d, k) in lowDots" :key="'dot' + k" :cx="d.x" :cy="d.y" r="3.5" fill="#34c39b">
+            <title>{{ d.p.day }} · {{ money(d.p.price_cents) }}</title>
           </circle>
         </svg>
       </div>
