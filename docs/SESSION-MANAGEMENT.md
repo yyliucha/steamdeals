@@ -246,3 +246,98 @@ resolveSession(q, token, req)  // 每请求最多一次，结果缓存到局部�
    若所有者要求「完整 IP / 完整 UA 字符串必须一致」，改一处比较函数即可，但需接受更高的掉线率。
 2. **绑定是否也作用于管理员**：本规格默认**是**（管理员会话被盗风险更高）；若担心自己换网络被踢，可只对 `role='user'` 生效。
 3. **「退出所有设备」是否包含当前设备**：本规格默认**不包含**（保留当前，另有「退出登录」）；若要一键全退再跳登录页，需改文案与接口语义。
+
+## 8. 2026-11-13 修订（BM）：登录页硬跳 404 与"登录失效会不会自动跳转"
+
+> 状态：**已确认待开发（2026-11-13）**。编号 **BM**（BM-1 / BM-2 已定；BM-3 / BM-4 待所有者确认）。
+> 关联：本文 §3.2 会话解析（空闲/绑定失效）、[WEB.md](WEB.md)（页面路由）、
+> [UNSAVED-GUARD.md](UNSAVED-GUARD.md)（离开提醒的 `bypassNextGuard`）。
+
+### 8.1 现象与证据（2026-11-13 11:13，生产 v2.11.0）
+
+**现象**：所有者离开一段时间后回到后台页（`/console?section=games`），再操作时浏览器整页跳到
+`https://sd.yyliucha.cn/login?next=%2Fconsole%3Fsection%3Dgames`，页面只有纯文本 **`not found`**。
+
+| # | 结论 | 证据 |
+|---|---|---|
+| 1 | **`/login` 没有登记进 SPA 回退白名单**：白名单只有 `/`、`/console`、`/setup`、`/banned`、`/appeal` 及其 `.html` 变体 | `src/server.js:3750` |
+| 2 | 未命中的路径落到旧 `web/` 目录找文件，找不到就返回**纯文本 404 `not found`** | `src/server.js:3726`（`serveStatic`） |
+| 3 | 全仓 `src/` 里**没有任何** `'/login'` 字符串——服务端从未登记过这个页面 | `grep -n "'/login'" src/*.js` 无结果 |
+| 4 | `/login`、`/register`、`/change-password` 是 AL 批（v2.1.0，2026-11-09）新增的前端路由，白名单没跟着更新 | `frontend/src/router/index.js:21-23`；`git log -S "change-password" -- src/server.js` 无提交 |
+| 5 | 后台页的 401 处理是**整页跳转**（`window.location.href='/login?next=...'`），不是 Vue 路由 | `AdminModules.vue:329`、`AdminExtras.vue:116`、`AdminLogs.vue:211`、`AnnouncementDrawer.vue:95`、`UserCreateDrawer.vue:76` |
+| 6 | 前台首页的 401 是**软跳**（`router.push`），且 `/api/me`、`/api/login` 明确不跳 → 所以登录页平时"能用"，只有硬跳才 404 | `Home.vue:200` |
+| 7 | 没有全局 401 拦截器，也没有鉴权路由守卫（router 只有标题与未保存提醒） | `frontend/src/router/index.js:27-29` |
+| 8 | 会话失效的三个来源：空闲超时 / IP·UA 绑定 / 自然到期；前两个有日志，第三个无 | `src/server.js:484`（`session.idle_expired`）、`:496`/`:502`（`session.bound_mismatch`） |
+| 9 | 空闲超时的存量口径有坑：迁移把老会话的 `last_seen_at` 回填成 `created_at` → **登录超过 7 天的老会话，在 v2.11.0 部署后第一次请求就被判空闲过期** | `src/store/pg.js:450-452`、`src/server.js:477-487` |
+
+### 8.2 已确认的决策
+
+| # | 决策 |
+|---|---|
+| 1 | **BM-1（P0）**：SPA 回退白名单补齐 `/login`、`/register`、`/change-password`，并加测试防止以后新增页面再漏 |
+| 2 | **BM-2（P1）**：迁移口径改为「老会话 `last_seen_at = now()`」，不再用 `created_at`——**今后部署不会再把老会话一次性判空闲过期**；生产已发生的那次不回滚 |
+
+### 8.3 待所有者确认
+
+| # | 问题 | 默认（不确认就按此做） |
+|---|---|---|
+| 1 | **BM-3**：要不要把 6 处 401 跳转收敛成统一行为（全部 `router.push('/login?next=…&reason=expired')`，登录页提示「登录已过期」）？ | 做：收敛为一个 `redirectToLogin(reason)` helper（先 `bypassNextGuard()` 防未保存提醒卡住），登录页读 `reason` 显示提示 |
+| 2 | **BM-4**：要不要"心跳"（登录态页面每 N 分钟探测一次 `/api/me`，失效即跳）？ | 不做：只在真正发起请求时跳；心跳会给所有页面加周期请求 |
+
+### 8.4 设计
+
+**8.4.1 BM-1 白名单（必做）**
+
+`src/server.js` 的 `serveFrontendStatic` 白名单追加三个路径（与现有 `.html` 变体写法一致）：
+
+```js
+'/login', '/register', '/change-password',
+```
+
+**测试**：新增断言——`GET /login`、`/login?next=%2Fconsole`、`/register`、`/change-password` 都返回 **200** 且
+`content-type: text/html`（index.html）；并把"前端 router 里的页面路径"与"服务端白名单"做一致性断言
+（新增页面忘记登记时测试直接红，避免再犯）。
+
+**8.4.2 BM-2 迁移口径（必做）**
+
+`src/store/pg.js` 的迁移：
+
+```sql
+-- 老会话：空闲计时从"部署这一刻"开始，而不是从创建时间开始（否则登录超过 7 天的会话会立刻被判空闲）
+update sessions set last_seen_at = now() where last_seen_at is null;
+```
+
+- 已执行过旧迁移的库不会命中该语句（列已非空），所以对生产**不会**产生二次影响；
+- 不延长 `expires_at`（绝对上限仍 7/30 天），只是把"空闲 7 天"的起点修正为"部署/首次活动时刻"。
+
+**8.4.3 BM-3 统一 401（待确认，默认做）**
+
+- 抽一个前端 helper：`redirectToLogin(reason = 'expired')` → `bypassNextGuard()` + `router.push({path:'/login', query:{next, reason}})`
+  （`frontend/src/composables/useUnsavedGuard.js:96` 已有 `bypassNextGuard`）；
+- 5 处后台/组件硬跳（`window.location.href`）全部改用它——**不再整页导航**，即使白名单以外的新页面也不会 404；
+- `LoginPage` 读 `reason=expired` 显示「登录已过期，请重新登录」；
+- 前台 `Home.vue` 的软跳保持，仅补 `reason`；`/api/me` 401 仍按未登录处理（不跳、显示游客）。
+
+**8.4.4 BM-4 心跳（待确认，默认不做）**
+
+若做：仅在登录态页面的 `visibilitychange` 回前台时探测一次 `/api/me`（不常驻定时器，避免每个页面都加周期请求）；
+默认不做，保持"发起请求时才发现失效"。
+
+### 8.5 验收
+
+1. `GET /login`、`/login?next=%2Fconsole%3Fsection%3Dgames`、`/register`、`/change-password` → **200 + index.html**，浏览器直接打开/刷新不再 `not found`。
+2. 白名单一致性测试：前端 router 里每个页面路径都在服务端白名单里（未来新增页面漏登记 → 测试红）。
+3. 会话失效（删 `sessions` 行模拟）后，在后台任意页触发一次请求 → 跳到登录页且**页面正常渲染**；登录成功后回到 `next`。
+4. 后台 5 处 401 跳转行为一致（软跳、带 `reason`、不被未保存提醒卡住）；前台首页行为不变（`/api/me` 仍不跳）。
+5. 登录页显示「登录已过期，请重新登录」（reason 存在时）。
+6. 迁移幂等：连跑两次无副作用；新库无影响；老库第一次启动执行一次。
+7. `npm test` / `npm run frontend:build` / `npm run scan` 全绿。
+8. 部署侧复核：直接打开 `https://<站点>/login` 返回登录页；控制台会话失效后回到登录页而不是 `not found`。
+
+### 8.6 本批不做
+
+1. 不改会话策略本身（空闲 7 天、IP/UA 绑定、记住我 7/30 天都不动）；
+2. 不改封禁页/黑白名单/申诉流程；
+3. 不做前端路由鉴权重构（不加 `beforeEach` 登录检查）；
+4. 不做心跳（除非 BM-4 确认要做）。
+

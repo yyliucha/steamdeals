@@ -1223,6 +1223,33 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   连续 3 次不再重排；首次 429 即写全局冷却；连续失败 3 次跳过 30 天；指标卡/进度/429 信息与库一致；
   迁移幂等、权限 401/403；`npm test` / `frontend:build` / `scan` 全绿。
 
+## BM. 待开发：登录页硬跳 404（/login 未登记 SPA 回退）+ 会话失效跳转口径
+
+**状态：待开发（2026-11-13；BM-1 / BM-2 已定，BM-3 / BM-4 待所有者确认）**
+**依赖：** 无（BK 已发布 v2.11.0，本条修它暴露的登录页路由缺口）
+**解锁：** 无
+**规格**：[SESSION-MANAGEMENT.md](SESSION-MANAGEMENT.md) §8
+
+- **现象（2026-11-13 11:13，生产 v2.11.0）**：离开一段时间后回后台页（`/console?section=games`），再操作时整页跳到
+  `/login?next=%2Fconsole%3Fsection%3Dgames`，页面只有纯文本 **`not found`**，无法登录。
+- **根因（代码证据）**：① SPA 回退白名单没有 `/login`、`/register`、`/change-password`（`src/server.js:3750`），
+  未命中路径落到旧 `web/` 目录 → `serveStatic` 返回纯文本 404（`:3726`）；全仓 `src/` 没有任何 `'/login'` 字符串；
+  这三个页面是 AL 批（v2.1.0）新增的，白名单从未更新（`router/index.js:21-23`）。② 后台页 401 处理是
+  `window.location.href='/login?next=…'` **整页跳转**（`AdminModules.vue:329`、`AdminExtras.vue:116`、`AdminLogs.vue:211`、
+  `AnnouncementDrawer.vue:95`、`UserCreateDrawer.vue:76`），而前台首页是 `router.push` 软跳（`Home.vue:200`）——
+  所以登录页平时"能用"，只有硬跳才 404。③ 会话失效来源：空闲超时 / IP·UA 绑定 / 自然到期；
+  其中老会话的 `last_seen_at` 被迁移回填成 `created_at`（`src/store/pg.js:450-452`）→ 登录超过 7 天的会话
+  在部署后第一次请求就被判空闲过期（`server.js:477-487`）。
+- **已确认决策**：**BM-1（P0）** 白名单补齐 `/login`、`/register`、`/change-password` + 一致性测试；
+  **BM-2（P1）** 迁移改为老会话 `last_seen_at = now()`，今后部署不再"部署即登出"（已发生的不回滚）。
+- **待确认**：**BM-3** 统一 401 跳转（6 处收敛为 `redirectToLogin(reason)` 软跳 + 登录页提示「登录已过期」，默认做）；
+  **BM-4** 会话心跳（登录态页面回前台时探测 `/api/me`，默认不做）。
+- **改动落点**：`src/server.js`（白名单）；`src/store/pg.js`（迁移口径）；`frontend/src/pages/LoginPage.vue`（reason 提示）、
+  5 处 401 硬跳改为共享 helper（`composables/useUnsavedGuard.js` 的 `bypassNextGuard` 已有）；
+  `test/serve.test.js`（页面路径 200 + 白名单一致性）。
+- **验收**：见规格 §8.5——`/login`、`/register`、`/change-password` 直接打开/刷新返回 200 登录页；白名单一致性测试；
+  会话失效后后台页正确回登录页且能登录回 `next`；5 处 401 行为一致；迁移幂等；`npm test` / `frontend:build` / `scan` 全绿。
+
 
 
 
