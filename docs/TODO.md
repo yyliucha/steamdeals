@@ -1282,9 +1282,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   无历史游戏：显示「暂无历史记录」；区间切换与分页正常；新测试能复现旧 bug（旧写法→红）；
   `npm test` / `frontend:build` / `scan` 全绿；部署侧打开有历史详情 Console 干净。
 
-## BO. 待开发：价格历史删掉日期表格 + 趋势线加高到 150px
+## BO. ~~待开发：价格历史删掉日期表格 + 趋势线加高到 150px~~ → **已实现并发布 v2.13.0（2026-11-13）**
 
-**状态：质检通过（2026-11-13，257a2a6；QA 报告 docs/QA-PRICE-HISTORY-BO.md）**
+**状态：已发布 v2.13.0（2026-11-13，257a2a6；QA 报告 docs/QA-PRICE-HISTORY-BO.md）**
 **依赖：** BN（已发布 v2.12.1，本条在其修复后的组件上做界面精简）
 **解锁：** 无
 **规格**：[PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md) §11
