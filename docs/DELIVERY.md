@@ -195,7 +195,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   验证：`npm test` 全绿（85 文件；新增 `test/appeal-system.test.js` 19 项进主链）、`api.test` 22/22、
   `frontend:build`、`scan` 干净；质检：BR ✅ 放行（[QA-BAN-BR.md](QA-BAN-BR.md)），O/BQ ✅ 放行
   （[QA-APPEAL-OBQ.md](QA-APPEAL-OBQ.md) 第 2 轮）。
-  CI：待确认（tag 推送后 docker-hub / docker-tcr 构建中，见下一条 CI 记录）。
+  CI：docker-hub run 43486662860（test / smoke / publish 全绿）；docker-tcr run 43486662685
+  （test / publish 全绿），两个镜像源均已推送。
   **服务器部署待执行**（升级到 `2.16.0`）；部署后重点：
   ① 迁移新增 `appeals` 表（含 token 三列）+ 4 索引（幂等，一次性）；
   ② 手机实测：正常连刷首页 20 次不误封；被封后封禁页显示「约 X 分钟后恢复」+ 脱敏 IP，申诉页拉得出验证码
