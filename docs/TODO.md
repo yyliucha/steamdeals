@@ -1314,19 +1314,21 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   项目 v1.7.0 的 DLC 列因此恒为 0、v1.8.0 已下线（[STEAM-DLC.md](STEAM-DLC.md) §2/§3、README「已知限制 11」）。
   所有者确认：**不做拥有状态**，只做总数 + 列表，并明确标注"Steam 不提供 DLC 拥有数据"。
 - **已确认决策（8 项）**：① 不做拥有状态；② 口径 = `appdetails.dlc[]` 全部（含原声带/美术集/未发售）；
-  ③ 详情只显示数量 + 「查看全部 DLC」按钮，列表另开抽屉分页；④ 总数入库**并入 `steam-status`/`backfill`**
-  （同一次 appdetails 顺带写，零额外请求，不新建定时任务）；⑤ 列表要**价格 + 折扣 + 购买链接**（`GetItems` CN/CNY 批量取）；
-  ⑥ 明细以定时补齐为主，抽屉打开时缺明细允许**读路径回源一次**（≤3 批、按游戏 10 分钟节流、失败降级）；
-  ⑦ 不引新依赖、不做 DLC 到价提醒/史低/愿望单；⑧ 非 Steam 游戏不显示 DLC 入口。
+  ③ **详情弹窗内直接展示 DLC 列表**（详情最下方、分页 10），每行带 `Steam ↗` 跳
+  `https://store.steampowered.com/app/<appid>/`——**不另开抽屉**（所有者 2026-11-13 追加）；
+  ④ 总数入库**并入 `steam-status`/`backfill`**（同一次 appdetails 顺带写，零额外请求，不新建定时任务）；
+  ⑤ 列表要**价格 + 折扣 + 购买链接**（`GetItems` CN/CNY 批量取）；
+  ⑥ 明细以定时补齐为主，打开详情缺明细允许**读路径回源一次**（≤3 批、按游戏 10 分钟节流、失败降级）；
+  ⑦ 不引新依赖、不做 DLC 到价提醒/史低/愿望单；⑧ 非 Steam 游戏不显示 DLC 区块。
 - **改动落点**：`src/store/pg.js`（`games.dlc_appids` + `game_dlc` 迁移、upsert/差集、分页查询）、
   `src/adapters/steam-meta.js`（`normalizeOfficial` 提取 `dlcAppIds`）、`src/steam-status.js`（顺带写 + 收尾补明细）、
   `src/cli.js`（backfill appdetails 路径写入）、`src/adapters/store-browse.js`（复用 `fetchStoreItems`）、
-  `src/server.js`（详情 `dlc` 摘要 + `/api/games/:appid/dlc` + 回源节流）、`frontend/src/pages/Home.vue`（DLC 摘要行）、
-  `frontend/src/components/DlcDrawer.vue`（新增：搜索/排序/分页/购买链接/移动端）、对应测试。
+  `src/server.js`（详情 `dlc` 摘要 + `/api/games/:appid/dlc` + 回源节流）、
+  `frontend/src/pages/Home.vue`（详情最下方内联 DLC 列表：分页 10、Steam 跳转、移动端卡片）、对应测试。
 - **验收**：见规格 §4——`dlc_appids` 去重/过滤/上限、GetItems 不清空已有值；`game_dlc` 名称/价格/折扣/在售与差集清理；
-  详情 `dlc.total/synced/filled`；列表分页/排序/搜索/`buy_url`；回源 ≤3 批 + 10 分钟节流 + 失败不 5xx；
-  前端抽屉可用、明确"不提供拥有数据"、移动端卡片、非 Steam 无入口；`steam-status` 一轮后缺失数下降、日志可查、**不新增调度任务**；
-  `npm test` / `frontend:build` / `scan` 全绿。
+  详情 `dlc.total/synced/filled`；列表分页 10（上限 50）/名称升序/`buy_url`；回源 ≤3 批 + 10 分钟节流 + 失败不 5xx；
+  前端详情内联列表可用、翻页正常、每行可跳 Steam、明确"不提供拥有数据"、移动端卡片、非 Steam 无区块；
+  `steam-status` 一轮后缺失数下降、日志可查、**不新增调度任务**；`npm test` / `frontend:build` / `scan` 全绿。
 
 
 

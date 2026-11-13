@@ -28,10 +28,10 @@
 |---|---|
 | 1 | **不做拥有状态**：详情只显示"DLC 共 N 个"+ 列表，并明确标注「Steam 公开 API 不提供 DLC 拥有数据」 |
 | 2 | 口径 = `appdetails.dlc[]` **全部**（含原声带/美术集/未发售），不做分类、不单列"未发售" |
-| 3 | 详情弹窗**只显示数量 + 「查看全部 DLC」按钮**，列表另开抽屉（分页 50，可搜索/排序） |
+| 3 | **详情弹窗内直接展示 DLC 列表**（在详情内容最下方，分页 10）；每行带 `Steam ↗` 跳到 `https://store.steampowered.com/app/<appid>/`；**不另开抽屉** |
 | 4 | DLC 总数入库**并入现有 `steam-status` / `backfill`**（同一次 appdetails 顺带写），**不新建定时任务** |
 | 5 | 列表要**价格 + 折扣 + 购买链接**（`GetItems` 批量取，CN 区/CNY） |
-| 6 | 明细补齐以定时为主（status 每轮收尾补一批）；打开抽屉时缺明细允许**读路径回源一次**（≤3 批 GetItems、按游戏 10 分钟节流、失败降级） |
+| 6 | 明细补齐以定时为主（status 每轮收尾补一批）；打开详情、列表缺明细时允许**读路径回源一次**（≤3 批 GetItems、按游戏 10 分钟节流、失败降级） |
 | 7 | 不引入新依赖；不给 DLC 做到价提醒/史低/愿望单 |
 | 8 | 非 Steam 游戏（无 `steam_appid`）不显示 DLC 入口 |
 
@@ -90,11 +90,11 @@ create index if not exists idx_game_dlc_appid on game_dlc (appid);
   `filled` = `game_dlc` 里已有名称/价格的条数（前端可提示「明细同步中」）；
 - 不在详情里返回列表（DLC 上千时会让详情变慢）。
 
-**② DLC 列表** `GET /api/games/:appid/dlc?page=1&pageSize=50&sort=name|price&order=asc|desc&q=`（公开）：
+**② DLC 列表** `GET /api/games/:appid/dlc?page=1&pageSize=10`（公开）：
 
 ```json
 {
-  "total": 24, "page": 1, "pageSize": 50, "synced": true,
+  "total": 24, "page": 1, "pageSize": 10, "synced": true,
   "items": [{
     "appid": 2364740, "name": "Anno 1800 - Seat of Power",
     "price_cents": 4800, "original_cents": 4800, "discount_pct": 0,
@@ -104,26 +104,26 @@ create index if not exists idx_game_dlc_appid on game_dlc (appid);
 }
 ```
 
-- 白名单：`sort` ∈ {name, price}，`order` ∈ {asc, desc}，非法回落默认（name asc）；`pageSize` 上限 100；
-- `q` 只做 ILIKE 转义（名称 / AppID 字符串）；
+- 排序固定 `name asc nulls last, appid asc`（列表不做搜索/排序控件；DLC 数量大靠分页）；
+  `pageSize` 默认 **10**、上限 50；`page` 非法回落 1；
 - 名称缺失回退 `DLC #<appid>`、价格缺失显示「—」；`buy_url` 由 appid 构造，不落库；
 - **读路径回源（决策 6）**：进入本接口时若 `game_dlc` 缺明细且该游戏上次回源 >10 分钟 →
   同步拉 `fetchStoreItems`（当前页需要的最多 3 批、超时 5s），补库后再查询；
   失败/429 不报错，返回已缓存数据 + `synced:false`（前端提示"部分 DLC 信息待同步"）；
-- 非 Steam 游戏返回 `{ total: 0, synced: false, items: [] }`（详情页不显示入口）。
+- 非 Steam 游戏返回 `{ total: 0, synced: false, items: [] }`（详情页不显示 DLC 区块）。
 
 ### 3.4 前端（BP-3）
 
-- **详情弹窗**（`frontend/src/pages/Home.vue`）在「各区服与平台报价」下方加一行 DLC 摘要：
-  - `DLC 共 24 个` + 「查看全部 DLC」按钮（右上角）；
-  - 未同步：`DLC 数据待同步`（不显示 0）；无 DLC：`暂无 DLC`；非 Steam 游戏整行不显示；
-  - 副文案一行：`Steam 公开 API 不提供 DLC 拥有数据，这里只列 DLC 清单`。
-- **新组件** `frontend/src/components/DlcDrawer.vue`（`el-drawer`，桌面右侧 480px、移动端 bottom 85vh）：
-  - 顶部说明同上 + 搜索框（名称/AppID）+ 排序切换（名称 / 价格）；
-  - 列表行：名称、价格（含原价/折扣）、在售状态、`购买 ↗`（`rel="noopener noreferrer nofollow"`）；
-  - 分页 50（复用 `PaginationBar` 或 `el-pagination`）；移动端卡片；
-  - 空态「暂无 DLC」、错误态「DLC 信息加载失败，稍后重试」、`synced:false` 时的提示条。
-- Element Plus 组件已注册（`ElDrawer` 已用于通知/筛选抽屉），新增组件不需要额外注册。
+- **详情弹窗**（`frontend/src/pages/Home.vue`）在最下方（价格历史之后）新增 **DLC 区块**：
+  - 标题行：`DLC（共 24 个）` + 右侧副文案 `Steam 不提供 DLC 拥有数据`；
+  - 列表行（每行）：`名称`（点击与右侧 `Steam ↗` 同一个链接，新窗口打开 `https://store.steampowered.com/app/<appid>/`）、
+    价格（含原价/折扣）、在售状态（缺货标灰「缺货」）；
+  - 分页 **10 条/页**（复用 `PaginationBar`，`total = dlc.total`）；
+  - 移动端卡片：名称（可点跳 Steam）+ 价格 + 折扣 + 在售状态；
+  - 状态：`synced=false` 时整块不显示（或显示「DLC 数据待同步」且无列表）；`total=0` 显示「暂无 DLC」；
+    请求失败显示「DLC 信息加载失败，稍后重试」（不阻塞详情其它内容）；
+- 打开详情时若 `dlc.total > 0` → 自动拉第 1 页；翻页再请求；切区间/关弹窗不残留状态；
+- 不新增组件文件（直接写在 `Home.vue` 的详情弹窗里）；外部链接统一 `rel="noopener noreferrer nofollow"`。
 
 ### 3.5 配置与成本（BP-1）
 
@@ -135,7 +135,7 @@ create index if not exists idx_game_dlc_appid on game_dlc (appid);
 - 不进设置页（部署期参数留 env，符合项目规则）；
 - 单轮成本：≤30 次 GetItems（约 0.3–1s/次）≈ 10–30 秒，可忽略；
 - 读路径回源：每游戏 ≤3 次 GetItems、10 分钟节流、失败降级；
-- 全库 DLC 明细收敛：靠"用户打开抽屉回源（快）+ status 收尾补齐（慢）"两条腿，不追求一次性全量。
+- 全库 DLC 明细收敛：靠"用户打开详情回源（快）+ status 收尾补齐（慢）"两条腿，不追求一次性全量。
 
 ## 4. 验收
 
@@ -144,18 +144,19 @@ create index if not exists idx_game_dlc_appid on game_dlc (appid);
 2. **明细**：`GetItems` 返回名称/价格/折扣/币种 → `game_dlc` upsert 正确（CN 区、CNY）；
    取不到的（锁区/下架）保留行、`name` 为空、`price_cents` 为空；`dlc_appids` 变化时差集删除。
 3. **详情接口**：`dlc.total` = 数组长度、`synced`/`filled` 正确；无 Steam appid → `{ total:0, synced:false }`。
-4. **列表接口**：分页（50/100 上限）、`sort/order` 白名单、`q` 转义、`buy_url` 正确；
-   非法 page/参数回落默认值；非 Steam 游戏返回空集。
-5. **回源**：缺明细首次打开 → 触发 ≤3 批 GetItems 并落库；10 分钟内再次打开不再请求；
+4. **列表接口**：分页 10（上限 50）、名称升序、`buy_url` 正确；非法 page 回落 1；非 Steam 游戏返回空集。
+5. **回源**：缺明细首次打开详情 → 触发 ≤3 批 GetItems 并落库；10 分钟内再次打开不再请求；
    GetItems 失败/429 → 仍返回列表（名称回退 `DLC #appid`）且 `synced:false`，不 5xx。
-6. **前端**：详情显示「DLC 共 N 个」+ 按钮；抽屉列表/分页/搜索/排序可用；明确显示"不提供拥有数据"；
-   移动端卡片；无 DLC 显示「暂无 DLC」；非 Steam 游戏无入口；DLC 上千（Train Simulator）分页正常。
+6. **前端（详情内联列表）**：详情弹窗最下方出现 `DLC（共 N 个）` 区块；列表 10 条/页、翻页正常；
+   每行可点击跳 `https://store.steampowered.com/app/<appid>/`（新窗口）；价格/折扣/缺货状态正确；
+   明确显示「Steam 不提供 DLC 拥有数据」；移动端卡片；无 DLC 显示「暂无 DLC」；非 Steam 游戏无该区块；
+   DLC 上千（Train Simulator）翻页正常、弹窗不卡。
 7. **定时与日志**：`steam-status` 一轮后缺明细的游戏数下降；日志 `steam.status.dlc_written`、
    `steam.dlc.filled` 可查；**不新增调度任务**（`jobsFromEnv` 不变）。
 8. **权限/隐私**：接口全部公开、游客可看；返回体不含账号/DLC 拥有信息、不含 token。
-9. `npm test` 全绿（normalize 提取、DB upsert/差集、接口分页排序过滤、前端静态断言）、
+9. `npm test` 全绿（normalize 提取、DB upsert/差集、接口分页、前端静态断言）、
    `npm run frontend:build`、`npm run scan`。
-10. **部署侧复核**：打开 Anno 1800 / HELLDIVERS™ 2 详情看「DLC 共 N 个」，打开抽屉看名称/价格/购买链接；
+10. **部署侧复核**：打开 Anno 1800 / HELLDIVERS™ 2 详情，滚到底看 DLC 列表与 Steam 跳转；翻页正常；
     Console 干净；24h 后 `game_dlc` 明细覆盖上升。
 
 ## 5. 实施顺序与依赖
@@ -164,7 +165,7 @@ create index if not exists idx_game_dlc_appid on game_dlc (appid);
 |---|---|---|
 | **BP-1** | 迁移 + `dlc_appids` 提取/写入 + `game_dlc` + GetItems 补齐 + status 收尾 + 差集清理 + env | 无 |
 | **BP-2** | 详情 `dlc` 摘要 + `/api/games/:appid/dlc` 列表 + 读路径回源与节流 | **BP-1** |
-| **BP-3** | 详情入口 + `DlcDrawer.vue` + 移动端 | **BP-2** |
+| **BP-3** | 详情内联 DLC 列表（`Home.vue`，分页 10 + Steam 跳转）+ 移动端卡片 | **BP-2** |
 | **BP-4** | 测试与文档（WEB 接口表、PROJECT-OVERVIEW、README 已知限制口径、CHANGELOG 随发版） | BP-1~3 |
 
 ## 6. 本批不做
@@ -175,10 +176,12 @@ create index if not exists idx_game_dlc_appid on game_dlc (appid);
 4. 不做 DLC 历史价格/史低/到价提醒/愿望单；
 5. 不做 DLC 分类（原声带/美术集/玩法）与"未发售"单列（口径 = 商店页 `dlc[]` 全部）；
 6. 不做杉果/GOG 等非 Steam 平台的 DLC；
-7. 不做后台 DLC 管理页/统计。
+7. 不做后台 DLC 管理页/统计；
+8. **不做抽屉/独立 DLC 页面**（所有者 2026-11-13 追加：改为详情内联列表 + Steam 商店跳转）。
 
 ## 7. 待确认（有默认值，不阻塞）
 
 1. DLC 明细**读路径回源**（默认 ≤3 批、10 分钟节流）是否接受；若要"纯定时、慢 1–30 天"可改；
 2. `STEAM_DLC_FILL_GAMES=50` / `STEAM_DLC_FILL_BATCH=30` 的默认值是否合适；
-3. 购买链接默认 `https://store.steampowered.com/app/<appid>/`（不带区服参数，Steam 会按访客区服跳转）是否可接受。
+3. 购买链接默认 `https://store.steampowered.com/app/<appid>/`（不带区服参数，Steam 会按访客区服跳转）是否可接受；
+4. **列表位置与密度**：默认放在详情弹窗最下方（价格历史之后）、每页 10 条；若想更靠上/每页更少，改一处即可。
