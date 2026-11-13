@@ -1302,6 +1302,32 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   区间切换后趋势线、轴标签、条数同步变化；移动端 120px 无表格；无历史仍显示「暂无历史记录」；平线垂直居中；
   史低圆点数量不变；`npm test` / `frontend:build` / `scan` 全绿；部署后线上 Console 干净。
 
+## BP. 待开发：游戏详情·DLC 总数与列表（含价格/购买链接，不含拥有状态）
+
+**状态：待开发（2026-11-13，所有者确认 5 组 / 8 项细节）**
+**依赖：** 无（BO 是价格历史区块，与本条不同组件；都在详情弹窗，并行时注意 `Home.vue` 只 BP 加一行）
+**解锁：** 无
+**规格**：[GAME-DLC.md](GAME-DLC.md)
+
+- **需求（2026-11-13 所有者）**：游戏详情里能看到「这个游戏已出的 DLC 数量」和「DLC 列表（哪些在售、多少钱）」。
+- **硬约束（先决事实）**：**Steam 公开 API 不返回 DLC 拥有数据**（`GetOwnedGames` 只有游戏条目）——
+  项目 v1.7.0 的 DLC 列因此恒为 0、v1.8.0 已下线（[STEAM-DLC.md](STEAM-DLC.md) §2/§3、README「已知限制 11」）。
+  所有者确认：**不做拥有状态**，只做总数 + 列表，并明确标注"Steam 不提供 DLC 拥有数据"。
+- **已确认决策（8 项）**：① 不做拥有状态；② 口径 = `appdetails.dlc[]` 全部（含原声带/美术集/未发售）；
+  ③ 详情只显示数量 + 「查看全部 DLC」按钮，列表另开抽屉分页；④ 总数入库**并入 `steam-status`/`backfill`**
+  （同一次 appdetails 顺带写，零额外请求，不新建定时任务）；⑤ 列表要**价格 + 折扣 + 购买链接**（`GetItems` CN/CNY 批量取）；
+  ⑥ 明细以定时补齐为主，抽屉打开时缺明细允许**读路径回源一次**（≤3 批、按游戏 10 分钟节流、失败降级）；
+  ⑦ 不引新依赖、不做 DLC 到价提醒/史低/愿望单；⑧ 非 Steam 游戏不显示 DLC 入口。
+- **改动落点**：`src/store/pg.js`（`games.dlc_appids` + `game_dlc` 迁移、upsert/差集、分页查询）、
+  `src/adapters/steam-meta.js`（`normalizeOfficial` 提取 `dlcAppIds`）、`src/steam-status.js`（顺带写 + 收尾补明细）、
+  `src/cli.js`（backfill appdetails 路径写入）、`src/adapters/store-browse.js`（复用 `fetchStoreItems`）、
+  `src/server.js`（详情 `dlc` 摘要 + `/api/games/:appid/dlc` + 回源节流）、`frontend/src/pages/Home.vue`（DLC 摘要行）、
+  `frontend/src/components/DlcDrawer.vue`（新增：搜索/排序/分页/购买链接/移动端）、对应测试。
+- **验收**：见规格 §4——`dlc_appids` 去重/过滤/上限、GetItems 不清空已有值；`game_dlc` 名称/价格/折扣/在售与差集清理；
+  详情 `dlc.total/synced/filled`；列表分页/排序/搜索/`buy_url`；回源 ≤3 批 + 10 分钟节流 + 失败不 5xx；
+  前端抽屉可用、明确"不提供拥有数据"、移动端卡片、非 Steam 无入口；`steam-status` 一轮后缺失数下降、日志可查、**不新增调度任务**；
+  `npm test` / `frontend:build` / `scan` 全绿。
+
 
 
 
