@@ -1225,7 +1225,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BM. 待开发：登录页硬跳 404（/login 未登记 SPA 回退）+ 会话失效跳转口径
 
-**状态：待开发（2026-11-13，所有者确认 4 项细节）**
+**状态：已实现待发版（2026-11-13，BM-1~4 一次交付）**
 **依赖：** 无（BK 已发布 v2.11.0，本条修它暴露的登录页路由缺口）
 **解锁：** 无
 **规格**：[SESSION-MANAGEMENT.md](SESSION-MANAGEMENT.md) §8
@@ -1255,6 +1255,32 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   会话失效后后台页正确回登录页且能登录回 `next`；5 处 401 行为一致、源码无 `window.location.href='/login`；
   登录页显示过期提示；心跳 ≤5 分钟/回前台即软跳、游客与离线不跳、公开页不探测、只一个定时器；
   迁移幂等；`npm test` / `frontend:build` / `scan` 全绿。
+
+## BN. 待开发：BUG——价格历史区块整个不渲染（v-for 与 v-if 同元素导致渲染抛错）
+
+**状态：待开发（2026-11-13，所有者确认 2 项细节）**
+**依赖：** 无（AP 批已发布 v2.2.0，本条修它遗留的渲染缺陷）
+**解锁：** 无
+**规格**：[PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md) §10
+
+- **现象（2026-11-13 所有者截图，生产 v2.11.0）**：打开有历史价格的游戏详情（HELLDIVERS™ 2），报价列表之后
+  **整块空白**——「区间最低/区间最高/当前较史低/记录天数」指标条、「价格历史」标题、趋势线、表格、
+  「暂无历史记录」全都不见；`当前最低/历史最低/各区服报价` 正常（数据没丢）。
+- **根因（代码证据）**：`frontend/src/components/PriceHistoryReport.vue:109` 的
+  `<circle v-for="(p, i) in filtered" v-if="p.price_cents === histLow" …>` 把 `v-for` 与 `v-if` 写在同一个元素上；
+  Vue 3 里 `v-if` 优先级更高，编译后把判断提到 `renderList` **外面**（`@vue/compiler-dom` 实测产物：
+  `(_ctx.p.price_cents === _ctx.histLow) ? _renderList(_ctx.filtered, (p,i)=>…) : …`），`p` 在循环外不存在 →
+  运行时 `TypeError: Cannot read properties of undefined (reading 'price_cents')` → **整个组件渲染失败**
+  （连空态一起消失）。该写法自 AP 批 `282d018` 起就存在；现有测试只做静态字符串断言、还把坏写法当成预期
+  （`test/price-history-report.test.js` 断言 `p.price_cents === histLow`），所以没拦住。
+- **已确认决策（2 项）**：① 模板不再混用——低点圆点改为 JS 预计算 `lowDots`（数据 + 坐标），模板只保留 `v-for`；
+  `chart` 同时产出点数组，去掉模板里的 `split(' ')` 二次解析；② 补**会渲染**的回归测试（compile 级或 SSR 级），
+  旧写法放回去必须红。
+- **改动落点**：`frontend/src/components/PriceHistoryReport.vue`（`chart` 返回 `pts`、新增 `lowDots`、模板改 `v-for`）、
+  `test/price-history-report.test.js`（删"坏写法当预期"的断言；加「同元素禁止 v-for+v-if」与编译级/渲染级断言）。
+- **验收**：见规格 §10.4——有历史游戏：指标条/趋势线/表格全部出现、史低高亮正确、Console 无 TypeError；
+  无历史游戏：显示「暂无历史记录」；区间切换与分页正常；新测试能复现旧 bug（旧写法→红）；
+  `npm test` / `frontend:build` / `scan` 全绿；部署侧打开有历史详情 Console 干净。
 
 
 

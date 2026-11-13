@@ -118,4 +118,94 @@
 
 无。形态、范围、史低口径、移动端、比较口径、导出边界已于 2026-11-09 确认。
 
+## 10. 2026-11-13 修订（BN）：价格历史区块整个不渲染——`v-for` 与 `v-if` 写在同一元素
+
+> 状态：**已确认待开发（2026-11-13）**。编号 **BN**（BUG 修复）。
+> 关联：本文 §4 界面、[TODO.md](TODO.md) 的 BN 条目。
+
+### 10.1 现象与证据（2026-11-13，生产 v2.11.0）
+
+**现象**：打开有历史价格的游戏详情（截图：HELLDIVERS™ 2），报价列表之后**什么都没有**——
+「区间最低 / 区间最高 / 当前较史低 / 记录天数」指标条、「价格历史」标题、趋势线、表格、「暂无历史记录」全部消失；
+`当前最低 / 历史最低 / 折扣 / 各区服与平台报价` 正常，说明数据没丢，是展示层崩了。
+
+| # | 结论 | 证据 |
+|---|---|---|
+| 1 | 低点圆点同时用了 `v-for` 与 `v-if`（同一元素） | `frontend/src/components/PriceHistoryReport.vue:109` |
+| 2 | Vue 3 里 **`v-if` 优先级高于 `v-for`**，`v-if` 被提到循环外 → 引用循环变量 `p`（作用域里不存在） | 用仓库内 `@vue/compiler-dom` 对同一写法编译，产物为 `(_ctx.p.price_cents === _ctx.histLow) ? renderList(_ctx.filtered, (p,i)=>…) : …`（`p` 在 renderList 之外） |
+| 3 | 运行时抛 `TypeError: Cannot read properties of undefined (reading 'price_cents')`，**整个 `PriceHistoryReport` 组件渲染失败** | 渲染函数在构造 vnode 前抛错；组件内所有区块（含空态）一起消失 |
+| 4 | 该写法自 AP 批（`282d018`，v2.2.0）就存在，组件之后未再改 | `git log --oneline -- frontend/src/components/PriceHistoryReport.vue` 只有 `282d018` |
+| 5 | 现有测试拦不住：只做**静态字符串断言**，且把坏写法当成了预期 | `test/price-history-report.test.js` 断言 `p.price_cents === histLow` |
+| 6 | 触发条件：`detail.series` 非空（有历史）才走到 `<template v-if="chart">`；空历史会正常显示「暂无历史记录」 | `PriceHistoryReport.vue:69-83`、`:99`、`:138` |
+
+### 10.2 已确认的决策（2026-11-13 所有者）
+
+| # | 决策 |
+|---|---|
+| 1 | **模板不再混用 `v-for`/`v-if`**：低点圆点改为 JS 预计算 `lowDots`（含坐标），模板只保留 `v-for` |
+| 2 | **补"会渲染"的回归测试**：把现有静态断言改掉，新增模板编译级/SSR 渲染级断言，旧写法放回去必须红 |
+
+### 10.3 设计
+
+**组件改造**（`frontend/src/components/PriceHistoryReport.vue`）：
+
+```js
+// chart 同时产出点数组，避免模板里 split(' ') 二次解析
+const chart = computed(() => {
+  ...
+  const pts = list.map((p, i) => ({ x, y }));
+  return { pts, points: pts.map((d) => `${d.x},${d.y}`).join(' '), area, lowLabel };
+});
+
+// 低点圆点：在 JS 里一次算好（数据 + 坐标），模板不再需要 v-if
+const lowDots = computed(() => {
+  if (!chart.value) return [];
+  return chart.value.pts
+    .map((pt, i) => ({ ...pt, p: filtered.value[i] }))
+    .filter((d) => d.p.price_cents === histLow.value);
+});
+```
+
+```html
+<circle v-for="(d, k) in lowDots" :key="'dot' + k" :cx="d.x" :cy="d.y" r="3.5" fill="#34c39b">
+  <title>{{ d.p.day }} · {{ money(d.p.price_cents) }}</title>
+</circle>
+```
+
+要点：
+
+- 史低口径不变：仍是**全期**史低（`histLow` 基于整段 `series`），圆点数量 = 史低价出现的天数；
+- `filtered` 与 `chart.pts` 一一对应（同一 `list`），不会错位；
+- 空历史路径不变：`chart === null` → 仍显示「暂无历史记录」。
+
+**测试改造**（`test/price-history-report.test.js`）：
+
+1. 删掉 `assert.match(c, /p.price_cents === histLow/)` 这类"把 bug 当预期"的断言；
+2. 新增静态断言：模板里**不允许**同一元素同时出现 `v-for` 与 `v-if`（正则守 `PriceHistoryReport.vue`，可复用到其它组件）；
+3. 新增**渲染级**断言（二选一，推荐 compile 级，零浏览器依赖）：
+   - 用 `@vue/compiler-dom` 编译该模板片段，断言产物中**没有** `_ctx.p.` 这类循环外引用；或
+   - 用 `@vue/server-renderer` 渲染一个 `series` 非空的最小用例，断言输出包含「价格历史」与 `<svg`；
+4. 反向验证：把旧写法临时放回，测试必须红（QA 复检时抽查）。
+
+**文件落点**：`frontend/src/components/PriceHistoryReport.vue`、`test/price-history-report.test.js`；
+若用 SSR 断言需把 `test/price-history-report.test.js` 明确接入 `npm test` 主链（已在主链）。
+
+### 10.4 验收
+
+1. 打开**有历史**的游戏详情（如 HELLDIVERS™ 2）：出现指标条（区间最低/最高/当前较史低/记录天数）、「价格历史」标题、
+   趋势线、表格；「史低」行与圆点高亮正确；浏览器 Console **无** `TypeError` / Vue 渲染警告。
+2. 打开**无历史**的详情：显示「暂无历史记录」，无异常。
+3. 区间切换（近 30 天 / 近 90 天 / 全部）与表格分页仍正常；史低圆点数量 = 史低价出现天数（全期口径不变）。
+4. 回归测试：新断言能锁住该 bug（把 `v-for`+`v-if` 旧写法放回 → 测试红）；`test/price-history-report.test.js` 中原有的
+   指标条/趋势线/样式断言保留。
+5. `npm test` 全绿、`npm run frontend:build`、`npm run scan`。
+6. 部署侧复核：线上打开任意有历史的游戏详情，趋势线出现且 Console 干净。
+
+### 10.5 本批不做
+
+1. 不改价格历史的数据口径与接口（`dailyMinSeries`、`series` 不变）；
+2. 不改 AP 批的界面设计（指标条/趋势线/表格/史低高亮保持）；
+3. 不动后台「价格走势」的 `PriceSparkline`（AT 批，独立组件）；
+4. 不做多平台多线、缩放、导出（仍是 AP 批的边界）。
+
 
