@@ -182,10 +182,23 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-12 更新，v2.11.0 已发布：BK 会话治理）
+### 当前状态（2026-11-13 更新，v2.11.1 已发布：BL 回填吞吐治理）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
+- **v2.11.1 已发布**（tag `v2.11.1`）：BL 批增量回填吞吐与配额治理——候选排除四态（free/coming_soon/
+  region_locked/not_found，no_price 保留）；节奏每周 5 万 → **每天 5000**；403/429 **软退出**（exit 75 =
+  partial、进度保留、1 小时重排、连续 3 次放弃等日轮、failures 不增不熔断）；首次 429 即落盘全局冷却
+  （含 at/label）；同一 appid 连续 3 次拿不到元数据跳过 30 天（成功清零）；指标卡「待回填/已排除/跳过中」
+  与任务卡「部分完成/429 次数/重试时间」；`data/backfill-progress.json` 进度文件并入 `/api/admin/sync/status`。
+  验证：`npm test` 全绿（含新增 `backfill-throughput` 5 项）、`api.test` 22/22、`frontend:build`、`scan` 干净；
+  质检：BL ✅ 放行（[QA-BACKFILL-THROUGHPUT-BL.md](QA-BACKFILL-THROUGHPUT-BL.md)，通过 9 / 需人工确认 2）。
+  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  **服务器部署待执行**（升级到 `2.11.1`）；部署后重点：
+  ① 按 [BACKFILL-THROUGHPUT.md](BACKFILL-THROUGHPUT.md) §4.10 只读复核（候选数/四态数、进度文件 done/limit、
+  24h 内每日一轮、429 次数对比上一周）；
+  ② 首次启动会在 `games`（19.6 万行）上建 `idx_games_backfill_skip` 部分索引（一次性耗时，建议低峰窗口）；
+  ③ 真实 429 触发一次确认「部分完成 + 1 小时重排」链路。
 - **v2.11.0 已发布**（tag `v2.11.0`）：BK 批会话治理——后台「账号与服务 → 登录会话」列表与踢下线
   （单条/批量/按用户，响应绝不返回 token）；会话空闲 7 天失效（可配 0=关闭）+ IP 网段（IPv4 /24、IPv6 /64）
   与浏览器家族+主版本绑定（开关可关，老会话不误踢）；单条禁用立即踢会话、会话计数只算未过期、

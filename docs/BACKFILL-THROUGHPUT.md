@@ -1,6 +1,6 @@
-# 增量回填吞吐与配额治理（候选去噪 / 429 软退出重排 / 每日节奏 / 失败隔离 / 观测）（待开发）
+# 增量回填吞吐与配额治理（候选去噪 / 429 软退出重排 / 每日节奏 / 失败隔离 / 观测）
 
-> 状态：**已确认待开发（2026-11-13，所有者确认 8 项细节）**。编号 **BL**（BL-1 / BL-2 / BL-3）。
+> 状态：**已确认待开发（2026-11-13）；已实现并发布 v2.11.1（2026-11-13，e734673；QA ✅ 放行 docs/QA-BACKFILL-THROUGHPUT-BL.md）**。编号 **BL**（BL-1 / BL-2 / BL-3）。
 > 关联：[SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md)（AC-4 每日配额预算 / AC-6 429 全局退避 / AC-9 新游戏优先）、
 > [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md)（六态口径）、[TODO.md](TODO.md) 的 BL 条目。
 

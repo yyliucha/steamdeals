@@ -1187,9 +1187,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `last_seen_at` 5 分钟节流；BK-3：空闲 7 天失效（可设 0 关闭）、IPv4 /24 与 IPv6 /64 同段不误踢、UA 家族+主版本、
   老会话不被绑定校验踢掉、前台退出其它设备、改密/重置行为不倒退、`prune` 扩展、`npm test` / `frontend:build` / `scan` 全绿。
 
-## BL. 待开发：增量回填吞吐与配额治理（候选去噪 + 429 软退出重排 + 每日节奏 + 失败隔离 + 观测）
+## BL. ~~待开发：增量回填吞吐与配额治理（候选去噪 + 429 软退出重排 + 每日节奏 + 失败隔离 + 观测）~~ → **已实现并发布 v2.11.1（2026-11-13）**
 
-**状态：质检通过（2026-11-13，e734673；QA 报告 docs/QA-BACKFILL-THROUGHPUT-BL.md）**
+**状态：已发布 v2.11.1（2026-11-13，e734673；QA 报告 docs/QA-BACKFILL-THROUGHPUT-BL.md）**
 **依赖：** 无（BL-1 / BL-2 可独立开工；BL-3 依赖 BL-1 的候选 SQL 与 BL-2 的进度文件，见批次表）
 **解锁：** 无
 **规格**：[BACKFILL-THROUGHPUT.md](BACKFILL-THROUGHPUT.md)

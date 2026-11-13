@@ -2,13 +2,40 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [2.11.1] - 2026-11-13
+
+修复批：BL 增量回填吞吐与配额治理（候选去噪 + 429 软退出重排 + 每日节奏 + 失败隔离 + 观测）。
+
+### 修复
+
+- **回填候选去噪（BL-1）**：候选谓词排除 `free / coming_soon / region_locked / not_found` 四态
+  （它们永远不会有报价，回填只白烧配额）；`no_price`（国区无价）保留重试；候选谓词统一进
+  `src/store/pg.js` 的 `backfillCandidateWhere`（CLI 与统计共用，防两处分叉）。
+- **每日节奏（BL-1）**：回填从每周一轮、上限 5 万改为**每天一轮、上限 5000**（env 仍可覆盖），
+  AC-4 每日预算自动重算、总量仍 <24h。
+- **429 软退出（BL-2）**：遇到 403/429 不再整轮作废——本轮进度保留（exit 75 = partial），
+  调度器 1 小时内自动重排一轮（连续 3 次放弃等日轮、成功一次清零），failures 不累计、不触发熔断；
+  首次 429 即写全局冷却文件（含 `at`/`label`），其它任务不再立刻打 Steam；
+  `data/backfill-progress.json` 记录本轮进度（done/limit/remaining/429 次数等），
+  `/api/admin/sync/status` 合并返回。
+- **失败隔离（BL-3）**：同一 appid 连续 3 次拿不到元数据 → 跳过 30 天（`backfill_fail_count` /
+  `backfill_skip_until` + 部分索引），到期自动重入，成功一次清零；429 软退出时未处理的条目不计数。
+- **观测**：后台指标卡新增「待回填 / 已排除 / 跳过中」；任务卡「上次结果」支持「部分完成」
+  （hover 显示 HTTP 429 · 已处理 X/Y · 剩余约 Z · 预计约 N 天），失败原因列显示 429 累计次数与最近时间，
+  状态列显示「重试于 HH:mm」。
 
 ### 移除
 
 - README「开发进度」自动摘要与 `docs-progress` 门禁下线（2026-11-12 所有者决定，见 [docs/TODO-PROGRESS.md](docs/TODO-PROGRESS.md) §0）：
   README 只保留指向 `docs/TODO.md` 的链接；删除 `scripts/todo-progress.js`、`.github/workflows/docs-progress.yml`、
   `test/todo-progress.test.js` 与两个 npm script。原因：该检查依赖人工步骤、反复变红、且不参与镜像构建。
+
+### 测试
+
+- 新增 `test/backfill-throughput.test.js`（5 项：候选去噪、进度文件、失败隔离、统计对账）并接入 `npm test` 主链；
+- `test/scheduler.test.js` 增 BL-2（partial 不熔断、1 小时重排、连续 3 次放弃、成功清零、dueJobs 重排判定）；
+- `test/http-error.test.js` 增 429 落盘 at/label 断言；`test/http-proxy-failover.test.js` 与
+  `test/image-coverage.test.js` 随谓词迁移更新。
 
 ## [2.11.0] - 2026-11-12
 
