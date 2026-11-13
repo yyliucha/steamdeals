@@ -4,6 +4,8 @@ const props = defineProps({
   total: { type: Number, default: 0 },
   page: { type: Number, default: 1 },
   pageSize: { type: Number, default: 20 },
+  // 每页条数候选（BP 批：DLC 固定 10 条/页传 [10]，用户不会切出 10）
+  pageSizes: { type: Array, default: () => [20, 50, 100] },
   // 只有一页时不渲染——避免「只有 1 条数据也显示 Total 1 / Go to 1」的噪声
   hideOnSinglePage: { type: Boolean, default: true },
 });
@@ -21,7 +23,7 @@ function changeSize(value) { emit('update:pageSize', value); emit('update:page',
       :total="total"
       :current-page="page"
       :page-size="pageSize"
-      :page-sizes="[20, 50, 100]"
+      :page-sizes="pageSizes"
       @current-change="changePage"
       @size-change="changeSize"
     />

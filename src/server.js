@@ -291,8 +291,27 @@ export function createApiServer({
   imageFetch = null, // 测试注入：() => { body, bytes, contentType }；默认用 http.js 的 fetchBuffer
   steamVerify = null, // 测试注入：verifyCallback 的替身 (url, opts) => Promise<steamId|null>；默认走 Steam OpenID 校验
   imgMissTtl = IMG_MISS_TTL, // 测试注入：负缓存 TTL 覆盖（避免等 24h）
+  dlcFetchImpl = null, // BP 批测试注入：(appids, opts) => Promise<{items,failed}>；默认走 store-browse 的 fetchStoreItems
+  dlcReadThrottleMs = 10 * 60_000, // BP 批测试注入：读路径回源的按游戏节流窗口（默认 10 分钟）
 }) {
   const q = query;
+  // BP 批（docs/GAME-DLC.md §3.3）：读路径回源节流——按 steam_appid 记上次回源时间（进程内，
+  // 重启会重置；与"打开详情"这种瞬时行为对齐，不需要持久化）。
+  const dlcFillAttempts = new Map(); // appid -> lastAttemptMs
+  // 读路径回源（决策 6）：缺明细且距上次 >10 分钟才触发，最多 3 批 GetItems、超时 5s；
+  // 失败/429 静默降级（列表照常返回，synced:false）。先记节流时间再拉——失败 10 分钟内也不重试。
+  const maybeFillDlcOnRead = async ({ gameId, appid, throttleMs = 10 * 60_000, fetchImpl = null }) => {
+    const missing = await db.countDlcMissing(q, { gameId });
+    if (!missing) return { attempted: false };
+    const now = Date.now();
+    const last = dlcFillAttempts.get(appid) ?? 0;
+    if (now - last < throttleMs) return { attempted: false };
+    dlcFillAttempts.set(appid, now);
+    const { fillDlcDetails } = await import('./dlc-fill.js');
+    const res = await fillDlcDetails(q, { gameIds: [gameId], maxBatches: 3, timeoutMs: 5000, fetchImpl, logger });
+    if (res.dlcs > 0) logger?.info?.('steam.dlc.read_fill', { appid, dlcs: res.dlcs, batches: res.batches });
+    return { attempted: true, ...res };
+  };
   // AW 批（docs/READ-MODEL.md §5.2）/ AY 批（§10）：/api/games/count 的 priced + catalog 计数
   // 60 秒进程内缓存（原只缓存 priced，catalog 每次全表扫 198k 行 ≈76ms）。
   // 挂在每个服务实例闭包里（单实例；多副本各自缓存，数值偏差可接受）。
@@ -1331,8 +1350,52 @@ export function createApiServer({
         if (!game) return json(res, 404, { error: '没有该游戏' });
         const offers = await db.regionOffers(q, { steamAppid: appid });
         const series = await db.dailyMinSeries(q, { gameId: game.id, region: 'cn' });
+        // BP 批（docs/GAME-DLC.md §3.3）：详情只带摘要（DLC 上千时列表走单独接口，详情不拖慢）
+        const dlc = await db.dlcSummary(q, { steamAppid: appid });
         if (user) await db.recordView(q, { userId: user.id, path: `/game/${appid}`, appid });
-        return json(res, 200, { game, offers, series });
+        return json(res, 200, { game, offers, series, dlc });
+      }
+
+      // ---- BP 批（docs/GAME-DLC.md §3.3）：DLC 列表（公开）----
+      const dlcMatch = path.match(/^\/api\/games\/(\d+)\/dlc$/);
+      if (dlcMatch && req.method === 'GET') {
+        const appid = Number(dlcMatch[1]);
+        const game = await db.gameDetail(q, { steamAppid: appid });
+        if (!game) return json(res, 404, { error: '没有该游戏' });
+        // 非 Steam 游戏（无 steam_appid）：空集，前端不显示 DLC 区块
+        if (!game.steam_appid) return json(res, 200, { total: 0, page: 1, pageSize: 10, synced: false, items: [] });
+        const pageRaw = Number(url.searchParams.get('page') ?? 1);
+        const page = Number.isInteger(pageRaw) && pageRaw >= 1 ? pageRaw : 1;
+        const psRaw = Number(url.searchParams.get('pageSize') ?? 10);
+        const pageSize = Math.min(Math.max(Number.isInteger(psRaw) && psRaw > 0 ? psRaw : 10, 1), 50);
+        // 读路径回源：缺明细且该游戏上次回源 >10 分钟 → 最多 3 批 GetItems（失败/429 降级，不 5xx）
+        try {
+          await maybeFillDlcOnRead({ gameId: game.id, appid, throttleMs: dlcReadThrottleMs, fetchImpl: dlcFetchImpl });
+        } catch (err) {
+          logger?.warn?.('api.dlc_read_fill_failed', { appid, message: String(err?.message ?? err).slice(0, 160) });
+        }
+        const missing = await db.countDlcMissing(q, { gameId: game.id });
+        const total = await db.countGameDlc(q, { gameId: game.id });
+        const summary = await db.dlcSummary(q, { steamAppid: appid });
+        const items = await db.listGameDlc(q, { gameId: game.id, page, pageSize });
+        return json(res, 200, {
+          total,
+          page,
+          pageSize,
+          // 拿到过 dlc[]（dlc_appids 非空）且没有缺明细的行 = 完整；从未同步过 = false（前端不显示区块）
+          synced: summary.synced && missing === 0,
+          items: items.map((d) => ({
+            appid: d.appid,
+            // 名称缺失回退 DLC #<appid>（回源失败时的降级展示）
+            name: d.name || `DLC #${d.appid}`,
+            price_cents: d.price_cents,
+            original_cents: d.original_cents,
+            discount_pct: d.discount_pct,
+            currency: d.currency,
+            in_stock: d.in_stock,
+            buy_url: `https://store.steampowered.com/app/${d.appid}/`,
+          })),
+        });
       }
 
       // ---- 登录用户：个人标记（个人优先，未标记回退全局标记）----
@@ -3800,8 +3863,10 @@ export function startApiServer({
   imageFetch = null,
   steamVerify = null,
   imgMissTtl = IMG_MISS_TTL,
+  dlcFetchImpl = null,
+  dlcReadThrottleMs = 10 * 60_000,
 }) {
-  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, imgMissTtl });
+  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, imgMissTtl, dlcFetchImpl, dlcReadThrottleMs });
   // 黑名单定时刷新（管理端增删后也会即时刷新；unref 不阻止进程退出）
   const blockTimer = setInterval(() => {
     visitors.refreshBlocklist(query).catch(() => {});

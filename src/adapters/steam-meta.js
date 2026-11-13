@@ -124,6 +124,12 @@ export function normalizeOfficial(appid, data) {
     })(data.short_description || data.detailed_description || ""),
     tags: null,
     source: 'official',
+    // BP 批（docs/GAME-DLC.md §3.1）：DLC 总数来源 = appdetails.dlc[] 原样（含原声带/美术集/未发售）。
+    // 只保留正整数、去重、上限 2000；只有 official 响应带这个字段——拿不到时为 null，
+    // 调用方（GetItems 路径）不得把库里已有值清空。
+    dlcAppIds: Array.isArray(data.dlc)
+      ? [...new Set(data.dlc.map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 2000)
+      : null,
     // 完整 appdetails 会带 price_overview：Steam 自身价格（国内可达时就能用）
     priceOverview: data.price_overview
       ? {

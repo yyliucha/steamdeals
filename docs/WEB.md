@@ -121,6 +121,7 @@ POST /api/setup/complete
 |---|:--:|:--:|:--:|
 | `GET /api/games` | ✅ | ✅ | ✅ |
 | `GET /api/games/:appid` | ✅ | ✅ | ✅ |
+| `GET /api/games/:appid/dlc` | ✅ | ✅ | ✅ |
 | `POST /api/login` / `POST /api/logout` | ✅ | ✅ | ✅ |
 | `GET /api/setup/status` / `GET /api/setup/schema` | ✅（仅未初始化时） | ✅ | ✅ |
 | `POST /api/setup/complete` | ✅（仅未初始化时；始终要求初始化口令） | ✅ | ✅ |

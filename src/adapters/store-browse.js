@@ -111,7 +111,7 @@ export function mapStoreItem(item) {
  * （回填用：限流时立刻停，别把 IP 打进黑名单）。
  * 返回 { items, failed: [appid...] }。
  */
-export async function fetchStoreItems(appids, { key, country = 'CN', language = 'schinese', logger = null, fetchImpl = null, throwOnFatal = false } = {}) {
+export async function fetchStoreItems(appids, { key, country = 'CN', language = 'schinese', logger = null, fetchImpl = null, throwOnFatal = false, timeoutMs = null } = {}) {
   const unique = [...new Set((appids ?? []).map(Number).filter((n) => Number.isFinite(n) && n > 0))];
   const items = [];
   const failed = [];
@@ -132,7 +132,7 @@ export async function fetchStoreItems(appids, { key, country = 'CN', language = 
         logger,
         label: 'steam.store_browse',
         retries: 1,
-        timeoutMs: 20000,
+        timeoutMs: timeoutMs ?? 20000,
         ...(fetchImpl ? { fetchImpl } : {}),
       });
       // Steam Web API 统一包在 response 里：{ response: { store_items: [...] } }

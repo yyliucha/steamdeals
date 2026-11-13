@@ -404,6 +404,22 @@ const ALTERS = [
   'create unique index if not exists ux_sessions_id on sessions (id)',
   'create index if not exists idx_sessions_user on sessions (user_id)',
   'create index if not exists idx_sessions_expires on sessions (expires_at)',
+  // BP 批（docs/GAME-DLC.md §3.1）：游戏 → DLC appid 列表（appdetails.dlc[] 去重后 jsonb）+ 每个 DLC 的展示信息。
+  // 明细是"占位 → 补齐"两步：先按 dlc_appids 建 (game_id, appid) 行，再由 GetItems 补名称/价格/折扣/在售。
+  'alter table games add column if not exists dlc_appids jsonb',
+  `create table if not exists game_dlc (
+     game_id         integer not null references games(id) on delete cascade,
+     appid           integer not null,
+     name            text,
+     price_cents     integer,
+     original_cents  integer,
+     discount_pct    integer not null default 0,
+     currency        text,
+     in_stock        boolean not null default true,
+     synced_at       timestamptz,
+     primary key (game_id, appid)
+   )`,
+  'create index if not exists idx_game_dlc_appid on game_dlc (appid)',
 ];
 
 export async function migrate(store, { logger = null } = {}) {
@@ -2740,8 +2756,8 @@ export async function upsertGameMeta(q, item) {
   const appType = item.appType == null ? null : String(item.appType).toLowerCase();
   const r = await q(
     `insert into games (steam_appid, name, name_en, app_type, is_free, header_image, release_date,
-                        developers, publishers, genres, tags, description)
-     values ($1, $2, $3, $4, coalesce($5, false), $6, $7, $8, $9, $10, $11, $12)
+                        developers, publishers, genres, tags, description, dlc_appids)
+     values ($1, $2, $3, $4, coalesce($5, false), $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
      on conflict (steam_appid) do update set
        name = case
          when excluded.name is null then games.name
@@ -2769,6 +2785,8 @@ export async function upsertGameMeta(q, item) {
        genres = coalesce(excluded.genres, games.genres),
        tags = coalesce(excluded.tags, games.tags),
        description = coalesce(nullif(games.description, ''), excluded.description),
+       -- BP 批（docs/GAME-DLC.md §3.1）：GetItems 路径没有 dlcAppIds（null）——不能把已有值清空
+       dlc_appids = case when excluded.dlc_appids is null then games.dlc_appids else excluded.dlc_appids end,
        updated_at = now()
      returning id, (xmax = 0) as inserted`,
     [
@@ -2784,10 +2802,156 @@ export async function upsertGameMeta(q, item) {
       item.genres ?? null,
       item.tags ?? null,
       item.description ?? null,
+      item.dlcAppIds == null ? null : JSON.stringify(item.dlcAppIds),
     ],
   );
   const row = r.rows[0];
   return { id: Number(row.id), created: row.inserted === true };
+}
+
+// ---------------------------------------------------------------- BP：DLC（docs/GAME-DLC.md §3.1）
+
+/**
+ * 写入 dlc_appids 并同步 game_dlc 占位行：
+ * - games.dlc_appids = 去重后的数组（调用方保证已过滤/上限 2000）；空数组 = 确认过没有 DLC（synced 口径）；
+ * - 为每个 appid 建占位行（name/price 为空，后续 GetItems 补齐）；已存在不动；
+ * - 差集清理：删掉 game_dlc 里不在新数组中的行（DLC 下架/改版也能收敛）。
+ * 返回 { gameId, dlc, changed }；appid 不在库（gameId 为 null）不写。
+ */
+export async function writeDlcAppids(q, { steamAppid, dlcAppIds }) {
+  const ids = [...new Set((dlcAppIds ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 2000);
+  const json = JSON.stringify(ids);
+  const r = await q(
+    'update games set dlc_appids = $2::jsonb, updated_at = now() where steam_appid = $1 and dlc_appids is distinct from $2::jsonb returning id',
+    [steamAppid, json],
+  );
+  const gameId = r.rows[0] ? Number(r.rows[0].id) : null;
+  if (!gameId) return { gameId, dlc: ids.length, changed: false };
+  if (ids.length) {
+    await q(
+      'insert into game_dlc (game_id, appid) select $1, unnest($2::int[]) on conflict (game_id, appid) do nothing',
+      [gameId, ids],
+    );
+  }
+  await q('delete from game_dlc where game_id = $1 and not (appid = any($2::int[]))', [gameId, ids]);
+  return { gameId, dlc: ids.length, changed: true };
+}
+
+/** GetItems 结果 → game_dlc 补齐名称/价格/折扣/币种/在售（upsert，返回写入条数）。 */
+export async function upsertGameDlc(q, { gameId, items }) {
+  const rows = (items ?? [])
+    .map((it) => ({
+      appid: Number(it?.steamAppid),
+      name: it?.nameZh ?? null,
+      price: it?.priceOverview?.final ?? null,
+      original: it?.priceOverview?.initial ?? null,
+      discount: Number(it?.priceOverview?.discountPercent ?? 0),
+      currency: it?.priceOverview?.currency ?? 'CNY',
+    }))
+    .filter((r) => Number.isFinite(r.appid) && r.appid > 0);
+  if (!rows.length) return 0;
+  const values = rows.map((_, i) => {
+    const b = i * 6 + 2;
+    return `($1, $${b}, $${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, true, now())`;
+  });
+  const params = [gameId, ...rows.flatMap((r) => [r.appid, r.name, r.price, r.original, r.discount, r.currency])];
+  const r = await q(
+    `insert into game_dlc (game_id, appid, name, price_cents, original_cents, discount_pct, currency, in_stock, synced_at)
+     values ${values.join(', ')}
+     on conflict (game_id, appid) do update set
+       name = excluded.name,
+       price_cents = excluded.price_cents,
+       original_cents = excluded.original_cents,
+       discount_pct = excluded.discount_pct,
+       currency = excluded.currency,
+       in_stock = true,
+       synced_at = now()`,
+    params,
+  );
+  return r.rowCount ?? 0;
+}
+
+/** DLC 列表（名称升序、null 排后、appid 兜底；分页）。 */
+export async function listGameDlc(q, { gameId, page = 1, pageSize = 10 }) {
+  const r = await q(
+    `select d.appid, d.name, d.price_cents, d.original_cents, d.discount_pct, d.currency, d.in_stock
+     from game_dlc d
+     where d.game_id = $1
+     order by d.name asc nulls last, d.appid asc
+     limit $2 offset $3`,
+    [gameId, pageSize, (page - 1) * pageSize],
+  );
+  return r.rows.map((row) => ({
+    appid: Number(row.appid),
+    name: row.name ?? null,
+    price_cents: row.price_cents == null ? null : Number(row.price_cents),
+    original_cents: row.original_cents == null ? null : Number(row.original_cents),
+    discount_pct: Number(row.discount_pct ?? 0),
+    currency: row.currency ?? 'CNY',
+    in_stock: row.in_stock !== false,
+  }));
+}
+
+/** DLC 总数（game_dlc 行数）。 */
+export async function countGameDlc(q, { gameId }) {
+  const r = await q('select count(*)::int as n from game_dlc where game_id = $1', [gameId]);
+  return Number(r.rows[0]?.n ?? 0);
+}
+
+/** 缺明细（name 空或 price 空）的 DLC 行数。 */
+export async function countDlcMissing(q, { gameId }) {
+  const r = await q(
+    "select count(*)::int as n from game_dlc where game_id = $1 and (name is null or name = '' or price_cents is null)",
+    [gameId],
+  );
+  return Number(r.rows[0]?.n ?? 0);
+}
+
+/** 指定游戏缺明细的 appid 列表（补齐用）。 */
+export async function listDlcMissingAppids(q, { gameIds }) {
+  const ids = [...new Set((gameIds ?? []).map(Number).filter((n) => Number.isFinite(n) && n > 0))];
+  if (!ids.length) return [];
+  const r = await q(
+    `select d.game_id as "gameId", d.appid
+     from game_dlc d
+     where d.game_id = any($1::int[]) and (d.name is null or d.name = '' or d.price_cents is null)
+     order by d.game_id, d.appid`,
+    [ids],
+  );
+  return r.rows.map((row) => ({ gameId: Number(row.gameId), appid: Number(row.appid) }));
+}
+
+/** steam-status 收尾：有 DLC、但明细没补齐的游戏（按缺明细数取前 N 个）。 */
+export async function listDlcFillGames(q, { limit = 50 }) {
+  const r = await q(
+    `select g.id
+     from games g
+     where g.dlc_appids is not null
+       and jsonb_array_length(g.dlc_appids) > 0
+       and exists (
+         select 1 from game_dlc d
+         where d.game_id = g.id and (d.name is null or d.name = '' or d.price_cents is null)
+       )
+     order by g.heat desc nulls last, g.id asc
+     limit $1`,
+    [limit],
+  );
+  return r.rows.map((row) => Number(row.id));
+}
+
+/** 详情摘要：total = dlc_appids 长度；synced = 拿到过 dlc[]；filled = 已有名称+价格的条数。 */
+export async function dlcSummary(q, { steamAppid }) {
+  const r = await q(
+    `select
+       coalesce(jsonb_array_length(g.dlc_appids), 0)::int as total,
+       (g.dlc_appids is not null) as synced,
+       (select count(*)::int from game_dlc d where d.game_id = g.id and d.name is not null and d.name <> '' and d.price_cents is not null) as filled
+     from games g where g.steam_appid = $1`,
+    [steamAppid],
+  );
+  const row = r.rows[0];
+  if (!row) return { total: 0, synced: false, filled: 0 };
+  return { total: Number(row.total ?? 0), synced: row.synced === true, filled: Number(row.filled ?? 0) };
 }
 
 /** 标记这批 appid 已跑过回填（无论有没有拿到报价），让下一次选择跳过它们。 */

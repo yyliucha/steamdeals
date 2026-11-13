@@ -33,6 +33,17 @@ export function entryFromMeta(item) {
  * wroteStatus 只有「状态真写进库且 UPDATE 命中行」才为 true（AB 批 §3-B：写入不可静默）。
  */
 export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = null, meta = null, logger = null }) {
+  // BP 批（docs/GAME-DLC.md §3.2）：同一次 appdetails 响应里顺带写 dlc_appids + game_dlc 占位（零额外请求）。
+  // GetItems 路径的 meta 没有 dlcAppIds → 不写（不得清空已有值）。写失败不影响状态判定。
+  let dlcWritten = null;
+  if (meta?.dlcAppIds != null) {
+    try {
+      dlcWritten = await db.writeDlcAppids(q, { steamAppid: appid, dlcAppIds: meta.dlcAppIds });
+      if (dlcWritten.changed) logger?.info?.('steam.status.dlc_written', { appid, dlc: dlcWritten.dlc });
+    } catch (err) {
+      logger?.warn?.('steam.status.dlc_write_failed', { appid, message: String(err?.message ?? err).slice(0, 160) });
+    }
+  }
   // 没有任何 appdetails 条目 → 判定不了状态（如只有 GetItems、字段不全的路径）
   const status = cnEntry == null && hkEntry == null ? null : classifySteamStatus(cnEntry, hkEntry);
   const requiredAge = meta?.requiredAge ?? null;
@@ -55,7 +66,7 @@ export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = nu
   }
   if (status == null && !hasRating) {
     // 什么都没拿到：不写库（GetItems 且无分级字段的路径）
-    return { status, rating, wroteStatus: false, offerWritten: false, headerImageFilled };
+    return { status, rating, wroteStatus: false, offerWritten: false, headerImageFilled, dlcWritten };
   }
   const row = await db.setSteamStatus(q, {
     steamAppid: appid,
@@ -99,7 +110,7 @@ export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = nu
       logger?.warn?.('steam-status.offer_failed', { appid, message: String(err?.message ?? err).slice(0, 160) });
     }
   }
-  return { status, rating, wroteStatus, offerWritten, headerImageFilled };
+  return { status, rating, wroteStatus, offerWritten, headerImageFilled, dlcWritten };
 }
 
 /**
@@ -113,7 +124,22 @@ export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = nu
  *
  * fetchJsonImpl 可注入（测试离线验证）；返回 { wrote, skipped, failed, requests, counts, aborted429, attempted }。
  */
-export async function runSteamStatusRound(q, { limit = 6000, batch = 30, rateMs = 1500, fetchJsonImpl = null, logger = null, onProgress = null } = {}) {
+export async function runSteamStatusRound(
+  q,
+  {
+    limit = 6000,
+    batch = 30,
+    rateMs = 1500,
+    fetchJsonImpl = null,
+    logger = null,
+    onProgress = null,
+    // BP 批（docs/GAME-DLC.md §3.2/§3.5）：收尾补 DLC 明细（不新增调度任务，就挂在本轮末尾）
+    steamKey = process.env.STEAM_API_KEY ?? null,
+    dlcFillGames = Number(process.env.STEAM_DLC_FILL_GAMES ?? 50),
+    dlcFillBatches = Number(process.env.STEAM_DLC_FILL_BATCH ?? 30),
+    dlcFetchImpl = null,
+  } = {},
+) {
   const fetchUse = fetchJsonImpl ?? (await import('./http.js')).fetchJson;
   const size = Math.min(Math.max(Number(limit) || 6000, 1), 200000);
   const step = Math.min(Math.max(Number(batch) || 30, 1), 100);
@@ -121,6 +147,8 @@ export async function runSteamStatusRound(q, { limit = 6000, batch = 30, rateMs 
   let wrote = 0;
   // BC 批（docs/IMAGE-COVERAGE.md §3.1）：顺带补齐 header_image 的条数（零额外请求）
   let headerFilled = 0;
+  // BP 批（docs/GAME-DLC.md §3.2）：本轮顺带写入 dlc_appids 的游戏数（零额外请求）
+  let dlcWritten = 0;
   let skipped = 0;
   let failed = 0;
   let requests = 0;
@@ -177,6 +205,7 @@ export async function runSteamStatusRound(q, { limit = 6000, batch = 30, rateMs 
       const outcome = await applySteamDetails(q, { appid, cnEntry, hkEntry, meta, logger });
       attempted += 1;
       if (outcome.headerImageFilled) headerFilled += 1;
+      if (outcome.dlcWritten?.changed) dlcWritten += 1;
       if (outcome.wroteStatus) {
         wrote += 1;
         if (outcome.status) counts[outcome.status] = (counts[outcome.status] ?? 0) + 1;
@@ -194,5 +223,24 @@ export async function runSteamStatusRound(q, { limit = 6000, batch = 30, rateMs 
     if (aborted429) break;
   }
   if (headerFilled > 0) logger?.info?.('steam-status.header_image_done', { filled: headerFilled });
-  return { wrote, skipped, failed, requests, counts, offers, headerFilled, aborted429, attempted };
+  // BP 批（docs/GAME-DLC.md §3.2）：收尾补 DLC 明细——取「有 dlc_appids、缺 name/price」的游戏
+  // （默认 50 个），GetItems 批量补（默认 ≤30 批/轮）；本轮撞过 429 则跳过明细补齐（下轮继续）。
+  let dlcFill = { games: 0, dlcs: 0, batches: 0, aborted429: false };
+  if (!aborted429) {
+    try {
+      const { fillDlcDetails } = await import('./dlc-fill.js');
+      const games = await db.listDlcFillGames(q, { limit: dlcFillGames });
+      dlcFill = await fillDlcDetails(q, {
+        gameIds: games,
+        maxBatches: dlcFillBatches,
+        key: steamKey,
+        fetchImpl: dlcFetchImpl,
+        logger,
+      });
+      if (dlcFill.dlcs > 0) logger?.info?.('steam.dlc.filled', { games: dlcFill.games, dlcs: dlcFill.dlcs, batches: dlcFill.batches });
+    } catch (err) {
+      logger?.warn?.('steam.dlc.fill_round_failed', { message: String(err?.message ?? err).slice(0, 160) });
+    }
+  }
+  return { wrote, skipped, failed, requests, counts, offers, headerFilled, dlcWritten, dlcFill, aborted429, attempted };
 }

@@ -628,7 +628,8 @@ node test/secrets.test.js    # 5 项：凭据扫描器自身的正确性 + 当�
 9. **邮件客户端是自实现的**，只覆盖 STARTTLS + AUTH PLAIN/LOGIN，不支持 OAuth2 与附件；协议对话已在本地假 SMTP 服务器上验证，但**未对真实邮件服务商做过端到端测试**。
 10. **`web/` 旧页面只作回退**：镜像内有 `frontend/dist` 时全部页面走 Vue 应用；旧零构建页面仅在开发环境（无构建产物）时使用，其中的管理功能不再单独维护。
 11. **DLC 拥有数不可得**：Steam 公开 API（`IPlayerService/GetOwnedGames`）只返回游戏、不返回 DLC 拥有记录，
-    后台「Steam 账号」不展示 DLC 数（详见 [docs/STEAM-DLC.md](docs/STEAM-DLC.md)）。
+    后台「Steam 账号」不展示 DLC 数；详情页 DLC 区块只展示「总数 + 在售列表（价格/折扣/Steam 跳转）」，
+    不展示拥有状态（详见 [docs/STEAM-DLC.md](docs/STEAM-DLC.md) 与 [docs/GAME-DLC.md](docs/GAME-DLC.md)）。
 12. **PWA 不做离线**：没有 service worker，断网时只给「网络不可用，请检查连接后重试」提示，页面仍需联网加载；
     standalone 里点 Steam 商店等外链会跳出到系统浏览器（买完需手动切回），部分国产 ROM 浏览器不支持独立窗口、
     仍以标签页打开（详见 [docs/MOBILE-PWA.md](docs/MOBILE-PWA.md) §5）。
