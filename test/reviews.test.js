@@ -24,7 +24,8 @@ process.env.SITE_NAME = 'SteamDeals-Test';
 
 const ENV_DEFAULTS = {
   RATE_LIMIT_ENABLED: '1',
-  RATE_LIMIT_MAX: '1000',
+  RATE_LIMIT_PAGE_MAX: '1000',
+  RATE_LIMIT_API_MAX: '1000',
   RATE_LIMIT_ASSET_MAX: '1000',
   RATE_LIMIT_WINDOW_SEC: '60',
   PATH_REVIEW_ENABLED: '1',
@@ -146,7 +147,7 @@ test('未知路径：达到阈值才记录；同一路径重复刷新不算新�
 });
 
 test('超频：临时限流 429 + 待审核，不写永久黑名单', async () => {
-  const { q, base, close } = await boot({ RATE_LIMIT_MAX: '2' });
+  const { q, base, close } = await boot({ RATE_LIMIT_PAGE_MAX: '2' });
   try {
     assert.equal((await get(base, '198.51.100.9', '/')).status, 200);
     assert.equal((await get(base, '198.51.100.9', '/')).status, 200);
@@ -162,12 +163,13 @@ test('超频：临时限流 429 + 待审核，不写永久黑名单', async () =
 });
 
 test('超频三振：10 分钟 → 30 分钟 → 封到当天结束，次日重新从 10 分钟起算', async () => {
-  const { q, base, close } = await boot({ RATE_LIMIT_MAX: '2' });
+  const { q, base, close } = await boot({ RATE_LIMIT_PAGE_MAX: '2', RATE_LIMIT_API_MAX: '1000' });
   try {
-    // 封禁期内再打 3 次就升一档，避免测试发几百个请求
-    ratelimit.configure({ max: 2, windowSec: 60, blockedEscalate: 3 });
+    // 封禁期内再打 3 次就升一档，避免测试发几百个请求；BR 批：升级只累计 API 请求
+    ratelimit.configure({ pageMax: 2, apiMax: 1000, windowSec: 60, blockedEscalate: 3 });
     const ip = '198.51.100.31';
     const hit = () => get(base, ip, '/');
+    const apiHit = () => fetch(base + '/api/games/count', asIp(ip));
 
     await hit();
     await hit();
@@ -177,14 +179,19 @@ test('超频三振：10 分钟 → 30 分钟 → 封到当天结束，次日重�
     const firstMin = Math.round((new Date(row.banned_until).getTime() - Date.now()) / 60000);
     assert.ok(firstMin >= 9 && firstMin <= 10, '第一次应封约 10 分钟，实际 ' + firstMin);
 
-    for (let i = 0; i < 3; i += 1) await hit();
+    // 封禁期内页面刷新不升级（BR 批 §11.2 决策 4）：先打 5 个页面请求，strikes 不变
+    for (let i = 0; i < 5; i += 1) assert.equal((await hit()).status, 429);
+    row = (await q('select strikes from ip_abuse where ip = $1', [ip])).rows[0];
+    assert.equal(row.strikes, 1, '封禁期内的页面 GET 不得升级封禁');
+
+    for (let i = 0; i < 3; i += 1) assert.equal((await apiHit()).status, 429);
     row = (await q('select strikes, banned_until from ip_abuse where ip = $1', [ip])).rows[0];
     assert.equal(row.strikes, 2);
     const secondMin = Math.round((new Date(row.banned_until).getTime() - Date.now()) / 60000);
     assert.ok(secondMin >= 29 && secondMin <= 30, '第二次应封约 30 分钟，实际 ' + secondMin);
 
     let third = null;
-    for (let i = 0; i < 3; i += 1) third = await hit();
+    for (let i = 0; i < 3; i += 1) third = await apiHit();
     assert.equal(third.status, 429);
     assert.match(await third.text(), /明天 0 点/, '第 3 次要明确告知封到当天结束');
     row = (await q('select strikes, banned_until from ip_abuse where ip = $1', [ip])).rows[0];
@@ -199,7 +206,7 @@ test('超频三振：10 分钟 → 30 分钟 → 封到当天结束，次日重�
 
     // 当天封顶 3 次：继续请求不再升级/累加，且重启后能从 ban_source 恢复“当天封禁”状态
     const reviewsBefore = (await q("select count(*)::int as n from abuse_reviews where ip = $1", [ip])).rows[0].n;
-    for (let i = 0; i < 6; i += 1) await hit();
+    for (let i = 0; i < 6; i += 1) await apiHit();
     row = (await q('select strikes from ip_abuse where ip = $1', [ip])).rows[0];
     assert.equal(row.strikes, 3, '一天最多 3 次，封顶后不再累加');
     assert.equal(
@@ -217,7 +224,7 @@ test('超频三振：10 分钟 → 30 分钟 → 封到当天结束，次日重�
     await q("update ip_abuse set banned_until = now() - interval '1 second', strike_day = current_date - 1 where ip = $1", [ip]);
     ratelimit.resetState();
     await ratelimit.loadState(q);
-    ratelimit.configure({ max: 2, windowSec: 60, blockedEscalate: 3 });
+    ratelimit.configure({ pageMax: 2, windowSec: 60, blockedEscalate: 3 });
     await hit();
     await hit();
     assert.equal((await hit()).status, 429);
@@ -329,7 +336,7 @@ test('设备指纹：上报落库 + 管理员封设备后 POST 返回 banned，�
 });
 
 test('被拦截请求：单独标记、每 IP 每分钟采样一条，不计入访问量', async () => {
-  const { q, base, close } = await boot({ RATE_LIMIT_MAX: '1' });
+  const { q, base, close } = await boot({ RATE_LIMIT_PAGE_MAX: '1' });
   try {
     assert.equal((await get(base, '198.51.100.11', '/')).status, 200);
     for (let i = 0; i < 4; i += 1) assert.equal((await get(base, '198.51.100.11', '/')).status, 429);
@@ -352,7 +359,7 @@ test('被拦截请求：单独标记、每 IP 每分钟采样一条，不计入�
 });
 
 test('限流分桶：静态资源不占用页面/API 的阈值', async () => {
-  const { base, close } = await boot({ RATE_LIMIT_MAX: '3', RATE_LIMIT_ASSET_MAX: '100' });
+  const { base, close } = await boot({ RATE_LIMIT_PAGE_MAX: '3', RATE_LIMIT_ASSET_MAX: '100' });
   try {
     for (let i = 0; i < 10; i += 1) {
       assert.equal((await get(base, '198.51.100.12', `/img/steam/730/capsule_sm_120?i=${i}`)).status, 200);
@@ -388,7 +395,7 @@ test('异常审核联动（口径 A）：封禁期内的 pending 仍出现在待
 });
 
 test('封禁标记：封禁时已有 pending → auto_banned（解封不恢复），新异常重新生成 pending', async () => {
-  const { q, base, close } = await boot({ RATE_LIMIT_MAX: '2' });
+  const { q, base, close } = await boot({ RATE_LIMIT_PAGE_MAX: '2' });
   try {
     const ip = '198.51.100.40';
     // 第一轮超频：封禁 10 分钟；本轮新生成的待审 R1 在封禁之后产生（属"新异常"，保持 pending，
@@ -406,7 +413,7 @@ test('封禁标记：封禁时已有 pending → auto_banned（解封不恢复�
     await q("update ip_abuse set banned_until = now() - interval '1 second' where ip = $1", [ip]);
     ratelimit.resetState();
     await ratelimit.loadState(q);
-    ratelimit.configure({ max: 2, windowSec: 60, blockedEscalate: 3 });
+    ratelimit.configure({ pageMax: 2, windowSec: 60, blockedEscalate: 3 });
 
     // 第二轮超频：升级封禁。此时 R1 已存在且 pending → 被标记 auto_banned；
     // 本轮新生成的 R2 在封禁之后产生，保持 pending。
@@ -427,7 +434,7 @@ test('封禁标记：封禁时已有 pending → auto_banned（解封不恢复�
     await q("update ip_abuse set banned_until = now() - interval '1 second' where ip = $1", [ip]);
     ratelimit.resetState();
     await ratelimit.loadState(q);
-    ratelimit.configure({ max: 2, windowSec: 60, blockedEscalate: 3 });
+    ratelimit.configure({ pageMax: 2, windowSec: 60, blockedEscalate: 3 });
     const pending = await db.listAbuseReviews(q, { status: 'pending' });
     const mine = pending.filter((r) => r.ip === ip);
     assert.equal(mine.length, 1, '只有新异常回到待审');
@@ -534,7 +541,7 @@ test('设备封禁命中：/banned 403，换 IP 也一样', async () => {
 });
 
 test('频率封禁命中：/banned 429 + Retry-After', async () => {
-  const { base, close } = await boot({ RATE_LIMIT_MAX: '1' });
+  const { base, close } = await boot({ RATE_LIMIT_PAGE_MAX: '1' });
   try {
     assert.equal((await get(base, '198.51.100.60', '/')).status, 200);
     assert.equal((await get(base, '198.51.100.60', '/')).status, 429);
@@ -547,7 +554,7 @@ test('频率封禁命中：/banned 429 + Retry-After', async () => {
 });
 
 test('封禁过期后 /banned → 302（过期即视为未封禁）', async () => {
-  const { base, close } = await boot({ RATE_LIMIT_MAX: '1' });
+  const { base, close } = await boot({ RATE_LIMIT_PAGE_MAX: '1' });
   try {
     const ip = '198.51.100.61';
     assert.equal((await get(base, ip, '/')).status, 200);
@@ -663,7 +670,7 @@ test('/api/ban/state：只读、豁免拦截链、IP/白名单口径', async () 
 
     // 未封禁
     const free = await banState(base, ip);
-    assert.deepEqual(free.body, { banned: false });
+    assert.deepEqual(free.body, { banned: false, ip, whitelisted: false });
 
     // IP 封禁：被封者仍能调状态接口（豁免拦截链），且拿到自己的状态
     await fetch(base + '/api/admin/blacklist', {
@@ -675,6 +682,8 @@ test('/api/ban/state：只读、豁免拦截链、IP/白名单口径', async () 
     assert.equal(ipState.body.banned, true);
     assert.equal(ipState.body.type, 'ip');
     assert.equal(ipState.body.until, null);
+    assert.equal(ipState.body.ip, ip, '三件套应回调用者自己的 IP');
+    assert.equal(ipState.body.whitelisted, false);
 
     // 白名单视为未封禁（互斥后同 IP 不会再两边都在）
     await fetch(base + '/api/admin/whitelist', {
@@ -683,14 +692,14 @@ test('/api/ban/state：只读、豁免拦截链、IP/白名单口径', async () 
       body: JSON.stringify({ ip: trustIp }),
     });
     const trusted = await banState(base, trustIp);
-    assert.deepEqual(trusted.body, { banned: false }, '白名单视为未封禁');
+    assert.deepEqual(trusted.body, { banned: false, ip: trustIp, whitelisted: true }, '白名单视为未封禁且标注 whitelisted');
   } finally {
     await close();
   }
 });
 
 test('/api/ban/state：设备与频率封禁类型', async () => {
-  const { q, base, close } = await boot({ RATE_LIMIT_MAX: '1' }, { admin: true });
+  const { q, base, close } = await boot({ RATE_LIMIT_PAGE_MAX: '1' }, { admin: true });
   try {
     // 频率封禁：先触发一次临时封禁，再查状态（状态接口不参与计数、不升档）
     const rateIp = '198.51.100.92';
@@ -760,3 +769,85 @@ test('前端：待审状态列 4 种标签 + 口径 A 说明文案', () => {
   assert.match(modules, /封禁期间产生的新异常仍会以「待审」出现/, '说明文案应为口径 A');
   assert.ok(!modules.includes('解封后自动恢复显示'), '旧口径文案应移除');
 });
+
+// ---------------------------------------------------------------- BR 批（docs/BAN-AND-SECURITY-FIXES.md §11）
+// 加白即清封 + ban/state 三件套 + 封禁页 payload（remainingSec / ipMasked）：
+// 手机被误封 → 管理员加白 → 不重启立即恢复访问。
+
+test('BR：加白即清封——clearedBan:true，ban/state 立即变 banned:false/whitelisted:true，访问恢复', async () => {
+  const { base, close } = await boot({ RATE_LIMIT_PAGE_MAX: '1' }, { admin: true, frontendDir: banFrontDir() });
+  try {
+    const adminCookie = await loginAdmin(base);
+    const ip = '198.51.100.95';
+    // 手机正常刷页面触发临时封禁
+    assert.equal((await get(base, ip, '/')).status, 200);
+    const blocked = await get(base, ip, '/');
+    assert.equal(blocked.status, 429, '第 2 次页面请求应触发临时封禁');
+    const state1 = await banState(base, ip);
+    assert.equal(state1.body.banned, true);
+    assert.equal(state1.body.type, 'rate');
+    assert.equal(state1.body.whitelisted, false);
+
+    // 管理员加白 → 响应回 clearedBan:true，且**不重启**立即恢复
+    const wl = await fetch(base + '/api/admin/whitelist', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie, 'x-forwarded-for': '203.0.113.77' },
+      body: JSON.stringify({ ip }),
+    });
+    assert.equal(wl.status, 200);
+    const wlBody = await wl.json();
+    assert.equal(wlBody.clearedBan, true, '加白应回 clearedBan:true（该 IP 正处于临时封禁中）');
+
+    const state2 = await banState(base, ip);
+    assert.deepEqual(state2.body, { banned: false, ip, whitelisted: true }, '加白后 ban/state 立即变为未封禁');
+    assert.equal((await get(base, ip, '/')).status, 200, '加白后无需重启即可恢复访问');
+  } finally {
+    await close();
+  }
+});
+
+test('BR：封禁页 payload 注入 remainingSec 与 ipMasked；封禁期内刷页面不升级', async () => {
+  const { q, base, close } = await boot({ RATE_LIMIT_PAGE_MAX: '1' }, { admin: true, frontendDir: banFrontDir() });
+  try {
+    const ip = '198.51.100.96';
+    assert.equal((await get(base, ip, '/')).status, 200);
+    assert.equal((await get(base, ip, '/')).status, 429);
+    // 被封禁者以浏览器身份请求页面 → 403/429 封禁页带 __BAN_PAGE__ 载荷
+    const res = await get(base, ip, '/banned', { accept: 'text/html' });
+    assert.equal(res.status, 429);
+    const html = await res.text();
+    const m = html.match(/window\.__BAN_PAGE__=(\{.*?\});/);
+    assert.ok(m, '应注入 __BAN_PAGE__ 载荷');
+    const payload = JSON.parse(m[1].replace(/\\u003c/g, '<'));
+    assert.ok(payload.remainingSec > 0, '应带剩余秒数');
+    assert.equal(payload.ipMasked, '198.51.100.x', 'IP 应脱敏为末段 x');
+
+    // 封禁期内狂刷页面：不升级封禁（升级只累计 API）
+    const before = (await q("select strikes from ip_abuse where ip = $1", [ip])).rows[0]?.strikes ?? 1;
+    for (let i = 0; i < 20; i += 1) await get(base, ip, '/');
+    const after = (await q("select strikes from ip_abuse where ip = $1", [ip])).rows[0]?.strikes ?? 1;
+    assert.equal(after, before, '封禁期内页面 GET 不得累计升级计数');
+  } finally {
+    await close();
+  }
+});
+
+test('BR：纯 API 高频仍会被拦并升级（脚本防护不丢）', async () => {
+  const { q, base, close } = await boot({ RATE_LIMIT_API_MAX: '1' }, { admin: true });
+  try {
+    const ip = '198.51.100.97';
+    // API 桶独立：页面请求不触发 API 阈值
+    assert.equal((await get(base, ip, '/')).status, 200);
+    assert.equal((await fetch(base + '/api/games/count', asIp(ip))).status, 200);
+    const limited = await fetch(base + '/api/games/count', asIp(ip));
+    assert.equal(limited.status, 429, 'API 桶第 2 次即超限');
+    // 封禁期内继续打 API 会升级（blockedEscalate 默认 100，这里直接断言封禁存在且 API 计数生效）
+    const row = (await q("select strikes, banned_until from ip_abuse where ip = $1", [ip])).rows[0];
+    assert.equal(row.strikes, 1, 'API 超限应记第 1 次三振');
+    assert.ok(new Date(row.banned_until).getTime() > Date.now(), 'API 超限应进入临时封禁');
+  } finally {
+    await close();
+  }
+});
+
+

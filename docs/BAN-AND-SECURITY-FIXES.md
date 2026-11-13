@@ -761,3 +761,85 @@ select ip, strikes, banned_until, ban_source, updated_at from ip_abuse where ip 
 1. prune 的 `abuseDays` 是否需要做成页面设置项（当前默认 90 天，命令行 `--abuse-days` 可临时覆盖）；
 2. 自动封禁列表是否需要「剩余时间」（与访问明细口径统一）；
 3. `banState` 的类型优先级调整是否影响申诉页文案（预期不影响：黑名单 `type:'ip'` 一直存在，只是从「rate 优先」改成「ip 优先」）。
+
+## 11. 2026-11-13 修订（BR）：封禁自助恢复 + 手机/CGNAT 适配 + 可观测
+
+> 状态：**已实现待发版（2026-11-13，开发完成；本地 `npm test` / `frontend:build` / `scan` 全绿，待质检）**。编号 **BR**。
+> 触发：所有者手机端「访问几次就被封」，且把手机 IP 加进白名单后**仍**提示「请求过于频繁（封禁中）」（生产 v2.12.1）。
+> 关联：[TODO.md](TODO.md) 的 BR 条目、[SESSION-MANAGEMENT.md](SESSION-MANAGEMENT.md)（同一类"移动网络会变"的相邻问题）、[WEB.md](WEB.md)（接口表）。
+
+### 11.1 现场结论（2026-11-13 只读核查）
+
+- 文案「请求过于频繁（封禁中）」唯一对应 [../src/ratelimit.js](../src/ratelimit.js) 第 266 行：**该 IP 正处于临时超频封禁期内**；
+  黑名单（`访问了禁止的路径（封禁中）`）、当天封（`…今天已被封禁`）、刚触发（`…第 n 次`）三种文案都不同，可直接排除。
+- 拦截链对白名单是**整段跳过**（[../src/server.js](../src/server.js) 的 `!whitelisted`），所以"加白后仍封"只能是
+  **当前请求的 IP 不在白名单里**：手机出口 IP 漂移（CGNAT 池轮转 / 切网）、加错 IP、或加到黑名单页。
+- 更麻烦的是**自查手段为零**：`/api/ban/state` 不告诉自己"站点眼里我是哪个 IP、我在不在白名单"，
+  封禁页也只给一句"封禁中"。这是本批真正要补的。
+
+### 11.2 已确认决策（所有者 2026-11-13 点头立项，4 项全做）
+
+| # | 决策 | 缺陷位置 |
+|---|---|---|
+| 1 | **加白即清封**：写白名单时同步清掉该 IP 的内存临时封禁，响应回 `clearedBan` | [../src/server.js](../src/server.js) 的 `banIpExclusiveSql`（trust 分支） |
+| 2 | **`GET /api/ban/state` 返回自查三件套**：`ip`（调用者自己的出口 IP）、`whitelisted`、`until`（已有）；仍不返回他人信息 | 同上 `ban/state` 处理 |
+| 3 | **封禁页可读**：文案带剩余时间（"约 X 分钟后恢复"）与脱敏 IP（`1.2.3.x`），并保留申诉入口 | `denyBanned` / 封禁页 payload |
+| 4 | **手机 / CGNAT 适配**：页面桶与 API 桶分离；**封禁期内的页面 GET 不累计升级计数**（只对 API / 非法路径计数）；阈值走设置项 | [../src/ratelimit.js](../src/ratelimit.js) `hit()` 与 DEFAULTS |
+
+### 11.3 参数与默认值（首版默认，实现时可按实测微调，不改变语义）
+
+| 项 | 原值 | 新值 |
+|---|---|---|
+| 页面桶 | 60 次/60s（与 API 共用） | **120 次/60s** |
+| API 桶 | 同上 | **150 次/60s**（独立桶） |
+| 静态资源桶 | 300 次/60s | 300 次/60s（不变） |
+| 封禁时长 | 10 / 30 分钟 → 当天 | 不变 |
+| 升级计数 `blockedEscalate` | 封禁期内任意请求都计（100 次升一档） | **只计 API / 非法路径**，页面 GET 不计 |
+
+新增设置项（`src/settings.js`，默认取上表，15 秒热加载）：`security.rateLimit.pageMax`、`security.rateLimit.apiMax`。
+
+### 11.4 服务端改动
+
+1. `ratelimit.js`：`hit()` 增加 `bucket: 'page' | 'api' | 'asset'`；两个计数窗口分开；`blockedHits` 升级计数只对非 page 请求累加；
+2. `settings.js`：两个新设置项 + 校验（1–10000）；
+3. `ban/state`：返回 `{ banned, type, until, ip, whitelisted }`（`ip` 为调用者自身，接口仍限 1 次/秒、30 次/分钟）；
+4. `banIpExclusiveSql(trust)`：`ratelimit.addWhitelist(ip)` 后调用 `ratelimit.clearBanMemory(ip)`，响应加 `clearedBan`；
+5. `denyBanned`：payload 增加 `remainingSec`、`ipMasked`；页面文案由前端渲染（`BanPage.vue`）；
+6. 日志：`rate.limited` 增加 `bucket` 字段；`api.ip_whitelisted` 增加 `clearedBan`。
+
+### 11.5 前端 / 后台
+
+- `frontend/src/pages/BanPage.vue`：显示"约 X 分钟后恢复"与脱敏 IP，保留申诉链接（`/appeal`）；
+- 控制台「封禁与白名单」：加白成功提示补一句"已顺带清除该 IP 的临时封禁"（当 `clearedBan=true`）；
+- 超频记录列表：若后端返回 `bucket` 则加一列（可选，不加也不阻塞）。
+
+### 11.6 兼容与迁移
+
+- 无表结构变化，不需要迁移；
+- 设置项留空时取默认值，与现有环境变量优先级规则一致（DB > env > 默认）。
+
+### 11.7 验收
+
+| # | 验收 |
+|---|---|
+| 1 | 手机被封时，封禁页显示"约 X 分钟后恢复"与脱敏 IP；`/api/ban/state` 返回 `ip` / `whitelisted` / `until` |
+| 2 | 把该 IP 加白 → **不重启**立即恢复访问；响应 `clearedBan:true`；`/api/ban/state` 变成 `banned:false, whitelisted:true` |
+| 3 | 白名单 IP 在封禁期内连续刷新页面**不会**升级封禁（页面 GET 不计入升级） |
+| 4 | 手机正常浏览（连续刷新首页 20 次）不触发封禁；纯 API 高频仍会被封（脚本防护不能丢） |
+| 5 | 三振升级仍有效（API 超限 → 10 分钟 → 30 分钟 → 当天 0 点）；黑名单与设备封语义不变 |
+| 6 | `npm test` 全绿 + `npm run frontend:build` 通过 + `npm run scan` 干净；**不自行构建** |
+
+### 11.8 实施顺序
+
+1. `ratelimit.js` 分桶 + 升级只计 API；
+2. `settings.js` 两个阈值项；
+3. `ban/state` 三件套 + 加白清封（含 `clearedBan`）；
+4. 封禁页文案（剩余时间 / 脱敏 IP）；
+5. 控制台加白提示；
+6. 测试（PGlite + 假时钟/直接调用 `hit()`）→ 构建验证 → 提交推 main。
+
+### 11.9 明确不做
+
+- 不做"自助解封链接"（那是 BQ 的邮件确认页，需要有申诉记录 + token，不能给匿名自助入口）；
+- 不做 UA / 设备维度白名单（需要设备指纹体系改造，另立条目）；
+- 不改黑名单、设备封的判定顺序与文案。

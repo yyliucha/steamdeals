@@ -51,6 +51,8 @@
 | **BN** | BUG：价格历史区块整个不渲染（`v-for`+`v-if` 同元素导致渲染抛错） | [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md) §10 | 已发布 v2.12.1（2026-11-13） | ✅ 本轮已给 |
 | **BO** | 价格历史删掉日期表格 + 趋势线加高到 150px（含史低参考线/轴标签，方案 B） | [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md) §11 | 已发布 v2.13.0（2026-11-13） | ✅ 本轮已给 |
 | **BP** | 游戏详情·DLC 总数与**内联列表**（分页 10 + Steam 商店跳转；**不含拥有状态**——Steam API 不提供） | [GAME-DLC.md](GAME-DLC.md) | 已发布 v2.14.0（2026-11-13） | ✅ 本轮已给 |
+| **BQ** | 申诉邮件内一键「信任 / 封禁」（确认页 + 一次性 token，14 天有效；收件人沿用申诉邮箱） | [APPEAL-SYSTEM.md](APPEAL-SYSTEM.md) §10 / [DEV-BRIEF-APPEAL.md](DEV-BRIEF-APPEAL.md) | 依赖阻塞（等 O 段申诉系统改造） | ✅ 本轮已给 |
+| **BR** | 封禁自助恢复 + 手机/CGNAT 适配（加白即清封、`ban/state` 自查三件套、封禁页可读、页面/API 分桶） | [BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md) §11 | 已实现待发版（2026-11-13） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |
 | **AC** | 同步不可达的未保证项（AC1–AC11） | [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) | AC-1 已发布 v1.18.0；AC-2/AC-3/AC-4 已发布 v2.1.0（2026-11-09） | ✅ 已在对话给出 |
 | **AE** | 版本检测按服务器 IP 选镜像仓库（TCR/Hub） | [VERSION-SOURCE.md](VERSION-SOURCE.md) | 已发布 v1.18.0 | ✅ 已在对话给出 |

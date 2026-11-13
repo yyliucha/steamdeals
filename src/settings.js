@@ -160,6 +160,18 @@ export const SETTINGS = [
     help: '浏览器家族或主版本变化时会话失效；小版本升级不影响。',
   }),
 
+  // ---- 安全与限流（BR 批，docs/BAN-AND-SECURITY-FIXES.md §11.3）----
+  def('security.rateLimit.pageMax', 'RATE_LIMIT_PAGE_MAX', 'security', '页面请求限流（次/分钟）', 'int', 120, {
+    min: 1,
+    max: 10000,
+    help: '页面桶窗口上限（默认 120）：正常浏览翻页不被误封；封禁期内的页面 GET 不再累计升级计数。',
+  }),
+  def('security.rateLimit.apiMax', 'RATE_LIMIT_API_MAX', 'security', 'API 请求限流（次/分钟）', 'int', 150, {
+    min: 1,
+    max: 10000,
+    help: 'API 独立桶窗口上限（默认 150）：脚本/纯接口高频仍会被拦，且封禁期内的升级计数只累计 API 请求。',
+  }),
+
   // ---- 网络 ----
   def('network.steamProxy', 'STEAM_PROXY', 'network', 'Steam 专用代理', 'secret', '', {
     help: '只作用于 Steam 域名，如 http://127.0.0.1:7890。可配多条（换行分隔、按顺序尝试、最多 10 条），仅支持 http/https。',
@@ -202,6 +214,7 @@ export const GROUPS = [
   { id: 'sources', title: '数据源与采集', description: '开关、间隔、API Key 与区服。' },
   { id: 'site', title: '站点与内容', description: '前台展示策略。' },
   { id: 'auth', title: '账号与登录', description: '开放注册开关等登录相关配置。' },
+  { id: 'security', title: '安全与限流', description: '频率限制与封禁阈值（BR 批：页面/API 分桶）。' },
   { id: 'alerts', title: '通知与提醒', description: '提醒开关与间隔、Webhook / 企业微信；邮件配置在「邮件服务」页。' },
   { id: 'network', title: '网络与代理', description: '国内服务器访问 Steam 通常需要代理；只支持 http/https。' },
   { id: 'advanced', title: '高级', description: '一般保持默认即可。' },

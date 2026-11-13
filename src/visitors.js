@@ -72,6 +72,27 @@ export function isIpLike(ip) {
   return IPV6_RE.test(s) && s.includes(':');
 }
 
+/**
+ * 封禁页展示用脱敏：IPv4 末段打码（1.2.3.x）、IPv6 末组打码（…:x）；
+ * 非法/空值返回 null——给用户看自己出口 IP 的近似形，又不把完整地址贴到页面上（BR 批 §11.4）。
+ */
+export function maskIpForDisplay(ip) {
+  const s = String(ip ?? '').trim();
+  if (isIpv4(s)) {
+    const parts = s.split('.');
+    parts[parts.length - 1] = 'x';
+    return parts.join('.');
+  }
+  if (IPV6_RE.test(s) && s.includes(':')) {
+    const groups = s.split(':');
+    let last = groups.length - 1;
+    if (groups[last] === '') last -= 1; // 压缩写法 2001:db8:: 的结尾空组
+    if (last >= 0) groups[last] = 'x';
+    return groups.join(':');
+  }
+  return null;
+}
+
 /** 归一化黑名单输入：单个 IP 或 IPv4 CIDR，非法返回 null。 */
 export function normalizeBanInput(raw) {
   const s = String(raw ?? '').trim().toLowerCase();

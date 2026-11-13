@@ -806,7 +806,7 @@ test('白名单与自动封禁接口：增删查、匿名 401', async () => {
     assert.equal(add.status, 200);
     const list = await (await fetch(`${base}/api/admin/whitelist`, { headers: { cookie: admin.cookie } })).json();
     assert.ok(list.ips.some((i) => i.ip === '198.51.100.9'));
-    assert.ok(list.config && list.config.max > 0, '应带回当前限流配置');
+    assert.ok(list.config && list.config.pageMax > 0 && list.config.apiMax > 0, '应带回当前限流配置（页面/API 分桶）');
 
     const del = await fetch(`${base}/api/admin/whitelist/198.51.100.9`, { method: 'DELETE', headers: { cookie: admin.cookie } });
     assert.equal(del.status, 200);
@@ -824,9 +824,9 @@ test('白名单与自动封禁接口：增删查、匿名 401', async () => {
 });
 
 test('频率限制：同一公网 IP 超频返回 429，白名单可豁免', async () => {
-  const oldMax = process.env.RATE_LIMIT_MAX;
+  const oldMax = process.env.RATE_LIMIT_API_MAX;
   const oldWin = process.env.RATE_LIMIT_WINDOW_SEC;
-  process.env.RATE_LIMIT_MAX = '5';
+  process.env.RATE_LIMIT_API_MAX = '5';
   process.env.RATE_LIMIT_WINDOW_SEC = '60';
   const { store, q, srv, base } = await setup();
   try {
@@ -858,8 +858,8 @@ test('频率限制：同一公网 IP 超频返回 429，白名单可豁免', asy
     }
     assert.ok(!wan.includes(429), '白名单不应被限流');
   } finally {
-    if (oldMax === undefined) delete process.env.RATE_LIMIT_MAX;
-    else process.env.RATE_LIMIT_MAX = oldMax;
+    if (oldMax === undefined) delete process.env.RATE_LIMIT_API_MAX;
+    else process.env.RATE_LIMIT_API_MAX = oldMax;
     if (oldWin === undefined) delete process.env.RATE_LIMIT_WINDOW_SEC;
     else process.env.RATE_LIMIT_WINDOW_SEC = oldWin;
     await srv.close();

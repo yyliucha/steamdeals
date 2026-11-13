@@ -562,7 +562,8 @@ node src/cli.js logs --run run-20261026025454-nu81  # 单次命令全轨迹
 - **CSP 以 Report-Only 观察中**：全站响应带 `Content-Security-Policy-Report-Only`（`default-src 'self'` + Element Plus 所需的 inline style），
   跑稳后切换成强制。另已具备 `nosniff`、`X-Frame-Options: DENY`、`referrer-policy`、HTTPS 下 HSTS。
 - 访客归属地查询可关：`VISITOR_GEO=0`（隐私开关，关闭后访问记录只存 IP）。
-- 限流阈值可在 Compose 环境变量中用 `RATE_LIMIT_MAX`、`RATE_LIMIT_ASSET_MAX` 与 `RATE_LIMIT_WINDOW_SEC` 调整；默认值适合单实例，多个实例的请求计数仍各自独立。
+- 限流阈值可在 Compose 环境变量中用 `RATE_LIMIT_PAGE_MAX`（页面桶，默认 120）、`RATE_LIMIT_API_MAX`（API 桶，默认 150）、
+  `RATE_LIMIT_ASSET_MAX` 与 `RATE_LIMIT_WINDOW_SEC` 调整；也可在「系统设置 → 安全与限流」直接改（保存即热加载）。默认值适合单实例，多个实例的请求计数仍各自独立。
 
 ## 测试
 

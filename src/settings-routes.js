@@ -3,7 +3,7 @@
 // 密钥字段：GET 只返回 hasValue；POST 里空字符串表示保持原值，null 表示清除。
 import * as settings from './settings.js';
 
-export async function handleSettingsRoutes({ path, req, res, q, store, logger = null, json, readBody, user = null }) {
+export async function handleSettingsRoutes({ path, req, res, q, store, logger = null, json, readBody, user = null, afterHydrate = null }) {
   if (!path.startsWith('/api/admin/settings')) return false;
 
   try {
@@ -32,6 +32,7 @@ export async function handleSettingsRoutes({ path, req, res, q, store, logger = 
       if (store) {
         await settings.hydrateSettings({ store, logger });
         await store.setTimezone?.(process.env.TZ); // 改了时区设置，后续连接立即跟进
+        await afterHydrate?.(); // 依赖 env 的模块（如限流阈值）立即重配（BR 批）
       }
       logger?.info('settings.updated', {
         by: user?.username ?? null,

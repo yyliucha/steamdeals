@@ -1,7 +1,8 @@
 // IP 频率限制 + 白名单 + 三振封禁。
 //
 // 规则（可配置）：
-//   页面/API：60 秒内同一 IP 超过 60 次 → 判定异常
+//   页面：60 秒内同一 IP 超过 120 次 → 判定异常（BR 批：页面桶独立）
+//   API：独立桶，60 秒内超过 150 次 → 判定异常（脚本防护：高频 API 仍会被拦）
 //   静态/图片：单独一个桶（默认 300 次/60 秒），避免正常翻页的封面图把用户顶到限流
 // 第 1 次：封 10 分钟；第 2 次：30 分钟；第 3 次：封到当天结束（次日 0 点自动恢复）
 //   三振按「天」计：跨天后重新从 10 分钟起算；每天最多 3 次，封到当天结束后不再累加
@@ -9,6 +10,9 @@
 //   白名单 IP 不计数、不受黑名单限制（管理员自己的出口 IP 放这里）
 //
 // 「非法路径」只由 guard.js 记录待审核，不在这里封。
+//
+// BR 批（docs/BAN-AND-SECURITY-FIXES.md §11）：封禁期内的升级计数只累计 API 请求——
+// 页面 GET（含封禁页自身）与静态资源不再累计，避免手机正常浏览把 10 分钟封禁刷成当天封。
 //
 // 为了不拖慢每个请求：窗口计数全在内存里；只有"判定超限"时才写库。
 import { matchesIpEntry } from './visitors.js';
@@ -18,17 +22,19 @@ const MAX_TRACKED_HITS_PER_BUCKET = 1_000_000;
 
 export const DEFAULTS = {
   enabled: true,
-  max: 60, // 页面/API 窗口内允许的请求数
+  pageMax: 120, // 页面桶：窗口内允许的页面请求数
+  apiMax: 150, // API 桶：窗口内允许的 API 请求数（独立桶）
   assetMax: 300, // 静态资源/图片窗口内允许的请求数
   windowSec: 60, // 窗口长度（秒）
   banMinutes: [10, 30], // 第 1、2 次封禁时长（分钟）
   dayBanStrikes: 3, // 第几次异常开始封到当天结束
-  blockedEscalate: 100, // 封禁期内继续请求多少次 → 升一档
+  blockedEscalate: 100, // 封禁期内继续请求多少次 → 升一档（只累计 API）
 };
 
-const windowHits = new Map(); // ip -> number[]（页面/API）
+const pageHits = new Map(); // ip -> number[]（页面）
+const apiHits = new Map(); // ip -> number[]（API）
 const assetHits = new Map(); // ip -> number[]（静态/图片）
-const trackedHitCounts = new Map([[windowHits, 0], [assetHits, 0]]);
+const trackedHitCounts = new Map([[pageHits, 0], [apiHits, 0], [assetHits, 0]]);
 const blockedHits = new Map(); // ip -> 封禁期内被拒的请求数（用于升级封禁）
 const banUntil = new Map(); // ip -> 毫秒时间戳
 const pathBanned = new Set(); // 因「非法路径」被封的 IP：不参与三振升级
@@ -44,7 +50,8 @@ export function configure(next = {}) {
   };
   config = {
     enabled: next.enabled === undefined ? config.enabled : Boolean(next.enabled),
-    max: boundedInt(next.max, config.max, 1, 10_000),
+    pageMax: boundedInt(next.pageMax, config.pageMax, 1, 10_000),
+    apiMax: boundedInt(next.apiMax, config.apiMax, 1, 10_000),
     assetMax: boundedInt(next.assetMax, config.assetMax, 1, 50_000),
     windowSec: boundedInt(next.windowSec, config.windowSec, 1, 3600),
     banMinutes: Array.isArray(next.banMinutes) && next.banMinutes.length >= 2
@@ -54,6 +61,20 @@ export function configure(next = {}) {
     blockedEscalate: boundedInt(next.blockedEscalate, config.blockedEscalate, 1, 100_000),
   };
   return { ...config };
+}
+
+/**
+ * 从环境变量重配（BR 批）：设置页保存后 hydrate 会写回 env，服务端再调一次本函数即热加载。
+ * 阈值项 security.rateLimit.pageMax / apiMax 对应 RATE_LIMIT_PAGE_MAX / RATE_LIMIT_API_MAX。
+ */
+export function configureFromEnv(env = process.env) {
+  return configure({
+    enabled: env.RATE_LIMIT_ENABLED !== '0',
+    pageMax: Number(env.RATE_LIMIT_PAGE_MAX ?? DEFAULTS.pageMax),
+    apiMax: Number(env.RATE_LIMIT_API_MAX ?? DEFAULTS.apiMax),
+    assetMax: Number(env.RATE_LIMIT_ASSET_MAX ?? DEFAULTS.assetMax),
+    windowSec: Number(env.RATE_LIMIT_WINDOW_SEC ?? DEFAULTS.windowSec),
+  });
 }
 
 export function currentConfig() {
@@ -177,7 +198,7 @@ async function addStrike(q, key) {
 }
 
 async function applyBan(q, key, strikes, { bucket }) {
-  const kind = bucket === 'asset' ? '静态资源' : '页面/API';
+  const kind = bucket === 'asset' ? '静态资源' : bucket === 'api' ? 'API' : '页面';
   const isDayBan = strikes >= config.dayBanStrikes;
   let until;
   let reason;
@@ -233,11 +254,14 @@ export function applyExternalBan(ip, until, { source = 'path' } = {}) {
 /**
  * 记一次请求。返回 { limited, until, reason, strikes, permanent, escalated }。
  *
- * bucket: 'page'（默认，页面/API）| 'asset'（静态资源/图片，单独阈值）
+ * bucket: 'page'（默认，页面）| 'api'（接口）| 'asset'（静态资源/图片，单独阈值）
  * 关键：封禁期内继续请求不再直接丢弃，而是累计「违禁请求」，达到
  * blockedEscalate 次就**升一档封禁**（10 分钟 → 30 分钟 → 封到当天结束，次日 0 点恢复）。
  * 已经封到当天结束后不再升级（每天封顶 3 次）。
- * 但「非法路径」封禁不参与升级：扫描器持续打一会儿就被升级成永久，会误伤共享出口。
+ * BR 批（docs/BAN-AND-SECURITY-FIXES.md §11）：升级计数**只累计 API 请求**——
+ * 封禁期内的页面 GET（含封禁页自身）与静态资源不计，手机正常浏览不会把封禁越刷越长；
+ * 纯 API 高频仍会被拦并升级（脚本防护不丢）。「非法路径」封禁不参与升级：
+ * 扫描器持续打一会儿就被升级成永久，会误伤共享出口。
  */
 export async function hit(q, ip, { bucket = 'page' } = {}) {
   if (!config.enabled || !ip) return { limited: false };
@@ -255,13 +279,15 @@ export async function hit(q, ip, { bucket = 'page' } = {}) {
     if (dayBanned.has(key)) {
       return { limited: true, until: activeBan, reason: '请求过于频繁（今天已被封禁），明天 0 点自动恢复', banned: true, dayBanned: true };
     }
-    const blocked = (blockedHits.get(key) ?? 0) + 1;
-    setBounded(blockedHits, key, blocked);
-    if (blocked >= config.blockedEscalate) {
-      setBounded(blockedHits, key, 0);
-      const strikes = await addStrike(q, key);
-      const ban = await applyBan(q, key, strikes, { bucket });
-      return { limited: true, until: ban.until, reason: ban.reason, strikes, permanent: false, escalated: true, needsReview: Boolean(ban.needsReview) };
+    if (bucket === 'api') {
+      const blocked = (blockedHits.get(key) ?? 0) + 1;
+      setBounded(blockedHits, key, blocked);
+      if (blocked >= config.blockedEscalate) {
+        setBounded(blockedHits, key, 0);
+        const strikes = await addStrike(q, key);
+        const ban = await applyBan(q, key, strikes, { bucket });
+        return { limited: true, until: ban.until, reason: ban.reason, strikes, permanent: false, escalated: true, needsReview: Boolean(ban.needsReview) };
+      }
     }
     return { limited: true, until: activeBan, reason: '请求过于频繁（封禁中）', banned: true };
   }
@@ -274,8 +300,9 @@ export async function hit(q, ip, { bucket = 'page' } = {}) {
 
   const span = config.windowSec * 1000;
   const isAsset = bucket === 'asset';
-  const map = isAsset ? assetHits : windowHits;
-  const max = isAsset ? config.assetMax : config.max;
+  const isApi = bucket === 'api';
+  const map = isAsset ? assetHits : isApi ? apiHits : pageHits;
+  const max = isAsset ? config.assetMax : isApi ? config.apiMax : config.pageMax;
 
   const list = (map.get(key) ?? []).filter((t) => now - t < span);
   list.push(now);
@@ -285,7 +312,8 @@ export async function hit(q, ip, { bucket = 'page' } = {}) {
 
   if (list.length <= max) return { limited: false };
 
-  deleteWindowEntry(windowHits, key);
+  deleteWindowEntry(pageHits, key);
+  deleteWindowEntry(apiHits, key);
   deleteWindowEntry(assetHits, key);
   const strikes = await addStrike(q, key);
   const ban = await applyBan(q, key, strikes, { bucket });
@@ -299,7 +327,8 @@ export async function hit(q, ip, { bucket = 'page' } = {}) {
  */
 export async function clearAbuse(q, ip) {
   const key = String(ip);
-  deleteWindowEntry(windowHits, key);
+  deleteWindowEntry(pageHits, key);
+  deleteWindowEntry(apiHits, key);
   deleteWindowEntry(assetHits, key);
   blockedHits.delete(key);
   banUntil.delete(key);
@@ -317,7 +346,7 @@ export async function clearAbuse(q, ip) {
 
 /**
  * 审核通过 / 手动封 IP 写黑名单时清内存临时封禁（BJ 批 D1）：banUntil/pathBanned/dayBanned/blockedHits
- * 全清；窗口计数（windowHits/assetHits）保留——黑名单检查已在限流之前，这些计数不会再被用上。
+ * 全清；窗口计数（pageHits/apiHits/assetHits）保留——黑名单检查已在限流之前，这些计数不会再被用上。
  */
 export function clearBanMemory(ip) {
   const key = String(ip);
@@ -329,9 +358,11 @@ export function clearBanMemory(ip) {
 
 /** 测试用：清空内存状态。 */
 export function resetState() {
-  windowHits.clear();
+  pageHits.clear();
+  apiHits.clear();
   assetHits.clear();
-  trackedHitCounts.set(windowHits, 0);
+  trackedHitCounts.set(pageHits, 0);
+  trackedHitCounts.set(apiHits, 0);
   trackedHitCounts.set(assetHits, 0);
   blockedHits.clear();
   banUntil.clear();

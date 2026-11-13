@@ -131,14 +131,14 @@ function bannedTemplate(outDir) {
   return html;
 }
 
-/** 封禁提示页：多语言在前端按 navigator.language 选，这里只注入站点名/申诉邮箱/到期时间/申诉编号。 */
-function serveBanPage(res, outDir, { status = 403, until = null, reason = '', siteName = 'SteamDeals', appealEmail = '' } = {}, frontendDir = null) {
+/** 封禁提示页：多语言在前端按 navigator.language 选，这里只注入站点名/申诉邮箱/到期时间/申诉编号/剩余秒数/脱敏 IP（BR 批 §11.4）。 */
+function serveBanPage(res, outDir, { status = 403, until = null, reason = '', siteName = 'SteamDeals', appealEmail = '', remainingSec = null, ipMasked = null } = {}, frontendDir = null) {
   const code = newAppealCode();
   const untilIso = until ? new Date(until).toISOString() : '';
   const distIndex = frontendDir && resolve(frontendDir, 'index.html');
   let html;
   if (distIndex && existsSync(distIndex)) {
-    const payload = JSON.stringify({ status, until: untilIso, reason, site: siteName, email: appealEmail, code }).replace(/</g, '\\u003c');
+    const payload = JSON.stringify({ status, until: untilIso, reason, site: siteName, email: appealEmail, code, remainingSec, ipMasked }).replace(/</g, '\\u003c');
     // 最终方案（docs/FRONTEND-RENDER-FIX.md §2）：必须在模块脚本加载前改地址——
     // main.js 里 router.replace 无效（ES module 提升导致 createWebHistory 已按旧地址初始化）。
     const script =
@@ -432,8 +432,11 @@ export function createApiServer({
       reason,
       status,
     });
+    // BR 批 §11.4：封禁页可读——剩余秒数 + 脱敏 IP 注入 payload，由前端 BanPage 渲染
+    const remainingSec = until ? Math.max(0, Math.ceil((Number(until) - Date.now()) / 1000)) : null;
+    const ipMasked = visitors.maskIpForDisplay(ip);
     if (wantsHtml(req)) {
-      const code = serveBanPage(res, outDir, { status, until, reason, siteName: siteName(), appealEmail: appealEmail() }, frontendDir);
+      const code = serveBanPage(res, outDir, { status, until, reason, siteName: siteName(), appealEmail: appealEmail(), remainingSec, ipMasked }, frontendDir);
       // 记录申诉编号，管理员收到申诉邮件后能按编号在日志里定位这次封禁
       logger?.warn('ban.page', { ip, code, status, until, reason });
       return code;
@@ -561,20 +564,21 @@ export function createApiServer({
       // ---- 只读封禁状态接口（客户端复核用，docs/BAN-AND-SECURITY-FIXES.md §3.3）----
       // 必须在拦截链之前：被封禁者也要拿得到自己的状态。只用内存态（devices.isBanned /
       // ratelimit.bannedUntil / visitors.blockedBy），不查库、不计数；自带限流 1 次/秒、30 次/分钟；
-      // 只回调用者自己的 {banned,type,until}，不含名单内容、不含他人 IP。
+      // 只回调用者自己的 {banned,type,until,ip,whitelisted}（BR 批 §11.4 自查三件套），
+      // 不含名单内容、不含他人 IP。
       if (path === '/api/ban/state' && req.method === 'GET') {
         if (banStateLimited(ip)) {
           return json(res, 429, { error: '请求过于频繁' }, { 'cache-control': 'no-store', 'retry-after': '1' });
         }
-        let state = { banned: false };
+        let state = { banned: false, ip: ip || null, whitelisted };
         if (!whitelisted) {
           const devBan = deviceId ? devices.isBanned({ deviceId }) : null;
           const ipBlocked = ip ? visitors.blockedBy(ip) : null;
           const rateUntil = ip ? ratelimit.bannedUntil(ip) : null;
           // BJ 批 A1：类型优先级 设备 → 黑名单 → 自动封禁（与拦截链一致；黑名单 IP 不再被报成 rate）
-          if (devBan) state = { banned: true, type: 'device', until: devBan.until ? new Date(devBan.until).toISOString() : null };
-          else if (ipBlocked) state = { banned: true, type: 'ip', until: null };
-          else if (rateUntil) state = { banned: true, type: 'rate', until: new Date(rateUntil).toISOString() };
+          if (devBan) state = { banned: true, type: 'device', until: devBan.until ? new Date(devBan.until).toISOString() : null, ip: ip || null, whitelisted: false };
+          else if (ipBlocked) state = { banned: true, type: 'ip', until: null, ip: ip || null, whitelisted: false };
+          else if (rateUntil) state = { banned: true, type: 'rate', until: new Date(rateUntil).toISOString(), ip: ip || null, whitelisted: false };
         }
         return json(res, 200, state, { 'cache-control': 'no-store' });
       }
@@ -599,16 +603,19 @@ export function createApiServer({
       }
 
       // 频率限制：白名单/管理员不参与三振；内网/本机（反代、健康检查）不计数
-      // 分桶：页面/API 与静态资源/图片分开计数——一个列表页几十张封面不该顶到页面阈值
+      // 分桶（BR 批 §11.4）：页面 / API / 静态资源三个独立桶——正常翻页不与接口抢计数，
+      // 封面图也不该顶到页面阈值；封禁期内只有 API 桶继续累计升级。
       if (ip && !whitelisted && !adminBypass && !visitors.isPrivateAddress(ip) && !appealPage) {
         // 统一走 hit：封禁期内的请求也会被计数，够数就记一条待审核（**不再自动永久封**）
-        const verdict = await ratelimit.hit(q, ip, { bucket: guard.isAssetPath(path) ? 'asset' : 'page' });
+        const bucket = guard.isAssetPath(path) ? 'asset' : path.startsWith('/api/') ? 'api' : 'page';
+        const verdict = await ratelimit.hit(q, ip, { bucket });
         if (verdict.limited) {
           if (req.method === 'GET' && isFrontendAsset(path)) return serveFrontendStatic(res, frontendDir, outDir, path);
           const until = Number(verdict.until) || 0;
           logger?.warn('rate.limited', {
             ip,
             path,
+            bucket,
             strikes: verdict.strikes ?? null,
             reason: verdict.reason,
             escalated: Boolean(verdict.escalated),
@@ -957,7 +964,8 @@ export function createApiServer({
       // 系统设置（管理员）：读写 app_settings / smtp_settings
       if (path.startsWith('/api/admin/settings')) {
         if (!requireAdmin()) return;
-        const handled = await handleSettingsRoutes({ path, req, res, q, store, logger, json, readBody, user });
+        // BR 批：设置保存后立即热加载限流阈值（hydrate 写回 env → configureFromEnv 重配）
+        const handled = await handleSettingsRoutes({ path, req, res, q, store, logger, json, readBody, user, afterHydrate: () => ratelimit.configureFromEnv(process.env) });
         if (handled) return;
       }
 
@@ -2554,6 +2562,7 @@ export function createApiServer({
           await settings.hydrateSettings({ store, logger }).catch((err) => {
             logger?.warn('settings.hydrate_failed', { message: String(err.message).slice(0, 160) });
           });
+          ratelimit.configureFromEnv(process.env); // BR 批：设置保存后立即热加载限流阈值
         }
         return json(res, 200, { ok: true });
       }
@@ -3122,10 +3131,10 @@ export function createApiServer({
         const body = await readBody(req);
         const ip = visitors.normalizeBanInput(body.ip);
         if (!ip) return json(res, 400, { error: 'IP 格式不正确（支持 1.2.3.4 或 1.2.3.0/24）' });
-        // 互斥：加白自动移黑（含内存态），黑名单不会"删白后复活"
+        // 互斥：加白自动移黑（含内存态），黑名单不会"删白后复活"；BR 批：加白即清临时封禁
         const result = await banIpExclusive(ip, String(body.note ?? '').trim().slice(0, 200) || null, 'trust');
-        logger?.info('api.ip_whitelisted', { ip, by: user.username, removedFromBlacklist: result.removedFromBlacklist });
-        return json(res, 200, { ip: result.ip, removedFromBlacklist: result.removedFromBlacklist });
+        logger?.info('api.ip_whitelisted', { ip, by: user.username, removedFromBlacklist: result.removedFromBlacklist, clearedBan: result.clearedBan });
+        return json(res, 200, { ip: result.ip, removedFromBlacklist: result.removedFromBlacklist, clearedBan: result.clearedBan });
       }
 
       const wlMatch = path.match(/^\/api\/admin\/whitelist\/([^/]+)$/);
@@ -3515,8 +3524,12 @@ async function banIpExclusiveSql(q, ip, note, kind, { refresh = true, markReview
   }
   const row = await db.addWhitelistIp(q, { ip, note });
   if (refresh) await visitors.refreshBlocklist(q).catch(() => {});
+  // BR 批 §11.2 决策 1：加白即清封——先把内存态临时封禁清掉，响应回 clearedBan，
+  // 手机被误封后管理员加白**不重启**立即恢复（bannedUntil 顺带清过期条目，无副作用）。
+  const clearedBan = ratelimit.bannedUntil(ip) !== null;
   ratelimit.addWhitelist(ip);
-  return { ip: row.ip, removedFromBlacklist: row.removedFromBlacklist };
+  ratelimit.clearBanMemory(ip);
+  return { ip: row.ip, removedFromBlacklist: row.removedFromBlacklist, clearedBan };
 }
 
 /** 纯 SQL 批量的收尾：返回真正改动的键，其余记为 skipped（幂等重放不虚报成功）。 */
@@ -3885,12 +3898,8 @@ export function startApiServer({
       }
       try {
         // 频率限制与白名单：内存计数 + 启动时从库里回填白名单/未到期封禁
-        ratelimit.configure({
-          enabled: process.env.RATE_LIMIT_ENABLED !== '0',
-          max: Number(process.env.RATE_LIMIT_MAX ?? 60),
-          assetMax: Number(process.env.RATE_LIMIT_ASSET_MAX ?? 300),
-          windowSec: Number(process.env.RATE_LIMIT_WINDOW_SEC ?? 60),
-        });
+        // BR 批：阈值来自 env（settings 水合后为 RATE_LIMIT_PAGE_MAX/API_MAX，DB > env > 默认）
+        ratelimit.configureFromEnv(process.env);
         const loaded = await ratelimit.loadState(query);
         logger?.info('rate.init', { ...ratelimit.currentConfig(), ...loaded });
       } catch (err) {

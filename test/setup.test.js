@@ -83,7 +83,7 @@ test('未初始化：页面 302 到 /setup，API 返回 428，/setup 可访问',
     assert.ok(status.version);
 
     const schema = await (await fetch(base + '/api/setup/schema')).json();
-    assert.equal(schema.fields.length, 62, 'AK-3 registrationEnabled + D2 images.maxBytes + BK 会话 3 项');
+    assert.equal(schema.fields.length, 64, 'AK-3 registrationEnabled + D2 images.maxBytes + BK 会话 3 项 + BR 限流 2 项');
     assert.ok(schema.fields.some((f) => f.key === 'sources.itad.apiKey'));
     assert.equal(schema.values['sources.itad.apiKey'], '', '初始化页不能回显密钥');
   } finally {

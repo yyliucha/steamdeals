@@ -248,6 +248,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - 关键点：`/api/appeal` 要在封禁拦截里放行；邮件 `From` 用 SMTP 账号、`Reply-To` 用申请人邮箱；
   SMTP 未配置不影响入库；处理动作联动现有解封逻辑（ip_blacklist / ip_abuse / device_bans）。
 - 依赖：先修封禁页跳转（FRONTEND-RENDER-FIX §2）。验收见文档 §8。
+- 开发汇报（O + BQ 合并版）：[DEV-BRIEF-APPEAL.md](DEV-BRIEF-APPEAL.md)
 
 ## P. ~~待开发：后台功能对齐（设备 tab + 合并重复游戏 + 同步历史 + 回填进度）~~ → **已过时（被后面的 P 段覆盖）**
 
@@ -1330,6 +1331,25 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   前端详情内联列表可用、翻页正常、每行可跳 Steam、明确"不提供拥有数据"、移动端卡片、非 Steam 无区块；
   `steam-status` 一轮后缺失数下降、日志可查、**不新增调度任务**；`npm test` / `frontend:build` / `scan` 全绿。
 
+## BQ. 待开发：申诉邮件内一键「信任 / 封禁」
+
+**状态：依赖阻塞（需求与方案已确认 2026-11-13，见 [docs/APPEAL-SYSTEM.md](APPEAL-SYSTEM.md) §10；等 O 段申诉系统改造先实现）**
+**依赖：** O 段（`appeals` 表 + `POST /api/appeal` + 通知邮件 + 后台申诉管理）——BQ 是在那封通知邮件里加两个动作按钮，没有 O 就没有申诉记录可处理
+**解锁：** 无
+**规格**：[APPEAL-SYSTEM.md](APPEAL-SYSTEM.md) §10（10.1 决策 / 10.3 接口 / 10.4 确认页 / 10.7 验收）
+**开发汇报**：[DEV-BRIEF-APPEAL.md](DEV-BRIEF-APPEAL.md)（O + BQ 的 17 个功能点、接口/邮件清单、6 步顺序，交接用）
+
+- **需求（2026-11-13 所有者）**：用户发起申诉时给管理员邮箱发信，**管理员在邮件里直接「信任」或「封禁」**，不必登录后台。
+- **已确认决策（5 项，均在对话中由所有者选定）**：① 邮件里两个动作——**信任（解封 IP+设备）**、**拒绝（继续封）**；
+  ② 点链接先到**确认页**，再点按钮才执行（防邮件预取/安全扫描误触）；③ 链接 **14 天**有效、**处理一次即失效**；
+  ④ **token 即凭据、不要求登录**（只对一条申诉有效）；⑤ 收件人**沿用「申诉邮箱」设置**回退链，不新增设置。
+- **实现要点**：`appeals` 加 `action_token_hash`（只存 sha256）/`action_expires_at`/`handled_via`；
+  新增 `POST /api/appeal/action`（`preview|trust|reject`，POST-only、无 GET 副作用）并在封禁拦截里放行；
+  邮件模板正文顶部加两个按钮链接 `https://<域名>/appeal/act#t=<token>`（token 放 fragment，不进访问日志/Referer）；
+  新增确认页 `AppealActionPage.vue` + 路由 `/appeal/act` 并登记 `FRONTEND_PAGES` 与 `test/serve.test.js`；
+  拒绝可填理由（预填默认文案）；与后台共用状态机（先到先得，后到显示「已处理」）。
+- **验收**：见规格 §10.7 第 9–17 条（邮件按钮 → 确认页零副作用 → 信任/拒绝生效 → 重复点幂等 → 过期/伪造 token 统一 404 →
+  SMTP 未配仍可用 → `npm test` / `frontend:build` / `scan` 全绿；**不自行构建**）。
 
 
 
@@ -1350,3 +1370,27 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 
 
+
+## BR. 待开发：封禁自助恢复 + 手机/CGNAT 适配 + 可观测
+
+**状态：已实现待发版（2026-11-13，提交哈希待补；本地验证全绿，待调 gameprice-qa）**
+**依赖：** 无
+**解锁：** 无
+**规格**：[BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md) §11（11.2 决策 / 11.3 参数 / 11.7 验收）
+
+- **触发（2026-11-13，生产 v2.12.1）**：手机端「访问几次就被封」；把手机 IP 加进白名单后**仍**提示
+  「请求过于频繁（封禁中）」。
+- **只读核查结论**：该文案唯一对应 `src/ratelimit.js:266` —— **该 IP 正处于临时超频封禁期内**（不是黑名单/设备/当天封，
+  三种文案不同）；白名单是整段跳过拦截的，所以"加白仍封"只能是**当前请求 IP 不在白名单**（手机 CGNAT 出口漂移 / 加错 IP）；
+  而系统**没有给用户任何自查手段**（`/api/ban/state` 不告诉自己是谁、在不在白名单）。
+- **已确认决策（4 项，所有者 2026-11-13 点头）**：
+  ① **加白即清封**（写白名单时清内存临时封禁，响应回 `clearedBan`）；
+  ② **`/api/ban/state` 返回自查三件套**（`ip` / `whitelisted` / `until`）；
+  ③ **封禁页可读**（剩余时间 + 脱敏 IP + 申诉入口）；
+  ④ **手机/CGNAT 适配**：页面桶与 API 桶分离，封禁期内**页面 GET 不累计升级计数**，阈值走设置项
+  （默认：页面 120/分、API 150/分、资源 300/分）。
+- **改动落点**：`src/ratelimit.js`（分桶 + 升级只计 API）、`src/settings.js`（`security.rateLimit.pageMax/apiMax`）、
+  `src/server.js`（`ban/state` 三件套、`banIpExclusiveSql(trust)` 加 `clearBanMemory` 与 `clearedBan`、`denyBanned` 加
+  `remainingSec/ipMasked`）、`frontend/src/pages/BanPage.vue`（文案）、控制台加白提示、对应测试。
+- **验收**：见规格 §11.7 第 1–6 条（封禁页可读 + 加白立即恢复 + 白名单不被升级 + 手机正常浏览不误封 + 三振/黑名单语义不变 +
+  `npm test` / `frontend:build` / `scan` 全绿；**不自行构建**）。

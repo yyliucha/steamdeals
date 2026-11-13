@@ -32,15 +32,15 @@ function fakeQ() {
 
 test('超频：第 1 次封 10 分钟、第 2 次 30 分钟、第 3 次封到当天结束（次日 0 点恢复），不写永久黑名单', async () => {
   ratelimit.resetState();
-  ratelimit.configure({ enabled: true, max: 5, windowSec: 60, blockedEscalate: 5 });
+  ratelimit.configure({ enabled: true, apiMax: 5, windowSec: 60, blockedEscalate: 5 });
   const { q, blacklist, stats } = fakeQ();
   const ip = '203.0.113.9';
 
   for (let i = 0; i < 5; i += 1) {
-    const v = await ratelimit.hit(q, ip);
+    const v = await ratelimit.hit(q, ip, { bucket: 'api' });
     assert.equal(v.limited, false, `第 ${i + 1} 次不应限流`);
   }
-  const first = await ratelimit.hit(q, ip);
+  const first = await ratelimit.hit(q, ip, { bucket: 'api' });
   assert.equal(first.limited, true);
   assert.equal(first.strikes, 1);
   assert.equal(first.permanent, false);
@@ -48,16 +48,16 @@ test('超频：第 1 次封 10 分钟、第 2 次 30 分钟、第 3 次封到当
   const mins1 = Math.round((first.until - Date.now()) / 60000);
   assert.ok(mins1 >= 9 && mins1 <= 10, '第一次应封约 10 分钟，实际 ' + mins1);
 
-  // 封禁期内继续请求 5 次 → 升级到第 2 档（30 分钟）
+  // 封禁期内继续请求 5 次 → 升级到第 2 档（30 分钟）；BR 批：升级只累计 API 请求
   let second = null;
-  for (let i = 0; i < 5; i += 1) second = await ratelimit.hit(q, ip);
+  for (let i = 0; i < 5; i += 1) second = await ratelimit.hit(q, ip, { bucket: 'api' });
   assert.equal(second.strikes, 2);
   const mins2 = Math.round((second.until - Date.now()) / 60000);
   assert.ok(mins2 >= 29 && mins2 <= 30, '第二次应封约 30 分钟，实际 ' + mins2);
 
   // 再继续 5 次 → 第 3 档：封到当天结束（次日 0 点）
   let third = null;
-  for (let i = 0; i < 5; i += 1) third = await ratelimit.hit(q, ip);
+  for (let i = 0; i < 5; i += 1) third = await ratelimit.hit(q, ip, { bucket: 'api' });
   assert.equal(third.strikes, 3);
   assert.equal(third.permanent, false, '永不自动永久');
   assert.equal(third.needsReview, true);
@@ -70,7 +70,7 @@ test('超频：第 1 次封 10 分钟、第 2 次 30 分钟、第 3 次封到当
   // 已经封到当天结束：当天最多就这 3 次，继续请求不再升级、不再累加
   const insertsAfterThird = stats.inserts;
   for (let i = 0; i < 5; i += 1) {
-    const v = await ratelimit.hit(q, ip);
+    const v = await ratelimit.hit(q, ip, { bucket: 'api' });
     assert.equal(v.limited, true);
     assert.equal(Boolean(v.escalated), false, '当天封禁后不再升级');
   }
@@ -88,7 +88,7 @@ test('nextMidnight：返回本地时区次日 0 点', () => {
 
 test('白名单不计数、不限流', async () => {
   ratelimit.resetState();
-  ratelimit.configure({ enabled: true, max: 2, windowSec: 60 });
+  ratelimit.configure({ enabled: true, pageMax: 2, windowSec: 60 });
   const { q } = fakeQ();
   ratelimit.addWhitelist('198.51.100.7');
   for (let i = 0; i < 10; i += 1) {
@@ -102,7 +102,7 @@ test('白名单不计数、不限流', async () => {
 
 test('手动解封清掉临时封禁（不再产生永久黑名单）', async () => {
   ratelimit.resetState();
-  ratelimit.configure({ enabled: true, max: 1, windowSec: 60, blockedEscalate: 2 });
+  ratelimit.configure({ enabled: true, pageMax: 1, windowSec: 60, blockedEscalate: 2 });
   const { q, blacklist } = fakeQ();
   const ip = '203.0.113.55';
   for (let round = 0; round < 3; round += 1) {
@@ -130,7 +130,7 @@ test('BJ：clearAbuse 只清 ip_abuse，不再删 ip_blacklist（解封语义拆
 
 test('BJ：clearBanMemory 只清封禁内存，不碰窗口计数与黑名单', async () => {
   ratelimit.resetState();
-  ratelimit.configure({ enabled: true, max: 60, windowSec: 60 });
+  ratelimit.configure({ enabled: true, pageMax: 60, windowSec: 60 });
   const { q, blacklist } = fakeQ();
   blacklist.add('203.0.113.99');
   ratelimit.applyExternalBan('203.0.113.99', Date.now() + 600_000);
@@ -142,10 +142,68 @@ test('BJ：clearBanMemory 只清封禁内存，不碰窗口计数与黑名单', 
 
 test('禁用后完全不限流', async () => {
   ratelimit.resetState();
-  ratelimit.configure({ enabled: false, max: 1, windowSec: 60 });
+  ratelimit.configure({ enabled: false, pageMax: 1, windowSec: 60 });
   const { q } = fakeQ();
   for (let i = 0; i < 20; i += 1) {
     const v = await ratelimit.hit(q, '203.0.113.1');
     assert.equal(v.limited, false);
   }
+});
+
+test('BR：页面 / API / 静态资源三个桶独立计数', async () => {
+  ratelimit.resetState();
+  ratelimit.configure({ enabled: true, pageMax: 2, apiMax: 3, assetMax: 4, windowSec: 60 });
+  const { q } = fakeQ();
+  const ip = '203.0.113.200';
+  // 页面桶打满 2 次仍不断（第 3 次才断）；期间 API 桶与资源桶独立
+  for (let i = 0; i < 2; i += 1) assert.equal((await ratelimit.hit(q, ip, { bucket: 'page' })).limited, false);
+  for (let i = 0; i < 3; i += 1) assert.equal((await ratelimit.hit(q, ip, { bucket: 'api' })).limited, false);
+  for (let i = 0; i < 4; i += 1) assert.equal((await ratelimit.hit(q, ip, { bucket: 'asset' })).limited, false);
+  // 页面第 3 次超限 → 封禁（资源/API 没打满，证明三个桶互不影响）
+  const over = await ratelimit.hit(q, ip, { bucket: 'page' });
+  assert.equal(over.limited, true);
+  assert.equal(over.strikes, 1);
+  assert.match(over.reason, /页面/);
+});
+
+test('BR：封禁期内只有 API 请求累计升级，页面/资源刷不升级', async () => {
+  ratelimit.resetState();
+  ratelimit.configure({ enabled: true, pageMax: 5, apiMax: 1, assetMax: 100, windowSec: 60, blockedEscalate: 2 });
+  const { q, stats } = fakeQ();
+  const ip = '203.0.113.201';
+  // API 桶第 2 次超限 → 第 1 档封禁
+  assert.equal((await ratelimit.hit(q, ip, { bucket: 'api' })).limited, false);
+  const ban = await ratelimit.hit(q, ip, { bucket: 'api' });
+  assert.equal(ban.limited, true);
+  assert.equal(ban.strikes, 1);
+  assert.ok(ratelimit.bannedUntil(ip), '应处于临时封禁中');
+
+  // 封禁期内狂刷页面与静态资源：都返回封禁中，但绝不升级、不写库
+  const insertsBefore = stats.inserts;
+  for (let i = 0; i < 10; i += 1) {
+    const p = await ratelimit.hit(q, ip, { bucket: 'page' });
+    assert.equal(p.limited, true);
+    assert.equal(Boolean(p.escalated), false, '页面 GET 在封禁期内不得升级');
+    const a = await ratelimit.hit(q, ip, { bucket: 'asset' });
+    assert.equal(a.limited, true);
+    assert.equal(Boolean(a.escalated), false, '静态资源在封禁期内不得升级');
+  }
+  assert.equal(stats.inserts, insertsBefore, '页面/资源刷屏不得触发新三振写入');
+
+  // 封禁期内 API 继续 2 次 → 升级到第 2 档（脚本防护仍在）
+  let escalated = null;
+  for (let i = 0; i < 2; i += 1) escalated = await ratelimit.hit(q, ip, { bucket: 'api' });
+  assert.equal(escalated.limited, true);
+  assert.equal(escalated.escalated, true);
+  assert.equal(escalated.strikes, 2, 'API 请求仍按 blockedEscalate 升档');
+});
+
+test('BR：configureFromEnv 读取 RATE_LIMIT_PAGE_MAX / RATE_LIMIT_API_MAX', () => {
+  ratelimit.resetState();
+  ratelimit.configureFromEnv({ RATE_LIMIT_ENABLED: '1', RATE_LIMIT_PAGE_MAX: '7', RATE_LIMIT_API_MAX: '9' });
+  const cfg = ratelimit.currentConfig();
+  assert.equal(cfg.pageMax, 7);
+  assert.equal(cfg.apiMax, 9);
+  assert.equal(cfg.assetMax, 300, '未设置时取默认');
+  ratelimit.resetState();
 });
