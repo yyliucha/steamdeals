@@ -1284,7 +1284,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BO. 待开发：价格历史删掉日期表格 + 趋势线加高到 150px
 
-**状态：已实现待发版（2026-11-13，BO 一次交付）**
+**状态：质检通过（2026-11-13，257a2a6；QA 报告 docs/QA-PRICE-HISTORY-BO.md）**
 **依赖：** BN（已发布 v2.12.1，本条在其修复后的组件上做界面精简）
 **解锁：** 无
 **规格**：[PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md) §11
