@@ -764,7 +764,7 @@ select ip, strikes, banned_until, ban_source, updated_at from ip_abuse where ip 
 
 ## 11. 2026-11-13 修订（BR）：封禁自助恢复 + 手机/CGNAT 适配 + 可观测
 
-> 状态：**质检通过（2026-11-14 第 1 轮，QA 报告 docs/QA-BAN-BR.md；实现 b8ee317 + 验收断言 edcaaa7）**。编号 **BR**。
+> 状态：**已实现并发布 v2.16.0（2026-11-14，QA 报告 docs/QA-BAN-BR.md 第 1 轮 ✅ 放行）**。编号 **BR**。
 > 触发：所有者手机端「访问几次就被封」，且把手机 IP 加进白名单后**仍**提示「请求过于频繁（封禁中）」（生产 v2.12.1）。
 > 关联：[TODO.md](TODO.md) 的 BR 条目、[SESSION-MANAGEMENT.md](SESSION-MANAGEMENT.md)（同一类"移动网络会变"的相邻问题）、[WEB.md](WEB.md)（接口表）。
 
