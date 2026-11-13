@@ -97,8 +97,9 @@ test('POST /api/admin/images/reset-miss：匿名 401、普通用户 403、管理
   }
 });
 // 回归：BC 批的回填候选必须是「OR 扩展」，不能写成独立 AND（那样反而收窄候选、补不到图）
+// BL 批起候选谓词统一在 src/store/pg.js 的 backfillCandidateWhere（CLI 与统计共用）。
 test('backfill 候选 SQL：header_image 条件并入描述/报价的 OR 组', () => {
-  const src = readFileSync(new URL('../src/cli.js', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('../src/store/pg.js', import.meta.url), 'utf8');
   assert.match(
     src,
     /or \(g\.header_image is null and exists \(select 1 from offers o where o\.game_id = g\.id\)\)\)/,

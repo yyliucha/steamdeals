@@ -8,7 +8,7 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createLogger, serializeError } from './log.js';
 import { hasNotifier } from './notify.js';
 import { openStore } from './store/index.js';
@@ -76,11 +76,11 @@ export function jobsFromEnv(env = process.env) {
     },
     {
       name: 'backfill',
-      // 每周增量回填：给目录里新进的游戏补元数据/说明/价格（GetItems + appdetails 回退）。
-      // 选择条件自带收敛（有说明+报价的跳过），没活时秒退；与其它 Steam 任务串行不抢限流。
-      // AC-3/AC9（2026-11-09）：上限从每周 2 万提高到 5 万，且队列按收录时间新游戏优先。
-      args: ['backfill', '--limit', String(num(env.STEAM_BACKFILL_LIMIT, 50000)), '--batch', '100', '--sleep', '3000'],
-      intervalMin: num(env.STEAM_BACKFILL_INTERVAL_MIN, 10080),
+      // 每天增量回填（BL-1，docs/BACKFILL-THROUGHPUT.md §3.1）：给目录里新进的游戏补元数据/说明/价格
+      // （GetItems + appdetails 回退）。选择条件自带收敛（有说明+报价的跳过），没活时秒退；
+      // 与其它 Steam 任务串行不抢限流。BL-1：每周 → 每天、上限 5 万 → 5000（稳态小步收敛）。
+      args: ['backfill', '--limit', String(num(env.STEAM_BACKFILL_LIMIT, 5000)), '--batch', '100', '--sleep', '3000'],
+      intervalMin: num(env.STEAM_BACKFILL_INTERVAL_MIN, 1440),
       initialDelaySec: num(env.STEAM_BACKFILL_INITIAL_DELAY_SEC, 10800),
       enabled: env.STEAM_ENABLED !== '0',
     },
@@ -235,6 +235,9 @@ export function resetCircuit(name) {
 /** 记录一次任务结果，返回新的健康状态。纯函数，便于单测。 */
 export function recordJobResult(state, { code, nowMs, threshold = CIRCUIT.threshold, cooldownMs = CIRCUIT.cooldownMs }) {
   if (code === 0) return { failures: 0, openUntil: null, opened: false };
+  // BL-2（docs/BACKFILL-THROUGHPUT.md §3.2）：75 = 429/403 软退出（partial）——本轮已保留进度，
+  // 不算失败：failures 不变、不累计、不触发熔断。
+  if (code === 75) return { failures: state?.failures ?? 0, openUntil: state?.openUntil ?? null, opened: false };
   const failures = (state?.failures ?? 0) + 1;
   if (failures >= threshold) {
     return { failures, openUntil: nowMs + cooldownMs, opened: true };
@@ -245,6 +248,54 @@ export function recordJobResult(state, { code, nowMs, threshold = CIRCUIT.thresh
 /** 熔断是否仍然生效。 */
 export function isCircuited(state, nowMs) {
   return Boolean(state?.openUntil && nowMs < state.openUntil);
+}
+
+// ---------------------------------------------------------------- BL-2：429 软退出后的 1 小时重排（docs/BACKFILL-THROUGHPUT.md §3.2）
+
+export const retryFilePath = () => process.env.SCHEDULER_RETRY_FILE ?? 'data/scheduler-retry.json';
+
+/** 读重排状态 { job: { at, streak, reason } }；缺失/损坏返回 {}。 */
+export function readRetryState() {
+  try {
+    const parsed = JSON.parse(readFileSync(retryFilePath(), 'utf8'));
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 写重排状态（原子：tmp + rename）。 */
+export function writeRetryState(state = {}) {
+  try {
+    mkdirSync(dirname(retryFilePath()), { recursive: true });
+    writeFileSync(retryFilePath(), JSON.stringify(state, null, 2));
+  } catch {
+    /* 写失败不影响调度 */
+  }
+}
+
+/**
+ * 更新重排状态（纯函数）：
+ * - code 0（成功）→ 清掉该任务的重排与连击；
+ * - code 75（partial）→ at = now + 60 分钟、streak + 1；连续 3 次 partial → 清掉重排（等正常日轮，避免整夜刷 429）；
+ * - 其它失败 → 不动。
+ */
+export function applyRetry(state = {}, { job, code, nowMs }) {
+  const next = { ...state };
+  if (code === 0) {
+    delete next[job];
+    return next;
+  }
+  if (code === 75) {
+    const cur = next[job] ?? {};
+    const streak = Number(cur.streak ?? 0) + 1;
+    if (streak >= 3) {
+      delete next[job];
+    } else {
+      next[job] = { at: new Date(nowMs + 60 * 60_000).toISOString(), streak, reason: 'http_429' };
+    }
+  }
+  return next;
 }
 
 // 采集类任务成功后需要刷新静态页的，列在这里（backfill 会写新报价，也要重建）
@@ -320,11 +371,14 @@ export function followUpArgs(jobName, code, env = process.env) {
  * 从未跑过：startedMs + initialDelaySec 触发（首轮错开，避免同时打满）。
  * 跑过的：lastRun + intervalMin 触发。
  */
-export function dueJobs(jobs, { nowMs, startedMs, lastRunMs }) {
+export function dueJobs(jobs, { nowMs, startedMs, lastRunMs, retry = null }) {
   return jobs.filter((job) => {
     const last = lastRunMs.get(job.name);
     const nextAt = last == null ? startedMs + job.initialDelaySec * 1000 : last + job.intervalMin * 60_000;
-    return nowMs >= nextAt;
+    if (nowMs >= nextAt) return true;
+    // BL-2：429 软退出后的 1 小时重排——正常到期之外，重排时间到了也算 due（仍受重任务单槽互斥）
+    const at = retry?.[job.name]?.at ?? null;
+    return Boolean(at && Date.parse(at) <= nowMs);
   });
 }
 
@@ -347,9 +401,9 @@ export function steamDailyBudgetMinutes(env = process.env) {
   const priceMin = (num(env.STEAM_PRICE_LIMIT, 200000) / 30) * 1.1 / 60;
   const heatMin = num(env.STEAM_HEAT_LIMIT, 20000) * 1.7 / 60;
   const statusMin = num(env.STEAM_STATUS_LIMIT, 6000) * 2 * (num(env.STEAM_STATUS_RATE_MS, 1500) / 60000);
-  const backfillLimit = num(env.STEAM_BACKFILL_LIMIT, 50000);
+  const backfillLimit = num(env.STEAM_BACKFILL_LIMIT, 5000);
   const backfillRoundMin = (backfillLimit / 100) * 3 / 60 + (backfillLimit / 100) * 10 * 0.4 / 60;
-  const backfillDailyMin = backfillRoundMin / Math.max(1, num(env.STEAM_BACKFILL_INTERVAL_MIN, 10080) / 1440);
+  const backfillDailyMin = backfillRoundMin / Math.max(1, num(env.STEAM_BACKFILL_INTERVAL_MIN, 1440) / 1440);
   return {
     priceMin,
     heatMin,
@@ -431,7 +485,7 @@ export function auditJobs(env = process.env) {
  * 把调度器状态写到文件，Web 进程读它来展示「定时任务 / 下次运行」。
  * 跨进程通信不值得上 IPC：一个小 JSON 足够，读不到就当没有。
  */
-export function writeStatusFile(jobs, { lastRunMs, health, running, tickMs = 60000, lastOutcome = null, waitingSince = null, file = process.env.SCHEDULER_STATUS_FILE || 'data/scheduler-status.json' } = {}) {
+export function writeStatusFile(jobs, { lastRunMs, health, running, tickMs = 60000, lastOutcome = null, waitingSince = null, retry = null, file = process.env.SCHEDULER_STATUS_FILE || 'data/scheduler-status.json' } = {}) {
   try {
     const now = Date.now();
     const payload = {
@@ -458,6 +512,8 @@ export function writeStatusFile(jobs, { lastRunMs, health, running, tickMs = 600
           lastError: outcome ? outcome.error : null,
           // AC5：重任务排队等待（被谁占用、从何时开始等）
           waitingFor: waiting ? { occupiedBy: waiting.occupiedBy, since: new Date(waiting.at).toISOString() } : null,
+          // BL-2：429 软退出后的重排时间（后台「状态」列显示重试于 HH:mm）
+          retryAt: retry?.[j.name]?.at ?? null,
         };
       }),
     };
@@ -541,6 +597,9 @@ export async function main() {
           ...process.env,
           // 价格刷新是无人值守任务：429 时按安全退避等待并重试，避免周期任务永久漏掉这一轮。
           ...(job.name === 'steam-prices' ? { STEAM_429_RETRIES: 'Infinity' } : {}),
+          // BL-2（docs/BACKFILL-THROUGHPUT.md §3.2）：回填不在请求里长睡——429 快速失败（exit 75），
+          // 由调度器 1 小时后重排；冷却已由 http 层落盘共享。
+          ...(job.name === 'backfill' ? { STEAM_429_RETRIES: '0' } : {}),
         },
         stdio: 'inherit',
       });
@@ -554,6 +613,7 @@ export async function main() {
         children.delete(job.name);
         const elapsedMs = Date.now() - startedAt;
         if (code === 0) logger.info('scheduler.job_done', { job: job.name, code, elapsedMs });
+        else if (code === 75) logger.warn('scheduler.job_partial', { job: job.name, code, elapsedMs, message: 'HTTP 429/403 软退出：本轮收尾，1 小时后重排' });
         else logger.error('scheduler.job_failed', { job: job.name, code, signal, elapsedMs });
         resolve({ code: code ?? -1 });
       });
@@ -612,6 +672,8 @@ export async function main() {
     const waitingSince = new Map(); // job.name -> { at, occupiedBy }（AC5 重任务排队可观测）
     let heavySlot = null; // 正在跑的 Steam 重任务名（全局单槽，X 批 P0-1：串行但不阻塞 tick）
     const lightMax = lightConcurrency(process.env);
+    // BL-2：429 软退出后的 1 小时重排状态（data/scheduler-retry.json）
+    let retryState = readRetryState();
     // chart 后续任务串行链：避免多个 chart 子进程并发写 out/
     let followUpChain = Promise.resolve();
 
@@ -623,11 +685,14 @@ export async function main() {
       startedAt.delete(job.name);
       lastOutcome.set(job.name, {
         elapsedMs: Date.now() - started,
-        result: code === 0 ? 'ok' : 'failed',
-        error: code === 0 ? null : `exit code ${code}`,
+        // BL-2：75 = 429/403 软退出 → partial（不记失败、不熔断）
+        result: code === 0 ? 'ok' : code === 75 ? 'partial' : 'failed',
+        error: code === 0 ? null : code === 75 ? 'HTTP 429/403 提前收尾（进度已保留，1 小时后重排）' : `exit code ${code}`,
       });
+      retryState = applyRetry(retryState, { job: job.name, code, nowMs: Date.now() });
+      writeRetryState(retryState);
       waitingSince.delete(job.name);
-      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, lastOutcome, waitingSince });
+      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, lastOutcome, waitingSince, retry: retryState });
       const followUp = followUpArgs(job.name, code, process.env);
       if (followUp && !stopping) {
         followUpChain = followUpChain
@@ -715,7 +780,7 @@ export async function main() {
       setupCompleted: initialized.completed,
       lightConcurrency: lightMax,
     });
-    writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS });
+    writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, retry: retryState });
 
     while (!stopping) {
       // 设置页保存后 revision +1：重新水合 env 并重建任务表，无需重启容器
@@ -732,7 +797,8 @@ export async function main() {
       }
 
       const now = Date.now();
-      const due = dueJobs(jobs, { nowMs: now, startedMs, lastRunMs });
+      // BL-2：重排状态参与 due 判定（正常到期 || retry.at 已到）
+      const due = dueJobs(jobs, { nowMs: now, startedMs, lastRunMs, retry: retryState });
 
       // 每 tick 的派发计划（X 批 P0-1）：重任务槽被占只挡重任务，轻任务照常发。
       const plan = planTick({ due, heavySlot, running, lightMax });

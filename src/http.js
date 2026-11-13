@@ -76,14 +76,32 @@ export function readSteam429Until(nowMs = Date.now()) {
     return 0;
   }
 }
-export function writeSteam429Until(untilMs) {
+export function writeSteam429Until(untilMs, { at = null, label = null } = {}) {
   try {
     const file = steam429FilePath();
     _fsMkdir(_fsDirname(file), { recursive: true });
-    _fsWrite(`${file}.tmp`, JSON.stringify({ until: new Date(untilMs).toISOString() }));
+    // BL 批（docs/BACKFILL-THROUGHPUT.md §3.2）：追加 at/label（读仍只认 until，向后兼容）
+    _fsWrite(
+      `${file}.tmp`,
+      JSON.stringify({ until: new Date(untilMs).toISOString(), at: at ?? new Date().toISOString(), label }),
+    );
     _fsRename(`${file}.tmp`, file);
   } catch {
     /* 退避文件写失败不影响内存冷却 */
+  }
+}
+
+/** 读冷却文件完整信息 { until, at, label } | null（`until` 已过期时整体视为无冷却）。 */
+export function readSteam429Info(nowMs = Date.now()) {
+  try {
+    const raw = _fsRead(steam429FilePath());
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    const until = Date.parse(String(data?.until ?? ''));
+    if (!Number.isFinite(until) || until <= nowMs) return null;
+    return { until, at: data?.at ?? null, label: data?.label ?? null };
+  } catch {
+    return null;
   }
 }
 
@@ -402,13 +420,17 @@ export async function fetchText(url, opts = {}) {
       });
 
       if (steam429) {
-        if (steam429Retries >= steam429RetriesMax) break;
-        steam429Retries += 1;
+        // BL 批（docs/BACKFILL-THROUGHPUT.md §3.2）：首次 429 就先落盘全局冷却（含 at/label），
+        // 再按 STEAM_429_RETRIES 决定是否在本进程内重试——回填用 STEAM_429_RETRIES=0 快速失败，
+        // 其它任务仍能从文件读到冷却、不再立刻打 Steam。
+        const nextRetry = steam429Retries + 1;
         // 持续 429 时逐步拉长等待（30m、1h、2h…最多 6h），避免任务退出后需要人工重启。
-        const backoffMs = Math.min(6 * 60 * 60 * 1000, STEAM_429_COOLDOWN_MS * (2 ** (steam429Retries - 1)));
+        const backoffMs = Math.min(6 * 60 * 60 * 1000, STEAM_429_COOLDOWN_MS * (2 ** (nextRetry - 1)));
         const delayMs = Math.max(backoffMs, retryAfterMs(err.retryAfter));
+        writeSteam429Until(Math.max(steamCooldownUntil, Date.now() + delayMs), { at: new Date().toISOString(), label }); // AC6 + BL：落盘共享给其它子进程
+        if (steam429Retries >= steam429RetriesMax) break; // 不重试：立即失败（内存冷却只在重试语义下设置，避免同进程后续请求被睡死）
+        steam429Retries = nextRetry;
         steamCooldownUntil = Math.max(steamCooldownUntil, Date.now() + delayMs);
-        writeSteam429Until(steamCooldownUntil); // AC6：落盘共享给其它子进程
         logger?.warn('http.rate_limit_pause', {
           label,
           requestId,
@@ -416,7 +438,7 @@ export async function fetchText(url, opts = {}) {
           retry: steam429Retries,
           delayMs,
           retryAfter: err.retryAfter ?? null,
-          message: 'Steam 429：暂停请求，冷却后重试',
+          message: 'Steam 429：已记录冷却（at/label），按重试配置决定是否等待重试',
         });
         await sleep(delayMs);
         continue;

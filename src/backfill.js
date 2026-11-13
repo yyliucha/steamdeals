@@ -2,6 +2,8 @@
 //
 // 控制台「数据回填」卡片和 `/api/admin/backfill*` 共用这里的规则，
 // 避免前端传什么后端就跑什么（limit 上限 20 万、sleep 上限 60 秒等）。
+import { mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 export const BACKFILL_LIMITS = {
   limit: { min: 1, max: 200000, def: 200000 },
@@ -162,4 +164,57 @@ export function mergePriceOffers(items = [], fallbackOffers = []) {
     offers.push(offer);
   }
   return offers;
+}
+
+// ---------------------------------------------------------------- BL-2：进度文件（docs/BACKFILL-THROUGHPUT.md §3.4）
+
+export const backfillProgressFilePath = () => process.env.BACKFILL_PROGRESS_FILE ?? 'data/backfill-progress.json';
+
+/**
+ * 进度载荷归一化（纯函数）：字段齐全、类型可预测。
+ * result: running | ok | partial | failed；remaining = max(0, candidateTotal - done)。
+ */
+export function buildBackfillProgress(round = {}) {
+  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const nowIso = new Date().toISOString();
+  const done = n(round.done);
+  const candidateTotal = n(round.candidateTotal);
+  return {
+    startedAt: round.startedAt ?? nowIso,
+    updatedAt: nowIso,
+    result: round.result ?? 'running',
+    done,
+    limit: n(round.limit),
+    batches: n(round.batches),
+    stored: n(round.stored),
+    priced: n(round.priced),
+    failed: n(round.failed),
+    candidateTotal,
+    remaining: Math.max(0, candidateTotal - done),
+    ratePerMin: n(round.ratePerMin),
+    count429: n(round.count429),
+    last429At: round.last429At ?? null,
+    retryAt: round.retryAt ?? null,
+  };
+}
+
+/** 原子写进度文件（tmp + rename）；写失败不影响回填本身。 */
+export function writeBackfillProgress(round = {}) {
+  try {
+    const file = backfillProgressFilePath();
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(`${file}.tmp`, JSON.stringify(buildBackfillProgress(round)));
+    renameSync(`${file}.tmp`, file);
+  } catch {
+    /* 进度文件写失败不影响回填 */
+  }
+}
+
+/** 读进度文件；缺失/损坏返回 null。 */
+export function readBackfillProgress() {
+  try {
+    return JSON.parse(readFileSync(backfillProgressFilePath(), 'utf8'));
+  } catch {
+    return null;
+  }
 }

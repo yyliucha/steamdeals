@@ -359,6 +359,9 @@ const ALTERS = [
   'alter table users add column if not exists password_updated_at timestamptz',
   'alter table games add column if not exists developers text[]',
   'alter table games add column if not exists publishers text[]',
+  // BL-3（docs/BACKFILL-THROUGHPUT.md §3.3）：回填失败隔离列
+  'alter table games add column if not exists backfill_fail_count int not null default 0',
+  'alter table games add column if not exists backfill_skip_until timestamptz',
   'alter table games add column if not exists genres text[]',
   'alter table games add column if not exists tags text[]',
   'alter table user_prefs add column if not exists tab text not null default \'all\'',
@@ -470,6 +473,10 @@ export async function migrate(store, { logger = null } = {}) {
   await store.exec(
     'create index if not exists games_heat_live on games (heat desc nulls last) ' +
       'where not deleted and not adult_flag and not blocked',
+  );
+  // BL-3（docs/BACKFILL-THROUGHPUT.md §3.3）：回填失败隔离——连续 3 次拿不到元数据跳过 30 天
+  await store.exec(
+    'create index if not exists idx_games_backfill_skip on games (backfill_skip_until) where backfill_skip_until is not null',
   );
   // AV 批（docs/READ-MODEL.md §3/§6）：首页列表读模型——(game, region) 粒度的价格/史低快照。
   // 表空时一次性回填（offers ∪ daily_prices 并集）；回填失败必须报错不吞（列表暂时为空需人工介入，规格 §7）。
@@ -2789,6 +2796,72 @@ export async function markBackfilled(q, appids = []) {
   return r.rowCount ?? 0;
 }
 
+// ---------------------------------------------------------------- BL：回填候选（docs/BACKFILL-THROUGHPUT.md §3.1/§3.3）
+
+/**
+ * 回填候选谓词（公共片段，CLI 与统计共用，避免两处分叉）：
+ * - 缺描述 / 无 Steam 报价 / 有价缺图 之一即候选（BC 批起为 OR 条件）；
+ * - BL-1：排除已定性四态 free / coming_soon / region_locked / not_found——它们永远不会有报价，回填只白烧配额；
+ *   no_price（国区无价）保留（可能后续有价）；
+ * - BL-3：失败隔离期内（backfill_skip_until）不入选；
+ * - 1 天冷却（backfill_at）可选（统计口径不带，运行中候选带）。
+ */
+export function backfillCandidateWhere({ includeCooldown = true, includeSkip = true, excludeStates = true } = {}) {
+  const parts = ['g.steam_appid is not null and not g.deleted'];
+  if (includeCooldown) parts.push("(g.backfill_at is null or g.backfill_at < now() - interval '1 day')");
+  parts.push(
+    "(g.description is null or g.description = '' or not exists (select 1 from offers o where o.game_id = g.id and o.platform_code = 'steam') " +
+      'or (g.header_image is null and exists (select 1 from offers o where o.game_id = g.id)))',
+  );
+  if (excludeStates) parts.push("coalesce(g.steam_status, '') not in ('free', 'coming_soon', 'region_locked', 'not_found')");
+  if (includeSkip) parts.push('(g.backfill_skip_until is null or g.backfill_skip_until < now())');
+  return parts.join(' and ');
+}
+
+/** 回填候选列表（AC-9：新游戏优先，按收录时间倒序）。 */
+export async function listBackfillCandidates(q, { limit }) {
+  const r = await q(
+    `select g.steam_appid from games g where ${backfillCandidateWhere()} order by g.created_at desc nulls last, g.id desc limit $1`,
+    [limit],
+  );
+  return r.rows.map((row) => Number(row.steam_appid)).filter((n) => Number.isFinite(n) && n > 0);
+}
+
+/** 回填候选总数（BL-2 进度文件 candidateTotal / 观测口径）。 */
+export async function countBackfillCandidates(q, opts = {}) {
+  const r = await q(`select count(*)::int as n from games g where ${backfillCandidateWhere(opts)}`);
+  return Number(r.rows[0]?.n ?? 0);
+}
+
+// ---------------------------------------------------------------- BL-3：失败隔离（docs/BACKFILL-THROUGHPUT.md §3.3）
+
+/** 回填失败计数：count+1；达到 3 次 → skip_until = now()+30 天。返回本轮触发跳过的条目（供日志）。 */
+export async function recordBackfillFailures(q, appids = []) {
+  const ids = [...new Set((appids ?? []).map(Number).filter((n) => Number.isFinite(n) && n > 0))];
+  if (!ids.length) return [];
+  await q(
+    'update games set backfill_fail_count = backfill_fail_count + 1, backfill_skip_until = null where steam_appid = any($1::int[])',
+    [ids],
+  );
+  const r = await q(
+    "update games set backfill_skip_until = now() + interval '30 days' " +
+      'where steam_appid = any($1::int[]) and backfill_fail_count >= 3 returning steam_appid, backfill_fail_count',
+    [ids],
+  );
+  return r.rows.map((row) => ({ appid: Number(row.steam_appid), count: Number(row.backfill_fail_count) }));
+}
+
+/** 回填成功：失败计数清零并解除跳过。 */
+export async function clearBackfillFailures(q, appids = []) {
+  const ids = [...new Set((appids ?? []).map(Number).filter((n) => Number.isFinite(n) && n > 0))];
+  if (!ids.length) return 0;
+  const r = await q(
+    'update games set backfill_fail_count = 0, backfill_skip_until = null where steam_appid = any($1::int[])',
+    [ids],
+  );
+  return r.rowCount ?? 0;
+}
+
 /** 热度回填：无论拿没拿到评测都写 heat_at（续跑游标）；releaseDate/appType 为空时不覆盖已有值。 */
 export async function setGameHeat(q, { steamAppid, heat = null, heatReviews = 0, releaseDate = null, appType = null }) {
   await q(
@@ -2916,7 +2989,14 @@ export async function adminGameStats(q) {
            count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status is not null and g.steam_status not in ('ok','free','coming_soon','region_locked','no_price','not_found'))::int as other,
            -- 内容分级计数（docs/STEAM-SYNC-STATUS-AND-RATING.md §13.2）：成人/成熟（未标注 = total-deleted 减这两项）
            count(*) filter (where not g.deleted and g.adult_flag)::int as adult,
-           count(*) filter (where not g.deleted and g.mature_flag)::int as mature
+           count(*) filter (where not g.deleted and g.mature_flag)::int as mature,
+           -- BL 批（docs/BACKFILL-THROUGHPUT.md §3.4）：回填队列口径
+           -- 待回填 = 新候选谓词（缺描述/无报价/有价缺图，排除四态与跳过中，不带 1 天冷却——那是运行期游标不是队列口径）
+           count(*) filter (where ${backfillCandidateWhere({ includeCooldown: false })} )::int as backfill_pending,
+           -- 已排除 = 旧候选谓词 ∩ 四态（本次被去噪排除掉的量，用于对账：待回填 + 已排除 + 跳过中 ≈ 旧候选数）
+           count(*) filter (where ${backfillCandidateWhere({ includeCooldown: false, includeSkip: false, excludeStates: false })} and coalesce(g.steam_status, '') in ('free', 'coming_soon', 'region_locked', 'not_found'))::int as backfill_excluded,
+           -- 跳过中 = 失败隔离期内（连续 3 次失败 → 30 天）
+           count(*) filter (where g.backfill_skip_until is not null and g.backfill_skip_until > now())::int as backfill_skipped
       from games g`);
   const row = r.rows[0] ?? {};
   const num = (k) => Number(row[k] ?? 0);
@@ -2938,6 +3018,10 @@ export async function adminGameStats(q) {
     // 内容分级计数
     adult: num('adult'),
     mature: num('mature'),
+    // BL 批（docs/BACKFILL-THROUGHPUT.md §3.4）：回填队列口径
+    backfillPending: num('backfill_pending'),
+    backfillExcluded: num('backfill_excluded'),
+    backfillSkipped: num('backfill_skipped'),
   };
 }
 

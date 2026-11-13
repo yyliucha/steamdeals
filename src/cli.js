@@ -9,7 +9,7 @@ import { openStore, ping } from './store/index.js';
 import { startApiServer } from './server.js';
 import * as db from './store/pg.js';
 import { ingestOffers } from './ingest.js';
-import { missingPriceAppids, mergePriceOffers } from './backfill.js';
+import { missingPriceAppids, mergePriceOffers, writeBackfillProgress } from './backfill.js';
 import { applySteamDetails, entryFromMeta, runSteamStatusRound } from './steam-status.js';
 import { buildSite } from './report.js';
 import { evaluateAlerts, renderDigest, toPayload } from './alerts.js';
@@ -36,7 +36,7 @@ import * as settings from './settings.js';
 // 统一成 { code, name, kind, ..., searchOffer } 的形状，供 syncByTitle 复用
 const gog = { ...gogDescriptor, searchOffer: gogSearch };
 const humble = { ...humbleDescriptor, searchOffer: humbleSearch };
-import { fetchText, fetchJson, fetchBuffer, sleep, proxyStatusHint } from './http.js';
+import { fetchText, fetchJson, fetchBuffer, sleep, proxyStatusHint, readSteam429Info } from './http.js';
 import { runPool } from './pool.js';
 import { createBackup } from './backup.js';
 
@@ -1781,39 +1781,60 @@ async function cmdBackfill() {
   const { fetchStoreItems } = await import('./adapters/store-browse.js');
   const key = String(process.env.STEAM_API_KEY ?? '').trim();
   const startedMs = Date.now();
+  const startedIso = new Date(startedMs).toISOString();
   let done = 0;
   let stored = 0;
   let priced = 0;
   let fallback = 0;
   let failed = 0;
   let batches = 0;
+  // BL-2（docs/BACKFILL-THROUGHPUT.md §3.2/§3.4）：进度文件与 429 观测
+  let partial = false;
+  let count429 = 0;
+  let last429At = readSteam429Info()?.at ?? null;
+  const candidateTotal = await withStore((s) => db.countBackfillCandidates(s));
+  const writeProgress = (result) =>
+    writeBackfillProgress({
+      startedAt: startedIso,
+      result,
+      done,
+      limit,
+      batches,
+      stored,
+      priced,
+      failed,
+      candidateTotal,
+      ratePerMin: Math.round((done / Math.max(1, Date.now() - startedMs)) * 60000),
+      count429,
+      last429At,
+    });
 
   // 限流/风控/方法错误时立刻中止：继续跑只会把代理 IP 打进黑名单
   const abort = (message, extra = {}) => {
+    writeProgress('failed');
     logger.error('backfill.aborted', { message, ...extra });
     throw new Error(message);
+  };
+  // BL-2：403/429 软退出——本轮收尾、保留进度，1 小时内由调度器重排（exit 75 = partial）
+  const softExit = (status) => {
+    partial = true;
+    count429 += 1;
+    last429At = new Date().toISOString();
+    writeProgress('partial');
+    logger.warn('backfill.partial', { reason: `http_${status}`, done, stored, priced, failed, batches, count429 });
+    console.log(`本轮因 HTTP ${status} 提前收尾：已处理 ${done} 款，进度已保留，1 小时内自动重试`);
+    process.exitCode = 75;
   };
 
   console.log(`批量回填：每批 ${batch} 个、间隔 ${sleepMs}ms、上限 ${limit} 款、单条回退 ${fallbackMax} 个/批${key ? '' : '（未配置 STEAM_API_KEY，将全部走单条接口）'}`);
 
   while (done < limit) {
     const size = Math.min(batch, limit - done);
-    const rows = await withStore((store) =>
-      store.query(
-        'select g.steam_appid from games g where g.steam_appid is not null and not g.deleted ' +
-          // 处理过的（backfill_at 非空）一天内不再选：否则"没有 steam 报价"的游戏会被每批反复选中，
-          // 10000 条进度其实只是同一批游戏跑了 100 遍。
-          "and (g.backfill_at is null or g.backfill_at < now() - interval '1 day') " +
-          // BC 批（docs/IMAGE-COVERAGE.md §3.1）：有价但 header_image 为空也进回填队列（补封面直链）——
-          // 与「缺描述 / 缺 Steam 报价」并列成 OR 条件（扩大候选，而不是要求同时满足）。
-          "and (g.description is null or g.description = '' or not exists (select 1 from offers o where o.game_id = g.id and o.platform_code = 'steam') " +
-          "or (g.header_image is null and exists (select 1 from offers o where o.game_id = g.id))) " +
-          // AC-3/AC9（docs/SYNC-FAILURE-MODES.md）：新游戏优先入回填队列（按收录时间倒序），不再按 id 排队数周
-          'order by g.created_at desc nulls last, g.id desc limit $1',
-        [size],
-      ),
-    );
-    const appids = rows.rows.map((r) => Number(r.steam_appid)).filter((n) => Number.isFinite(n) && n > 0);
+    // BL-1（docs/BACKFILL-THROUGHPUT.md §3.1）：候选谓词统一走 db.backfillCandidateWhere——
+    // 缺描述 / 无 Steam 报价 / 有价缺图，排除四态（free/coming_soon/region_locked/not_found），
+    // 1 天冷却防同批重复选中；BL-3 的失败隔离（backfill_skip_until）已并入谓词。
+    const rows = await withStore((store) => db.listBackfillCandidates(store, { limit: size }));
+    const appids = rows.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0);
     if (!appids.length) {
       console.log('没有需要回填的游戏了');
       break;
@@ -1832,25 +1853,29 @@ async function cmdBackfill() {
           abort('批量接口返回 405（POST 被拒）：当前镜像过旧，GetItems 需要 GET + input_json（0.25.2+），升级后再跑', { status: 405 });
         }
         if (err.status === 403 || err.status === 429) {
-          abort(`Steam 返回 HTTP ${err.status}（限流/风控），已立即中止回填避免 IP 被封；等 30-60 分钟后把 --sleep 调大再试`, { status: err.status });
+          softExit(err.status); // BL-2：不再整轮作废，收尾保留进度
+        } else {
+          logger.warn('backfill.batch_failed', { message: String(err.message).slice(0, 160) });
+          missed = appids;
         }
-        logger.warn('backfill.batch_failed', { message: String(err.message).slice(0, 160) });
-        missed = appids;
       }
     } else {
       missed = appids;
     }
+    if (partial) break;
 
     // 回退：批量接口没返回的，逐个走 appdetails（默认最多 10 个/批，避免拖慢）
     if (fallbackMax > 0) {
       for (const appid of missed.slice(0, fallbackMax)) {
+        if (partial) break;
         try {
           const one = await fetchMetadata([appid], { backend: 'official', logger });
           if (one.items?.length) items.push(...one.items);
           fallback += 1;
         } catch (err) {
           if (err.status === 403 || err.status === 429) {
-            abort(`单条回退遇到 HTTP ${err.status}（限流），已立即中止回填`, { status: err.status, appid });
+            softExit(err.status);
+            break;
           }
           failed += 1;
           logger.warn('backfill.item_failed', { appid, message: String(err.message).slice(0, 160) });
@@ -1858,6 +1883,7 @@ async function cmdBackfill() {
         await sleep(400);
       }
     }
+    if (partial) break;
     failed += Math.max(0, missed.length - fallbackMax);
 
     // GetItems 没带价格的（字段缺失/接口变化），用 appdetails 批量回退取价：
@@ -1877,11 +1903,14 @@ async function cmdBackfill() {
         });
       } catch (err) {
         if (err.status === 403 || err.status === 429) {
-          abort(`价格回退遇到 HTTP ${err.status}（限流/风控），已立即中止回填避免 IP 被封`, { status: err.status });
+          softExit(err.status);
+        } else {
+          logger.warn('backfill.price_fallback_failed', { appids: missing.length, message: String(err.message).slice(0, 160) });
         }
-        logger.warn('backfill.price_fallback_failed', { appids: missing.length, message: String(err.message).slice(0, 160) });
       }
     }
+    if (partial) break; // 软退出：本批未处理的条目不计数、不写库（没有失败事实）
+
     const offersToWrite = mergePriceOffers(items, fallbackOffers);
     const batchPriced = offersToWrite.length;
     priced += batchPriced;
@@ -1905,12 +1934,22 @@ async function cmdBackfill() {
         }
         // 无论有没有拿到报价都记一笔，避免这批（尤其是免费/锁区的）下一批又被选中
         await db.markBackfilled(q, appids);
+        // BL-3（docs/BACKFILL-THROUGHPUT.md §3.3）：失败隔离——
+        // 拿到元数据 = 成功（清零并解除跳过）；本批没拿到元数据的记一次失败，连续 3 次跳过 30 天
+        const successIds = [...new Set(items.map((it) => Number(it.steamAppid)).filter((n) => Number.isFinite(n) && n > 0))];
+        const failedIds = appids.filter((a) => !successIds.includes(a));
+        await db.clearBackfillFailures(q, successIds);
+        if (failedIds.length) {
+          const skipped = await db.recordBackfillFailures(q, failedIds);
+          for (const s of skipped) logger.warn('backfill.item_skipped', { appid: s.appid, count: s.count });
+        }
       });
     }
 
     done += appids.length;
     const rate = Math.round((done / Math.max(1, Date.now() - startedMs)) * 60000);
     console.log(`  批次 ${batches}：本批 ${appids.length} 款，写入 ${items.length}，回退 ${fallback}，失败 ${failed}；累计 ${done}/${limit}（${rate} 款/分钟）`);
+    writeProgress('running');
     if (items.length && batchPriced === 0) {
       logger.warn('backfill.batch_no_price', {
         batch: batches,
@@ -1922,6 +1961,7 @@ async function cmdBackfill() {
     if (sleepMs) await sleep(sleepMs);
   }
 
+  writeProgress('ok');
   logger.info('backfill.done', { done, stored, priced, fallback, failed, batches, elapsedMs: Date.now() - startedMs });
   console.log(`完成：处理 ${done} 款，元数据 ${stored} 条，价格 ${priced} 条，单条回退 ${fallback}，失败 ${failed}`);
   if (stored > 0 && priced === 0) {

@@ -5,11 +5,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fetchText } from '../src/http.js';
 import { resetProxyHealth } from '../src/proxy-pool.js';
+
+// BL 批（docs/BACKFILL-THROUGHPUT.md §3.2）：429 现在「首次即落盘冷却」——
+// 用临时目录隔离，避免把 data/steam-429.json 写进工作区、让后续用例被 30 分钟冷却睡死。
+process.env.STEAM_429_FILE = join(mkdtempSync(join(tmpdir(), 'steam-429-failover-')), 'steam-429.json');
 
 const listen = (server) => new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
 
@@ -186,6 +190,8 @@ test('验收 6：目标 500 不切换（两次尝试同一代理）；429 不切
     assert.equal(req429.length, 1, '429 不重试');
     assert.equal(req429[0].proxy, `http://127.0.0.1:${topo.proxyPort}`, '429 不切换代理（绕配额=作弊）');
     assert.equal(events.filter((e) => e.event === 'http.proxy_switch').length, 0);
+    // BL 批：429 已落盘全局冷却——清掉本用例写的冷却文件，别让后续用例被 30 分钟冷却睡死
+    try { unlinkSync(process.env.STEAM_429_FILE); } catch {}
   } finally {
     env.restore();
     await topo.close();

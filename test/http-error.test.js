@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { explainError, fetchText, readSteam429Until, writeSteam429Until, steam429FilePath } from '../src/http.js';
+import { explainError, fetchText, readSteam429Until, readSteam429Info, writeSteam429Until, steam429FilePath } from '../src/http.js';
 
 /** 复刻 undici 8.x ProxyAgent 的包装形状。 */
 function proxyTunnelError(status) {
@@ -215,6 +215,31 @@ test('AC-6：429 全局退避——冷却落盘跨进程共享（readSteam429Unt
     assert.equal(readSteam429Until(Date.now() + 3600_000), 0, '过期后视为无冷却');
     writeSteam429Until(Date.now() - 1000);
     assert.equal(readSteam429Until(), 0, '写过去时间不产生冷却');
+  } finally {
+    if (saved === undefined) delete process.env.STEAM_429_FILE;
+    else process.env.STEAM_429_FILE = saved;
+  }
+});
+
+test('BL-2：首次 429 即落盘冷却（含 at/label），readSteam429Info 完整读回', async () => {
+  const { mkdtempSync, readFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'steam-429-'));
+  const saved = process.env.STEAM_429_FILE;
+  process.env.STEAM_429_FILE = join(dir, 'steam-429.json');
+  try {
+    const until = Date.now() + 1800_000;
+    writeSteam429Until(until, { at: '2026-11-13T02:00:00.000Z', label: 'backfill' });
+    const raw = JSON.parse(readFileSync(steam429FilePath(), 'utf8'));
+    assert.equal(raw.label, 'backfill', 'label 落盘（后台显示 429 来源）');
+    assert.equal(raw.at, '2026-11-13T02:00:00.000Z', 'at 落盘（后台显示最近 429 时间）');
+    assert.ok(raw.until, 'until 字段保留（向后兼容读）');
+    const info = readSteam429Info();
+    assert.equal(info.label, 'backfill');
+    assert.equal(info.at, '2026-11-13T02:00:00.000Z');
+    assert.ok(info.until > Date.now(), '冷却期内信息可读');
+    assert.equal(readSteam429Info(Date.now() + 3600_000), null, '过期后信息视为无冷却');
   } finally {
     if (saved === undefined) delete process.env.STEAM_429_FILE;
     else process.env.STEAM_429_FILE = saved;

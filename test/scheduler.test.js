@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, registerCircuitReset, resetCircuit } from '../src/scheduler.js';
+import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, registerCircuitReset, resetCircuit, applyRetry } from '../src/scheduler.js';
 
 test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），默认 3，非法回落默认', () => {
   assert.equal(lightConcurrency({}), 3);
@@ -77,7 +77,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.equal(interval('heat'), 1440, '热度默认每天刷新（首轮自动播种，之后刷过期条目）');
   assert.equal(interval('steam-status'), 1440, 'Steam 状态判定默认每天一次（X 批）');
   assert.equal(interval('rename'), 10080, '重写名字默认每周一次');
-  assert.equal(interval('backfill'), 10080, '增量回填默认每周一次');
+  assert.equal(interval('backfill'), 1440, 'BL 批：增量回填默认每天一轮');
   assert.equal(interval('prune'), 10080, '清理默认每周一次');
   assert.equal(interval('readmodel'), 1440, 'AV 批：读模型对账默认每天一次');
   assert.equal(interval('proxy-probe'), 10, 'BB 批：代理健康探测默认每 10 分钟');
@@ -97,7 +97,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.deepEqual(args('heat'), ['heat', '--limit', '20000', '--sleep', '1700']);
   assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '6000', '--rate', '1500']);
   assert.deepEqual(args('rename'), ['rename', '--limit', '200000', '--batch', '100', '--sleep', '1500']);
-  assert.deepEqual(args('backfill'), ['backfill', '--limit', '50000', '--batch', '100', '--sleep', '3000'], 'AC-3/AC9：回填默认上限 5 万');
+  assert.deepEqual(args('backfill'), ['backfill', '--limit', '5000', '--batch', '100', '--sleep', '3000'], 'BL 批：回填默认每天上限 5000');
   assert.deepEqual(args('prune'), ['prune']);
   assert.deepEqual(args('readmodel'), ['readmodel', 'check', '--sample', '200'], 'AV 批：默认抽样 200 对账');
   assert.deepEqual(args('proxy-probe'), ['probe', '--proxy'], 'BB 批：探测命令与参数');
@@ -440,12 +440,43 @@ test('AC-4：默认配置的每日预算 <24h（不降频）；超预算时自�
   assert.ok(events.some(([e]) => e === 'scheduler.budget_exceeded'), '告警日志');
 });
 
-test('AC-9：回填候选新游戏优先（created_at 倒序）+ 默认上限提到 5 万（静态断言）', () => {
+test('AC-9/BL-1：回填候选新游戏优先 + 四态排除 + 默认每天 5000（静态断言）', () => {
   const cli = readFileSync(new URL('../src/cli.js', import.meta.url), 'utf8');
-  assert.match(cli, /order by g\.created_at desc nulls last, g\.id desc limit/, '回填按收录时间倒序');
-  assert.equal((cli.match(/order by g\.created_at desc nulls last, g\.id desc limit/g) || []).length, 2, 'backfill 与 steamall 两处');
+  assert.match(cli, /listBackfillCandidates/, '回填候选走共享谓词 db.listBackfillCandidates');
+  assert.equal((cli.match(/order by g\.created_at desc nulls last, g\.id desc limit/g) || []).length, 1, 'cli.js 只剩 steamall 一处排序');
+  const pg = readFileSync(new URL('../src/store/pg.js', import.meta.url), 'utf8');
+  assert.match(pg, /order by g\.created_at desc nulls last, g\.id desc limit/, '回填按收录时间倒序（谓词在 pg.js）');
+  assert.match(pg, /coalesce\(g\.steam_status, ''\) not in \('free', 'coming_soon', 'region_locked', 'not_found'\)/, 'BL-1：候选排除四态');
+  assert.match(pg, /no_price/, 'BL 批：no_price 保留说明存在');
   const sched = readFileSync(new URL('../src/scheduler.js', import.meta.url), 'utf8');
-  assert.match(sched, /STEAM_BACKFILL_LIMIT, 50000/, '回填默认上限 5 万');
+  assert.match(sched, /STEAM_BACKFILL_LIMIT, 5000/, 'BL 批：回填默认上限 5000');
+  assert.match(sched, /STEAM_BACKFILL_INTERVAL_MIN, 1440/, 'BL 批：回填默认每天一轮');
+});
+
+test('BL-2：429 软退出（exit 75）不计失败、不熔断；重排 1 小时/连续 3 次放弃/成功清零；dueJobs 支持重排到期', () => {
+  let state = { failures: 2, openUntil: null };
+  state = recordJobResult(state, { code: 75, nowMs: 1000 });
+  assert.equal(state.failures, 2, 'partial 不增加 failures');
+  assert.equal(state.opened, false, 'partial 不熔断');
+  state = recordJobResult(state, { code: 1, nowMs: 2000 });
+  assert.equal(state.failures, 3, '真失败照常累计');
+
+  const t0 = Date.parse('2026-11-13T00:00:00Z');
+  let retry = applyRetry({}, { job: 'backfill', code: 75, nowMs: t0 });
+  assert.equal(Date.parse(retry.backfill.at), t0 + 3600_000, 'partial 后 1 小时重排');
+  assert.equal(retry.backfill.streak, 1);
+  retry = applyRetry(retry, { job: 'backfill', code: 75, nowMs: t0 });
+  assert.equal(retry.backfill.streak, 2);
+  retry = applyRetry(retry, { job: 'backfill', code: 75, nowMs: t0 });
+  assert.equal(retry.backfill, undefined, '连续 3 次 partial 放弃重排，等正常日轮');
+  retry = applyRetry({ backfill: { at: 'x', streak: 1 } }, { job: 'backfill', code: 0, nowMs: t0 });
+  assert.equal(retry.backfill, undefined, '成功一次清零 retry/streak');
+
+  const jobs = [{ name: 'backfill', intervalMin: 1440, initialDelaySec: 600 }];
+  const lastRunMs = new Map([['backfill', t0]]);
+  const retryState = { backfill: { at: new Date(t0 + 3600_000).toISOString() } };
+  assert.equal(dueJobs(jobs, { nowMs: t0 + 59 * 60_000, startedMs: t0, lastRunMs, retry: retryState }).length, 0, '正常到期与重排都未到');
+  assert.equal(dueJobs(jobs, { nowMs: t0 + 3600_000, startedMs: t0, lastRunMs, retry: retryState }).length, 1, '重排时间到了即 due（即使未到正常间隔）');
 });
 
 test('AC-2：熔断手动重置——registerCircuitReset 注册钩子，resetCircuit 触发清零', () => {

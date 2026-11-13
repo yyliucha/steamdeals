@@ -2247,12 +2247,15 @@ export function createApiServer({
         } catch {
           schedule = null;
         }
+        // BL-2（docs/BACKFILL-THROUGHPUT.md §3.4）：合并回填进度文件（只读文件，不加 DB 查询）
+        const { readBackfillProgress } = await import('./backfill.js');
         return json(res, 200, {
           running,
           run: running ? syncRun : null,
           output: syncOutput.slice(-6000),
           last: last[0] ?? null,
           schedule,
+          backfillProgress: readBackfillProgress(),
           // AC1（docs/SYNC-FAILURE-MODES.md）：该有但没有的任务，后台显式提示（缺 Key / 被 *_ENABLED=0 关闭）
           warnings: auditSchedulerJobs(process.env),
         });
