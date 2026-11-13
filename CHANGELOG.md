@@ -2,6 +2,24 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.12.1] - 2026-11-13
+
+修复批：BN 价格历史区块整块不渲染（`v-for` 与 `v-if` 写在同一元素）。
+
+### 修复
+
+- **价格历史区块整块不渲染（BN）**：史低圆点的 `<circle>` 同时写了 `v-for` 与 `v-if`——Vue 3 里 `v-if` 优先级更高，
+  编译后判断被提到 `renderList` 外、引用循环变量 `p`，运行时抛 `TypeError` → 整个 `PriceHistoryReport` 组件渲染
+  失败（指标条/「价格历史」标题/趋势线/表格/空态全部消失，数据本身没丢）。改为 JS 预计算 `lowDots`
+  （史低日数据 + 坐标），模板只保留 `v-for`；`chart` 同时产出 `pts` 数组，去掉模板里对 `points` 的
+  `split(' ')` 二次解析。史低全期口径、区间切换（30/90/全部）、分页、空态均不变。
+
+### 测试
+
+- `test/price-history-report.test.js`：删掉「把坏写法当预期」的静态断言；新增**全组件扫描**（禁止同一元素混用
+  `v-for`/`v-if`，可复用到其它组件）与 **`@vue/compiler-dom` 编译级断言**（产物不得含循环外 `_ctx.p.` 引用、
+  须 `_renderList(_ctx.lowDots`）；测试内先用旧写法编译自检检测器有效（旧写法放回必红）。
+
 ## [2.12.0] - 2026-11-13
 
 BM 批：登录页 404 修复 + 会话失效软跳 + 会话心跳（修复 v2.11.0 暴露的登录页白名单缺口）。

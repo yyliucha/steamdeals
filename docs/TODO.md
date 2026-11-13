@@ -1256,9 +1256,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   登录页显示过期提示；心跳 ≤5 分钟/回前台即软跳、游客与离线不跳、公开页不探测、只一个定时器；
   迁移幂等；`npm test` / `frontend:build` / `scan` 全绿。
 
-## BN. 待开发：BUG——价格历史区块整个不渲染（v-for 与 v-if 同元素导致渲染抛错）
+## BN. ~~待开发：BUG——价格历史区块整个不渲染（v-for 与 v-if 同元素导致渲染抛错）~~ → **已实现并发布 v2.12.1（2026-11-13）**
 
-**状态：质检通过（2026-11-13，c0b1b4a；QA 报告 docs/QA-PRICE-HISTORY-BN.md）**
+**状态：已发布 v2.12.1（2026-11-13，c0b1b4a；QA 报告 docs/QA-PRICE-HISTORY-BN.md）**
 **依赖：** 无（AP 批已发布 v2.2.0，本条修它遗留的渲染缺陷）
 **解锁：** 无
 **规格**：[PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md) §10
