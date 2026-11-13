@@ -1373,7 +1373,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BR. 待开发：封禁自助恢复 + 手机/CGNAT 适配 + 可观测
 
-**状态：已实现待发版（2026-11-13，b8ee317；本地验证全绿，待调 gameprice-qa）**
+**状态：质检通过（2026-11-14 第 1 轮，QA 报告 docs/QA-BAN-BR.md；实现 b8ee317 + 验收断言 edcaaa7，本地验证全绿）**
 **依赖：** 无
 **解锁：** 无
 **规格**：[BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md) §11（11.2 决策 / 11.3 参数 / 11.7 验收）
