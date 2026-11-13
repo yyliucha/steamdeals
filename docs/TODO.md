@@ -1187,6 +1187,42 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `last_seen_at` 5 分钟节流；BK-3：空闲 7 天失效（可设 0 关闭）、IPv4 /24 与 IPv6 /64 同段不误踢、UA 家族+主版本、
   老会话不被绑定校验踢掉、前台退出其它设备、改密/重置行为不倒退、`prune` 扩展、`npm test` / `frontend:build` / `scan` 全绿。
 
+## BL. 待开发：增量回填吞吐与配额治理（候选去噪 + 429 软退出重排 + 每日节奏 + 失败隔离 + 观测）
+
+**状态：待开发（2026-11-13，所有者确认 8 项细节）**
+**依赖：** 无（BL-1 / BL-2 可独立开工；BL-3 依赖 BL-1 的候选 SQL 与 BL-2 的进度文件，见批次表）
+**解锁：** 无
+**规格**：[BACKFILL-THROUGHPUT.md](BACKFILL-THROUGHPUT.md)
+
+- **现象（2026-11-13 所有者）**：增量回填一周一次；手动点「立即运行」触发 429 后本轮直接结束，后面的不再同步；
+  担心积压越来越多、429 越来越频繁。
+- **根因（代码证据）**：① 候选 SQL 不排除"永远不会有价"的游戏——`free / coming_soon / region_locked / not_found`
+  永远满足"无 Steam 报价"（`src/cli.js:1802-1812` + 六态口径 `src/store/pg.js:382`），每周重复入队白烧配额；
+  ② 403/429 **整轮中止**（`cli.js:1834-1836/1852/1879`），而下一轮是 7 天后（`scheduler.js:211`）；
+  ③ 429 前 `http.js` 会先睡冷却再重试（`http.js:298-303`、`:243-249`），一次 429 = 等 30 分钟 + 整轮作废；
+  ④ AC-4 预算把回填按理论值算成约 8.3 分钟/天（`scheduler.js:350-352`），超预算只缩 `steam-status`
+  （`:368-387`）——真实耗时被低估；⑤ 失败无隔离：每批都 `markBackfilled`（`cli.js:1907`），失败条目次日重新入选；
+  ⑥ 观测缺口：调度状态无本轮进度/剩余/429 计数（`scheduler.js:434-467`）。
+- **已确认决策（8 项）**：① 目标取**稳态**（直接每日小步，不做一次性追赶模式）；② 候选**排除四态**
+  `free / coming_soon / region_locked / not_found`；③ 429 改**软退出**（本轮收尾、保留进度、不整轮失败）；
+  ④ 429 后 **1 小时内自动重排**（每小时最多 1 次；连续 3 次放弃等日轮）；⑤ 节奏 **每天 1 轮、limit 5000**
+  （原每周 1 轮 / 50000）；⑥ 同一 appid **连续失败 3 次 → 跳过 30 天**；⑦ 指标卡显示**待回填 / 已排除 / 跳过中**；
+  ⑧ 任务卡显示**本轮进度 + 预计剩余天数 + 429 次数与最近时间**。
+- **批次（顺序 BL-1 → BL-2 → BL-3）**：
+  - **BL-1（独立）**：候选 SQL 去噪（四态 + skip 条件骨架）+ 节奏（`STEAM_BACKFILL_INTERVAL_MIN=1440`、
+    `STEAM_BACKFILL_LIMIT=5000`）；AC-4 预算自动重算（≈5.8 分钟/天），不改预算分配；
+  - **BL-2（独立）**：429 软退出（exit 75）+ partial 语义（不熔断）+ `data/scheduler-retry.json` 1 小时重排
+    + `http.js` 首次 429 即落盘冷却（含 `at`）+ `data/backfill-progress.json` + 任务卡观测；
+  - **BL-3（依赖 BL-1/BL-2）**：`games` 加 `backfill_fail_count`/`backfill_skip_until`、失败计数与 30 天跳过、
+    `adminGameStats` 追加 3 字段与指标卡 3 张。
+- **改动落点**：`src/cli.js`（候选 SQL、软退出、进度文件、失败计数）、`src/http.js`（429 落盘顺序与 `at`）、
+  `src/scheduler.js`（`STEAM_429_RETRIES=0`、partial、retry 文件、status 字段）、`src/store/pg.js`（迁移、计数/跳过、
+  `adminGameStats`）、`src/backfill.js`（进度读写）、`src/server.js`（`/api/admin/sync/status` 合并进度）、
+  `frontend/src/pages/AdminModules.vue`（指标卡 + 任务卡）、对应测试。
+- **验收**：见规格 §4——四态不入选、`no_price` 仍入选；默认每天 5000；429 退出码 75 且不熔断、1 小时重排生效、
+  连续 3 次不再重排；首次 429 即写全局冷却；连续失败 3 次跳过 30 天；指标卡/进度/429 信息与库一致；
+  迁移幂等、权限 401/403；`npm test` / `frontend:build` / `scan` 全绿。
+
 
 
 
