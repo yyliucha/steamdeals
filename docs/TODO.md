@@ -1258,7 +1258,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BN. 待开发：BUG——价格历史区块整个不渲染（v-for 与 v-if 同元素导致渲染抛错）
 
-**状态：已实现待发版（2026-11-13，BN 一次交付）**
+**状态：质检通过（2026-11-13，c0b1b4a；QA 报告 docs/QA-PRICE-HISTORY-BN.md）**
 **依赖：** 无（AP 批已发布 v2.2.0，本条修它遗留的渲染缺陷）
 **解锁：** 无
 **规格**：[PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md) §10
