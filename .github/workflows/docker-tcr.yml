@@ -81,8 +81,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Mirror PostgreSQL image
+      # PostgreSQL 基础镜像只在 TCR 缺失时才 mirror（2026-11-13 所有者要求）：
+      # 之前每次发版都拉 Docker Hub + 推 TCR，出网慢时这一步能卡 1 小时以上，而镜像其实早就有了。
+      # 有则跳过（一次轻量 manifest 检查），没有才补一次，保证新环境仍可部署。
+      - name: Ensure PostgreSQL image in TCR (skip if already mirrored)
         run: |
+          if docker buildx imagetools inspect "$TCR_REGISTRY/$TCR_NAMESPACE/postgres:$PG_TAG" >/dev/null 2>&1; then
+            echo "postgres:$PG_TAG 已在 TCR —— 跳过 mirror"
+            exit 0
+          fi
+          echo "postgres:$PG_TAG 不在 TCR —— 补一次 mirror"
           docker pull "$PG_SOURCE"
           docker tag "$PG_SOURCE" "$TCR_REGISTRY/$TCR_NAMESPACE/postgres:$PG_TAG"
           docker push "$TCR_REGISTRY/$TCR_NAMESPACE/postgres:$PG_TAG"
