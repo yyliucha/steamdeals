@@ -193,7 +193,11 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   与任务卡「部分完成/429 次数/重试时间」；`data/backfill-progress.json` 进度文件并入 `/api/admin/sync/status`。
   验证：`npm test` 全绿（含新增 `backfill-throughput` 5 项）、`api.test` 22/22、`frontend:build`、`scan` 干净；
   质检：BL ✅ 放行（[QA-BACKFILL-THROUGHPUT-BL.md](QA-BACKFILL-THROUGHPUT-BL.md)，通过 9 / 需人工确认 2）。
-  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  CI：docker-hub run 43370924706（test / smoke / publish 全绿，10m52s）；docker-tcr 首次 run 43370924717
+  因 **postgres 镜像 mirror** 步骤卡住（1h36m，应用镜像 build-push 11m39s 已成功）已取消 →
+  仓库修 workflow（`postgres:15-alpine` 已在 TCR 即跳过，2026-11-13）后用 **workflow_dispatch 补跑**
+  run 43381858099（test / publish 全绿；postgres 步骤 2s 跳过，`Verify manifests` ✓），两源镜像均已备齐。
+  补跑细节：workflow_dispatch 的版本号回退 `package.json` = **2.11.1**，TCR 推 `latest` + `2.11.1` 两个 tag。
   **服务器部署待执行**（升级到 `2.11.1`）；部署后重点：
   ① 按 [BACKFILL-THROUGHPUT.md](BACKFILL-THROUGHPUT.md) §4.10 只读复核（候选数/四态数、进度文件 done/limit、
   24h 内每日一轮、429 次数对比上一周）；
