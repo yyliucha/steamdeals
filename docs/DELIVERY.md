@@ -194,7 +194,9 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   验证：`npm test` 全绿（新增 `test/serve.test.js` 页面路由/白名单一致性与 `test/session-heartbeat.test.js`
   静态 + 运行时断言，均进主链）、`api.test` 22/22、`frontend:build`、`scan` 干净；
   质检：BM ✅ 放行（[QA-SESSION-BM.md](QA-SESSION-BM.md)，通过 8 / 需人工确认 2）。
-  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  CI：docker-hub run 43389571927（test / smoke / publish 全绿）；docker-tcr run 43389571921
+  （test / publish 全绿，`Ensure PostgreSQL image in TCR` 2s 跳过——postgres:15-alpine 已在 TCR，
+  `Verify manifests` ✓），两个镜像源均已推送。
   **服务器部署待执行**（升级到 `2.12.0`）；部署后重点：
   ① 直接打开 `https://<站点>/login`（及 `/register`、`/change-password`）应返回登录页而非 `not found`；
   ② 后台控制台删会话/等过期后操作或挂 5 分钟（或切回标签页）应自动回登录页并提示「登录已过期」；
