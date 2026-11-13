@@ -1,6 +1,7 @@
 // AP 批（docs/PRICE-HISTORY-REPORT.md §6）：价格历史报表的接线。
 // 守：史低全期口径且所有史低日高亮；区间口径不与顶部卡片重复；前端无导出按钮。
 // BN 批（§10）：v-for 与 v-if 不允许写在同一元素（旧写法会让整个组件渲染失败），并用编译器产物做渲染级回归。
+// BO 批（§11）：删掉日期表格/移动卡片/分页，趋势线加高到 150px（移动端 120px），加史低虚线参考线与轴标签。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -9,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
 const componentPath = '../frontend/src/components/PriceHistoryReport.vue';
 
-test('AP 组件：指标条/范围切换/趋势线/史低高亮/卡片分页齐全', () => {
+test('AP/BO 组件：指标条/范围切换/150px 趋势线/史低线/轴标签/底部条数，且无表格卡片分页', () => {
   const c = read(componentPath);
   assert.match(c, /区间最低/);
   assert.match(c, /区间最高/);
@@ -18,14 +19,29 @@ test('AP 组件：指标条/范围切换/趋势线/史低高亮/卡片分页齐�
   assert.match(c, /近 30 天/);
   assert.match(c, /近 90 天/);
   assert.match(c, /全部/);
-  assert.match(c, /svg viewBox="0 0 840 76"/);
+  // BO：趋势线 76px → 150px，图上方轴标签 + 史低虚线参考线
+  assert.match(c, /svg viewBox="0 0 840 150"/);
+  assert.match(c, /· 史低线/);
+  assert.match(c, /区间 \{\{ filtered\[0\]\.day \}\} → \{\{ filtered\[filtered\.length - 1\]\.day \}\}/);
+  assert.match(c, /stroke-dasharray="4 4"/);
+  // BO：删掉日期表格 / 移动卡片 / 分页（与趋势线重复）
+  assert.doesNotMatch(c, /<table/);
+  assert.doesNotMatch(c, /phr-table/);
+  assert.doesNotMatch(c, /phr-cards?/);
+  assert.doesNotMatch(c, /phr-pager/);
+  assert.doesNotMatch(c, /isNarrow/);
+  assert.doesNotMatch(c, /PAGE_SIZE/);
+  // BO：平线垂直居中（不再贴底）
+  assert.match(c, /maxV === minV \? H \/ 2/);
+  // 底部说明改为当前区间条数 + 史低已标出（随区间切换变化）
+  assert.match(c, /共 \{\{ filtered\.length \}\} 条/);
+  assert.match(c, /史低已标出/);
   // BN：史低高亮改为 JS 预计算（lowDots），模板里只 v-for
   assert.match(c, /const lowDots = computed/);
   assert.match(c, /v-for="\(d, k\) in lowDots"/);
   assert.match(c, /d\.p\.price_cents === histLow/, 'lowDots 过滤口径');
   assert.match(c, /史低/);
   assert.match(c, /已是史低/);
-  assert.match(c, /phr-cards/);
   assert.doesNotMatch(c, /导出/);
 });
 
@@ -72,9 +88,12 @@ test('AP 首页接线：Home.vue 用组件替换旧网格，删掉 series 分页
   assert.doesNotMatch(home, /series-list/);
 });
 
-test('AP 样式落库', () => {
+test('AP/BO 样式落库：趋势线 150px（移动端 120px），表格/卡片/分页样式已删', () => {
   const css = read('../frontend/src/styles/main.css');
-  assert.match(css, /\.phr-table tr\.low td/);
-  assert.match(css, /\.phr-chart svg/);
-  assert.match(css, /\.phr-card\.low/);
+  assert.match(css, /\.phr-chart svg\{[^}]*height:150px/);
+  assert.match(css, /@media \(max-width:760px\)\{\.phr-chart svg\{height:120px\}\}/);
+  assert.match(css, /\.phr-axis\{/);
+  assert.doesNotMatch(css, /\.phr-table/);
+  assert.doesNotMatch(css, /\.phr-cards?\{/);
+  assert.doesNotMatch(css, /\.phr-pager/);
 });
