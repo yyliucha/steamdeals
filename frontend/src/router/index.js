@@ -3,6 +3,7 @@ import Home from '../pages/Home.vue';
 import Setup from '../pages/Setup.vue';
 import BanPage from '../pages/BanPage.vue';
 import AppealPage from '../pages/AppealPage.vue';
+import AppealActionPage from '../pages/AppealActionPage.vue';
 import { installRouterGuard } from '../composables/useUnsavedGuard.js';
 
 const router = createRouter({
@@ -14,6 +15,8 @@ const router = createRouter({
     { path: '/setup.html', redirect: '/setup' },
     { path: '/banned', name: 'banned', component: BanPage, meta: { title: '访问受限 · SteamDeals' } },
     { path: '/appeal', name: 'appeal', component: AppealPage, meta: { title: '申请解除访问限制 · SteamDeals' } },
+    // BQ 批（docs/APPEAL-SYSTEM.md §10.4）：邮件内一键处理的确认页（token 在 URL fragment）
+    { path: '/appeal/act', name: 'appeal-action', component: AppealActionPage, meta: { title: '申诉快捷处理 · SteamDeals' } },
     { path: '/banned.html', redirect: '/banned' },
     { path: '/console', name: 'console', component: () => import('../pages/Console.vue'), meta: { title: 'SteamDeals · 管理控制台' } },
     { path: '/console.html', redirect: '/console' },

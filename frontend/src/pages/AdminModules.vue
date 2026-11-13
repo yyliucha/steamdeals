@@ -90,6 +90,9 @@
       <template v-else-if="statsView==='views'"><div class="module-card table-card"><div class="card-heading padded"><div><h3>浏览排行</h3><p>累计页面访问数据</p></div><el-checkbox v-model="aggregateViews">按游戏聚合</el-checkbox></div><el-table :data="viewRowsPage" stripe><el-table-column prop="name" label="游戏 / 页面" min-width="180"/><el-table-column prop="path" label="路径" min-width="180" show-overflow-tooltip/><el-table-column label="现价" width="100" align="right"><template #default="{row}">{{ price(row.price) }}</template></el-table-column><el-table-column prop="views" label="访问" width="90" align="right"/><el-table-column label="最近访问" min-width="160"><template #default="{row}">{{ dateTime(row.last_at) }}</template></el-table-column></el-table><PaginationBar v-model:page="viewsPage" v-model:page-size="viewsPageSize" :total="viewRows.length"/></div></template>
       <template v-else><div class="module-card cache-card"><div class="card-heading"><div><h3>封面缓存</h3><p>本机缓存的 Steam 封面图片</p></div><span class="heading-actions"><el-button type="warning" plain @click="resetImageMiss">清除缺图缓存</el-button><el-button @click="loadStats">刷新</el-button></span></div><div class="cache-stats"><div><strong>{{ imageStats.images||0 }}</strong><span>张图片</span></div><div><strong>{{ imageStats.games||0 }}</strong><span>款游戏</span></div><div><strong>{{ imageMb }} MB</strong><span>占用空间</span></div></div><small class="muted">{{ imageStats.root||'data/images' }}</small></div><div class="module-card backup-box"><div class="card-heading"><div><h3>数据备份</h3><p>核心表压缩备份，保留最近 7 份</p></div><el-button type="primary" :loading="saving" @click="createBackup">立即备份</el-button></div><div v-for="b in pagedBackups" :key="b.name" class="backup-row"><span>{{ b.name }}</span><span>{{ (b.size/1024/1024).toFixed(2) }} MB</span></div><small v-if="!backups.length" class="muted">还没有备份</small><PaginationBar v-model:page="backupPage" v-model:page-size="backupPageSize" :total="backups.length"/></div></template>
     </template>
+
+    <!-- 申诉管理（O 批，docs/APPEAL-SYSTEM.md §5） -->
+    <AppealsAdmin v-else-if="section==='appeals'"/>
       <!-- 批量封禁设备：时长沿用单条弹窗的 radio（复用其 UI 约定），执行仍走统一批量接口 -->
       <el-dialog v-model="bulkDeviceBan.visible" title="批量封禁设备" width="min(420px, 92vw)"><p class="muted">将对已选的 {{ sel.devices.count }} 个设备指纹生效；换 IP 也会命中（白名单 IP 除外）。</p><el-radio-group v-model="bulkDeviceBan.minutes"><el-radio :value="10">10 分钟</el-radio><el-radio :value="60">1 小时</el-radio><el-radio :value="1440">1 天</el-radio><el-radio :value="'permanent'">永久</el-radio></el-radio-group><template #footer><el-button @click="bulkDeviceBan.visible=false">取消</el-button><el-button type="danger" :loading="bulkRunning==='ban'" @click="submitBulkDeviceBan">确认封禁</el-button></template></el-dialog>
       <BulkResultDialog v-model="bulkResult.visible" :result="bulkResult.result"/>
@@ -115,6 +118,7 @@ import { compareIp } from '../utils/ipSort.js';
 import { nameCopyText } from '../utils/gameNames.js';
 import GameLinksDrawer from '../components/GameLinksDrawer.vue';
 import AnnouncementDrawer from '../components/AnnouncementDrawer.vue';
+import AppealsAdmin from '../components/AppealsAdmin.vue';
 import PriceSparkline from '../components/PriceSparkline.vue';
 import { CopyDocument, Check } from '@element-plus/icons-vue';
 import { registerUnsavedSource } from '../composables/useUnsavedGuard.js';

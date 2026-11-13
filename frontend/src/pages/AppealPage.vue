@@ -14,19 +14,41 @@ const router = useRouter();
 const injected = window.__APPEAL__ || {};
 const appealCode = String(injected.code || '').replace(/[^A-Za-z0-9-]/g, '').slice(0, 16);
 const email = ref(String(injected.email || '').trim());
-const contactEmail = ref('');
-const explanation = ref('');
-const submitted = ref(false);
 
-// 申诉正文不再包含「限制原因 / 解除时间」——页面也不展示，管理员按编号查 ban.page 日志
-const body = computed(() => [
-  `申诉编号：${appealCode || '未知'}`,
-  `联系邮箱：${contactEmail.value.trim() || '未填写'}`,
+// O 批（docs/APPEAL-SYSTEM.md §4）：站内提交入库——邮箱必填 + 说明 10–2000 + 图形验证码；
+// 去掉 mailto 流程（保留「复制申诉内容」兜底）。
+const contact = ref('');
+const explanation = ref('');
+const captchaToken = ref('');
+const captchaAnswer = ref('');
+const captchaImage = ref('');
+const submitting = ref(false);
+const submitted = ref(false);
+const submittedCode = ref('');
+
+async function loadCaptcha() {
+  captchaToken.value = '';
+  captchaAnswer.value = '';
+  captchaImage.value = '';
+  try {
+    const r = await fetch('/api/captcha', { headers: { accept: 'application/json' } });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    captchaToken.value = d.token || '';
+    captchaImage.value = d.svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(d.svg)}` : '';
+  } catch {
+    captchaToken.value = '';
+    captchaImage.value = '';
+  }
+}
+
+const appealText = computed(() => [
+  `申诉编号：${submittedCode.value || appealCode || '未知'}`,
+  `联系邮箱：${contact.value.trim() || '未填写'}`,
   '',
   '申诉说明：',
   explanation.value.trim(),
 ].join('\n'));
-const mailto = computed(() => email.value ? `mailto:${email.value}?subject=${encodeURIComponent(`[SteamDeals] 解封申请 ${appealCode}`)}&body=${encodeURIComponent(body.value)}` : '');
 
 // 旧链接兼容（docs/URL-PARAM-PRIVACY.md §4.4）：挂载后把地址栏清洗成只剩 ?code=，
 // 忽略 reason/until/email 等旧参数，不留明文在 history；再补一次邮箱回退。
@@ -44,27 +66,57 @@ onMounted(async () => {
       /* 离线：保持现状 */
     }
   }
+  await loadCaptcha();
 });
 
 async function submitAppeal() {
-  if (!email.value) return ElMessage.error('站点尚未配置申诉邮箱，请联系站点管理员。');
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.value.trim())) return ElMessage.warning('请填写有效的联系邮箱。');
-  if (explanation.value.trim().length < 10) return ElMessage.warning('请至少填写 10 个字说明情况。');
-  const text = body.value;
-  document.getElementById('appeal-copy-text').value = text;
-  document.getElementById('appeal-copy-text').hidden = false;
-  submitted.value = true;
-  window.location.href = mailto.value;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.value.trim())) {
+    return ElMessage.warning('请填写有效的联系邮箱。');
+  }
+  const text = explanation.value.trim();
+  if (text.length < 10) return ElMessage.warning('申诉说明至少 10 个字。');
+  if (text.length > 2000) return ElMessage.warning('申诉说明最多 2000 字。');
+  if (!captchaToken.value) return ElMessage.warning('验证码加载失败，点击图片重试。');
+  if (!captchaAnswer.value.trim()) return ElMessage.warning('请填写验证码。');
+  submitting.value = true;
+  try {
+    const r = await fetch('/api/appeal', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        contact: contact.value.trim(),
+        message: text,
+        captchaToken: captchaToken.value,
+        captchaAnswer: captchaAnswer.value.trim(),
+      }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 429) return ElMessage.warning(d.error || '提交过于频繁，请 1 小时后再试。');
+    if (!r.ok) {
+      if (String(d.error || '').includes('验证码')) {
+        ElMessage.error('验证码错误或已过期');
+        await loadCaptcha();
+        return;
+      }
+      return ElMessage.warning(d.error || `提交失败（HTTP ${r.status}）`);
+    }
+    submittedCode.value = d.code || '';
+    submitted.value = true;
+  } catch {
+    ElMessage.error('网络异常，请稍后重试。');
+  } finally {
+    submitting.value = false;
+  }
 }
 
 async function copyAppeal() {
-  const textarea = document.getElementById('appeal-copy-text');
-  textarea.value = body.value;
-  textarea.hidden = false;
-  textarea.focus();
-  textarea.select();
-  try { await navigator.clipboard.writeText(body.value); ElMessage.success('申诉内容已复制，可粘贴到邮件中。'); }
-  catch { ElMessage.info('内容已展开，请手动选中并复制。'); }
+  const text = appealText.value;
+  try {
+    await navigator.clipboard.writeText(text);
+    ElMessage.success('申诉内容已复制，可粘贴到邮件中。');
+  } catch {
+    ElMessage.info('复制失败，请手动记录申诉编号与说明。');
+  }
 }
 </script>
 
@@ -74,18 +126,27 @@ async function copyAppeal() {
     <p class="eyebrow">APPEAL</p><h1>申请解除访问限制</h1>
     <p class="intro">请说明当时的操作和网络情况，管理员会根据申诉编号核查访问记录。</p>
     <div class="appeal-meta"><span>申诉编号 <code>{{ appealCode || '未提供' }}</code></span></div>
-    <el-alert v-if="!email" type="warning" :closable="false" title="站点尚未配置申诉邮箱，请联系站点管理员。" />
-    <el-form label-position="top" @submit.prevent="submitAppeal">
-      <el-form-item label="联系邮箱"><el-input v-model="contactEmail" type="email" autocomplete="email" placeholder="管理员用于回复申诉的邮箱" /></el-form-item>
-      <el-form-item label="申诉说明"><el-input v-model="explanation" type="textarea" :rows="6" maxlength="2000" show-word-limit placeholder="请说明你当时在进行什么操作、是否使用自动化脚本、是否与他人共用网络。" /></el-form-item>
-      <div class="appeal-actions"><el-button type="primary" :disabled="!email" @click="submitAppeal">{{ submitted ? '重新打开邮件客户端' : '提交解封申请' }}</el-button><el-button plain @click="copyAppeal">复制申请内容</el-button></div>
-    </el-form>
-    <el-alert v-if="submitted" class="submitted" type="success" :closable="false" title="申请内容已准备好" description="如果邮件客户端没有自动打开，请复制下方内容，发送至页面提供的申诉邮箱。" />
-    <textarea id="appeal-copy-text" readonly hidden aria-label="申诉内容" @focus="$event.target.select()" />
-    <p v-if="email" class="recipient">申诉邮箱：<a :href="`mailto:${email}`">{{ email }}</a></p>
+
+    <template v-if="!submitted">
+      <el-alert v-if="!email" type="warning" :closable="false" title="站点尚未配置申诉邮箱；申诉仍会入库，管理员可在后台处理。" />
+      <el-form label-position="top" @submit.prevent="submitAppeal">
+        <el-form-item label="联系邮箱（必填，结果会发送到此邮箱）"><el-input v-model="contact" type="email" autocomplete="email" placeholder="例如 user@example.com" /></el-form-item>
+        <el-form-item label="申诉说明（10–2000 字）"><el-input v-model="explanation" type="textarea" :rows="6" maxlength="2000" show-word-limit placeholder="请说明你当时在进行什么操作、是否使用自动化脚本、是否与他人共用网络。" /></el-form-item>
+        <el-form-item label="图形验证码（点击图片刷新）">
+          <div class="captcha-row">
+            <img v-if="captchaImage" :src="captchaImage" alt="验证码，点击刷新" title="点击刷新验证码" @click="loadCaptcha">
+            <button v-else type="button" class="captcha-retry" @click="loadCaptcha">验证码加载失败<br>点击重试</button>
+            <el-input v-model="captchaAnswer" placeholder="验证码" maxlength="6" autocomplete="off" />
+          </div>
+        </el-form-item>
+        <div class="appeal-actions"><el-button type="primary" :loading="submitting" @click="submitAppeal">提交申诉</el-button><el-button plain @click="copyAppeal">复制申诉内容</el-button></div>
+      </el-form>
+    </template>
+
+    <el-alert v-else class="submitted" type="success" :closable="false" :title="`已受理，申诉编号 ${submittedCode}`" description="处理结果会发送到你填写的邮箱；请勿重复提交。" />
   </section></main>
 </template>
 
 <style scoped>
-.appeal-page{min-height:100vh;display:grid;place-items:center;padding:28px;background:radial-gradient(ellipse at 50% -15%,var(--bg-glow),transparent 48%),var(--bg);color:var(--fg)}.appeal-card{width:min(690px,100%);padding:30px;border:1px solid var(--border);border-radius:18px;background:var(--panel);box-shadow:0 16px 44px #26345a12}.back-link{color:var(--brand);text-decoration:none;font-size:12px}.eyebrow{margin:26px 0 6px;color:var(--brand);font-size:10px;font-weight:800;letter-spacing:.2em}.appeal-card h1{margin:0;font-size:27px;letter-spacing:-.04em}.intro{margin:8px 0 18px;color:var(--fg-muted);font-size:13px}.appeal-meta{display:grid;gap:9px;padding:13px 15px;margin-bottom:20px;border:1px solid var(--border);border-radius:11px;background:var(--panel-2);color:var(--fg-muted);font-size:12px}.appeal-meta code{margin-left:6px}.appeal-card :deep(.el-form-item){margin-bottom:14px}.appeal-card :deep(.el-form-item__label){font-size:12px;font-weight:650}.appeal-actions{display:flex;gap:8px;flex-wrap:wrap}.submitted{margin-top:14px}.appeal-card textarea{width:100%;min-height:120px;margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:9px;color:var(--fg-2);background:var(--panel-2);font:12px/1.6 ui-monospace,monospace;resize:vertical}.recipient{margin:16px 0 0;color:var(--fg-muted);font-size:12px}.recipient a{color:var(--brand)}@media(max-width:600px){.appeal-page{padding:14px}.appeal-card{padding:22px 17px}.appeal-card h1{font-size:23px}}
+.appeal-page{min-height:100vh;display:grid;place-items:center;padding:28px;background:radial-gradient(ellipse at 50% -15%,var(--bg-glow),transparent 48%),var(--bg);color:var(--fg)}.appeal-card{width:min(690px,100%);padding:30px;border:1px solid var(--border);border-radius:18px;background:var(--panel);box-shadow:0 16px 44px #26345a12}.back-link{color:var(--brand);text-decoration:none;font-size:12px}.eyebrow{margin:26px 0 6px;color:var(--brand);font-size:10px;font-weight:800;letter-spacing:.2em}.appeal-card h1{margin:0;font-size:27px;letter-spacing:-.04em}.intro{margin:8px 0 18px;color:var(--fg-muted);font-size:13px}.appeal-meta{display:grid;gap:9px;padding:13px 15px;margin-bottom:20px;border:1px solid var(--border);border-radius:11px;background:var(--panel-2);color:var(--fg-muted);font-size:12px}.appeal-meta code{margin-left:6px}.appeal-card :deep(.el-form-item){margin-bottom:14px}.appeal-card :deep(.el-form-item__label){font-size:12px;font-weight:650}.appeal-actions{display:flex;gap:8px;flex-wrap:wrap}.submitted{margin-top:14px}.captcha-row{display:flex;align-items:center;gap:9px;width:100%}.captcha-row img{width:132px;height:44px;border-radius:8px;cursor:pointer;background:#0f172a;flex:none}.captcha-retry{width:132px;height:44px;border-radius:8px;background:var(--panel-2);border:1px dashed var(--border-2);color:var(--fg-muted);font-size:11px;line-height:1.4;cursor:pointer;flex:none}.captcha-row .el-input{flex:1}@media(max-width:600px){.appeal-page{padding:14px}.appeal-card{padding:22px 17px}.appeal-card h1{font-size:23px}.captcha-row{flex-wrap:wrap}.captcha-row .el-input{flex:1 1 100%}}
 </style>

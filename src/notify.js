@@ -89,7 +89,7 @@ export function encodeSubject(subject) {
   return `=?UTF-8?B?${Buffer.from(text, 'utf8').toString('base64')}?=`;
 }
 
-export function buildMessage({ from, to, subject, text, html = null, date = new Date(), messageId = null }) {
+export function buildMessage({ from, to, subject, text, html = null, date = new Date(), messageId = null, replyTo = null }) {
   const recipients = Array.isArray(to) ? to.join(', ') : String(to);
   const encode = (value) =>
     Buffer.from(String(value ?? ''), 'utf8')
@@ -102,7 +102,8 @@ export function buildMessage({ from, to, subject, text, html = null, date = new 
     `Subject: ${encodeSubject(subject)}`,
     `Date: ${date.toUTCString()}`,
     `Message-ID: ${id}`,
-    `Reply-To: ${from}`,
+    // 申诉邮件（docs/APPEAL-SYSTEM.md §6）：Reply-To 可指定（申请人/申诉邮箱），缺省回退发件人
+    `Reply-To: ${String(replyTo ?? from).trim() || from}`,
     'X-Mailer: SteamDeals',
     'MIME-Version: 1.0',
   ];
@@ -262,7 +263,7 @@ function capabilities(reply) {
  * 支持 AUTH PLAIN / LOGIN 与 STARTTLS；不支持 OAuth2。
  */
 export async function sendMail(
-  { host, port = 465, secure = true, user = '', pass = '', from, to, subject, text, html = null },
+  { host, port = 465, secure = true, user = '', pass = '', from, to, subject, text, html = null, replyTo = null },
   { logger = null, timeoutMs = 15000 } = {},
 ) {
   const session = new SmtpSession({ logger, timeoutMs });
@@ -303,7 +304,7 @@ export async function sendMail(
       await session.cmd(`RCPT TO:<${rcpt}>`, { expect: [250, 251] });
     }
     await session.cmd('DATA', { expect: [354] });
-    const message = buildMessage({ from, to, subject, text, html });
+    const message = buildMessage({ from, to, subject, text, html, replyTo });
     await session.cmd(`${message}\r\n.`, { expect: [250] });
     await session.cmd('QUIT', { expect: [221] });
     logger?.info('notify.email_sent', { host, to: Array.isArray(to) ? to.length : 1 });

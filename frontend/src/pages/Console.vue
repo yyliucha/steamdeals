@@ -6,7 +6,7 @@
       <nav class="admin-nav">
         <template v-for="group in visibleGroups" :key="group.name">
           <div class="nav-heading">{{ group.name }}</div>
-          <button v-for="item in group.items" :key="item.id" :class="{ active: selected === item.id }" @click="select(item)"><span class="nav-glyph">{{ item.glyph }}</span><span>{{ item.label }}</span><span v-if="selected === item.id && menuDirty" class="nav-dirty" title="有未保存的修改">●</span><el-icon v-if="selected === item.id" class="arrow"><ArrowRight /></el-icon></button>
+          <button v-for="item in group.items" :key="item.id" :class="{ active: selected === item.id }" @click="select(item)"><span class="nav-glyph">{{ item.glyph }}</span><span>{{ item.label }}</span><span v-if="item.id === 'appeals' && appealsPending" class="nav-count">{{ appealsPending }}</span><span v-if="selected === item.id && menuDirty" class="nav-dirty" title="有未保存的修改">●</span><el-icon v-if="selected === item.id" class="arrow"><ArrowRight /></el-icon></button>
         </template>
         <el-empty v-if="!visibleGroups.length" :image-size="44" description="没有匹配的功能" />
       </nav>
@@ -36,6 +36,14 @@ import { fmtDateTime } from '../utils/siteTime.js';
 import { requestLeave, bypassNextGuard, hasDirtySources } from '../composables/useUnsavedGuard.js';
 
 const router=useRouter(), route=useRoute(), filter=ref(''), user=ref(null);
+// O 批（docs/APPEAL-SYSTEM.md §5）：侧栏「申诉管理」待处理数量角标
+const appealsPending=ref(0);
+async function loadAppealsPending(){
+  try{
+    const r=await fetch('/api/admin/appeals?status=pending&limit=1',{credentials:'same-origin'});
+    if(r.ok){const d=await r.json();appealsPending.value=d.pending||0;}
+  }catch{/* 角标失败静默 */}
+}
 const theme = useTheme();
 const themeMode = theme.mode;
 function toggleTheme(){
@@ -45,12 +53,12 @@ function toggleTheme(){
     fetch('/api/prefs', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ theme: m }) }).catch(() => {});
   }
 }
-const nativeSections=['games','visitors','announcements','wishlist','settings','stats'];
+const nativeSections=['games','visitors','announcements','wishlist','settings','stats','appeals'];
 // AT 批（docs/ADMIN-CONSOLE-IA.md §3）：侧栏删「批量操作记录」「运行日志」，新增「日志审计 / 操作日志」；
 // 旧书签 ?section=bulk-ops / ?section=sync 自动落到 op-logs 对应 tab，不 404（§7.4 验收 11）。
 const groups=[
   {name:'内容运营',items:[{id:'games',label:'游戏管理',glyph:'▦',description:'维护游戏目录、采集计划与数据回填'},{id:'recycle',label:'回收站',glyph:'▤',description:'查看并恢复已删除的游戏'},{id:'announcements',label:'站点通知',glyph:'▱',description:'发布和管理网站公告'},{id:'wishlist',label:'愿望单',glyph:'★',description:'全站用户愿望单，可查看与删除'}]},
-  {name:'访问与安全',items:[{id:'visitors',label:'访问记录',glyph:'◉',description:'流量、异常请求和访问控制'}]},
+  {name:'访问与安全',items:[{id:'visitors',label:'访问记录',glyph:'◉',description:'流量、异常请求和访问控制'},{id:'appeals',label:'申诉管理',glyph:'❧',description:'解封申诉的受理与处理'}]},
   {name:'账号与服务',items:[{id:'users',label:'用户管理',glyph:'♙',description:'管理账号、角色与登录权限'},{id:'steam',label:'Steam 账号',glyph:'◈',description:'绑定多个 Steam 账号，同步游戏库与愿望单'},{id:'sessions',label:'登录会话',glyph:'⟳',description:'查看在线会话、踢下线'},{id:'mail',label:'邮件服务',glyph:'✉',description:'配置 SMTP、邮件模板与发送测试'}]},
   {name:'日志审计',items:[{id:'op-logs',label:'操作日志',glyph:'☰',description:'用户删除 / 批量操作 / Steam 账号 / 邮件发送 / 运行与同步的审计记录'}]},
   {name:'系统',items:[{id:'settings',label:'系统设置',glyph:'⚙',description:'数据源、网络代理与提醒配置'},{id:'stats',label:'数据统计',glyph:'▥',description:'价格变化、缓存、备份与访问排行'}]},
@@ -75,7 +83,7 @@ watch(()=>route.query.section,(v)=>{
 const selectedItem=computed(()=>groups.flatMap(g=>g.items.map(i=>({...i,group:g.name}))).find(i=>i.id===selected.value)||groups[0].items[0]);
 const visibleGroups=computed(()=>{const q=filter.value.trim().toLocaleLowerCase();return groups.map(g=>({...g,items:g.items.filter(i=>!q||`${i.label} ${i.description} ${g.name}`.toLocaleLowerCase().includes(q))})).filter(g=>g.items.length);});
 // AN 批（docs/UNSAVED-GUARD.md §4.3）：切菜单前先过离开确认——不要先改 selected 再拦
-async function select(item){ if(item.id===selected.value)return; if(!(await requestLeave()))return; selected.value=item.id; await router.replace({path:'/console',query:{section:item.id}}); }
+async function select(item){ if(item.id===selected.value)return; if(!(await requestLeave()))return; selected.value=item.id; await router.replace({path:'/console',query:{section:item.id}}); if(item.id==='appeals')loadAppealsPending(); }
 // 当前菜单项的「未保存修改」小圆点（与邮件配置的小标一致）
 const menuDirty=ref(false);
 let menuDirtyTimer=null;
@@ -109,12 +117,13 @@ onMounted(async()=>{try{
   const legacy=LEGACY_SECTION[selected.value];
   if(legacy){selected.value=legacy.section;router.replace({path:'/console',query:{...legacy}}).catch(()=>{});}
   else if(selected.value==='mail'&&route.query.tab==='records'){router.replace({path:'/console',query:{section:'op-logs',tab:'mail'}}).catch(()=>{});}
-  const valid=groups.some(g=>g.items.some(i=>i.id===selected.value));if(!valid)selected.value='games';const res=await fetch('/api/me',{credentials:'same-origin'});const data=await res.json();user.value=data.user||null;if(user.value?.must_change_password){ElMessage.warning('请先修改初始密码');bypassNextGuard();router.replace('/change-password?forced=1');return;}if(user.value?.role!=='admin'){ElMessage.warning('此页面需要管理员账号登录');bypassNextGuard();router.replace('/');return;}const st=data.prefs?.theme;if(st==='light'||st==='dark'){if(theme.storedMode()!==st)theme.set(st);}else if(theme.storedMode()){fetch('/api/prefs',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({theme:theme.storedMode()})}).catch(()=>{});}}catch{ElMessage.error('无法验证管理员身份');bypassNextGuard();router.replace('/');return;}loadVersion(false);});
+  const valid=groups.some(g=>g.items.some(i=>i.id===selected.value));if(!valid)selected.value='games';const res=await fetch('/api/me',{credentials:'same-origin'});const data=await res.json();user.value=data.user||null;if(user.value?.must_change_password){ElMessage.warning('请先修改初始密码');bypassNextGuard();router.replace('/change-password?forced=1');return;}if(user.value?.role!=='admin'){ElMessage.warning('此页面需要管理员账号登录');bypassNextGuard();router.replace('/');return;}const st=data.prefs?.theme;if(st==='light'||st==='dark'){if(theme.storedMode()!==st)theme.set(st);}else if(theme.storedMode()){fetch('/api/prefs',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({theme:theme.storedMode()})}).catch(()=>{});}}catch{ElMessage.error('无法验证管理员身份');bypassNextGuard();router.replace('/');return;}loadVersion(false);loadAppealsPending();});
 </script>
 
 <style scoped>
 .theme-btn{font-size:17px}
 .nav-dirty{color:var(--warn);font-size:9px;margin-left:auto;line-height:1}
+.nav-count{min-width:18px;margin-left:auto;padding:0 5px;border-radius:999px;background:var(--warn);color:#fff;font-size:10px;line-height:17px;text-align:center;font-weight:700}
 .header-actions{display:flex;align-items:center;gap:12px;min-width:0}
 .header-version{font-size:11px;color:var(--fg-muted);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .header-version em{font-style:normal;color:var(--warn);font-weight:600}

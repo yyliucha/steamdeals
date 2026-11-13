@@ -237,9 +237,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## O. 待开发：申诉系统改造——服务端受理 + 后台申诉管理
 
-> ⚠️ 重复条目：后者「O. 已实现并发布 v1.12.1」才是唯一事实。
+> ⚠️ 重复条目：前者「O. 已实现并发布 v1.12.1」指历史邮件配置批；本段是申诉系统改造（以本段为准）。
 
-**状态：待开发（需求与方案已确认 2026-11-03，见 [docs/APPEAL-SYSTEM.md](APPEAL-SYSTEM.md)；尚未实现，当前仍是邮件申诉流程）**。
+**状态：已实现待发版（2026-11-14，提交哈希待补；本地验证全绿，待调 gameprice-qa）**。
 
 - 现状：申诉页用 `mailto:` 依赖用户本地邮件客户端；邮件只能人工处理；封禁页邮箱是页面快照（旧页面会发到旧地址）。
 - 目标：`POST /api/appeal` 入库（编号/IP/设备/原因/联系邮箱/说明）+ 通知管理员邮件；
@@ -249,6 +249,14 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   SMTP 未配置不影响入库；处理动作联动现有解封逻辑（ip_blacklist / ip_abuse / device_bans）。
 - 依赖：先修封禁页跳转（FRONTEND-RENDER-FIX §2）。验收见文档 §8。
 - 开发汇报（O + BQ 合并版）：[DEV-BRIEF-APPEAL.md](DEV-BRIEF-APPEAL.md)
+- 落地内容（2026-11-14，含 BQ）：`appeals` 表（含 token 三列）+ 4 索引；`POST /api/appeal`
+  （邮箱/说明/验证码/3 条每小时/同内容幂等/AP-XXXXXX/SMTP 未配也入库）+ 封禁拦截放行；
+  管理员通知邮件（回退链收件人、From=SMTP、Reply-To=申请人、写 mail_log）；后台列表/详情抽屉/
+  5 动作联动解封/409 并发保护；`GET /api/appeal/:code` 查进度；申诉页去 mailto 改站内提交；
+  侧栏「申诉管理」带待处理角标；`POST /api/appeal/action`（preview/trust/reject，POST-only，
+  每 IP 10 次/分，错误统一 404，日志不写 token）；邮件内信任/拒绝两按钮（token 在 fragment）；
+  确认页 `/appeal/act`（登记 FRONTEND_PAGES + serve.test 一致性）；与后台共用状态机先到先得。
+  测试 `test/appeal-system.test.js` 16 项（真 PGlite + 真 HTTP + 假 SMTP）进主链。
 
 ## P. ~~待开发：后台功能对齐（设备 tab + 合并重复游戏 + 同步历史 + 回填进度）~~ → **已过时（被后面的 P 段覆盖）**
 
@@ -1333,8 +1341,8 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BQ. 待开发：申诉邮件内一键「信任 / 封禁」
 
-**状态：依赖阻塞（需求与方案已确认 2026-11-13，见 [docs/APPEAL-SYSTEM.md](APPEAL-SYSTEM.md) §10；等 O 段申诉系统改造先实现）**
-**依赖：** O 段（`appeals` 表 + `POST /api/appeal` + 通知邮件 + 后台申诉管理）——BQ 是在那封通知邮件里加两个动作按钮，没有 O 就没有申诉记录可处理
+**状态：已实现待发版（2026-11-14，随 O 同批交付；提交哈希待补；本地验证全绿，待调 gameprice-qa）**
+**依赖：** O 段——已随本批完成，解阻塞
 **解锁：** 无
 **规格**：[APPEAL-SYSTEM.md](APPEAL-SYSTEM.md) §10（10.1 决策 / 10.3 接口 / 10.4 确认页 / 10.7 验收）
 **开发汇报**：[DEV-BRIEF-APPEAL.md](DEV-BRIEF-APPEAL.md)（O + BQ 的 17 个功能点、接口/邮件清单、6 步顺序，交接用）

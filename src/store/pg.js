@@ -342,6 +342,37 @@ create index if not exists idx_admin_bulk_ops_time on admin_bulk_ops (created_at
 create index if not exists idx_admin_bulk_ops_target on admin_bulk_ops (target, created_at desc);
 `;
 
+// 申诉系统（docs/APPEAL-SYSTEM.md §2 + §10.2，O/BQ 批次）：
+// 提交入库 → 后台处理 / 邮件一键处理 → 结果回信申请人。
+// BQ 的 3 列（action_token_hash / action_expires_at / handled_via）随建表一起落，
+// token 只存 sha256、处理成功即置空；handled_via 记 console | email 审计来源。
+const APPEALS_DDL = `
+create table if not exists appeals (
+  id                 bigserial primary key,
+  code               text not null unique,
+  ip                 text,
+  device_id          text,
+  fingerprint        text,
+  reason             text,
+  ban_until          timestamptz,
+  contact            text not null,
+  message            text,
+  status             text not null default 'pending',
+  action             text,
+  note               text,
+  created_at         timestamptz not null default now(),
+  handled_at         timestamptz,
+  handled_by         bigint references users(id) on delete set null,
+  action_token_hash  text,
+  action_expires_at  timestamptz,
+  handled_via        text
+);
+create index if not exists appeals_status on appeals (status, created_at desc);
+create index if not exists appeals_ip on appeals (ip);
+create index if not exists appeals_contact on appeals (contact);
+create index if not exists appeals_action_token on appeals (action_token_hash);
+`;
+
 const ALTERS = [
   'alter table games add column if not exists interested boolean not null default true',
   'alter table games add column if not exists owned boolean not null default false',
@@ -425,6 +456,8 @@ const ALTERS = [
 export async function migrate(store, { logger = null } = {}) {
   await store.exec(SCHEMA);
   await store.exec(USER_SCHEMA);
+  // 申诉系统（O/BQ）：users 表已建，可直接带外键建表（幂等，每次启动跑一次）
+  await store.exec(APPEALS_DDL);
   // 老库补列：必须幂等，容器每次启动都会跑
   for (const ddl of ALTERS) {
     await store.exec(ddl);
@@ -2599,6 +2632,15 @@ export async function removeDeviceBan(q, fingerprint) {
   return r.rowCount ?? 0;
 }
 
+/** 申诉解封设备用：按设备码回查最近一次上报的指纹（device_bans 按指纹存）。 */
+export async function fingerprintOfDeviceId(q, deviceId) {
+  const r = await q(
+    'select fingerprint from device_logs where device_id = $1 order by id desc limit 1',
+    [deviceId],
+  );
+  return r.rows[0]?.fingerprint ?? null;
+}
+
 // ---------------------------------------------------------------- 异常请求审核（不自动封）
 
 /**
@@ -2675,6 +2717,118 @@ export async function finishAbuseReview(q, id, { status, reviewedBy = null, note
 export async function countPendingReviews(q) {
   const r = await q(`select count(*)::int as n from abuse_reviews where status = 'pending'`);
   return Number(r.rows[0]?.n ?? 0);
+}
+
+// ---------------------------------------------------------------- 申诉系统（docs/APPEAL-SYSTEM.md §2/§3，O/BQ 批次）
+
+/** 提交申诉入库；token 相关列（BQ）在提交时生成（只存 sha256 + 14 天到期）。 */
+export async function insertAppeal(q, {
+  code, ip = null, deviceId = null, fingerprint = null, reason = null, banUntil = null,
+  contact, message, tokenHash = null, actionExpiresAt = null,
+}) {
+  const r = await q(
+    `insert into appeals (code, ip, device_id, fingerprint, reason, ban_until, contact, message, action_token_hash, action_expires_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     returning id, code, status, created_at`,
+    [code, ip, deviceId, fingerprint, reason, banUntil, contact, message, tokenHash, actionExpiresAt],
+  );
+  return r.rows[0] ?? null;
+}
+
+/** 幂等口径：同一 IP + 相同说明，1 小时内重复提交返回原编号。 */
+export async function recentAppealByIpMessage(q, { ip, message, minutes = 60 }) {
+  const r = await q(
+    `select code from appeals
+      where ip = $1 and message = $2 and created_at > now() - ($3 * interval '1 minute')
+      order by id desc limit 1`,
+    [ip, message, minutes],
+  );
+  return r.rows[0]?.code ?? null;
+}
+
+/** 每 IP 每小时限 3 条（库内双保险；内存桶在 server.js）。 */
+export async function countAppealsSince(q, { ip, minutes = 60 }) {
+  const r = await q(
+    `select count(*)::int as n from appeals where ip = $1 and created_at > now() - ($2 * interval '1 minute')`,
+    [ip, minutes],
+  );
+  return Number(r.rows[0]?.n ?? 0);
+}
+
+/** 申请人按编号查进度：只回 status/handled_at/note，不回显 IP/指纹（§3.4）。 */
+export async function appealStatusByCode(q, code) {
+  const r = await q('select status, handled_at, note from appeals where code = $1', [String(code).toUpperCase()]);
+  return r.rows[0] ?? null;
+}
+
+/** 管理员列表（pending 默认 / done=已处理 resolved+rejected / all；按 id desc 分页），含待处理总数。 */
+export async function listAppeals(q, { status = 'pending', limit = 20, page = 1 } = {}) {
+  const where = status === 'all' ? '' : status === 'done' ? `where status <> 'pending'` : `where status = $3`;
+  const params = status === 'all' || status === 'done' ? [limit, Math.max(0, (page - 1) * limit)] : [limit, Math.max(0, (page - 1) * limit), status];
+  const r = await q(
+    `select id, code, ip, device_id, fingerprint, reason, ban_until, contact, message,
+            status, action, note, created_at, handled_at, handled_via
+       from appeals ${where}
+      order by id desc
+      limit $1 offset $2`,
+    params,
+  );
+  return r.rows;
+}
+
+export async function countPendingAppeals(q) {
+  const r = await q(`select count(*)::int as n from appeals where status = 'pending'`);
+  return Number(r.rows[0]?.n ?? 0);
+}
+
+export async function countAppeals(q, { status = 'pending' } = {}) {
+  const where = status === 'all' ? '' : status === 'done' ? `where status <> 'pending'` : 'where status = $1';
+  const params = status === 'all' || status === 'done' ? [] : [status];
+  const r = await q(`select count(*)::int as n from appeals ${where}`, params);
+  return Number(r.rows[0]?.n ?? 0);
+}
+
+export async function getAppealById(q, id) {
+  const r = await q('select * from appeals where id = $1', [id]);
+  return r.rows[0] ?? null;
+}
+
+/**
+ * 处理申诉（含 BQ 邮件通道共用）：where status='pending' 抢锁，0 行 = 已被处理（调用方回 409）。
+ * 支持 note 动作（仅备注，status 保持 pending、不写 handled_at）。
+ */
+export async function resolveAppeal(q, { id, action, note = null, handledBy = null, handledVia = 'console' }) {
+  const status = action === 'reject' ? 'rejected' : action === 'note' ? 'pending' : 'resolved';
+  const r = await q(
+    `update appeals
+        set status = $2, action = $3, note = $4, handled_at = $5, handled_by = $6, handled_via = $7
+      where id = $1 and status = 'pending'
+      returning *`,
+    [id, status, action, note, action === 'note' ? null : new Date().toISOString(), handledBy, action === 'note' ? null : handledVia],
+  );
+  return r.rows[0] ?? null;
+}
+
+/** BQ：token 只存 sha256；预览/执行共用——不存在/过期/已置空统一查不到（调用方回 404）。 */
+export async function appealByTokenHash(q, hash) {
+  const r = await q('select * from appeals where action_token_hash = $1', [hash]);
+  return r.rows[0] ?? null;
+}
+
+/**
+ * BQ：事务内抢 pending 并消费 token（0 行 → 409 语义由调用方处理）。
+ * 成功处理**不**清 action_token_hash：链接再打开仍能解析出「已处理 + 处理时间」给后来者看
+ * （§10.7 验收 12/13）；执行能力由 status='pending' 约束（旧链接立即失效 = 不能再执行）。
+ */
+export async function consumeAppealToken(q, { hash, status, action, note = null, handledVia = 'email' }) {
+  const r = await q(
+    `update appeals
+        set status = $2, action = $3, note = $4, handled_at = now(), handled_via = $5
+      where action_token_hash = $1 and status = 'pending'
+      returning *`,
+    [hash, status, action, note, handledVia],
+  );
+  return r.rows[0] ?? null;
 }
 
 // ---------------------------------------------------------------- 手动同步任务记录
