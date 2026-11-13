@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import net from 'node:net';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
-import { startApiServer } from '../src/server.js';
+import { startApiServer, resetAppealBuckets } from '../src/server.js';
 import { ensureEmailSchema } from '../src/email-auth.js';
 import * as ratelimit from '../src/ratelimit.js';
 import * as devices from '../src/devices.js';
@@ -49,6 +49,7 @@ async function boot({ smtp = true, captchaEnabled = '0', frontendDir = null } = 
   process.env.CAPTCHA_ENABLED = captchaEnabled;
   ratelimit.resetState();
   devices.resetState();
+  resetAppealBuckets(); // 申诉限流内存桶是模块级状态，测试间隔离
   const fake = smtp ? await startFakeSmtp() : null;
   const store = await openStore('pglite:', {});
   await db.migrate(store);
@@ -211,7 +212,7 @@ test('O-5：后台列表（pending/all/done + 待处理计数）+ 匿名 401', a
     assert.equal(done.body.total, 0, 'note 保持待处理，不进已处理');
     const all = await env.get('/api/admin/appeals?status=all', '203.0.113.77', { cookie });
     assert.equal(all.body.total, 1);
-    const reject = await env.post(`/api/admin/appeals/${row.id}/resolve`, { action: 'reject', note: '理由' }, '203.0.113.77', { cookie });
+    const reject = await env.post(`/api/admin/appeals/${row.id}/resolve`, { action: 'reject', note: '理由充分，保持封禁' }, '203.0.113.77', { cookie });
     assert.equal(reject.status, 200);
     const done2 = await env.get('/api/admin/appeals?status=done', '203.0.113.77', { cookie });
     assert.equal(done2.body.total, 1, '拒绝后进入已处理');
@@ -259,12 +260,13 @@ test('O-6/O-12：解封设备联动 + reject 理由必填 + 结果邮件；note 
     const cookie = await env.loginAdmin();
     const row = (await env.get('/api/admin/appeals?status=pending', '203.0.113.77', { cookie })).body.appeals[0];
 
-    // reject 无理由 → 400；有理由 → 200 + 结果邮件
+    // reject 无理由/过短 → 400；有理由 → 200 + 结果邮件
     assert.equal((await env.post(`/api/admin/appeals/${row.id}/resolve`, { action: 'reject' }, '203.0.113.77', { cookie })).status, 400);
-    const rejected = await env.post(`/api/admin/appeals/${row.id}/resolve`, { action: 'reject', note: '维持封禁' }, '203.0.113.77', { cookie });
+    assert.equal((await env.post(`/api/admin/appeals/${row.id}/resolve`, { action: 'reject', note: '短' }, '203.0.113.77', { cookie })).status, 400, '理由至少 5 个字');
+    const rejected = await env.post(`/api/admin/appeals/${row.id}/resolve`, { action: 'reject', note: '维持封禁处理' }, '203.0.113.77', { cookie });
     assert.equal(rejected.status, 200);
     assert.equal(rejected.body.appeal.status, 'rejected');
-    assert.equal(rejected.body.appeal.note, '维持封禁');
+    assert.equal(rejected.body.appeal.note, '维持封禁处理');
     const dbRow = (await env.q('select * from appeals where id = $1', [row.id])).rows[0];
     assert.equal(dbRow.status, 'rejected');
     assert.equal(dbRow.handled_via, 'console');
@@ -429,7 +431,7 @@ test('BQ-2/BQ-5：trust 解封 IP+设备 + 结果邮件；重复点 409 不重�
     const cookie = await env.loginAdmin();
     const list = (await env.get('/api/admin/appeals?status=pending', '203.0.113.77', { cookie })).body.appeals;
     const row2 = list.find((a) => a.code === 'AP-TTTT22');
-    await env.post(`/api/admin/appeals/${row2.id}/resolve`, { action: 'reject', note: '后台先拒' }, '203.0.113.77', { cookie });
+    await env.post(`/api/admin/appeals/${row2.id}/resolve`, { action: 'reject', note: '后台先行拒绝' }, '203.0.113.77', { cookie });
     const race = await env.post('/api/appeal/action', { token: token2, op: 'trust' }, '203.0.113.77');
     assert.equal(race.status, 409, '后台先处理 → 邮件动作后到 409');
     assert.equal(race.body.status, 'rejected');
@@ -532,6 +534,78 @@ test('BQ-2：SMTP 未配置时确认页动作仍可用（trust 生效）', async
     assert.equal(trust.status, 200, 'SMTP 未配不影响邮件动作');
     const row = (await env.q("select status from appeals where code = 'AP-TTTT66'")).rows[0];
     assert.equal(row.status, 'resolved');
+  } finally {
+    await env.close();
+  }
+});
+
+// ---------------------------------------------------------------- 第 1 轮质检打回修复（docs/QA-APPEAL-OBQ.md）
+// 验收 1 必修：被封用户必须能拉图形验证码并完成站内提交（此前 GET /api/captcha 被拦截链 403）。
+
+test('打回修复：黑名单 IP 拉验证码 200 + 真验证码端到端提交成功', async () => {
+  const env = await boot({ smtp: false, captchaEnabled: '1' });
+  try {
+    const ip = '198.51.100.130';
+    await env.q("insert into ip_blacklist (ip, note) values ($1, '审核封禁')", [ip]);
+    await visitors.refreshBlocklist(env.q);
+    // 前置：普通接口仍被拦（403），申诉页与验证码放行
+    const page = await fetch(env.base + '/', { headers: { 'x-forwarded-for': ip, accept: 'text/html' } });
+    assert.equal(page.status, 403, '前置：黑名单 IP 首页仍 403');
+    const cap = await fetch(env.base + '/api/captcha', { headers: { 'x-forwarded-for': ip } });
+    assert.equal(cap.status, 200, '被封 IP 必须能拉验证码');
+    const capBody = await cap.json();
+    assert.ok(capBody.token && capBody.svg, '验证码下发 token + svg');
+    // 从 SVG 文本元素解析出答案（renderSvg 逐字符 <text>…</text>）
+    const answer = [...capBody.svg.matchAll(/<text[^>]*>([^<])<\/text>/g)].map((m) => m[1]).join('');
+    assert.equal(answer.length, 4, '能解析出 4 位验证码');
+    // 端到端提交：正确验证码 → 200 + 编号入库
+    const r = await env.post('/api/appeal', { contact: 'banned2@example.com', message: MESSAGE, captchaToken: capBody.token, captchaAnswer: answer }, ip);
+    assert.equal(r.status, 200, r.text);
+    const row = (await env.q("select * from appeals where contact = 'banned2@example.com'")).rows[0];
+    assert.ok(row, '被封用户申诉入库');
+    assert.equal(row.ip, ip);
+    assert.equal(row.status, 'pending');
+  } finally {
+    await env.close();
+  }
+});
+
+test('打回修复：CAPTCHA_ENABLED=0 时被封 IP 拉验证码仍 200、无验证码提交成功', async () => {
+  const env = await boot({ smtp: false, captchaEnabled: '0' });
+  try {
+    const ip = '198.51.100.131';
+    await env.q("insert into ip_blacklist (ip, note) values ($1, '审核封禁')", [ip]);
+    await visitors.refreshBlocklist(env.q);
+    const cap = await fetch(env.base + '/api/captcha', { headers: { 'x-forwarded-for': ip } });
+    assert.equal(cap.status, 200, '验证码关闭时被封 IP 拉验证码也不该 403');
+    const r = await env.post('/api/appeal', { contact: 'banned3@example.com', message: MESSAGE }, ip);
+    assert.equal(r.status, 200, r.text);
+  } finally {
+    await env.close();
+  }
+});
+
+test('BQ：邮件通道 reject 自定义理由入库；过短理由 400', async () => {
+  const env = await boot({ smtp: false });
+  try {
+    const { token: t1, hash: h1 } = makeToken();
+    await db.insertAppeal(env.q, {
+      code: 'AP-TTTT77', ip: '198.51.100.132', contact: 'n1@example.com', message: MESSAGE,
+      tokenHash: h1, actionExpiresAt: new Date(Date.now() + 14 * 86400_000).toISOString(),
+    });
+    const { token: t2, hash: h2 } = makeToken();
+    await db.insertAppeal(env.q, {
+      code: 'AP-TTTT88', ip: '198.51.100.133', contact: 'n2@example.com', message: MESSAGE,
+      tokenHash: h2, actionExpiresAt: new Date(Date.now() + 14 * 86400_000).toISOString(),
+    });
+    const short = await env.post('/api/appeal/action', { token: t1, op: 'reject', note: '短' }, '203.0.113.77');
+    assert.equal(short.status, 400, '过短理由 400');
+    assert.match(short.body.error, /至少 5 个字/);
+    const ok = await env.post('/api/appeal/action', { token: t2, op: 'reject', note: '这是邮件通道自定义拒绝理由' }, '203.0.113.77');
+    assert.equal(ok.status, 200, ok.text);
+    const row = (await env.q("select status, note from appeals where code = 'AP-TTTT88'")).rows[0];
+    assert.equal(row.status, 'rejected');
+    assert.equal(row.note, '这是邮件通道自定义拒绝理由', '自定义理由入库');
   } finally {
     await env.close();
   }

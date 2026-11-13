@@ -177,6 +177,11 @@ export function appealBucketLimited(ip, kind, max, windowMs) {
   return false;
 }
 
+/** 测试用：清空申诉限流内存桶（与 ratelimit.resetState 同一先例）。 */
+export function resetAppealBuckets() {
+  appealBuckets.clear();
+}
+
 const bannedTplCache = new Map();
 function bannedTemplate(outDir) {
   const file = resolve(outDir ?? 'web', 'banned.html');
@@ -534,6 +539,10 @@ export function createApiServer({
     // O-3（docs/APPEAL-SYSTEM.md §3.1 / §10.3）：申诉接口放行封禁拦截（与 /appeal 页同等待遇）——
     // 被封禁者必须能提交申诉、点邮件里的处理链接；其余拦截照旧。接口自身的限流在路由里做。
     const appealApi = path === '/api/appeal' || path === '/api/appeal/action';
+    // O 批质检打回修复（2026-11-14 第 1 轮，docs/QA-APPEAL-OBQ.md）：被封用户要在申诉页拉图形
+    // 验证码，GET /api/captcha 同样放行拦截链——否则被封 IP 一律 403，站内申诉永远无法提交。
+    // 风险可控：验证码一次性、5 分钟过期；提交端仍有每 IP 3 条/小时兜底；发码自带 30 张/分钟限流。
+    const appealExempt = appealPage || appealApi || (path === '/api/captcha' && req.method === 'GET');
     const cookies = parseCookies(req.headers.cookie);
     const token = cookies[COOKIE] ?? null;
 
@@ -647,7 +656,7 @@ export function createApiServer({
       }
 
       const deviceBan = deviceId && !adminBypass && !whitelisted ? devices.isBanned({ deviceId }) : null;
-      if (deviceBan && !appealPage && !appealApi) {
+      if (deviceBan && !appealExempt) {
         if (req.method === 'GET' && isFrontendAsset(path)) return serveFrontendStatic(res, frontendDir, outDir, path);
         logger?.warn('device.denied', { ip, deviceId, until: deviceBan.until });
         logBlocked({ ip, req, path, status: 403, reason: '设备已被封禁' });
@@ -658,7 +667,7 @@ export function createApiServer({
       // 黑名单 IP 在计数之前被拦下：不计数、不三振、不升级、不写 ip_abuse / abuse_reviews，
       // 响应固定 403（不再出现"先 403、超 60 次后变 429"）。
       const hit = ip && !adminBypass && !whitelisted ? visitors.blockedBy(ip) : null;
-      if (hit && !appealPage && !appealApi) {
+      if (hit && !appealExempt) {
         if (req.method === 'GET' && isFrontendAsset(path)) return serveFrontendStatic(res, frontendDir, outDir, path);
         logger?.warn('block.ip_denied', { ip, path, rule: hit });
         logBlocked({ ip, req, path, status: 403, reason: `IP 黑名单（${hit}）` });
@@ -668,7 +677,7 @@ export function createApiServer({
       // 频率限制：白名单/管理员不参与三振；内网/本机（反代、健康检查）不计数
       // 分桶（BR 批 §11.4）：页面 / API / 静态资源三个独立桶——正常翻页不与接口抢计数，
       // 封面图也不该顶到页面阈值；封禁期内只有 API 桶继续累计升级。
-      if (ip && !whitelisted && !adminBypass && !visitors.isPrivateAddress(ip) && !appealPage && !appealApi) {
+      if (ip && !whitelisted && !adminBypass && !visitors.isPrivateAddress(ip) && !appealExempt) {
         // 统一走 hit：封禁期内的请求也会被计数，够数就记一条待审核（**不再自动永久封**）
         const bucket = guard.isAssetPath(path) ? 'asset' : path.startsWith('/api/') ? 'api' : 'page';
         const verdict = await ratelimit.hit(q, ip, { bucket });
@@ -1050,6 +1059,10 @@ export function createApiServer({
         }
         const token = String(body?.token ?? '').trim();
         if (!token || !/^[A-Za-z0-9_-]{20,64}$/.test(token)) {
+          // §10.3：token 连续错误 10 次/小时 → 429；其余统一 404（防枚举）
+          if (appealBucketLimited(ip, 'action-bad', 10, 3600_000)) {
+            return json(res, 429, { error: '尝试次数过多，请稍后再试' }, { 'retry-after': '3600' });
+          }
           logger?.warn('appeal.action_refused', { op, reason: 'bad_token', ip: ip || null });
           return json(res, 404, { error: '链接无效或已过期' });
         }
@@ -1057,6 +1070,9 @@ export function createApiServer({
         const appeal = await db.appealByTokenHash(q, hash);
         const expired = appeal && appeal.action_expires_at && new Date(appeal.action_expires_at).getTime() < Date.now();
         if (!appeal || expired) {
+          if (appealBucketLimited(ip, 'action-bad', 10, 3600_000)) {
+            return json(res, 429, { error: '尝试次数过多，请稍后再试' }, { 'retry-after': '3600' });
+          }
           logger?.warn('appeal.action_refused', { op, reason: expired ? 'expired' : 'bad_token', code: appeal?.code ?? null, ip: ip || null });
           return json(res, 404, { error: '链接无效或已过期' });
         }
@@ -1083,8 +1099,9 @@ export function createApiServer({
         }
         let note = null;
         if (op === 'reject') {
-          note = String(body?.note ?? '').trim();
-          if (!note) note = '未通过审核，如仍有疑问请回复本邮件'; // §10.3 默认文案
+          const raw = String(body?.note ?? '').trim();
+          if (raw && raw.length < 5) return json(res, 400, { error: '拒绝理由至少 5 个字' });
+          note = raw || '未通过审核，如仍有疑问请回复本邮件'; // §10.3 默认文案
         }
         if (note && note.length > 500) return json(res, 400, { error: '理由最多 500 字' });
         const nextStatus = op === 'trust' ? 'resolved' : 'rejected';
@@ -1266,7 +1283,7 @@ export function createApiServer({
           return json(res, 400, { error: 'action 不合法（unban_ip / unban_device / both / reject / note）' });
         }
         let note = String(body?.note ?? '').trim();
-        if (action === 'reject' && !note) return json(res, 400, { error: '拒绝必须填写理由' });
+        if (action === 'reject' && note.length < 5) return json(res, 400, { error: '拒绝理由至少 5 个字' });
         if (note.length > 500) return json(res, 400, { error: '备注/理由最多 500 字' });
         const appeal = await db.getAppealById(q, id);
         if (!appeal) return json(res, 404, { error: '申诉不存在' });
@@ -1305,6 +1322,10 @@ export function createApiServer({
       // ---- 登录 / 登出 ----
       // ---- 图形验证码（登录前置，匿名可拿；缓存禁止）----
       if (path === '/api/captcha' && req.method === 'GET') {
+        // O 批打回修复：放行拦截链后自带轻量限流（每 IP 30 张/分钟），防止被封 IP 刷验证码表
+        if (appealBucketLimited(ip, 'captcha', 30, 60_000)) {
+          return json(res, 429, { error: '请求过于频繁' }, { 'cache-control': 'no-store', 'retry-after': '60' });
+        }
         const cap = await captcha.issue(q);
         return json(res, 200, cap, { 'cache-control': 'no-store' });
       }
