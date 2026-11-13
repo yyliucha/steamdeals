@@ -2,10 +2,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveFilePath, contentTypeFor, startStaticServer } from '../src/serve.js';
+import { openStore } from '../src/store/index.js';
+import * as db from '../src/store/pg.js';
+import { FRONTEND_PAGES, startApiServer } from '../src/server.js';
 
 function makeSite() {
   const root = mkdtempSync(join(tmpdir(), 'gp-serve-'));
@@ -97,4 +100,38 @@ test('port=0 时返回系统分配的真实端口', async () => {
   } finally {
     await srv.close();
   }
+});
+
+// BM-1（docs/SESSION-MANAGEMENT.md §8.4.1）：SPA 页面白名单——登录/注册/改密页直接打开或刷新必须返回
+// 200 index.html（v2.11.0 的 `/login` 落到旧 web/ 目录回纯文本 not found 的事故）。
+test('BM-1：/login、/register、/change-password（含 next 参数）返回 200 index.html', async () => {
+  const frontend = mkdtempSync(join(tmpdir(), 'gp-frontend-'));
+  writeFileSync(join(frontend, 'index.html'), '<!doctype html><html><body><div id="app">spa-marker</div></body></html>');
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  const srv = await startApiServer({ query: q, frontendDir: frontend, port: 0, host: '127.0.0.1' });
+  const base = `http://127.0.0.1:${srv.port}`;
+  try {
+    for (const p of ['/login', '/login?next=%2Fconsole%3Fsection%3Dgames', '/register', '/change-password', '/console?section=games']) {
+      const res = await fetch(base + p);
+      assert.equal(res.status, 200, `${p} → 200`);
+      assert.match(res.headers.get('content-type') || '', /text\/html/, `${p} → text/html`);
+      assert.match(await res.text(), /spa-marker/, `${p} → index.html`);
+    }
+    // 白名单不是通配：未登记的路径仍是 404（而不是把所有路径都当 SPA）
+    const missing = await fetch(`${base}/no-such-page`);
+    assert.equal(missing.status, 404, '未登记路径 404');
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('BM-1：前端 router 的每个页面路径都在服务端白名单（新增页面漏登记 → 测试红）', () => {
+  const routerJs = readFileSync(new URL('../frontend/src/router/index.js', import.meta.url), 'utf8');
+  const paths = [...routerJs.matchAll(/path: '([^']+)'/g)].map((m) => m[1]);
+  assert.ok(paths.length >= 8, `解析到路由路径（${paths.length} 条）`);
+  for (const p of paths) assert.ok(FRONTEND_PAGES.includes(p), `router 路径 ${p} 已登记进 FRONTEND_PAGES`);
+  for (const p of ['/login', '/register', '/change-password']) assert.ok(FRONTEND_PAGES.includes(p), `BM-1：${p} 在册`);
 });

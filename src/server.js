@@ -3744,10 +3744,39 @@ export function isFrontendPublicFile(pathname) {
   return pathname === '/manifest.webmanifest' || pathname.startsWith('/icon-');
 }
 
+/**
+ * BM-1（docs/SESSION-MANAGEMENT.md §8.4.1）：前端 SPA 页面白名单。
+ * `frontend/src/router/index.js` 里每个页面路径都必须登记在这里，否则未命中路径会落到旧 web/ 目录，
+ * 找不到文件就回纯文本 `not found`——v2.11.0 的 `/login` 事故就是这么来的（AL 批新增页面，白名单忘了更新）。
+ * 一致性由 test/serve.test.js 断言（新增页面漏登记 → 测试直接红）。
+ */
+export const FRONTEND_PAGES = [
+  '/',
+  '/index.html',
+  '/console',
+  '/console/',
+  '/console.html',
+  '/setup',
+  '/setup/',
+  '/setup.html',
+  '/banned',
+  '/banned/',
+  '/banned.html',
+  '/appeal',
+  '/appeal/',
+  // AL 批（docs/AUTH-REDESIGN.md §5.1）新增的登录/注册/改密页 + BM-1 补齐
+  '/login',
+  '/login/',
+  '/register',
+  '/register/',
+  '/change-password',
+  '/change-password/',
+];
+
 /** Vue 构建产物负责站点所有页面；无构建产物时回退到 web 目录。 */
 export function serveFrontendStatic(res, frontendDir, outDir, pathname) {
   if (!frontendDir || !existsSync(resolve(frontendDir, 'index.html'))) return serveStatic(res, outDir, pathname);
-  if (['/', '/console', '/console/', '/setup', '/setup/', '/banned', '/banned/', '/appeal', '/appeal/', '/index.html', '/console.html', '/setup.html', '/banned.html'].includes(pathname)) {
+  if (FRONTEND_PAGES.includes(pathname)) {
     return serveStatic(res, frontendDir, '/index.html');
   }
   if (pathname.startsWith('/assets/') || isFrontendPublicFile(pathname)) return serveStatic(res, frontendDir, pathname);

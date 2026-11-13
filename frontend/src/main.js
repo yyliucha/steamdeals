@@ -25,6 +25,8 @@ import router from './router/index.js';
 import { bootstrapSiteTimezone } from './utils/siteTime.js';
 import { installNetworkGuard } from './utils/network.js';
 import { startVersionGuard } from './composables/useVersionGuard.js';
+// BM-4（docs/SESSION-MANAGEMENT.md §8.4.4）：会话心跳——全局挂一次，失效后 ≤5 分钟（或切回前台）软跳登录页
+import { startSessionHeartbeat } from './composables/useSessionHeartbeat.js';
 import 'element-plus/theme-chalk/dark/css-vars.css';
 import './styles/main.css';
 
@@ -33,6 +35,8 @@ bootstrapSiteTimezone();
 installNetworkGuard();
 // 版本检查与「已更新」提示（docs/MOBILE-PWA.md §2.1）：启动记基线，切回前台比对 /api/site
 startVersionGuard();
+// 会话心跳（BM-4）：启动即探测一次建立基线，之后每 5 分钟 + 切回前台；只负责"发现失效并跳转"
+startSessionHeartbeat();
 
 // 移动端兜底（docs/MOBILE-VIEWPORT.md §3.2）：个别内核改写 viewport meta 后布局宽度仍不收敛时，
 // 用 zoom 按 screen.width 比例补偿（优先 index.html 的 viewport 方案，这里只是最后手段；

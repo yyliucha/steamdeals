@@ -46,6 +46,8 @@
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { copyText } from '../utils/clipboard.js';
+// BM-3（docs/SESSION-MANAGEMENT.md §8.4.3）：401 统一软跳登录页
+import { redirectToLogin } from '../utils/session.js';
 import { registerUnsavedSource, requestLeave } from '../composables/useUnsavedGuard.js';
 
 const props = defineProps({ visible: { type: Boolean, default: false } });
@@ -73,7 +75,7 @@ function api(path, opts = {}) {
     const t = await r.text();
     let d = {};
     try { d = t ? JSON.parse(t) : {}; } catch {}
-    if (r.status === 401) { window.location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search); throw new Error(d.error || '登录已过期'); }
+    if (r.status === 401) { redirectToLogin(); throw new Error(d.error || '登录已过期'); }
     if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
     return d;
   });

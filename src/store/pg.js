@@ -447,9 +447,11 @@ export async function migrate(store, { logger = null } = {}) {
   // 免费游戏一次性置位（docs/STEAM-SYNC-STATUS-AND-RATING.md §3/§6）：is_free 已已知，
   // 免费永远无价，不需要再发请求；置位后 9.2 万「待同步」立刻拆出 2.3 万免费。
   await store.query(`update games set steam_status = 'free' where is_free and steam_status is null`);
-  // BK 批（docs/SESSION-MANAGEMENT.md §3.1）：老会话回填 last_seen_at=created_at（空闲超时立即可用）；
-  // ip_key/ua_key 保持 null——绑定校验只对"两个 key 都非空"的新会话生效，老会话不误踢。幂等。
-  await store.query('update sessions set last_seen_at = created_at where last_seen_at is null');
+  // BM-2（docs/SESSION-MANAGEMENT.md §8.4.2）：老会话 last_seen_at = now()——空闲超时的起点是
+  // "部署/首次活动这一刻"，而不是 created_at（否则登录超过 7 天的会话在部署后第一次请求就被判空闲过期，
+  // v2.11.0 线上发生过）。已执行过旧迁移的库列已非空，这条语句不会再命中 → 幂等、不延长 expires_at。
+  // ip_key/ua_key 保持 null——绑定校验只对"两个 key 都非空"的新会话生效，老会话不误踢。
+  await store.query('update sessions set last_seen_at = now() where last_seen_at is null');
   // D1（docs/ROADMAP.md）：模糊搜索 pg_trgm 表达式索引——与 AD 批 gameKeywordSql 的字段侧归一化
   // 表达式完全一致（去半角/全角空格 + 小写），LIKE '%kw%' 才能走 GIN 索引。
   // 本地 pglite 不带 pg_trgm 扩展：失败只跳过、不中断迁移（生产 PostgreSQL 15 会成功建索引）。

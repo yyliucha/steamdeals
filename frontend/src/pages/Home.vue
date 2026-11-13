@@ -93,6 +93,8 @@ import { useInstallPrompt } from '../composables/useInstallPrompt.js';
 import { useListPagination } from '../composables/useListPagination.js';
 import { useTheme } from '../composables/useTheme.js';
 import { NETWORK_ERROR_MESSAGE } from '../utils/network.js';
+// BM-3/BM-4（docs/SESSION-MANAGEMENT.md §8.4.3/§8.4.4）：401 软跳带 reason；主动退出登录标记心跳基线
+import { markSessionLoggedOut } from '../composables/useSessionHeartbeat.js';
 import { useRoute, useRouter } from 'vue-router';
 import { Search, Bell, Filter, CopyDocument } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -197,7 +199,7 @@ const coverFailed = ref(new Set());
 const detailCoverFailed = ref(false);
 function markCoverFailed(game) { if (!game?.id) return; const next = new Set(coverFailed.value); next.add(game.id); coverFailed.value = next; }
 function firstChar(name) { return (String(name ?? '').trim().charAt(0) || '?').toUpperCase(); }
-async function request(path, options) { const res=await fetch(path,{credentials:'same-origin',...options,headers:{'content-type':'application/json',...(options?.headers||{})}}); const raw=await res.text(); let data={}; try{data=raw?JSON.parse(raw):{}}catch{} if(res.status===401&&path!=='/api/me'&&path!=='/api/login'){router.push({path:'/login',query:{next:route.fullPath}});} if(!res.ok) throw new Error(data.error||`请求失败 (${res.status})`); return data; }
+async function request(path, options) { const res=await fetch(path,{credentials:'same-origin',...options,headers:{'content-type':'application/json',...(options?.headers||{})}}); const raw=await res.text(); let data={}; try{data=raw?JSON.parse(raw):{}}catch{} if(res.status===401&&path!=='/api/me'&&path!=='/api/login'){router.push({path:'/login',query:{next:route.fullPath,reason:'expired'}});} if(!res.ok) throw new Error(data.error||`请求失败 (${res.status})`); return data; }
 function localFlagIds(field,value){return Object.entries(guestGameFlags.value).filter(([,flags])=>flags?.[field]===value).map(([id])=>id).filter((id)=>/^\d{1,19}$/.test(id));}
 // 游客只有本地 感兴趣/不感兴趣 标记；已拥有/愿望单不展示（规格 §6）
 function visibleGames(rows){if(user.value)return rows;return rows.map((game)=>{const flags=guestGameFlags.value[String(game.id)]||{};return {...game,interested:typeof flags.interested==='boolean'?flags.interested:null,owned:false,wishlisted:false,wishlisted_by:[],site_wishlisted:false};});}
@@ -233,7 +235,7 @@ async function changeRegion(){saveLocalPrefs();await loadGames(1);}
 async function loadUser(){try{const d=await request('/api/me');user.value=d.user||null;if(d.user?.mustChangePassword){router.replace('/change-password?forced=1');return;}if(d.timezone)siteTimezone.value=d.timezone;const local=(()=>{try{return JSON.parse(localStorage.getItem('steamdeals.prefs.v1')||'{}');}catch{return {};}})();region.value=local.region||'cn';if(user.value){guestGameFlags.value={};try{localStorage.removeItem(guestFlagsStorageKey);}catch{}const serverTheme=d.prefs?.theme;if(serverTheme==='light'||serverTheme==='dark'){if(theme.storedMode()!==serverTheme)theme.set(serverTheme);}else if(theme.storedMode()){persistTheme(theme.storedMode());}if(detailVisible.value&&detail.value?.game)await openDetail(detail.value.game);activeTab.value=d.prefs?.tab??'all';sort.value=d.prefs?.sort??'discount';}else{activeTab.value=['all','on','off'].includes(local.tab)?local.tab:'all';sort.value=local.sort||'discount';}}catch{user.value=null;}}
 async function loadNotices() { try { const d=await request('/api/announcements'); notices.value=Array.isArray(d.announcements)?d.announcements:(Array.isArray(d)?d:[]); if(user.value){ noticeReadIds.value=(Array.isArray(d.readIds)?d.readIds:[]).map(Number); } else { const local=readLocalReadIds(); if(local===null)noticeReadIds.value=[]; else if(Array.isArray(local))noticeReadIds.value=local; else { noticeReadIds.value=legacyMaxAsReadIds(local.legacyMax); } } } catch { notices.value=[]; noticeReadIds.value=[]; } }
 function dismissNotice(){/* 已被「已读 id 集合」机制取代，见 markNoticesRead */}
-async function logout() { try { await request('/api/logout',{method:'POST',body:'{}'}); } finally { user.value=null;activeTab.value='all';await loadGames(1); } }
+async function logout() { try { await request('/api/logout',{method:'POST',body:'{}'}); } finally { markSessionLoggedOut(); user.value=null;activeTab.value='all';await loadGames(1); } }
 async function openDetail(game){detailVisible.value=true;detailLoading.value=true;detail.value=null;detailCoverFailed.value=false;watchExists.value=false;watchTarget.value='';try{const path=game.steam_appid?`/api/games/${game.steam_appid}`:`/api/games/by-id/${game.id}`;detail.value=await request(`${path}?region=${encodeURIComponent(region.value)}`);if(!user.value)refreshDetailFlags();if(user.value?.role==='admin'){const w=await request('/api/admin/watchlist').catch(()=>({watches:[]}));const found=(w.watches||[]).find(x=>Number(x.game_id)===Number(detail.value.game.id));if(found){watchExists.value=true;watchTarget.value=found.target_cents==null?'':(found.target_cents/100).toFixed(2);}}}catch(e){ElMessage.error(e.message);detailVisible.value=false;}finally{detailLoading.value=false;}}
 function regionName(code){return regions.find(r=>r.code===code)?.label||code||'—';}
 function isInterested(game){return user.value?game?.user_interested===true:game?.interested===true;}

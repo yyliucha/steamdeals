@@ -57,6 +57,7 @@
           </label>
         </template>
 
+        <el-alert v-if="expiredHint" title="登录已过期，请重新登录" type="warning" :closable="false" class="auth-top-error" />
         <el-alert v-if="topError" :title="topError" type="error" :closable="false" class="auth-top-error" />
         <el-button type="primary" class="auth-submit" :loading="loading" native-type="submit">{{ mode === 'reset' ? '重置密码' : mode === 'password' ? '登录' : '验证码登录' }}</el-button>
         <p class="auth-foot">还没有账号？<router-link to="/register">注册</router-link></p>
@@ -74,6 +75,9 @@ import { ElMessage } from 'element-plus';
 
 const router = useRouter();
 const route = useRoute();
+// BM-3（docs/SESSION-MANAGEMENT.md §8.4.3）：会话失效软跳过来时（reason=expired）提示「登录已过期」；
+// 直接打开 /login 不带 reason 则不提示。
+const expiredHint = computed(() => route.query.reason === 'expired');
 const mode = ref('password');
 const username = ref(''), password = ref(''), email = ref(''), emailCode = ref(''), newPassword = ref('');
 const rememberMe = ref(false);

@@ -68,6 +68,8 @@ import MailSettingsForm from '../components/MailSettingsForm.vue';
 import BulkBar from '../components/BulkBar.vue';
 import BulkResultDialog from '../components/BulkResultDialog.vue';
 import UserCreateDrawer from '../components/UserCreateDrawer.vue';
+// BM-3（docs/SESSION-MANAGEMENT.md §8.4.3）：401 统一软跳登录页
+import { redirectToLogin } from '../utils/session.js';
 import { useBulkSelection,promptBulkConfirm } from '../composables/useBulkSelection.js';
 import { useListPagination } from '../composables/useListPagination.js';
 import { copyText } from '../utils/clipboard.js';
@@ -113,7 +115,7 @@ const disableBlocked=computed(()=>{
 });
 const usersBulkHint=computed(()=>sel.users.selectedKeys.includes(props.me?.id)?'不能禁用自己的账号':(disableBlocked.value?'不能禁用全部可用管理员':''));
 const usersBulkActions=computed(()=>[{key:'disable',label:'禁用',target:'users',action:'disable',risk:'high',disabled:disableBlocked.value},{key:'enable',label:'启用',target:'users',action:'enable'}]);
-function api(path,opts={}){return fetch(path,{credentials:'same-origin',...opts,headers:{'content-type':'application/json',...(opts.headers||{})}}).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{}if(r.status===401){window.location.href='/login?next='+encodeURIComponent(location.pathname+location.search);throw new Error(d.error||'登录已过期');}if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);return d;});}
+function api(path,opts={}){return fetch(path,{credentials:'same-origin',...opts,headers:{'content-type':'application/json',...(opts.headers||{})}}).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{}if(r.status===401){redirectToLogin();throw new Error(d.error||'登录已过期');}if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);return d;});}
 function body(method,data){return {method,body:JSON.stringify(data)};}
 function notify(e){ElMessage.error(e?.message||String(e));}
 // AJ 批：账号变更通知回执（docs/USER-LIFECYCLE.md 验收 6/7）——删除/改邮箱是字符串，
