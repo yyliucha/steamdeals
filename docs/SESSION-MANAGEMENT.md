@@ -249,7 +249,7 @@ resolveSession(q, token, req)  // 每请求最多一次，结果缓存到局部�
 
 ## 8. 2026-11-13 修订（BM）：登录页硬跳 404 与"登录失效会不会自动跳转"
 
-> 状态：**已确认待开发（2026-11-13）**。编号 **BM**（BM-1 / BM-2 已定；BM-3 / BM-4 待所有者确认）。
+> 状态：**已确认待开发（2026-11-13，所有者确认 4 项细节）**。编号 **BM**（BM-1 ~ BM-4 全部确认）。
 > 关联：本文 §3.2 会话解析（空闲/绑定失效）、[WEB.md](WEB.md)（页面路由）、
 > [UNSAVED-GUARD.md](UNSAVED-GUARD.md)（离开提醒的 `bypassNextGuard`）。
 
@@ -276,13 +276,12 @@ resolveSession(q, token, req)  // 每请求最多一次，结果缓存到局部�
 |---|---|
 | 1 | **BM-1（P0）**：SPA 回退白名单补齐 `/login`、`/register`、`/change-password`，并加测试防止以后新增页面再漏 |
 | 2 | **BM-2（P1）**：迁移口径改为「老会话 `last_seen_at = now()`」，不再用 `created_at`——**今后部署不会再把老会话一次性判空闲过期**；生产已发生的那次不回滚 |
+| 3 | **BM-3**：**做**——6 处 401 跳转收敛成一个 `redirectToLogin(reason)` 软跳（`router.push`，带 `next` 与 `reason`），登录页提示「登录已过期，请重新登录」；用户感官比整页跳好，也不会再撞白名单 |
+| 4 | **BM-4**：**做**——会话心跳：登录态页面周期探测 `/api/me`，失效即软跳登录页；所有者认为"被动等下一次请求才发现"体验不可接受 |
 
-### 8.3 待所有者确认
+### 8.3 待确认
 
-| # | 问题 | 默认（不确认就按此做） |
-|---|---|---|
-| 1 | **BM-3**：要不要把 6 处 401 跳转收敛成统一行为（全部 `router.push('/login?next=…&reason=expired')`，登录页提示「登录已过期」）？ | 做：收敛为一个 `redirectToLogin(reason)` helper（先 `bypassNextGuard()` 防未保存提醒卡住），登录页读 `reason` 显示提示 |
-| 2 | **BM-4**：要不要"心跳"（登录态页面每 N 分钟探测一次 `/api/me`，失效即跳）？ | 不做：只在真正发起请求时跳；心跳会给所有页面加周期请求 |
+无。BM-1 ~ BM-4 已于 2026-11-13 由所有者逐项确认（BM-3、BM-4 明确要求做）。
 
 ### 8.4 设计
 
@@ -310,34 +309,52 @@ update sessions set last_seen_at = now() where last_seen_at is null;
 - 已执行过旧迁移的库不会命中该语句（列已非空），所以对生产**不会**产生二次影响；
 - 不延长 `expires_at`（绝对上限仍 7/30 天），只是把"空闲 7 天"的起点修正为"部署/首次活动时刻"。
 
-**8.4.3 BM-3 统一 401（待确认，默认做）**
+**8.4.3 BM-3 统一 401 软跳（做）**
 
-- 抽一个前端 helper：`redirectToLogin(reason = 'expired')` → `bypassNextGuard()` + `router.push({path:'/login', query:{next, reason}})`
-  （`frontend/src/composables/useUnsavedGuard.js:96` 已有 `bypassNextGuard`）；
-- 5 处后台/组件硬跳（`window.location.href`）全部改用它——**不再整页导航**，即使白名单以外的新页面也不会 404；
-- `LoginPage` 读 `reason=expired` 显示「登录已过期，请重新登录」；
-- 前台 `Home.vue` 的软跳保持，仅补 `reason`；`/api/me` 401 仍按未登录处理（不跳、显示游客）。
+- 新增 `frontend/src/utils/session.js`：`redirectToLogin(reason = 'expired')`
+  - 已经在 `/login` 就直接返回（防循环跳）；
+  - 先调 `bypassNextGuard()`（`frontend/src/composables/useUnsavedGuard.js:96`，否则"未保存的修改"提醒会把跳转拦下来）；
+  - 再 `router.push({ path: '/login', query: { next: 当前 fullPath, reason } })`——**软跳，不再整页导航**；
+- 5 处后台硬跳全部改用它：`AdminModules.vue:329`、`AdminExtras.vue:116`、`AdminLogs.vue:211`、
+  `AnnouncementDrawer.vue:95`、`UserCreateDrawer.vue:76`；
+- 前台 `Home.vue:200` 的软跳补 `reason`（其余不变；`/api/me`、`/api/login` 仍不跳）；
+- `LoginPage` 读 `route.query.reason === 'expired'` → 表单上方提示「登录已过期，请重新登录」；登录成功后按 `next` 回跳（已有逻辑）。
 
-**8.4.4 BM-4 心跳（待确认，默认不做）**
+**8.4.4 BM-4 会话心跳（做）**
 
-若做：仅在登录态页面的 `visibilitychange` 回前台时探测一次 `/api/me`（不常驻定时器，避免每个页面都加周期请求）；
-默认不做，保持"发起请求时才发现失效"。
+新增 `frontend/src/composables/useSessionHeartbeat.js`，在 `main.js` 挂**一次**（单例，避免每页各起一个定时器）：
+
+- 触发：每 **5 分钟** 一次 + `visibilitychange` 回到前台时补一次（页面隐藏时跳过定时探测，省请求）；
+- 探测：`GET /api/me`（`credentials: 'same-origin'`、`cache: 'no-store'`），只看 `user` 字段；
+- **基线判定**：只有"上一次探测是已登录、这一次变成未登录（`user === null` 或 401）"才跳转——
+  游客、从未登录的访客不会被误跳；主动"退出登录"由现有逻辑处理，不会触发心跳跳转；
+- 网络错误 / 5xx / 429：本轮跳过，**不跳转**（避免离线时把人踢走）；
+- 公开页不探测也不跳：`/login`、`/register`、`/setup`、`/banned`、`/appeal`；
+- 命中失效 → 调 BM-3 的 `redirectToLogin('expired')`；
+- 心跳**不改会话策略**：不续期、不刷新 `expires_at`，只负责"发现失效"。
 
 ### 8.5 验收
 
 1. `GET /login`、`/login?next=%2Fconsole%3Fsection%3Dgames`、`/register`、`/change-password` → **200 + index.html**，浏览器直接打开/刷新不再 `not found`。
 2. 白名单一致性测试：前端 router 里每个页面路径都在服务端白名单里（未来新增页面漏登记 → 测试红）。
 3. 会话失效（删 `sessions` 行模拟）后，在后台任意页触发一次请求 → 跳到登录页且**页面正常渲染**；登录成功后回到 `next`。
-4. 后台 5 处 401 跳转行为一致（软跳、带 `reason`、不被未保存提醒卡住）；前台首页行为不变（`/api/me` 仍不跳）。
-5. 登录页显示「登录已过期，请重新登录」（reason 存在时）。
-6. 迁移幂等：连跑两次无副作用；新库无影响；老库第一次启动执行一次。
-7. `npm test` / `npm run frontend:build` / `npm run scan` 全绿。
-8. 部署侧复核：直接打开 `https://<站点>/login` 返回登录页；控制台会话失效后回到登录页而不是 `not found`。
+4. 后台 5 处 401 跳转行为一致（软跳、带 `reason`、不被未保存提醒卡住）；前台首页行为不变（`/api/me` 仍不跳）；
+   源码里 `window.location.href = '/login` 归零（测试断言）。
+5. 登录页显示「登录已过期，请重新登录」（`reason=expired` 时）；不带 `reason` 直接打开登录页不显示该提示。
+6. **心跳**：登录态页面在服务端删掉会话后，≤5 分钟（或切回前台时立即）自动软跳登录页并带 `reason=expired`；
+   游客（从未登录）停留任意久都不被跳；离线/5xx/429 时心跳只跳过、不跳转；`/login` 等公开页不发探测请求；
+   全局只起一个定时器（切页不叠加）。
+7. 迁移幂等：连跑两次无副作用；新库无影响；老库第一次启动执行一次。
+8. `npm test` / `npm run frontend:build` / `npm run scan` 全绿（新增 `test/serve.test.js` 页面路由断言与
+   `test/session-heartbeat.test.js` 前端静态断言，接入 `npm test` 主链）。
+9. 部署侧复核：直接打开 `https://<站点>/login` 返回登录页；控制台会话失效后回到登录页而不是 `not found`；
+   挂着控制台不动 5 分钟后（或切回标签页）自动回登录页并提示「登录已过期」。
 
 ### 8.6 本批不做
 
 1. 不改会话策略本身（空闲 7 天、IP/UA 绑定、记住我 7/30 天都不动）；
 2. 不改封禁页/黑白名单/申诉流程；
 3. 不做前端路由鉴权重构（不加 `beforeEach` 登录检查）；
-4. 不做心跳（除非 BM-4 确认要做）。
+4. 心跳不做"自动续期/刷新会话"，只做"发现失效并跳转"；
+5. 不做"登录失效原因"的服务端审计接口（`session.idle_expired` / `bound_mismatch` 日志沿用）。
 

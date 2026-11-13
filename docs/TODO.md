@@ -1225,7 +1225,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BM. 待开发：登录页硬跳 404（/login 未登记 SPA 回退）+ 会话失效跳转口径
 
-**状态：待开发（2026-11-13；BM-1 / BM-2 已定，BM-3 / BM-4 待所有者确认）**
+**状态：待开发（2026-11-13，所有者确认 4 项细节）**
 **依赖：** 无（BK 已发布 v2.11.0，本条修它暴露的登录页路由缺口）
 **解锁：** 无
 **规格**：[SESSION-MANAGEMENT.md](SESSION-MANAGEMENT.md) §8
@@ -1240,15 +1240,21 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   所以登录页平时"能用"，只有硬跳才 404。③ 会话失效来源：空闲超时 / IP·UA 绑定 / 自然到期；
   其中老会话的 `last_seen_at` 被迁移回填成 `created_at`（`src/store/pg.js:450-452`）→ 登录超过 7 天的会话
   在部署后第一次请求就被判空闲过期（`server.js:477-487`）。
-- **已确认决策**：**BM-1（P0）** 白名单补齐 `/login`、`/register`、`/change-password` + 一致性测试；
-  **BM-2（P1）** 迁移改为老会话 `last_seen_at = now()`，今后部署不再"部署即登出"（已发生的不回滚）。
-- **待确认**：**BM-3** 统一 401 跳转（6 处收敛为 `redirectToLogin(reason)` 软跳 + 登录页提示「登录已过期」，默认做）；
-  **BM-4** 会话心跳（登录态页面回前台时探测 `/api/me`，默认不做）。
-- **改动落点**：`src/server.js`（白名单）；`src/store/pg.js`（迁移口径）；`frontend/src/pages/LoginPage.vue`（reason 提示）、
-  5 处 401 硬跳改为共享 helper（`composables/useUnsavedGuard.js` 的 `bypassNextGuard` 已有）；
-  `test/serve.test.js`（页面路径 200 + 白名单一致性）。
+- **已确认决策（4 项）**：**BM-1（P0）** 白名单补齐 `/login`、`/register`、`/change-password` + 一致性测试；
+  **BM-2（P1）** 迁移改为老会话 `last_seen_at = now()`，今后部署不再"部署即登出"（已发生的不回滚）；
+  **BM-3** 统一 401 为**软跳**：新增 `redirectToLogin(reason)`（`bypassNextGuard` + `router.push`，带 `next` 与 `reason`），
+  5 处后台硬跳全部改用它，登录页提示「登录已过期，请重新登录」；
+  **BM-4** **做心跳**：`useSessionHeartbeat` 在 `main.js` 挂一次，每 5 分钟 + 切回前台探测 `/api/me`，
+  "上次已登录→这次未登录"才软跳；游客/离线/5xx 不跳，公开页不探测，不动会话策略。
+- **改动落点**：`src/server.js`（白名单）；`src/store/pg.js`（迁移口径）；`frontend/src/utils/session.js`（新增
+  `redirectToLogin`）、`frontend/src/composables/useSessionHeartbeat.js`（新增）、`frontend/src/main.js`（挂心跳）、
+  `frontend/src/pages/LoginPage.vue`（`reason` 提示）、5 处 401 硬跳改为共享 helper（`AdminModules/AdminExtras/AdminLogs/
+  AnnouncementDrawer/UserCreateDrawer`）、`Home.vue` 软跳补 `reason`；
+  `test/serve.test.js`（页面路径 200 + 白名单一致性）、`test/session-heartbeat.test.js`（心跳/软跳静态断言，接入主链）。
 - **验收**：见规格 §8.5——`/login`、`/register`、`/change-password` 直接打开/刷新返回 200 登录页；白名单一致性测试；
-  会话失效后后台页正确回登录页且能登录回 `next`；5 处 401 行为一致；迁移幂等；`npm test` / `frontend:build` / `scan` 全绿。
+  会话失效后后台页正确回登录页且能登录回 `next`；5 处 401 行为一致、源码无 `window.location.href='/login`；
+  登录页显示过期提示；心跳 ≤5 分钟/回前台即软跳、游客与离线不跳、公开页不探测、只一个定时器；
+  迁移幂等；`npm test` / `frontend:build` / `scan` 全绿。
 
 
 
