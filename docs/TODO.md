@@ -1225,7 +1225,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BM. 待开发：登录页硬跳 404（/login 未登记 SPA 回退）+ 会话失效跳转口径
 
-**状态：已实现待发版（2026-11-13，BM-1~4 一次交付）**
+**状态：质检通过（2026-11-13，43063ef；QA 报告 docs/QA-SESSION-BM.md）**
 **依赖：** 无（BK 已发布 v2.11.0，本条修它暴露的登录页路由缺口）
 **解锁：** 无
 **规格**：[SESSION-MANAGEMENT.md](SESSION-MANAGEMENT.md) §8
