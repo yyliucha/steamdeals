@@ -1223,9 +1223,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   连续 3 次不再重排；首次 429 即写全局冷却；连续失败 3 次跳过 30 天；指标卡/进度/429 信息与库一致；
   迁移幂等、权限 401/403；`npm test` / `frontend:build` / `scan` 全绿。
 
-## BM. 待开发：登录页硬跳 404（/login 未登记 SPA 回退）+ 会话失效跳转口径
+## BM. ~~待开发：登录页硬跳 404（/login 未登记 SPA 回退）+ 会话失效跳转口径~~ → **已实现并发布 v2.12.0（2026-11-13）**
 
-**状态：质检通过（2026-11-13，43063ef；QA 报告 docs/QA-SESSION-BM.md）**
+**状态：已发布 v2.12.0（2026-11-13，43063ef；QA 报告 docs/QA-SESSION-BM.md）**
 **依赖：** 无（BK 已发布 v2.11.0，本条修它暴露的登录页路由缺口）
 **解锁：** 无
 **规格**：[SESSION-MANAGEMENT.md](SESSION-MANAGEMENT.md) §8

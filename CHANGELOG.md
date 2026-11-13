@@ -2,6 +2,35 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.12.0] - 2026-11-13
+
+BM 批：登录页 404 修复 + 会话失效软跳 + 会话心跳（修复 v2.11.0 暴露的登录页白名单缺口）。
+
+### 新增
+
+- **会话心跳（BM-4）**：登录态页面全局每 5 分钟 + 切回前台探测 `/api/me`，只在「上次探测已登录 → 这次未登录」
+  时软跳登录页；游客、离线/5xx/429 不跳，`/login`、`/register`、`/setup`、`/banned`、`/appeal` 等公开页不探测，
+  全局只挂一个定时器、不续期会话（`frontend/src/composables/useSessionHeartbeat.js`，`main.js` 挂一次）。
+- **后台 401 统一软跳 + 过期提示（BM-3）**：新增 `redirectToLogin(reason='expired')`（先 `bypassNextGuard()` 再
+  `router.push('/login?next=…&reason=expired')`，不再整页导航），后台 5 处 401 硬跳全部改用它；登录页在
+  `reason=expired` 时提示「登录已过期，请重新登录」；前台首页软跳补 `reason`；主动退出登录标记心跳基线，不误跳。
+
+### 修复
+
+- **`/login`、`/register`、`/change-password` 直接打开/刷新返回纯文本 `not found`（BM-1，v2.11.0 生产现象）**：
+  SPA 回退白名单补齐这三个页面（`src/server.js` 导出 `FRONTEND_PAGES`），并新增「前端 router 路径 ⊆ 服务端白名单」
+  一致性测试——以后新增页面漏登记会直接测试失败。
+- **部署即登出（BM-2）**：老会话迁移改为 `last_seen_at = now()`（不再回填 `created_at`）——登录超过 7 天的会话
+  不会在部署后第一次请求就被判空闲过期；幂等、不延长 `expires_at`、不动 IP/UA 绑定口径。
+
+### 测试
+
+- `test/serve.test.js`：新增页面路由断言（`/login` 等直接返回 200 + index.html、未登记路径仍 404）与
+  router↔白名单一致性测试；
+- `test/session-heartbeat.test.js`：新增软跳/心跳静态断言（源码无 `window.location.href='/login`、5 处统一）
+  + `shouldRedirectFor` / `isPublicPage` / `probeSession`（mock fetch：503/离线/游客不跳）运行时断言；
+  两文件均接入 `npm test` 主链。
+
 ## [2.11.1] - 2026-11-13
 
 修复批：BL 增量回填吞吐与配额治理（候选去噪 + 429 软退出重排 + 每日节奏 + 失败隔离 + 观测）。
