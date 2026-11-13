@@ -193,7 +193,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   `GET /api/games/:appid/dlc` 与详情 `dlc` 摘要；不新增调度任务。
   验证：`npm test` 全绿（新增 `test/game-dlc.test.js` 7 项进主链）、`api.test` 22/22、`frontend:build`、`scan` 干净；
   质检：BP ✅ 放行（[QA-GAME-DLC-BP.md](QA-GAME-DLC-BP.md)，通过 9 / 需人工确认 1）。
-  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  CI：docker-hub run 43415654728（test / smoke / publish 全绿）；docker-tcr run 43415654500
+  （test / publish 全绿，postgres 镜像已存在 2s 跳过，`Verify manifests` ✓），两个镜像源均已推送。
   **服务器部署待执行**（升级到 `2.14.0`）；部署后重点：
   ① 迁移会新建 `game_dlc` 表与 `games.dlc_appids` 列（幂等，一次性）；
   ② 打开 Anno 1800 / HELLDIVERS™ 2 详情滚到底：DLC 列表、翻页、Steam 跳转（新窗口）、Console 干净；
