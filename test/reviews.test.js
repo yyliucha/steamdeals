@@ -809,6 +809,11 @@ test('BR：加白即清封——clearedBan:true，ban/state 立即变 banned:fal
 test('BR：封禁页 payload 注入 remainingSec 与 ipMasked；封禁期内刷页面不升级', async () => {
   const { q, base, close } = await boot({ RATE_LIMIT_PAGE_MAX: '1' }, { admin: true, frontendDir: banFrontDir() });
   try {
+    // BanPage 渲染层静态断言：剩余时间与脱敏 IP 必须出现在模板里（无浏览器环境，锁文案与绑定）
+    const banPage = readFileSync(fileURLToPath(new URL('../frontend/src/pages/BanPage.vue', import.meta.url)), 'utf8');
+    assert.match(banPage, /remainingText/, 'BanPage 应计算剩余时间文案');
+    assert.match(banPage, /info\.ipMasked/, 'BanPage 应展示脱敏 IP');
+
     const ip = '198.51.100.96';
     assert.equal((await get(base, ip, '/')).status, 200);
     assert.equal((await get(base, ip, '/')).status, 429);

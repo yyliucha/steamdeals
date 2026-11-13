@@ -207,3 +207,16 @@ test('BR：configureFromEnv 读取 RATE_LIMIT_PAGE_MAX / RATE_LIMIT_API_MAX', ()
   assert.equal(cfg.assetMax, 300, '未设置时取默认');
   ratelimit.resetState();
 });
+
+test('BR：默认阈值下手机正常浏览（连刷首页 20 次）不触发封禁', async () => {
+  ratelimit.resetState();
+  ratelimit.configure({ enabled: true, pageMax: 120, apiMax: 150, assetMax: 300, windowSec: 60 });
+  const { q, stats } = fakeQ();
+  const ip = '203.0.113.210';
+  for (let i = 0; i < 20; i += 1) {
+    const v = await ratelimit.hit(q, ip, { bucket: 'page' });
+    assert.equal(v.limited, false, `第 ${i + 1} 次页面刷新不应被限流`);
+  }
+  assert.equal(stats.inserts, 0, '20 次页面浏览不得触发三振写库');
+  ratelimit.resetState();
+});
