@@ -182,10 +182,22 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-13 更新，v2.13.0 已发布：BO 价格历史界面精简）
+### 当前状态（2026-11-13 更新，v2.14.0 已发布：BP 详情 DLC 列表）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
+- **v2.14.0 已发布**（tag `v2.14.0`）：BP 批——详情弹窗最下方「DLC（共 N 个）」内联列表（名称/价格/折扣/
+  缺货、10 条/页、Steam 商店跳转新窗口、移动端卡片、标注「Steam 不提供 DLC 拥有数据」）；`games.dlc_appids`
+  随 steam-status/backfill 的 appdetails 顺带写入，`game_dlc` 明细由 steam-status 每轮收尾补（`STEAM_DLC_FILL_GAMES`
+  /`STEAM_DLC_FILL_BATCH`）+ 打开详情缺明细回源（≤3 批、10 分钟节流、失败降级）；新增公开接口
+  `GET /api/games/:appid/dlc` 与详情 `dlc` 摘要；不新增调度任务。
+  验证：`npm test` 全绿（新增 `test/game-dlc.test.js` 7 项进主链）、`api.test` 22/22、`frontend:build`、`scan` 干净；
+  质检：BP ✅ 放行（[QA-GAME-DLC-BP.md](QA-GAME-DLC-BP.md)，通过 9 / 需人工确认 1）。
+  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  **服务器部署待执行**（升级到 `2.14.0`）；部署后重点：
+  ① 迁移会新建 `game_dlc` 表与 `games.dlc_appids` 列（幂等，一次性）；
+  ② 打开 Anno 1800 / HELLDIVERS™ 2 详情滚到底：DLC 列表、翻页、Steam 跳转（新窗口）、Console 干净；
+  ③ 24h 后 `game_dlc` 明细覆盖上升（steam-status 收尾补齐 + 读路径回源两条腿）。
 - **v2.13.0 已发布**（tag `v2.13.0`）：BO 批——价格历史删掉与趋势线重复的日期表格/移动卡片/分页条，
   趋势线 76px → **150px**（移动端 ≤760px 为 120px、满宽）；新增史低虚线参考线与轴标签（左「¥区间最低 ·
   史低线」、右「区间 首日 → 末日」），底部改为「共 N 条 · … · 史低已标出」（随区间切换变化）；

@@ -1,6 +1,6 @@
-# 游戏详情·DLC 总数与列表（含价格/购买链接，不含拥有状态）（待开发）
+# 游戏详情·DLC 总数与列表（含价格/购买链接，不含拥有状态）（已实现并发布 v2.14.0）
 
-> 状态：**已确认待开发（2026-11-13，所有者确认 5 组 / 8 项细节）**。编号 **BP**（BP-1 ~ BP-4）。
+> 状态：**已确认待开发（2026-11-13，所有者确认 5 组 / 8 项细节）；已实现并发布 v2.14.0（2026-11-13，98d75e9；QA ✅ 放行 docs/QA-GAME-DLC-BP.md）**。编号 **BP**（BP-1 ~ BP-4）。
 > 关联：[STEAM-DLC.md](STEAM-DLC.md)（DLC 拥有数不可得的历史调查与下线决策）、
 > [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md)（appdetails 顺带字段先例）、
 > [IMAGE-COVERAGE.md](IMAGE-COVERAGE.md)（同一次 appdetails 顺带写字段）、

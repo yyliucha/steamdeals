@@ -2,6 +2,33 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.14.0] - 2026-11-13
+
+BP 批：游戏详情·DLC 总数与内联列表（含价格/购买链接；不含拥有状态——Steam 公开 API 不提供）。
+
+### 新增
+
+- **详情页 DLC 区块（内联）**：详情弹窗最下方「DLC（共 N 个）」列表——每行名称（点击跳
+  `https://store.steampowered.com/app/<appid>/`，新窗口、`rel="noopener noreferrer nofollow"`）、
+  价格（含原价/折扣/缺货状态）、10 条/页翻页；移动端（≤760px）卡片化；明确标注
+  「Steam 不提供 DLC 拥有数据」；无 DLC 显示「暂无 DLC」，加载失败显示「稍后重试」、部分缺失显示
+  「部分 DLC 信息待同步」；非 Steam / 从未同步过 dlc[] 的游戏不显示该区块。
+- **DLC 数据与补齐**：`games.dlc_appids`（appdetails 的 `dlc[]`，去重/过滤/上限 2000）随 steam-status 与
+  backfill 的同一次 appdetails 响应**顺带写入**（零额外请求，`steam.status.dlc_written` 日志；GetItems 路径
+  不清空已有值）；`game_dlc` 明细表（名称/价格/折扣/币种/在售）由 steam-status 每轮**收尾补齐**
+  （`STEAM_DLC_FILL_GAMES=50`、`STEAM_DLC_FILL_BATCH=30`，`steam.dlc.filled` 日志）+ 打开详情缺明细时
+  **读路径回源**（≤3 批 GetItems、超时 5s、按游戏 10 分钟节流、429/失败静默降级不 5xx）；
+  `dlc_appids` 变化时差集清理下架 DLC。**不新增调度任务**。
+- **接口**：详情接口追加 `dlc {total, synced, filled}` 摘要；新增公开接口
+  `GET /api/games/:appid/dlc?page=1&pageSize=10`（名称升序、pageSize 上限 50、非法 page 回落 1、
+  `buy_url` 由 appid 构造、名称缺失回退 `DLC #<appid>`、非 Steam/未同步返回空集）。
+
+### 测试
+
+- 新增 `test/game-dlc.test.js`（7 项，接入 `npm test` 主链）：dlcAppIds 提取/去重/上限、占位/差集/不清空、
+  upsert 明细、fillDlcDetails 批数上限与 429 标记、详情摘要与列表接口（分页/排序/buy_url/节流/降级）、
+  steam-status 轮次顺带写入与日志、前端静态断言（区块/跳转/移动卡片/文案）。
+
 ## [2.13.0] - 2026-11-13
 
 BO 批：价格历史界面精简——删日期表格、趋势线加高到 150px（所有者方案 B）。
