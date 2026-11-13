@@ -208,4 +208,72 @@ const lowDots = computed(() => {
 3. 不动后台「价格走势」的 `PriceSparkline`（AT 批，独立组件）；
 4. 不做多平台多线、缩放、导出（仍是 AP 批的边界）。
 
+## 11. 2026-11-13 修订（BO）：删掉日期表格，趋势线加高到 150px
+
+> 状态：**已确认待开发（2026-11-13，所有者选方案 B）**。编号 **BO**（界面精简，BN 之后的新一批）。
+> 关联：本文 §4 界面（表格与 76px 趋势线的原始设计）、§10 修订（BN 渲染修复，已发布 v2.12.1）、
+> [TODO.md](TODO.md) 的 BO 条目。
+
+### 11.1 需求与动机（2026-11-13 所有者）
+
+- 打开有历史价格的游戏详情，趋势线下面还有一张「日期 / 当日最低 / 较前一日 / 标记」表格（10 行 + 分页）；
+- 表格和趋势线说的是同一件事（每天取官方渠道最低价），**重复占地方**，还要滚动；
+- 所有者要求：**这张按日期显示的表格不需要显示**；趋势线加高，把空间用起来（选定方案 B）。
+
+### 11.2 已确认的决策（方案 B）
+
+| # | 决策 |
+|---|---|
+| 1 | **删除日期表格**：桌面 `<table>`、移动端卡片列表、表格分页条一并删除（连同 `page/PAGE_SIZE/paged/totalPages/isNarrow` 逻辑） |
+| 2 | **趋势线加高**：76px → **150px**（移动端 120px），把表格让出的空间给趋势线 |
+| 3 | **加史低参考线**：在史低价位置画一条虚线，图上方左侧标 `¥<区间最低> · 史低线`（绿色），右侧标 `区间 <首日> → <末日>` |
+| 4 | **保留不变**：4 张指标卡（区间最低/最高/当前较史低/记录天数）、「价格历史」标题、近 30 天/90 天/全部切换、史低圆点高亮、底部说明行（改为当前区间条数 + 「史低已标出」） |
+
+### 11.3 设计
+
+**组件改造**（`frontend/src/components/PriceHistoryReport.vue`）：
+
+- 删除：`isNarrow`、`page`、`PAGE_SIZE`、`paged`、`totalPages`、`rows`（只被表格/卡片用）、
+  `.phr-table-wrap / .phr-table / .phr-cards / .phr-pager` 相关模板与 CSS；
+- `chart` 计算补两个字段：
+  - `lowY`：史低价在 SVG 里的 y 坐标（参考线用）；
+  - `minV / maxV`：区间最低/最高（轴标签用）；
+  - 平线（`maxV === minV`）时把线画在**垂直居中**位置，不再贴底；
+- SVG：`viewBox="0 0 840 150"`，桌面高度 150px、`@media (max-width: 760px)` 下 120px；
+  参考线 `<line … stroke-dasharray="4 4" stroke="rgba(52,195,155,.35)">`；
+- 图上方轴标签行：左 `¥{money(minV)} · 史低线`（绿色），右 `区间 {filtered[0].day} → {filtered[last].day}`；
+- 图下方保留首末日期与「● 史低 ¥xxx · 最近史低日」；
+- 底部：`共 {filtered.length} 条 · 每天取官方渠道最低价（不含 C2C）· 史低已标出`
+  （条数随区间切换变化，不再有分页）；
+- 无历史（`filtered` 为空）仍显示「暂无历史记录」，行为不变。
+
+**测试改造**（`test/price-history-report.test.js`）：
+
+- 删掉 `phr-cards` 断言；新增：`doesNotMatch(/<table/)`、`doesNotMatch(/phr-table/)`、`doesNotMatch(/phr-pager/)`；
+- 新增：`viewBox="0 0 840 150"`、`史低线`、`stroke-dasharray`、`lowDots` 仍存在；
+- 保留 BN 的「同元素禁止 v-for+v-if」全组件扫描与编译级回归（`_ctx.p` 检查）；
+- 区间切换后的条数断言（静态层面：模板里有 `filtered.length`）。
+
+**文件落点**：`frontend/src/components/PriceHistoryReport.vue`、`test/price-history-report.test.js`；
+若 CSS 在 `frontend/src/styles/main.css`（`.phr-table` 等），同步删除未使用样式。
+
+### 11.4 验收
+
+1. 打开有历史价格的游戏详情：指标卡 →「价格历史」+ 区间切换 → **150px 趋势线**（含史低虚线参考线与轴标签）→ 底部说明；
+   **页面上不再出现日期表格/移动卡片/分页条**；浏览器 Console 无错误。
+2. 区间切换（近 30 天 / 近 90 天 / 全部）：趋势线、轴标签、底部条数随之变化；无历史时显示「暂无历史记录」。
+3. 移动端（≤760px）：趋势线高 120px、满宽、无表格；史低圆点与参考线仍显示。
+4. 史低口径不变：圆点数量 = 史低价出现天数；平线时曲线垂直居中（不再贴底）。
+5. 测试：`test/price-history-report.test.js` 断言更新并通过（含"禁止 v-for+v-if"扫描、编译级回归）；
+   原表格相关断言删除。
+6. `npm test` 全绿、`npm run frontend:build`、`npm run scan`。
+7. 部署侧复核：线上有历史详情只看到趋势线、没有表格；Console 干净。
+
+### 11.5 本批不做
+
+1. 不改数据口径与接口（`dailyMinSeries` / `series` 不变）；
+2. 不做缩放、拖拽、悬停详情、多平台多线、导出（仍是 AP 边界）；
+3. 不动后台「价格走势」`PriceSparkline`；
+4. 不保留"表格可切换显示"的开关（所有者明确不要这张表）。
+
 

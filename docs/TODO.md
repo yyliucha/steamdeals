@@ -1282,6 +1282,26 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   无历史游戏：显示「暂无历史记录」；区间切换与分页正常；新测试能复现旧 bug（旧写法→红）；
   `npm test` / `frontend:build` / `scan` 全绿；部署侧打开有历史详情 Console 干净。
 
+## BO. 待开发：价格历史删掉日期表格 + 趋势线加高到 150px
+
+**状态：待开发（2026-11-13，所有者确认 4 项细节）**
+**依赖：** BN（已发布 v2.12.1，本条在其修复后的组件上做界面精简）
+**解锁：** 无
+**规格**：[PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md) §11
+
+- **需求（2026-11-13 所有者）**：趋势线下面的「日期 / 当日最低 / 较前一日 / 标记」表格和趋势线是同一件事，重复占地方、
+  还要滚动 → **表格不要显示**；把空间给趋势线（选定方案 B）。
+- **已确认决策（4 项）**：① 删除日期表格（桌面 `<table>` + 移动端卡片 + 分页条，连带 `page/PAGE_SIZE/paged/totalPages/isNarrow`）；
+  ② 趋势线 **76px → 150px**（移动端 120px）；③ 加**史低虚线参考线** + 轴标签（左 `¥区间最低 · 史低线`、右 `区间 首日 → 末日`）；
+  ④ 保留 4 张指标卡、区间切换（30/90/全部）、史低圆点、底部说明（改为当前区间条数 +「史低已标出」）。
+- **改动落点**：`frontend/src/components/PriceHistoryReport.vue`（删表格/卡片/分页与相关 computed；`chart` 补 `lowY/minV/maxV`；
+  SVG `viewBox 840×150`；平线垂直居中；参考线与轴标签）、`frontend/src/styles/main.css`（删未使用的 `.phr-table/.phr-cards` 样式）、
+  `test/price-history-report.test.js`（删 `phr-cards`/表格断言，加"无 table/phr-table/phr-pager"、`viewBox="0 0 840 150"`、
+  `史低线`、`stroke-dasharray`；保留 BN 的 v-for+v-if 扫描与编译级回归）。
+- **验收**：见规格 §11.4——有历史详情只有指标卡 + 区间切换 + 150px 趋势线（含参考线/轴标签）+ 底部说明，**无表格/卡片/分页**；
+  区间切换后趋势线、轴标签、条数同步变化；移动端 120px 无表格；无历史仍显示「暂无历史记录」；平线垂直居中；
+  史低圆点数量不变；`npm test` / `frontend:build` / `scan` 全绿；部署后线上 Console 干净。
+
 
 
 
