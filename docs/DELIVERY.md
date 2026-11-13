@@ -194,7 +194,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   `@vue/compiler-dom` 编译级回归断言（旧写法放回必红）。
   验证：`npm test` 全绿、`frontend:build`、`scan` 干净；
   质检：BN ✅ 放行（[QA-PRICE-HISTORY-BN.md](QA-PRICE-HISTORY-BN.md)，通过 4 / 需人工确认 2）。
-  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  CI：docker-hub run 43396423035（test / smoke / publish 全绿）；docker-tcr run 43396423010
+  （test / publish 全绿，postgres 镜像已存在 2s 跳过，`Verify manifests` ✓），两个镜像源均已推送。
   **服务器部署待执行**（升级到 `2.12.1`）；部署后重点：打开任意有历史价格的游戏详情，确认「价格历史」区块
   （指标条/趋势线/表格）正常出现、Console 无 `TypeError`。
 - **v2.12.0 已发布**（tag `v2.12.0`）：BM 批——`/login`、`/register`、`/change-password` 直接打开/刷新返回
