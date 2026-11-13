@@ -192,7 +192,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   平线垂直居中、无历史空态与史低圆点（全期口径）不变；保留 BN 的 v-for+v-if 全组件扫描与编译级回归。
   验证：`npm test` 全绿、`frontend:build`、`scan` 干净；
   质检：BO ✅ 放行（[QA-PRICE-HISTORY-BO.md](QA-PRICE-HISTORY-BO.md)，通过 5 / 需人工确认 2）。
-  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  CI：docker-hub run 43407796179（test / smoke / publish 全绿）；docker-tcr run 43407796297
+  （test / publish 全绿，postgres 镜像已存在 2s 跳过，`Verify manifests` ✓），两个镜像源均已推送。
   **服务器部署待执行**（升级到 `2.13.0`）；部署后重点：打开任意有历史价格的详情，确认价格历史只有
   指标卡 + 区间切换 + 趋势线（桌面 150px / 移动端 120px、参考线与轴标签）、无日期表格，Console 干净。
 - **v2.12.1 已发布**（tag `v2.12.1`）：BN 批——价格历史区块整块不渲染修复：史低圆点的 `<circle>` 同时写了
