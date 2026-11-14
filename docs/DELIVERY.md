@@ -186,10 +186,24 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-14 更新，v2.16.0 已发布：BR 封禁自助恢复 + O/BQ 申诉系统）
+### 当前状态（2026-11-14 更新，v2.17.0 已发布：BS 安卓 App + 可清缓存离线 + 双通道分发）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
+- **v2.17.0 已发布**（tag `v2.17.0`）：BS 批——安卓 App（TWA，`android/` 工程入库，包名
+  `cn.yyliucha.steamdeals`、versionCode 21600）+ 可清缓存离线（SW 只缓存 `/assets/*` 与封面图，
+  HTML/API/manifest 永不缓存、导航走网络、版本变化清缓存 + `?nosw=1`）+ 双通道分发（站点 `/app`
+  下载页 + GitHub Release `app-v2.16.0`；签名 APK 入库随镜像，`GET /api/app/latest` 读
+  `frontend/public/app/latest.json`；`/.well-known/assetlinks.json`、`/sw.js`、`/app/*.apk` 静态白名单）。
+  验证：`npm test` 全绿（serve/pwa 新增断言）、`frontend:build`（`dist/app/` 含 APK 1,472,278 字节）、
+  `scan` 干净；
+  质检：BS ✅ 放行（[QA-MOBILE-APP-TWA-BS.md](QA-MOBILE-APP-TWA-BS.md)，通过 8 / 需人工确认 4）。
+  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  **服务器部署待执行**（升级到 `2.17.0`）；部署后重点：
+  ① 部署后 `/.well-known/assetlinks.json` 生效，真机装 `steamdeals-2.16.0.apk`：全屏无地址栏、
+  Steam 外链走 Custom Tabs、返回键关浮层、登录态与浏览器独立（验收 §8 第 1–4 条）；
+  ② `/app` 页直接可下载并校验 SHA-256（包已在镜像里，无需额外部署步骤）；
+  ③ 断网只回静态资源、不返回旧 HTML/旧数据；版本升级后 App 内出「已更新」提示并清缓存。
 - **v2.16.0 已发布**（tag `v2.16.0`）：BR + O + BQ 三批——① 封禁自助恢复与手机/CGNAT 适配（页面/API/资源
   三桶限流 120/150/300、封禁期升级只计 API、`/api/ban/state` 自查三件套、加白即清临时封禁不重启恢复、
   封禁页显示剩余时间与脱敏 IP）；② 申诉系统站内受理（封禁页 → 申诉页提交入库 + 图形验证码 + 每 IP 3 条/小时

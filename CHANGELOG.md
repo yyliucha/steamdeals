@@ -2,6 +2,33 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.17.0] - 2026-11-14
+
+BS 批：安卓 App（TWA，不上架）+ 可清缓存离线 + 双通道分发。
+
+### 新增
+
+- **安卓版 App（TWA）**：`android/` 工程入库（Bubblewrap，包名 `cn.yyliucha.steamdeals`，站点
+  `https://sd.yyliucha.cn`），versionName 跟随 `/api/site`（当前 2.16.0）、versionCode 21600；
+  安装后全屏运行（`/.well-known/assetlinks.json` 数字资产校验，含 keystore SHA-256 指纹），
+  Steam 等站外链接由 **Custom Tabs** 打开（带返回）；不做推送与角标。
+- **可清缓存离线（service worker）**：只缓存 `/assets/*`（带 hash）与封面图 `/img/*`；
+  **HTML、`/api/*`、`/manifest.webmanifest` 永不缓存**；导航请求始终走网络（断网不回旧页面）；
+  站点版本变化 → 顶部「已更新到 vX.Y.Z，点击刷新」，点刷新清空全部缓存 + SW 更新 + reload；
+  `activate` 清旧版本缓存；URL 加 `?nosw=1` 可停用（排查旧页面）。
+- **双通道分发**：站点 `/app` 下载页（版本/大小/SHA-256/安装步骤/已知限制 + GitHub 备用链接，
+  `GET /api/app/latest` 读 `frontend/public/app/latest.json`）；签名 APK **入库随镜像**
+  （`frontend/public/app/steamdeals-<version>.apk` + `latest.json`，`.gitignore` 不忽略交付包）；
+  GitHub Release（tag `app-v<version>`）放同一个包 + `.sha256`。
+- **静态白名单补齐**：`/.well-known/assetlinks.json`、`/sw.js`、`/app/*.apk` 进 `frontendDir`
+  静态白名单（`application/json` / `no-cache` / `.apk` Content-Type），`/app` 登记 `FRONTEND_PAGES`。
+
+### 测试
+
+- `test/serve.test.js`：assetlinks/sw/apk 200 + Content-Type + no-cache、`/api/app/latest` 透传断言；
+- `test/pwa.test.js`：SW 规则重写为 BS 口径（main.js 单点注册、`?nosw=1`、`?build=`、只缓存两类、
+  导航走网络、caches.delete/skipWaiting），并防"第二处注册"回归。
+
 ## [2.16.0] - 2026-11-14
 
 BR + O + BQ 批：封禁自助恢复与手机/CGNAT 适配、申诉系统站内受理 + 后台申诉管理、申诉邮件内一键信任/拒绝。

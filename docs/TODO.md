@@ -1402,9 +1402,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `remainingSec/ipMasked`）、`frontend/src/pages/BanPage.vue`（文案）、控制台加白提示、对应测试。
 - **验收**：见规格 §11.7 第 1–6 条（封禁页可读 + 加白立即恢复 + 白名单不被升级 + 手机正常浏览不误封 + 三振/黑名单语义不变 +
   `npm test` / `frontend:build` / `scan` 全绿；**不自行构建**）。
-## BS. 待开发：安卓 App（TWA，不上架）+ 可清缓存离线 + 双通道分发
+## BS. ~~待开发：安卓 App（TWA，不上架）+ 可清缓存离线 + 双通道分发~~ → **已实现并发布 v2.17.0（2026-11-14，站点侧）**
 
-**状态：质检通过（2026-11-14，4afc1ac；QA 报告 docs/QA-MOBILE-APP-TWA-BS.md；APK versionName 2.16.0 / versionCode 21600；SHA-256 `c28203bd74b33936…`；签名指纹 `48:A3:0D:F9:…:7A:05`）**
+**状态：已发布 v2.17.0（2026-11-14，站点侧 4afc1ac；QA 报告 docs/QA-MOBILE-APP-TWA-BS.md；App 侧 tag `app-v2.16.0`，APK versionName 2.16.0 / versionCode 21600；SHA-256 `c28203bd74b33936…`；签名指纹 `48:A3:0D:F9:…:7A:05`）**
 **依赖：** 无（推翻了 [MOBILE-PWA.md](MOBILE-PWA.md) §1 决策 #1「不上架、不打 APK、不引入 Android 工具链」与 §3「不加 service worker」，所有者 2026-11-14 确认）
 **解锁：** 先补服务端静态白名单（`/.well-known/assetlinks.json`、`/sw.js`、`/app/*.apk`），否则 TWA 退化带地址栏、离线不生效、APK 下不到
 **规格**：[MOBILE-APP-TWA.md](MOBILE-APP-TWA.md)
