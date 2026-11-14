@@ -198,7 +198,10 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   验证：`npm test` 全绿（serve/pwa 新增断言）、`frontend:build`（`dist/app/` 含 APK 1,472,278 字节）、
   `scan` 干净；
   质检：BS ✅ 放行（[QA-MOBILE-APP-TWA-BS.md](QA-MOBILE-APP-TWA-BS.md)，通过 8 / 需人工确认 4）。
-  CI：**待确认**（tag 推送后 docker-hub / docker-tcr 构建，run id 双绿后补记录）。
+  CI：docker-hub run 43607877486（test / smoke / publish 全绿）；docker-tcr run 43607877492
+  （test / publish 全绿，postgres 镜像已存在 2s 跳过），两个镜像源均已推送。
+  App 侧：GitHub Release **app-v2.16.0** 已发布（`steamdeals-2.16.0.apk` + `.sha256`，
+  `https://github.com/yyliucha/steamdeals/releases/tag/app-v2.16.0`；app-v 标签不触发站点构建）。
   **服务器部署待执行**（升级到 `2.17.0`）；部署后重点：
   ① 部署后 `/.well-known/assetlinks.json` 生效，真机装 `steamdeals-2.16.0.apk`：全屏无地址栏、
   Steam 外链走 Custom Tabs、返回键关浮层、登录态与浏览器独立（验收 §8 第 1–4 条）；
