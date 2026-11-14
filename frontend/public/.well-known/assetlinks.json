@@ -1,0 +1,12 @@
+{
+  "relation": [
+    "delegate_permission/common.handle_all_urls"
+  ],
+  "target": {
+    "namespace": "android_app",
+    "sha256_cert_fingerprints": [
+      "48:A3:0D:F9:D0:BF:7E:CC:53:EC:E0:AF:2B:69:C4:D4:50:53:04:AD:3B:A5:A2:D3:8F:92:C7:97:D0:F1:7A:05"
+    ],
+    "package_name": "cn.yyliucha.steamdeals"
+  }
+}

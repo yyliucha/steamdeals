@@ -71,3 +71,25 @@ export function dismissUpdate() {
   dismissed = true;
   updateNotice.value = { visible: false, version: '' };
 }
+
+/**
+ * BS 批（docs/MOBILE-APP-TWA.md §4）：版本变化后的「点击刷新」——
+ * ① 清空全部 SW 缓存（steamdeals-static-*）；② 触发 SW 更新（registration.update()）；
+ * ③ reload 拿新版本。任一步失败都不阻塞刷新本身。
+ */
+export async function applyUpdateRefresh() {
+  updateNotice.value = { visible: false, version: '' };
+  try {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  } catch {
+    /* 无 SW 环境/清缓存失败：继续刷新 */
+  }
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration?.();
+    if (reg) await reg.update();
+  } catch {
+    /* SW 更新失败：继续刷新 */
+  }
+  window.location.reload();
+}

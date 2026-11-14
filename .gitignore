@@ -25,3 +25,12 @@ frontend/dist/
 .dsh/*
 !.dsh/skills/
 !.dsh/skills/**
+# BS 批（docs/MOBILE-APP-TWA.md §3.1）：签名密钥与本地构建产物不入库；
+# 注意：绝不写 *.apk——站点交付包 frontend/public/app/*.apk 必须入库（规格 §5.3）
+*.keystore
+*.jks
+android/local.properties
+android/app-release*.apk
+android/.gradle/
+android/build/
+android/app/build/

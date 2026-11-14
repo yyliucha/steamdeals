@@ -135,3 +135,40 @@ test('BM-1：前端 router 的每个页面路径都在服务端白名单（新�
   for (const p of paths) assert.ok(FRONTEND_PAGES.includes(p), `router 路径 ${p} 已登记进 FRONTEND_PAGES`);
   for (const p of ['/login', '/register', '/change-password']) assert.ok(FRONTEND_PAGES.includes(p), `BM-1：${p} 在册`);
 });
+
+test('BS-1：/.well-known/assetlinks.json、/sw.js、/app/*.apk 返回 200 + 正确 Content-Type + no-cache', async () => {
+  const frontend = mkdtempSync(join(tmpdir(), 'gp-frontend-'));
+  writeFileSync(join(frontend, 'index.html'), '<!doctype html><html><body>ok</body></html>');
+  mkdirSync(join(frontend, '.well-known'));
+  writeFileSync(join(frontend, '.well-known', 'assetlinks.json'), JSON.stringify({ relation: [], target: { namespace: 'android_app', package_name: 'cn.yyliucha.steamdeals' } }));
+  writeFileSync(join(frontend, 'sw.js'), 'self.addEventListener("install",()=>{});');
+  mkdirSync(join(frontend, 'app'));
+  writeFileSync(join(frontend, 'app', 'steamdeals-test.apk'), 'fake-apk-bytes');
+  writeFileSync(join(frontend, 'app', 'latest.json'), JSON.stringify({ version: '2.16.0', apkPath: '/app/steamdeals-test.apk', sha256: 'abc123', size: 42, releasedAt: '2026-11-14' }));
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  const srv = await startApiServer({ query: q, frontendDir: frontend, port: 0, host: '127.0.0.1' });
+  const base = `http://127.0.0.1:${srv.port}`;
+  try {
+    const asset = await fetch(`${base}/.well-known/assetlinks.json`);
+    assert.equal(asset.status, 200, 'assetlinks 200');
+    assert.match(asset.headers.get('content-type') || '', /application\/json/, 'assetlinks JSON');
+    assert.match(asset.headers.get('cache-control') || '', /no-cache/, 'assetlinks no-cache');
+    const sw = await fetch(`${base}/sw.js`);
+    assert.equal(sw.status, 200, 'sw.js 200');
+    assert.match(sw.headers.get('content-type') || '', /javascript/, 'sw.js JS');
+    assert.match(sw.headers.get('cache-control') || '', /no-cache/, 'sw.js no-cache');
+    const apk = await fetch(`${base}/app/steamdeals-test.apk`);
+    assert.equal(apk.status, 200, 'APK 200');
+    assert.match(apk.headers.get('content-type') || '', /vnd\.android\.package-archive/, 'APK Content-Type');
+    assert.match(apk.headers.get('cache-control') || '', /no-cache/, 'APK no-cache（避免缓存旧包）');
+    assert.ok(FRONTEND_PAGES.includes('/app') && FRONTEND_PAGES.includes('/app/'), '/app 已登记 FRONTEND_PAGES');
+    // BS-2：/api/app/latest 读 frontendDir 下的 app/latest.json（字段齐全且透传）
+    const latest = await (await fetch(`${base}/api/app/latest`)).json();
+    assert.deepEqual(latest, { version: '2.16.0', apkPath: '/app/steamdeals-test.apk', sha256: 'abc123', size: 42, releasedAt: '2026-11-14' }, '清单透传');
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});

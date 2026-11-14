@@ -1402,3 +1402,33 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `remainingSec/ipMasked`）、`frontend/src/pages/BanPage.vue`（文案）、控制台加白提示、对应测试。
 - **验收**：见规格 §11.7 第 1–6 条（封禁页可读 + 加白立即恢复 + 白名单不被升级 + 手机正常浏览不误封 + 三振/黑名单语义不变 +
   `npm test` / `frontend:build` / `scan` 全绿；**不自行构建**）。
+## BS. 待开发：安卓 App（TWA，不上架）+ 可清缓存离线 + 双通道分发
+
+**状态：已实现待发版（2026-11-14；APK versionName 2.16.0 / versionCode 21600；SHA-256 `c28203bd74b33936…`；签名指纹 `48:A3:0D:F9:…:7A:05`；提交哈希见本批 commit）**
+**依赖：** 无（推翻了 [MOBILE-PWA.md](MOBILE-PWA.md) §1 决策 #1「不上架、不打 APK、不引入 Android 工具链」与 §3「不加 service worker」，所有者 2026-11-14 确认）
+**解锁：** 先补服务端静态白名单（`/.well-known/assetlinks.json`、`/sw.js`、`/app/*.apk`），否则 TWA 退化带地址栏、离线不生效、APK 下不到
+**规格**：[MOBILE-APP-TWA.md](MOBILE-APP-TWA.md)
+
+- **需求（2026-11-14 所有者）**：做一个不上架商店的安卓 App；要比 PWA 更像 App、点 Steam 外链不整页跳出；
+  同时接受"可清缓存"的离线，并要能从站点和 GitHub 两处下载。
+- **已确认决策（8 项）**：① 只做 Android；② 允许引入 Android 工具链（JDK 17 + cmdline-tools + SDK，密钥不入库）；
+  ③ 方案 **TWA（Bubblewrap）**，不重写界面；④ **双通道分发**：站点 `/app` 下载页（APK 托管自家服务器 + SHA-256）+ GitHub Release；
+  ⑤ **离线做但要"可清缓存"**：只缓存 `/assets/*` 与封面图，HTML/API 永不缓存，版本变化清缓存 + 顶部提示；
+  ⑥ 原生能力接受 Web 方案（`navigator.share` + 浏览器下载），**不换 Capacitor 壳**；
+  ⑦ Bubblewrap 生成的 `android/` 工程**入库**（签名密钥不入库；构建产物 `android/app-release*.apk` 不入库，**交付包入库**见下条）；⑧ **不做推送与角标**（TWA 无原生推送，Web Push 依赖 FCM 国内不可达）。
+- **APK 交付（2026-11-14 追加确认，方案 A）**：签名包**入库**到 `frontend/public/app/steamdeals-<version>.apk` + `latest.json`，
+  Vite 构建时进 `dist/` → 随镜像发布，**构建+部署后 `/app` 页即可下载，无需额外部署步骤**；只保留最近 3 个版本；
+  `.gitignore` 只忽略 `android/app-release*.apk`，**不能写 `*.apk`**（否则交付包提交不进去）。
+  **顺序固定**：出 APK → 入库 + 更新清单 → 提交推 main → 所有者下令「构建 vX.Y.Z」→ CI 镜像 → 部署可用。
+- **实现要点**：`/.well-known/assetlinks.json`（包名 `cn.yyliucha.steamdeals` + keystore SHA-256）、`/sw.js`、`/app/*.apk`
+  三处都要进 `src/server.js` 的 `frontendDir` 静态白名单并补 `test/serve.test.js` 断言（本项目"构建成功但线上 404"的老坑）；
+  SW 只缓存带 hash 的资源，导航请求始终走网络；`GET /api/app/latest` 提供版本/SHA-256/大小；
+  新增 `/app` 下载页并登记 `FRONTEND_PAGES`；站内 Steam 链接统一 `target="_blank"` 交给 Custom Tabs；
+  versionName 跟随 `/api/site`，versionCode 按 `major*10000+minor*100+patch`；
+  收尾把 `MOBILE-PWA.md` §1 决策 #1 与 §3 标注"已被 BS 推翻，策略见 MOBILE-APP-TWA.md §4"。
+- **验收**：见规格 §8 第 1–12 条（全屏无地址栏 / 外链走 Custom Tabs / 登录态独立 / 返回键关浮层 / 版本提示与清缓存 /
+  断网不返回旧页面 / `/app` 页可下载并校验 SHA-256 / assetlinks+sw 有测试断言 / GitHub Release 可用 /
+  **镜像内含 APK（`frontend/dist/app/` 有包）+ `.gitignore` 不忽略交付包** /
+  不放宽安全策略 + `npm test` + `frontend:build` + `scan` 全绿；**不自行构建站点版本**）。
+
+

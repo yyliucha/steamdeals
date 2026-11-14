@@ -37,6 +37,25 @@ installNetworkGuard();
 startVersionGuard();
 // 会话心跳（BM-4）：启动即探测一次建立基线，之后每 5 分钟 + 切回前台；只负责"发现失效并跳转"
 startSessionHeartbeat();
+// BS 批（docs/MOBILE-APP-TWA.md §4）：注册 service worker——只缓存 /assets/* 与封面图，
+// HTML/API 永不缓存；?build= 按站点版本隔离缓存；?nosw=1 停用（排查「看到旧页面」用）。
+async function registerServiceWorker() {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+  try {
+    if (new URLSearchParams(window.location.search).get('nosw') === '1') return;
+  } catch {
+    return;
+  }
+  try {
+    const res = await fetch('/api/site', { credentials: 'same-origin', cache: 'no-store' });
+    const data = res.ok ? await res.json().catch(() => null) : null;
+    const build = data?.version || 'current';
+    await navigator.serviceWorker.register(`/sw.js?build=${encodeURIComponent(build)}`);
+  } catch {
+    /* SW 注册失败不影响站点使用（离线兜底只是增强） */
+  }
+}
+registerServiceWorker();
 
 // 移动端兜底（docs/MOBILE-VIEWPORT.md §3.2）：个别内核改写 viewport meta 后布局宽度仍不收敛时，
 // 用 zoom 按 screen.width 比例补偿（优先 index.html 的 viewport 方案，这里只是最后手段；

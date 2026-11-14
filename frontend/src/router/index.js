@@ -24,6 +24,8 @@ const router = createRouter({
     { path: '/login', name: 'login', component: () => import('../pages/LoginPage.vue'), meta: { title: '登录 · SteamDeals' } },
     { path: '/register', name: 'register', component: () => import('../pages/RegisterPage.vue'), meta: { title: '注册 · SteamDeals' } },
     { path: '/change-password', name: 'change-password', component: () => import('../pages/ChangePasswordPage.vue'), meta: { title: '修改密码 · SteamDeals' } },
+    // BS 批（docs/MOBILE-APP-TWA.md §5.1）：安卓版 App 下载页（必须同步登记 server.js 的 FRONTEND_PAGES）
+    { path: '/app', name: 'app-download', component: () => import('../pages/AppDownloadPage.vue'), meta: { title: '安卓版 App · SteamDeals' } },
   ],
 });
 

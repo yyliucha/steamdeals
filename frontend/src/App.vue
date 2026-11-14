@@ -2,16 +2,16 @@
 // Element Plus 统一中文：分页的 Total / Go to / N per page、下拉空值占位等都由 locale 决定
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
 import { NETWORK_ERROR_MESSAGE, networkDown } from './utils/network.js';
-import { dismissUpdate, updateNotice } from './composables/useVersionGuard.js';
+import { dismissUpdate, updateNotice, applyUpdateRefresh } from './composables/useVersionGuard.js';
 import UnsavedLeaveDialog from './components/UnsavedLeaveDialog.vue';
 
 // 不做离线缓存，所以"重试"就是重新向服务器要一次页面；恢复网络后即可正常打开
 function retryNetwork() {
   window.location.reload();
 }
-// 版本更新提示（docs/MOBILE-PWA.md §2.1）：刷新拿到新版，不阻塞其它交互
+// 版本更新提示（BS 批，docs/MOBILE-APP-TWA.md §4）：刷新前清 SW 缓存 + 触发 SW 更新，保证拿到新版本
 function refreshUpdate() {
-  window.location.reload();
+  applyUpdateRefresh();
 }
 </script>
 

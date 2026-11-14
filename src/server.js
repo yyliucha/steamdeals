@@ -48,6 +48,8 @@ const TYPES = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  // BS 批（docs/MOBILE-APP-TWA.md §5）：安卓安装包（站点 /app 下载页）
+  '.apk': 'application/vnd.android.package-archive',
 };
 
 const COOKIE = 'gp_session';
@@ -1499,6 +1501,25 @@ export function createApiServer({
       // ---- 游戏数量（匿名可读）：库内总数 + 已有价格数，前台"实时数量"靠它 ----
       // AV 批（docs/READ-MODEL.md §5.2）：priced 改读读模型（distinct game_id，跨区服去重口径不变）
       // + 60 秒进程内缓存；READ_MODEL=legacy 保留旧查询。catalog 口径不变。
+      // ---- BS 批（docs/MOBILE-APP-TWA.md §5.1）：安卓版 APK 清单（随 frontend/public/app/latest.json 提交，不查库）----
+      if (path === '/api/app/latest' && req.method === 'GET') {
+        // 运行时读构建产物里的清单（Vite 会把 frontend/public/** 原样拷进 dist/app/）
+        const file = process.env.APP_LATEST_FILE ?? resolve(frontendDir ?? 'frontend/dist', 'app', 'latest.json');
+        try {
+          const data = JSON.parse(readFileSync(file, 'utf8'));
+          return json(res, 200, {
+            version: data.version ?? null,
+            apkPath: data.apkPath ?? null,
+            sha256: data.sha256 ?? null,
+            size: data.size == null ? null : Number(data.size),
+            releasedAt: data.releasedAt ?? null,
+          });
+        } catch (err) {
+          logger?.warn?.('api.app_latest_missing', { file, message: String(err?.message ?? err).slice(0, 120) });
+          return json(res, 200, { version: null, apkPath: null, sha256: null, size: null, releasedAt: null });
+        }
+      }
+
       if (path === '/api/games/count' && req.method === 'GET') {
         if (process.env.READ_MODEL === 'legacy') {
           const priced = (await q('select count(*)::int as n from (select distinct game_id from daily_prices) x')).rows[0]?.n ?? 0;
@@ -4131,7 +4152,7 @@ function applySecurityHeaders(req, res) {
 }
 
 /** 会话 Cookie：HTTPS 时加 Secure（本地 http 调试不受影响）。 */
-function serveStatic(res, outDir, pathname) {
+function serveStatic(res, outDir, pathname, { cacheControl = null } = {}) {
   if (!outDir) {
     res.writeHead(404).end('not found');
     return;
@@ -4160,7 +4181,9 @@ function serveStatic(res, outDir, pathname) {
   res.writeHead(200, {
     'content-type': TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream',
     'content-length': body.length,
-    'cache-control': file.endsWith('.html') ? 'no-cache' : 'public, max-age=300',
+    // BS 批（docs/MOBILE-APP-TWA.md §3.2/§5.1）：assetlinks.json / sw.js / app/*.apk 显式 no-cache
+    // （TWA 校验与 APK 下载不能吃到旧缓存），其余维持原口径
+    'cache-control': cacheControl ?? (file.endsWith('.html') ? 'no-cache' : 'public, max-age=300'),
   });
   res.end(body);
 }
@@ -4171,7 +4194,15 @@ function serveStatic(res, outDir, pathname) {
  * 否则 /manifest.webmanifest 与 /icon-*.png 会 404，"添加到主屏幕"直接失效。
  */
 export function isFrontendPublicFile(pathname) {
-  return pathname === '/manifest.webmanifest' || pathname.startsWith('/icon-');
+  // BS 批（docs/MOBILE-APP-TWA.md §3.2/§4/§5）：TWA 校验文件、service worker、APK 下载都走 frontendDir，
+  // 必须登记——否则"构建成功但线上 404"（本项目老坑：manifest/图标、/login 都踩过）
+  return (
+    pathname === '/manifest.webmanifest' ||
+    pathname.startsWith('/icon-') ||
+    pathname === '/.well-known/assetlinks.json' ||
+    pathname === '/sw.js' ||
+    pathname.startsWith('/app/')
+  );
 }
 
 /**
@@ -4204,6 +4235,9 @@ export const FRONTEND_PAGES = [
   '/register/',
   '/change-password',
   '/change-password/',
+  // BS 批（docs/MOBILE-APP-TWA.md §5.1）：安卓版下载页——必须登记，否则硬打开落旧 web/ → 纯文本 not found
+  '/app',
+  '/app/',
 ];
 
 /** Vue 构建产物负责站点所有页面；无构建产物时回退到 web 目录。 */
@@ -4212,7 +4246,11 @@ export function serveFrontendStatic(res, frontendDir, outDir, pathname) {
   if (FRONTEND_PAGES.includes(pathname)) {
     return serveStatic(res, frontendDir, '/index.html');
   }
-  if (pathname.startsWith('/assets/') || isFrontendPublicFile(pathname)) return serveStatic(res, frontendDir, pathname);
+  if (pathname.startsWith('/assets/') || isFrontendPublicFile(pathname)) {
+    // BS 批：assetlinks.json / sw.js / app/*.apk 不走 max-age 缓存
+    const noCache = pathname === '/.well-known/assetlinks.json' || pathname === '/sw.js' || pathname.startsWith('/app/');
+    return serveStatic(res, frontendDir, pathname, { cacheControl: noCache ? 'no-cache' : null });
+  }
   return serveStatic(res, outDir, pathname);
 }
 

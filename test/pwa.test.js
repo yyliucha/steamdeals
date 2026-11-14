@@ -76,16 +76,27 @@ test('index.html 引用 manifest / theme-color / apple-touch-icon', () => {
   assert.ok(existsSync(join(ROOT, 'web', 'apple-touch-icon.png')), 'apple-touch-icon.png 不存在');
 });
 
-test('前端没有任何 service worker 注册（明确不做离线缓存）', () => {
-  const sources = [join(ROOT, 'frontend/index.html'), join(ROOT, 'frontend/src/main.js')];
-  for (const file of sources) {
-    assert.ok(!/\bserviceWorker\b/.test(readFileSync(file, 'utf8')), `${relative(ROOT, file)} 不应出现 service worker`);
-  }
-  // 防回归：整个前端源码都不允许注册（否则会重演"看到旧页面"）
+// BS 批（docs/MOBILE-APP-TWA.md §4）：service worker 改为「可清缓存离线」——
+// 只缓存 /assets/* 与封面图，HTML/API/manifest 永不缓存，导航始终走网络，?nosw=1 可停用。
+test('BS：SW 只在 main.js 注册一次（?nosw=1 可停用），sw.js 不缓存 HTML/API/manifest、导航走网络', () => {
+  const mainJs = readFileSync(join(ROOT, 'frontend', 'src', 'main.js'), 'utf8');
+  assert.match(mainJs, /serviceWorker\.register/, 'main.js 注册 SW');
+  assert.match(mainJs, /nosw.*===.*'1'/, '?nosw=1 停用');
+  assert.match(mainJs, /\?build=/, '注册带 build 版本参数（版本化缓存）');
+  const sw = readFileSync(join(ROOT, 'frontend', 'public', 'sw.js'), 'utf8');
+  assert.match(sw, /req\.mode === 'navigate'/, '导航请求始终走网络（不返回缓存 index.html）');
+  assert.match(sw, /HTML、\/api\/\*、\/manifest\.webmanifest 一律不缓存|\/api\/\*/, '注释明确 /api/* 不缓存');
+  assert.match(sw, /const cacheable = [^;]*assets[^;]*img[^;]*/, '可缓存规则 = /assets/* 或 /img/* 两类（不含 /api、HTML、manifest）');
+  assert.match(sw, /caches\.delete/, 'activate/版本清理用 caches.delete');
+  assert.match(sw, /skipWaiting/, 'install skipWaiting');
+  // 防回归：sw.js 之外的源码不得再出现第二处 SW 注册
+  const allowed = new Set(['frontend/src/main.js', 'frontend/src/composables/useVersionGuard.js']); // useVersionGuard 只做清缓存 + registration.update（BS §4），不注册
   for (const file of walk(join(ROOT, 'frontend', 'src'))) {
     if (!/\.(js|vue)$/.test(file)) continue;
     const text = readFileSync(file, 'utf8');
-    assert.ok(!/\bserviceWorker\b/.test(text), `${relative(ROOT, file)} 不应出现 service worker`);
+    const rel = relative(ROOT, file).replace(/\\/g, '/');
+    if (allowed.has(rel)) continue;
+    assert.ok(!/\bserviceWorker\b/.test(text), `${rel} 不应出现第二处 service worker 注册`);
   }
 });
 

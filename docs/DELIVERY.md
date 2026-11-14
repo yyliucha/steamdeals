@@ -50,6 +50,10 @@ npm run frontend:dev           # 另开终端：Vite 5174，/api 代理到 8090�
 
 **构建镜像 = 打 annotated tag 并 push。** 推 tag 自动触发两个 GitHub Actions workflow，不需要手工跑 docker。
 
+> **BS 批（docs/MOBILE-APP-TWA.md §5.3）：APK 必须先入库、再下令构建。**
+> 镜像构建时 `frontend/public/**` 才会被拷进 `dist/`——本机出 APK → 放 `frontend/public/app/` + 更新同目录
+> `latest.json` → 提交推 main，**之后**再下令「构建 vX.Y.Z」；先构建后放包 = 该版镜像里没有包，`/app` 页面 404。
+
 ```bash
 cd F:\dsh\gameprice
 # ① 验证
