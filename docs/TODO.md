@@ -1404,7 +1404,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `npm test` / `frontend:build` / `scan` 全绿；**不自行构建**）。
 ## BS. 待开发：安卓 App（TWA，不上架）+ 可清缓存离线 + 双通道分发
 
-**状态：已实现待发版（2026-11-14；APK versionName 2.16.0 / versionCode 21600；SHA-256 `c28203bd74b33936…`；签名指纹 `48:A3:0D:F9:…:7A:05`；提交哈希见本批 commit）**
+**状态：质检通过（2026-11-14，4afc1ac；QA 报告 docs/QA-MOBILE-APP-TWA-BS.md；APK versionName 2.16.0 / versionCode 21600；SHA-256 `c28203bd74b33936…`；签名指纹 `48:A3:0D:F9:…:7A:05`）**
 **依赖：** 无（推翻了 [MOBILE-PWA.md](MOBILE-PWA.md) §1 决策 #1「不上架、不打 APK、不引入 Android 工具链」与 §3「不加 service worker」，所有者 2026-11-14 确认）
 **解锁：** 先补服务端静态白名单（`/.well-known/assetlinks.json`、`/sw.js`、`/app/*.apk`），否则 TWA 退化带地址栏、离线不生效、APK 下不到
 **规格**：[MOBILE-APP-TWA.md](MOBILE-APP-TWA.md)
