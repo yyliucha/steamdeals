@@ -1645,7 +1645,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CE. 待开发（高优先级）：杉果匹配器加固 + 2026-11-16 误合并数据修复
 
-**状态：待开发（2026-11-16，`match --apply` 实测误匹配事故；CD 的自动应用暂停）**
+**状态：开发中（2026-11-16，ce-dev 认领；`match --apply` 实测误匹配事故；CD 的自动应用暂停）**
 **依赖：** 无（必须先于 CD 的自动应用完成）
 **解锁：** CD（自动应用）、杉果源恢复
 **规格**：[SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9
