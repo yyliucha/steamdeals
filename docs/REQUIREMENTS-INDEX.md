@@ -60,7 +60,7 @@
 | **BV** | 前台移动端重设计（底部 Tab：首页/搜索/愿望单/我的；详情全屏页） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §4 / §10 效果图 | 已过时（2026-11-16 被 CA 取代） | ✅ 本轮已给 |
 | **BW** | 后台移动端重设计（☰ 抽屉 + 表格全卡片 + 批量吸底 + 表单全屏） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §5 / §10 效果图 | 质检通过（2026-11-16，605e05a + 打回修复 8817207） | ✅ 本轮已给 |
 | **BX** | 手机浏览器首访「下载安卓 App」提示（只安卓、一次、可关闭） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §6 | 已过时（2026-11-16 被 CA 取代） | ✅ 本轮已给 |
-| **BY** | 安卓 App 内置更新（启动/回前台检查 → 原生提示 → 下载校验 → 用户确认安装；minVersionCode 强制） | [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md) | 已实现待发版（2026-11-16，92cae3e + 第 1 轮打回修复，待复检） | ✅ 本轮已给 |
+| **BY** | 安卓 App 内置更新（启动/回前台检查 → 原生提示 → 下载校验 → 用户确认安装；minVersionCode 强制） | [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md) | 质检通过（2026-11-16，92cae3e + 打回修复 8585dba） | ✅ 本轮已给 |
 | **BZ** | App 代码仓库拆分（`android/` 迁独立公开仓库；站点 CI 拉 Release 出 `latest.json`；规格/TODO 留站点） | [MOBILE-APP-REPO-SPLIT.md](MOBILE-APP-REPO-SPLIT.md) | 已过时（CA 直接新建独立仓库） | ✅ 本轮已给 |
 | **CA** | 原生安卓 App（与 Web 完全拆分：代码/页面/部署/认证独立；共用同一 PG 经同一后端；Token 认证；同包名覆盖旧 TWA） | [APP-NATIVE.md](APP-NATIVE.md) | 待开发（2026-11-16 已确认 5 组；效果图待确认） | ✅ 本轮已给 |
 | **CB** | 价格报表邮件 HTML 化 + 内容增强（品牌头/KPI/降价 Top5/涨价 Top3/7 天趋势/CTA；multipart 文本兜底） | [PRICE-REPORT-EMAIL.md](PRICE-REPORT-EMAIL.md) | 已实现待发版（2026-11-16，c5fc536 + 第 1 轮打回修复，待复检） | ✅ 本轮已给 |
