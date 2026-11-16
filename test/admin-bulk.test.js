@@ -90,9 +90,10 @@ test('前端：11 个表格列表 + 站点通知 + 异常审核合并视图都�
   // 站点通知与异常审核合并视图：卡片/合并行没有表格勾选列，用 el-checkbox
   assert.match(modules, /sel\.announcements\.has\(a\)/, '站点通知卡片要有勾选框');
   assert.match(modules, /mergedPicked\.has\(row\.key\)/, '异常审核合并视图要有勾选框（AX 批：默认唯一视图）');
-  // 每个列表都要有工具条（AdminModules 8 个 + AdminExtras 3 个）
+  // 每个列表都要有工具条（AdminModules 8 个 + AdminExtras 3 个）；
+  // BW 批起 AdminExtras 三个列表的桌面表格与手机卡片各一个 BulkBar（同一选择集），共 6 个
   assert.equal(count(modules, '<BulkBar'), 9, 'AdminModules 应有 9 个批量工具条（BE 批 + 愿望单）');
-  assert.equal(count(extras, '<BulkBar'), 3, 'AdminExtras 应有 3 个批量工具条（回收站/用户/登录会话 BK 批）');
+  assert.equal(count(extras, '<BulkBar'), 6, 'AdminExtras 应有 6 个批量工具条（回收站/用户/登录会话 × 桌面/手机两视图，BW 批）');
   // 翻页清空：合并视图翻页清空 IP 选择；服务端分页靠 load 清、其余客户端分页靠 watch 页码清
   assert.match(modules, /watch\(mergedPage,\(\)=>mergedPicked\.value=new Set\(\)\)/, '合并视图翻页应清空选择');
   // 审计页入口（AT 批起）：批量操作记录并入「日志审计 / 操作日志」，旧书签 bulk-ops 映射到 op-logs&tab=bulk

@@ -24,3 +24,24 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 
 .phr-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:4px 0 14px}.phr-stat{background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:9px 12px}.phr-stat span{color:var(--fg-muted);font-size:11.5px;display:block}.phr-stat strong{font-size:16px;letter-spacing:-.02em;margin-top:3px;display:block;color:var(--fg)}.phr-stat strong.low{color:var(--success)}.phr-head{display:flex;align-items:center;justify-content:space-between;margin:2px 0 10px}.phr-head h4{margin:0;font-size:14px}.phr-tabs{display:flex;gap:4px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:3px}.phr-tabs button{border:0;background:transparent;color:var(--fg-muted);font-size:11.5px;padding:4px 10px;border-radius:6px;cursor:pointer}.phr-tabs button.on{background:var(--brand-soft);color:var(--brand)}.phr-chart{background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:8px 12px 2px;margin-bottom:12px}.phr-chart-cap{display:flex;justify-content:space-between;color:var(--fg-muted);font-size:11px;margin-bottom:2px}.phr-low-tag{color:var(--success);font-weight:700}.phr-chart svg{display:block;width:100%;height:150px}.phr-foot{display:flex;align-items:center;justify-content:space-between;margin-top:10px;color:var(--fg-muted);font-size:11.5px}.phr-empty{padding:22px;text-align:center;color:var(--fg-muted);border:1px dashed var(--border);border-radius:10px}.phr-axis{display:flex;justify-content:space-between;font-size:11px;color:var(--fg-muted);margin-bottom:4px}.phr-axis-low{color:var(--success);font-weight:700}@media (max-width:760px){.phr-chart svg{height:120px}}.dlc-block{margin-top:16px}.dlc-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px}.dlc-head h3{margin:0;font-size:14px}.dlc-note{color:var(--fg-muted);font-size:11px}.dlc-rows{border:1px solid var(--border);border-radius:10px;overflow:hidden}.dlc-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);font-size:13px}.dlc-row:last-child{border-bottom:0}.dlc-name{flex:1;color:var(--fg);text-decoration:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dlc-name:hover{color:var(--brand);text-decoration:underline}.dlc-price{display:flex;align-items:center;gap:6px}.dlc-price strong{font-weight:700}.dlc-price del{color:var(--fg-muted);font-size:11.5px}.dlc-steam{color:var(--brand);text-decoration:none;font-size:12px}.dlc-steam:hover{text-decoration:underline}.dlc-oos{color:var(--fg-muted);font-size:11.5px;border:1px solid var(--border);border-radius:5px;padding:1px 6px}.dlc-empty{color:var(--fg-muted);text-align:center;padding:14px;border:1px dashed var(--border);border-radius:10px}.dlc-cards{display:flex;flex-direction:column;gap:8px}.dlc-card{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--panel-2)}.dlc-meta{display:flex;align-items:center;gap:6px;margin-top:4px;font-size:12.5px}.dlc-meta del{color:var(--fg-muted);font-size:11.5px}
 .footer-app-link{margin-left:10px;color:var(--brand);text-decoration:none}.footer-app-link:hover{text-decoration:underline}
+
+/* BW 批（docs/MOBILE-REDESIGN.md §5）：后台手机端（≤768px）——侧栏收进 ☰ 抽屉 */
+.m-shell{grid-template-columns:1fr}
+.m-shell .admin-content{height:auto;min-height:100vh;padding:12px 12px 96px}
+.m-shell .admin-header{flex-wrap:wrap;gap:10px;padding-bottom:14px}
+.m-shell .admin-header h1{font-size:20px}
+.m-shell .admin-header .admin-crumb{font-size:11px}
+.m-head-row{display:flex;align-items:center;gap:10px;min-width:0}
+.m-menu-btn{min-width:44px;min-height:44px;border:1px solid var(--border);border-radius:10px;background:var(--panel);color:var(--fg);font-size:18px;cursor:pointer;flex:none}
+.m-nav-drawer .el-drawer__body{padding:16px 12px;display:flex;flex-direction:column;gap:12px}
+.m-nav-drawer .admin-brand{padding:0 6px}
+.m-nav-drawer .admin-nav{flex:1;min-height:0;overflow:auto}
+.m-nav-drawer .admin-bottom{margin-top:8px}
+.m-shell .el-dialog{width:100%!important;max-width:none!important;margin:0!important;border-radius:0;min-height:100dvh;display:flex;flex-direction:column}
+.m-shell .el-dialog .el-dialog__body{flex:1;overflow:auto}
+.m-shell .el-dialog .el-dialog__footer{position:sticky;bottom:0;background:var(--panel);padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+
+/* BW 批：批量吸底条（计数与执行在底部固定，安全区避让）+ 窄屏 tab 横向滚动 */
+.m-shell .bulk-bar{position:sticky;bottom:calc(0px + env(safe-area-inset-bottom));z-index:20;box-shadow:0 -6px 18px #26345a14}
+.m-shell .el-tabs__nav-wrap{overflow-x:auto;scrollbar-width:none}
+.m-shell .el-tabs__nav-wrap::-webkit-scrollbar{display:none}

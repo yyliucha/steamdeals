@@ -58,7 +58,7 @@
 | **BT** | 手机端点「登录」不出现登录页（浮层 `history.back()` 与 `router.push` 竞态）→ 登录入口统一硬跳 + chunk 兜底 | [MOBILE-LOGIN-ENTRY-FIX.md](MOBILE-LOGIN-ENTRY-FIX.md) | 质检通过（2026-11-16，eba879c） | ✅ 本轮已给 |
 | **BU** | 移动端登录页重做（大表单 + 键盘避让 + 验证码/下载入口） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §3 / §10 效果图 | 已过时（2026-11-16 被 CA 取代） | ✅ 本轮已给 |
 | **BV** | 前台移动端重设计（底部 Tab：首页/搜索/愿望单/我的；详情全屏页） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §4 / §10 效果图 | 已过时（2026-11-16 被 CA 取代） | ✅ 本轮已给 |
-| **BW** | 后台移动端重设计（☰ 抽屉 + 表格全卡片 + 批量吸底 + 表单全屏） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §5 / §10 效果图 | 待开发（效果图已确认 2026-11-16；CA 后仅后台手机端，顺序在 BV 之后） | ✅ 本轮已给 |
+| **BW** | 后台移动端重设计（☰ 抽屉 + 表格全卡片 + 批量吸底 + 表单全屏） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §5 / §10 效果图 | 已实现待发版（2026-11-16） | ✅ 本轮已给 |
 | **BX** | 手机浏览器首访「下载安卓 App」提示（只安卓、一次、可关闭） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §6 | 已过时（2026-11-16 被 CA 取代） | ✅ 本轮已给 |
 | **BY** | 安卓 App 内置更新（启动/回前台检查 → 原生提示 → 下载校验 → 用户确认安装；minVersionCode 强制） | [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md) | 已过时（并入 CA-4） | ✅ 本轮已给 |
 | **BZ** | App 代码仓库拆分（`android/` 迁独立公开仓库；站点 CI 拉 Release 出 `latest.json`；规格/TODO 留站点） | [MOBILE-APP-REPO-SPLIT.md](MOBILE-APP-REPO-SPLIT.md) | 已过时（CA 直接新建独立仓库） | ✅ 本轮已给 |

@@ -1,6 +1,6 @@
 <template>
-  <div class="admin-shell">
-    <aside class="admin-sidebar">
+  <div class="admin-shell" :class="{ 'm-shell': isMobile }">
+    <aside v-if="!isMobile" class="admin-sidebar">
       <a href="/" class="admin-brand"><span class="brand-mark">S</span><span>SteamDeals<small>管理控制台</small></span></a>
       <div class="admin-search"><el-input v-model="filter" placeholder="搜索管理功能" clearable @keyup.enter="onFilterEnter"><template #prefix><el-icon><Search /></el-icon></template></el-input></div>
       <nav class="admin-nav">
@@ -14,8 +14,35 @@
         <div class="bottom-actions"><el-tag v-if="user" type="success" effect="plain">{{ user.display_name || user.username }}</el-tag><el-button text @click="router.push('/')">返回网站 ↗</el-button></div>
       </div>
     </aside>
+    <!-- BW 批（docs/MOBILE-REDESIGN.md §5.1）：手机端侧栏收进 ☰ 抽屉，沿用 5 分组 13 模块 -->
+    <el-drawer v-if="isMobile" v-model="navDrawer" direction="ltr" :size="'min(300px, 86vw)'" class="m-nav-drawer" :with-header="false">
+      <a href="/" class="admin-brand" @click="navDrawer=false"><span class="brand-mark">S</span><span>SteamDeals<small>管理控制台</small></span></a>
+      <div class="admin-search"><el-input v-model="filter" placeholder="搜索管理功能" clearable @keyup.enter="onFilterEnter"><template #prefix><el-icon><Search /></el-icon></template></el-input></div>
+      <nav class="admin-nav">
+        <template v-for="group in visibleGroups" :key="group.name">
+          <div class="nav-heading">{{ group.name }}</div>
+          <button v-for="item in group.items" :key="item.id" :class="{ active: selected === item.id }" @click="select(item)"><span class="nav-glyph">{{ item.glyph }}</span><span>{{ item.label }}</span><span v-if="item.id === 'appeals' && appealsPending" class="nav-count">{{ appealsPending }}</span><el-icon v-if="selected === item.id" class="arrow"><ArrowRight /></el-icon></button>
+        </template>
+        <el-empty v-if="!visibleGroups.length" :image-size="44" description="没有匹配的功能" />
+      </nav>
+      <div class="admin-bottom">
+        <div class="bottom-actions"><el-tag v-if="user" type="success" effect="plain">{{ user.display_name || user.username }}</el-tag><el-button text @click="router.push('/')">返回网站 ↗</el-button></div>
+      </div>
+    </el-drawer>
     <main class="admin-content">
-      <header class="admin-header"><div><div class="admin-crumb">管理中心 <span>/</span> {{ selectedItem?.group }}</div><h1>{{ selectedItem?.label }}</h1><p>{{ selectedItem?.description }}</p></div><div class="header-actions"><span class="header-version" :title="versionTitle" @click="loadVersion(true)">v{{ verInfo.current || '—' }}<em v-if="verInfo.updateAvailable && verInfo.latest"> ↑ 新版 v{{ String(verInfo.latest).replace(/^v/i, '') }} 可用</em></span><el-button text class="theme-btn" :title="themeMode === 'dark' ? '切换亮色' : '切换暗色'" @click="toggleTheme">{{ themeMode === 'dark' ? '🌞' : '🌙' }}</el-button></div></header>
+      <header class="admin-header">
+        <div class="admin-heading">
+          <div class="m-head-row">
+            <button v-if="isMobile" type="button" class="m-menu-btn" aria-label="打开菜单" @click="navDrawer=true">☰</button>
+            <div>
+              <div class="admin-crumb">管理中心 <span>/</span> {{ selectedItem?.group }}</div>
+              <h1>{{ selectedItem?.label }}</h1>
+              <p>{{ selectedItem?.description }}</p>
+            </div>
+          </div>
+        </div>
+        <div class="header-actions"><el-button v-if="isMobile" text class="theme-btn" title="站点通知" @click="goAnnouncements">🔔</el-button><span class="header-version" :title="versionTitle" @click="loadVersion(true)">v{{ verInfo.current || '—' }}<em v-if="verInfo.updateAvailable && verInfo.latest"> ↑ 新版 v{{ String(verInfo.latest).replace(/^v/i, '') }} 可用</em></span><el-button text class="theme-btn" :title="themeMode === 'dark' ? '切换亮色' : '切换暗色'" @click="toggleTheme">{{ themeMode === 'dark' ? '🌞' : '🌙' }}</el-button></div>
+      </header>
       <AdminModules v-if="nativeSections.includes(selected)" :section="selected" />
       <AdminLogs v-else-if="selected === 'op-logs'" />
       <AdminExtras v-else :section="selected" :me="user" />
@@ -36,6 +63,13 @@ import { fmtDateTime } from '../utils/siteTime.js';
 import { requestLeave, bypassNextGuard, hasDirtySources } from '../composables/useUnsavedGuard.js';
 
 const router=useRouter(), route=useRoute(), filter=ref(''), user=ref(null);
+// BW 批（docs/MOBILE-REDESIGN.md §5.1）：≤768px 侧栏收进 ☰ 抽屉
+const navDrawer=ref(false);
+const isMobile=ref(false);
+function applyMobile(){
+  if(typeof window==='undefined')return;
+  isMobile.value=Boolean(window.matchMedia&&window.matchMedia('(max-width: 768px)').matches);
+}
 // O 批（docs/APPEAL-SYSTEM.md §5）：侧栏「申诉管理」待处理数量角标
 const appealsPending=ref(0);
 async function loadAppealsPending(){
@@ -83,7 +117,9 @@ watch(()=>route.query.section,(v)=>{
 const selectedItem=computed(()=>groups.flatMap(g=>g.items.map(i=>({...i,group:g.name}))).find(i=>i.id===selected.value)||groups[0].items[0]);
 const visibleGroups=computed(()=>{const q=filter.value.trim().toLocaleLowerCase();return groups.map(g=>({...g,items:g.items.filter(i=>!q||`${i.label} ${i.description} ${g.name}`.toLocaleLowerCase().includes(q))})).filter(g=>g.items.length);});
 // AN 批（docs/UNSAVED-GUARD.md §4.3）：切菜单前先过离开确认——不要先改 selected 再拦
-async function select(item){ if(item.id===selected.value)return; if(!(await requestLeave()))return; selected.value=item.id; await router.replace({path:'/console',query:{section:item.id}}); if(item.id==='appeals')loadAppealsPending(); }
+async function select(item){ if(item.id===selected.value)return; if(!(await requestLeave()))return; selected.value=item.id; navDrawer.value=false; await router.replace({path:'/console',query:{section:item.id}}); if(item.id==='appeals')loadAppealsPending(); }
+// BW 批：手机顶栏通知铃 → 站点通知模块
+function goAnnouncements(){const item=groups.flatMap((g)=>g.items).find((i)=>i.id==='announcements');if(item)select(item);}
 // 当前菜单项的「未保存修改」小圆点（与邮件配置的小标一致）
 const menuDirty=ref(false);
 let menuDirtyTimer=null;
@@ -113,6 +149,8 @@ async function loadVersion(force){
 }
 
 onMounted(async()=>{try{
+  applyMobile();
+  if(typeof window!=='undefined'&&window.matchMedia){const mq=window.matchMedia('(max-width: 768px)');const on=()=>{applyMobile();};mq.addEventListener?mq.addEventListener('change',on):mq.addListener(on);}
   // 旧书签映射也要在直开时生效（watch 不触发首帧）
   const legacy=LEGACY_SECTION[selected.value];
   if(legacy){selected.value=legacy.section;router.replace({path:'/console',query:{...legacy}}).catch(()=>{});}

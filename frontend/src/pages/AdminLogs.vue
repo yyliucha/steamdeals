@@ -11,7 +11,7 @@
           <el-button text @click="delRange=null">清除日期</el-button>
           <el-button text :loading="loading.user_deletions" @click="loadDeletions">刷新</el-button>
         </div>
-        <div class="module-card table-card">
+        <div v-if="!isMobile" class="module-card table-card">
           <el-table :data="pagedDeletions" v-loading="loading.user_deletions" stripe>
             <el-table-column prop="username" label="用户名" min-width="110" />
             <el-table-column label="角色" width="90"><template #default="{ row }">{{ row.role === 'admin' ? '管理员' : '普通用户' }}</template></el-table-column>
@@ -23,6 +23,8 @@
           <el-empty v-if="!deletions.length && !loading.user_deletions" description="暂无删除记录" />
           <PaginationBar v-model:page="delPage" v-model:page-size="delPageSize" :total="deletions.length" />
         </div>
+        <div v-else class="game-card-list"><div v-for="d in pagedDeletions" :key="d.id" class="admin-card"><div class="admin-card-main"><strong>{{ d.username }}</strong><small class="muted">{{ d.role === 'admin' ? '管理员' : '普通用户' }} · 操作者 {{ d.deleted_by || '—' }} · Steam 账号 {{ d.steam_accounts }}</small><small class="muted">{{ dateTime(d.created_at) }}<template v-if="d.reason"> · {{ d.reason }}</template></small></div></div><el-empty v-if="!deletions.length && !loading.user_deletions" description="暂无删除记录"/></div>
+        <PaginationBar v-if="isMobile" v-model:page="delPage" v-model:page-size="delPageSize" :total="deletions.length" />
       </el-tab-pane>
 
       <!-- 2. 批量操作 -->
@@ -33,7 +35,7 @@
           <el-select v-model="bulkTarget" style="width:180px" @change="loadBulkOps"><el-option v-for="t in bulkOpsTargets" :key="t.value" :label="t.label" :value="t.value" /></el-select>
           <el-button :loading="loading.bulk" @click="loadBulkOps">刷新</el-button>
         </div>
-        <div class="module-card table-card">
+        <div v-if="!isMobile" class="module-card table-card">
           <el-table :data="bulkOps" v-loading="loading.bulk" stripe>
             <el-table-column label="时间" min-width="155"><template #default="{ row }">{{ dateTime(row.created_at) }}</template></el-table-column>
             <el-table-column label="操作者" width="120"><template #default="{ row }">{{ row.actor || '—' }}</template></el-table-column>
@@ -48,6 +50,7 @@
           </el-table>
           <el-empty v-if="!bulkOps.length && !loading.bulk" description="还没有批量操作记录" />
         </div>
+        <div v-else class="game-card-list"><div v-for="b in bulkOps" :key="b.id" class="admin-card"><div class="admin-card-main"><strong>{{ bulkTargetLabel(b.target) }} · {{ bulkActionLabel(b) }}</strong><small class="muted">{{ dateTime(b.created_at) }} · {{ b.actor || '—' }}</small><small class="muted">总数 {{ b.total }} · 成功 {{ b.ok }} · 跳过 {{ b.skipped }} · <span :class="b.failed > 0 ? 'text-danger' : ''">失败 {{ b.failed }}</span> · {{ b.duration_ms == null ? '—' : b.duration_ms + ' ms' }}</small></div><div class="admin-card-actions"><el-button link type="primary" @click="openBulkOp(b)">详情</el-button></div></div><el-empty v-if="!bulkOps.length && !loading.bulk" description="还没有批量操作记录"/></div>
       </el-tab-pane>
 
       <!-- 3. Steam 账号 -->
@@ -60,7 +63,7 @@
           <el-input v-model="steamFilter.steamId" clearable placeholder="按 SteamID 精确查" @keyup.enter="loadSteamLogs" @clear="loadSteamLogs" />
           <el-button :loading="loading.steam" @click="loadSteamLogs">刷新</el-button>
         </div>
-        <div class="module-card table-card">
+        <div v-if="!isMobile" class="module-card table-card">
           <el-table :data="pagedSteamLogs" v-loading="loading.steam" stripe>
             <el-table-column label="时间" min-width="155"><template #default="{ row }">{{ dateTime(row.created_at) }}</template></el-table-column>
             <el-table-column label="动作" width="120"><template #default="{ row }">{{ steamActionLabel(row.action) }}</template></el-table-column>
@@ -75,6 +78,8 @@
           <el-empty v-if="!steamLogs.length && !loading.steam" description="还没有 Steam 账号操作记录" />
           <PaginationBar v-model:page="steamPage" v-model:page-size="steamPageSize" :total="steamLogs.length" />
         </div>
+        <div v-else class="game-card-list"><div v-for="s in pagedSteamLogs" :key="s.id" class="admin-card"><div class="admin-card-main"><strong>{{ steamActionLabel(s.action) }} · {{ s.persona_name || s.steam_id }}</strong><small class="mono">{{ s.steam_id }}</small><small class="muted">{{ dateTime(s.created_at) }} · {{ s.username || '未归属' }} · 操作者 {{ actorLabel(s.actor) }}</small><p class="admin-card-tags"><el-tag :type="s.result === 'ok' ? 'success' : 'danger'" size="small">{{ s.result === 'ok' ? '成功' : '失败' }}</el-tag><el-tag v-if="s.elapsed_ms != null" size="small" type="info">{{ s.elapsed_ms }} ms</el-tag></p></div><div class="admin-card-actions"><span class="muted">{{ detailText(s.detail) }}<template v-if="s.error"> · {{ s.error }}</template></span></div></div><el-empty v-if="!steamLogs.length && !loading.steam" description="还没有 Steam 账号操作记录"/></div>
+        <PaginationBar v-if="isMobile" v-model:page="steamPage" v-model:page-size="steamPageSize" :total="steamLogs.length" />
       </el-tab-pane>
 
       <!-- 4. 邮件发送 -->
@@ -84,6 +89,7 @@
           <div class="card-heading padded"><div><h3>发送记录</h3><p>验证码读 email_codes，通知类读 mail_log；最多各 500 条</p></div><el-button text :loading="loading.mail" @click="loadMailLogs">刷新</el-button></div>
           <el-tabs v-model="mailTab" class="mail-log-tabs">
             <el-tab-pane label="验证码" name="codes">
+              <template v-if="!isMobile">
               <el-table :data="pagedMailRecords" v-loading="loading.mail" stripe>
                 <el-table-column prop="email" label="收件人" min-width="190" />
                 <el-table-column prop="purpose" label="用途" width="130" />
@@ -92,8 +98,12 @@
                 <el-table-column label="正文" width="90"><template #default="{ row }"><el-button v-if="row.body" link @click="openMail(row)">查看</el-button><span v-else>—</span></template></el-table-column>
               </el-table>
               <PaginationBar v-model:page="mailPage" v-model:page-size="mailPageSize" :total="mailRecords.length" />
+              </template>
+              <div v-else class="game-card-list"><div v-for="m in pagedMailRecords" :key="m.id" class="admin-card"><div class="admin-card-main"><strong>{{ m.email }}</strong><small class="muted">{{ m.purpose }} · {{ dateTime(m.created_at) }}</small><p class="admin-card-tags"><el-tag :type="m.sent_ok ? 'success' : 'danger'" size="small">{{ m.sent_ok ? '发送成功' : '发送失败' }}</el-tag><el-tag v-if="m.error" size="small" type="info">{{ m.error }}</el-tag></p></div><div class="admin-card-actions"><el-button v-if="m.body" link @click="openMail(m)">查看正文</el-button></div></div><el-empty v-if="!mailRecords.length" description="暂无验证码记录"/></div>
+              <PaginationBar v-if="isMobile" v-model:page="mailPage" v-model:page-size="mailPageSize" :total="mailRecords.length" />
             </el-tab-pane>
             <el-tab-pane label="通知" name="notify">
+              <template v-if="!isMobile">
               <el-table :data="mailLogEntries" v-loading="loading.mail" stripe>
                 <el-table-column label="时间" min-width="155"><template #default="{ row }">{{ dateTime(row.created_at) }}</template></el-table-column>
                 <el-table-column label="事件" width="150"><template #default="{ row }">{{ mailEventLabel(row.event) }}</template></el-table-column>
@@ -102,6 +112,8 @@
                 <el-table-column label="结果" width="90"><template #default="{ row }"><el-tag :type="row.ok ? 'success' : 'danger'" size="small">{{ row.ok ? '成功' : '失败' }}</el-tag></template></el-table-column>
                 <el-table-column label="错误" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ row.error || '—' }}</template></el-table-column>
               </el-table>
+              </template>
+              <div v-else class="game-card-list"><div v-for="m in mailLogEntries" :key="m.id" class="admin-card"><div class="admin-card-main"><strong>{{ mailEventLabel(m.event) }} · {{ m.to_email }}</strong><small class="muted">{{ dateTime(m.created_at) }} · {{ m.subject }}</small><p class="admin-card-tags"><el-tag :type="m.ok ? 'success' : 'danger'" size="small">{{ m.ok ? '成功' : '失败' }}</el-tag><el-tag v-if="m.error" size="small" type="info">{{ m.error }}</el-tag></p></div></div><el-empty v-if="!mailLogEntries.length" description="暂无通知邮件记录"/></div>
             </el-tab-pane>
           </el-tabs>
         </div>
@@ -127,6 +139,7 @@
         <!-- 同步记录：6 列 · 默认最近 5 轮 -->
         <div class="module-card table-card">
           <div class="card-heading padded"><div><h3>同步记录</h3><p>最近 {{ visibleRuns.length }} / {{ syncRuns.length }} 轮数据任务</p></div><div class="heading-actions"><el-button text @click="showAllRuns = !showAllRuns">{{ showAllRuns ? '收起为最近 5 轮' : '展开全部（' + syncRuns.length + ' 轮）' }}</el-button><el-button text :loading="loading.run" @click="loadSyncRuns">刷新</el-button></div></div>
+          <template v-if="!isMobile">
           <el-table :data="visibleRuns" v-loading="loading.run" stripe :row-class-name="syncRunRowClass">
             <el-table-column label="时间" min-width="155"><template #default="{ row }">{{ dateTime(row.started_at) }}</template></el-table-column>
             <el-table-column label="模式" width="120"><template #default="{ row }"><el-tag size="small">{{ syncModeLabel(row.mode) }}</el-tag></template></el-table-column>
@@ -135,6 +148,8 @@
             <el-table-column label="耗时" width="100"><template #default="{ row }">{{ syncDuration(row) }}</template></el-table-column>
             <el-table-column label="备注" min-width="220" show-overflow-tooltip><template #default="{ row }">{{ row.fetch_note || String(row.output || '').split('\n').filter(Boolean).slice(-1)[0] || '—' }}</template></el-table-column>
           </el-table>
+          </template>
+          <div v-else class="game-card-list"><div v-for="r in visibleRuns" :key="r.id" class="admin-card"><div class="admin-card-main"><strong>{{ syncModeLabel(r.mode) }}</strong><small class="muted">{{ dateTime(r.started_at) }} · {{ syncDuration(r) }}</small><small class="muted">{{ runResult(r) }}</small><p class="admin-card-tags"><el-tag :type="r.status === 'ok' ? 'success' : r.status === 'running' ? 'primary' : 'danger'" size="small">{{ { ok: '成功', running: '运行中', failed: '失败', stopped: '已停止' }[r.status] || r.status || '—' }}</el-tag></p></div></div><el-empty v-if="!syncRuns.length" description="暂无同步记录"/></div>
         </div>
 
         <!-- 日志面板：固定高度内部滚动（sticky 筛选条） -->
@@ -579,4 +594,15 @@ onBeforeUnmount(() => {
 .log-line .log-brief{color:var(--fg-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
 .log-line .log-full{width:100%;margin:4px 0 0;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--fg-muted);white-space:pre-wrap;word-break:break-all}
 .log-panel-foot{border-top:1px solid var(--border);padding:6px 12px}
-@media (max-width:760px){.log-panel-body{max-height:50vh}.health-chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}.log-line .log-brief{white-space:normal}}</style>
+@media (max-width:760px){.log-panel-body{max-height:50vh}.health-chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}.log-line .log-brief{white-space:normal}}
+/* BW 批（docs/MOBILE-REDESIGN.md §5.2）：操作日志手机卡片 */
+.game-card-list{display:flex;flex-direction:column;gap:8px;padding-bottom:10px}
+.admin-card{border:1px solid var(--border);border-radius:12px;padding:10px 12px;background:var(--panel);display:flex;flex-direction:column;gap:8px}
+.admin-card-main{display:flex;flex-direction:column;gap:4px;min-width:0}
+.admin-card-main strong{font-size:14px;overflow-wrap:anywhere}
+.admin-card-main small{color:var(--fg-muted);font-size:12px;overflow-wrap:anywhere}
+.admin-card-main .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.admin-card-tags{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0 0}
+.admin-card-actions{display:flex;flex-wrap:wrap;gap:2px;align-items:center}
+.admin-card-actions .el-button{margin-left:0}
+.admin-card-actions .muted{font-size:12px;color:var(--fg-muted);overflow-wrap:anywhere}</style>
