@@ -1486,7 +1486,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BW. 待开发：后台移动端重设计（☰ 抽屉 + 表格全卡片 + 批量吸底 + 表单全屏）
 
-**状态：已实现待发版（2026-11-16，605e05a；本地验证全绿，待调 gameprice-qa）**
+**状态：已实现待发版（2026-11-16，605e05a + 打回修复 8817207；第 1 轮打回 2 项 CSS 级联已修并补回归锁，待第 2 轮复检）**
 **范围（2026-11-16 CA 决策后）：仅 `/console` 后台手机端；前台手机浏览器改为 `/app` 下载页，前台移动 web 不再建设。**
 **效果图：** [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §10（2026-11-16 已确认）
 **依赖：** 无（可与 BV 并行）
@@ -1511,9 +1511,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - 验收：小米浏览器首访出现一次、关闭后不再出现、点下载进 `/app`；微信/iOS 不出现；TWA standalone 不出现；
   清 localStorage 后可重新出现；`npm test` / `frontend:build` / `scan` 全绿。
 
-## BY. ~~待开发：安卓 App 内置更新~~ → **已过时（2026-11-16：TWA 被 CA 原生 App 取代；更新能力并入 CA-4）**
+## BY. 待开发：安卓 App 内置更新（检测 → 提示 → 下载 → 用户确认安装）
 
-**状态：已过时（并入 CA-4；latest.json / versionCode / notes / minVersionCode 契约沿用）**
+**状态：已实现待发版（2026-11-16，所有者重新派发——CA 决策后本批曾标「已过时·并入 CA-4」，交互与元数据契约由 CA-4 沿用；92cae3e；本地验证全绿，待调 gameprice-qa）**
 **依赖：** 无（BS 已发布 v2.17.0 / app-v2.16.0；批内 BY-1 服务端字段先行，BY-2 依赖 BY-1）
 **解锁：** 无
 **规格**：[MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md)
