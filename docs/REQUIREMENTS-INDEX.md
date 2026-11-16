@@ -64,7 +64,7 @@
 | **BZ** | App 代码仓库拆分（`android/` 迁独立公开仓库；站点 CI 拉 Release 出 `latest.json`；规格/TODO 留站点） | [MOBILE-APP-REPO-SPLIT.md](MOBILE-APP-REPO-SPLIT.md) | 已过时（CA 直接新建独立仓库） | ✅ 本轮已给 |
 | **CA** | 原生安卓 App（与 Web 完全拆分：代码/页面/部署/认证独立；共用同一 PG 经同一后端；Token 认证；同包名覆盖旧 TWA） | [APP-NATIVE.md](APP-NATIVE.md) | 待开发（2026-11-16 已确认 5 组；效果图待确认） | ✅ 本轮已给 |
 | **CB** | 价格报表邮件 HTML 化 + 内容增强（品牌头/KPI/降价 Top5/涨价 Top3/7 天趋势/CTA；multipart 文本兜底） | [PRICE-REPORT-EMAIL.md](PRICE-REPORT-EMAIL.md) | 质检通过（2026-11-16，c5fc536 + 打回修复 becff89，第 2 轮复检） | ✅ 本轮已给 |
-| **CC** | 多源采集推进：ITAD/GOG/Humble 覆盖全目录（游标/状态 + 命中缓存）+ 后台四源触发 | [SOURCE-SYNC-COVERAGE.md](SOURCE-SYNC-COVERAGE.md) | 已实现待发版（2026-11-16，49ec3e6） | ✅ 本轮已给 |
+| **CC** | 多源采集推进：ITAD/GOG/Humble 覆盖全目录（游标/状态 + 命中缓存）+ 后台四源触发 | [SOURCE-SYNC-COVERAGE.md](SOURCE-SYNC-COVERAGE.md) | 已实现待发版（2026-11-16，49ec3e6 + 打回修复 6540719，待复检） | ✅ 本轮已给 |
 | **CD** | 跨平台对齐（杉果 + ITAD）：英文名/Steam 链接反解 + 调度化 + **对齐审核页（去重分组/合并预览/决定继承）** + 映射落库 | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) | 待开发（2026-11-16 方案已确认） | ✅ 本轮已给 |
 | **CE** | 杉果匹配器加固 + 误合并数据修复（完整标题计分/片段限制/数字一致性/内容词只进人工/`--apply` 二次确认） | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9 | 质检通过（2026-11-16，5392852；QA 报告 docs/QA-CE.md） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |

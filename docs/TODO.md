@@ -1598,7 +1598,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CC. 待开发：多源采集推进——ITAD / GOG / Humble 覆盖全目录 + 命中率 + 后台触发
 
-**状态：已实现待发版（2026-11-16，49ec3e6；本地验证全绿，待调 gameprice-qa）**
+**状态：已实现待发版（2026-11-16，49ec3e6 + 第 1 轮打回修复 6540719；待第 2 轮复检）。第 1 轮打回摘要（docs/QA-SOURCE-SYNC-CC.md）：杉果每轮条数默认 0 被当作「0 条」→ 默认配置下 sync sonkwo 空转——已修复：0/未设 → 全部 SKU + 回归锁。**
 **解锁：** 无
 **规格**：[SOURCE-SYNC-COVERAGE.md](SOURCE-SYNC-COVERAGE.md)
 
