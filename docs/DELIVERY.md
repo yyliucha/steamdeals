@@ -192,10 +192,20 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-16 更新，v2.18.0 已发布：BT 手机登录入口修复 + BW 后台手机端 + BY App 内置更新 + CB 价格报表邮件 HTML）
+### 当前状态（2026-11-16 更新，v2.19.0 已发布：CE 杉果匹配器加固 + CC 多源采集推进）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
+- **v2.19.0 已发布**（tag `v2.19.0`，提交 `12f4f42`）：CE（杉果→Steam 匹配加固：完整标题计分 +
+  片段限制 + 数字/序数/罗马数字一致性 + 内容词只进人工 + 自动应用收紧）+ CC（多源采集推进：
+  `game_source_sync` 状态表 + 候选游标（热点/访问优先 → nomatch 7 天 → matched 间隔 → failed 退避）、
+  ITAD 英文名优先 + external_id 缓存批量取价、GOG/Humble 按 id/slug 刷新、后台四源立即运行 + 覆盖列、
+  四源每轮条数设置）。无 Android 改动（APK/latest.json 沿用 2.18.0）。
+  验证：`npm test` 88 文件全绿、`frontend:build`、`scan` 干净。
+  质检：CE ✅（[QA-CE.md](QA-CE.md)）、CC ✅（[QA-SOURCE-SYNC-CC.md](QA-SOURCE-SYNC-CC.md) 两轮）。
+  CI：docker-hub run 43852594174 ✅（10m28s）；docker-tcr run 43852593704 ✅（12m55s）。
+  **服务器部署待执行**（升级到 `2.19.0`）；部署后重点（CC 验收 8）：连续观察两轮调度，
+  后台「未探测」下降、GOG/Humble/ITAD 报价开始出现（热点游戏优先）；杉果匹配人工候选使用正常。
 - **v2.18.0 已发布**（tag `v2.18.0`，提交 `f71242b`）：BT（手机登录入口统一 `openLogin` 整页硬跳、
   `next` 站内白名单、懒加载 chunk `router.onError` 兜底）+ BW（后台 ≤768px ☰ 抽屉 + 五模块卡片 +
   批量吸底 + 弹窗全屏，桌面不变）+ BY（App 内置更新：启动/回前台 24h 检查、原生对话框可选/强制、
