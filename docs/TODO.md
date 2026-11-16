@@ -1621,7 +1621,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CD. 待开发：跨平台对齐（杉果 + ITAD）——自动匹配 + 英文名/Steam 链接 + 后台审核 + 调度化
 
-**状态：待开发（2026-11-16，所有者反馈“杉果命名和 Steam 不一样，能否按规律关联”）**
+**状态：待开发（2026-11-16，方案已确认：审核页 + 去重分组 + 映射落库）**
 **依赖：** 无（匹配器与 `applySkuMapping` 已存在，本批增强 + 接调度/后台）
 **解锁：** 无
 **规格**：[SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md)
@@ -1629,19 +1629,24 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **现象（2026-11-16 后台截图）**：杉果-only 行（消逝的光芒系列、塔拉萨号、造物主2、内核之心、军火大学模拟器、血色之月…）
   没有 `steam_appid`、Steam 价为空、同步状态「未探测」。
 - **ITAD 同样需要对齐（2026-11-16 复核）**：`itad.js:100` 固定 `steamAppid: null`，deal 按商店拆成 steam/gog/humble 等平台后落到按标题新建的孤立行；
-  **ITAD 的 Steam deal URL 含 `store.steampowered.com/app/<appid>/`，可反解 appid（强规则，优先于名称匹配）**；
-  GOG/Humble 的 `syncByTitle` 已注入 `steamAppid`（`cli.js:821+`），不需要匹配，覆盖/命中归 CC。
+  `deal.url` 实测是 `itad.link` 跳转（规格 §10），需**跟随 301/302 取最终 URL**，最终是 `store.steampowered.com/app/<id>/` 才可反解；
+  反解不可用时退回"英文名 ↔ name_en"名称匹配；GOG/Humble 的 `syncByTitle` 已注入 `steamAppid`（`cli.js:821+`），不需要匹配，覆盖/命中归 CC。
+- **后台审核（2026-11-16 确认）**：新增「游戏管理 → 对齐审核」页；**按去重组处理**（稳定键 = platform + normalizeName(杉果名)）：
+  同游戏多条 SKU 只出现一行、组内一次确认/忽略即处理整组、已确认/已忽略的决定对后续同组新 SKU 自动继承、队列按组计数；
+  确认前弹合并预览（报价/快照/alias 迁移，不可自动撤销）；批量确认先不做；映射落 **`game_source_map` 表**（`skus.json` 仅做兼容回落）。
 - **现状/根因**：杉果页**没有 Steam appid**（`sonkwo.js:190`），只能靠名称；项目已有 `match.js`（bigram Dice + 版本词剥离，
   ≥0.94 自动 / 0.86–0.94 人工）与 `match`/`--apply`/`--confirm` 命令，映射写 `data/skus.json` 并合并孤立行；
   **但 `match` 不在调度器里、只用中文名、0.86–0.94 没有后台审核入口**。实测：Dying Light Deluxe=1.00、Definitive(RL)=0.944；
   中文↔中文=1.00；**中文↔英文=0.00**（塔拉萨号/造物主2 这类必须靠杉果页英文名匹配）。
-- **改动落点**：`src/match.js`（中/英双变体、exact 快路径、候选索引、版本词补充）、`src/adapters/itad.js`（从 Steam deal URL 反解 appid、同一 ITAD game 的其它商店 deal 挂到同一游戏、别名落库）、`src/cli.js`（`match` 支持英文名与
-  `--auto-score` 生效、输出 method）、`src/scheduler.js`（sonkwo 收尾追加 match 增量或新增 match 任务——优先合并）、
-  `frontend/src/pages/AdminModules.vue` + `src/server.js`（杉果对齐审核面板：待确认列表/确认/忽略/批量确认，写映射合并孤立行）、
+- **改动落点**：`src/store/pg.js`（`game_source_map` 表 + 迁移/回填）、`src/match.js`（中/英双变体、exact 快路径、候选索引、版本词补充）、
+  `src/adapters/itad.js`（跟随 itad.link 重定向取最终 URL、反解 appid、同一 ITAD game 的其它商店 deal 挂到同一游戏、别名落库）、
+  `src/cli.js`（`match` 支持英文名与 `--auto-score` 生效、输出 method）、`src/scheduler.js`（sonkwo 收尾追加 match 增量——优先合并）、
+  `frontend/src/pages/AdminModules.vue` + `src/server.js`（对齐审核页：**去重组队列**/合并预览/确认·忽略·手动搜索/决定继承，映射写 `game_source_map`）、
   对应测试与文档。
-- **验收**：见规格 §5/§8——ITAD Steam deal URL 反解 appid 并挂接其他商店 deal、无 Steam deal 走名称匹配/独立平台行；
-  塔拉萨号等经英文名匹配成功；Dying Light 按阈值自动；sonkwo 收尾自动跑、有 `match.summary`；
-  后台可审核/一键确认；`sync sonkwo` 后报价挂到 Steam 游戏、「未探测」下降；不误合并（抽查）；`npm test` 全绿。
+- **验收**：见规格 §5/§8——ITAD 跟随跳转后能反解 appid（或回退名称匹配）；塔拉萨号等经英文名匹配成功；Dying Light 按阈值自动；
+  sonkwo 收尾自动跑、有 `match.summary`；**审核页按去重组展示**（同归一化名多 SKU 只一行）、确认/忽略一次处理整组、
+  已确认/已忽略组的新 SKU 自动继承、连续两次运行队列组数不增长；确认前有合并预览与审计；
+  `sync sonkwo` 后报价挂到 Steam 游戏、「未探测」下降；不误合并（抽查）；`npm test` 全绿。
 
 ## CE. 待开发（高优先级）：杉果匹配器加固 + 2026-11-16 误合并数据修复
 

@@ -99,18 +99,36 @@ docker exec steamdeals node src/cli.js match --confirm <skuId> <steamAppId>
 - 风险：杉果"决定版"价格与 Steam"基础版"价格不可严格比较；若价格对比要严格，改为"版次 SKU 只进审核、不自动映射"；
 - 页面展示沿用现有口径（同游戏多平台报价并排），不新增"版次不同"提示（待确认）。
 
-### 4.4 后台审核面板
+### 4.4 后台审核面板（队列 + 去重 + 合并预览）
 
-- 位置：游戏管理 → 「同步与回填」或新增 tab「杉果对齐」；
-- 列表字段：杉果 SKU / 杉果中文名 / 英文名 / 候选 Steam 游戏（appid+名称）/ 分数 / 建议（自动/待确认/无候选）；
-- 操作：确认（调 `applySkuMapping` + 写映射 + 合并孤立行）、忽略（记 `ignored`，不再提示）、批量确认（≥0.94 可一键）；
-- 权限：仅管理员；写操作记操作日志（`match.applied` 审计）。
+> 2026-11-16 所有者确认：审核页并入 CD；**批量确认先不做**；**同游戏必须去重，一条处理整组**，不允许"处理完一条又冒出同名另一条"。
 
-### 4.5 映射与合并
+- 位置：游戏管理 → 新 tab「对齐审核」；
+- **队列一行 = 一个去重组**，稳定键 = `platform + normalizeName(杉果名)`：
+  - 同一游戏的多条 SKU（不同版次/不同 skuId/重复采集）归到同一组，组内显示 SKU 数；
+  - 候选按 appid 去重，组内只展示最高分候选 + 可展开其它候选；
+  - 组内合计报价数/快照数；队列计数按**组**，不按 SKU（避免"30 条其实只有 5 个游戏"）；
+- 状态：`pending_review`（0.86–0.94）/ `no_candidate`（<0.86）/ `blocked_edition`（版次/DLC/数字冲突）/ `confirmed` / `ignored`；
+- 动作：
+  - **确认**：先弹合并预览（源孤立行 → 目标 Steam 游戏：迁移报价/快照/alias/关注标记；明确"源行删除、重复报价丢弃、不可自动撤销"），确认后**对该组所有 SKU 一起执行**；
+  - **换候选**：在组内候选里换目标；**手动搜索**：按名称/AppID 搜 Steam 游戏，指定目标；
+  - **忽略**：按**组**记 `ignored`；同组新 SKU 自动继承忽略，不再排队；
+  - **重新生成候选**：手动触发，不自动；
+- **去重与决定继承（必须实现）**：
+  1. 生成提案时按稳定键分组，同组只出一条；
+  2. 已 `confirmed` 的组，后续同组 SKU **自动应用同一 appid**，不再重复排队；
+  3. 已 `ignored` 的组，后续同组 SKU 自动忽略；
+  4. 同一目标 appid 在一组内只出现一次；同名重复游戏行在预览里聚焦唯一目标；
+  5. 连续两次运行队列**组数不增长**（除新游戏），不出现"处理完又重复"；
+- 权限：仅管理员；写操作审计 `match.confirmed` / `match.ignored`（记 by、组键、目标 appid、该组 SKU 列表）。
 
-- 映射落点沿用 `data/skus.json`（持久卷）+ `game_aliases`（DB，记录 method/confidence）；
-- 合并沿用 `applySkuMapping`：只合并"无 appid 的孤立行"，有 appid 的冲突行记 `match.skip_merge` 交人工；
-- 合并后 `sync sonkwo` 让报价挂到 Steam 游戏；`steam-status`/`backfill` 自然补齐 Steam 信息（零额外任务）。
+### 4.5 映射与合并（落库，不写文件）
+
+- **映射落库**：新表 `game_source_map`（`platform_code + product_id` 唯一，字段：`game_id`、`match_method`、`confidence`、`decision(confirmed/ignored)`、`reviewed_by`、`reviewed_at`）；
+- `sync sonkwo` / 后续 ITAD 同步**优先读 DB 映射**，回落 `data/skus.json` 的 `appid`（兼容旧数据）；迁移时把 `skus.json` 现有 appid 灌入表中；
+- 合并沿用 `mergeGames`：只合并"无 appid 的孤立行"；有 appid 的冲突行记 `match.skip_merge` 交人工；快照随 `offer_id` 迁移；
+- 合并后 `sync sonkwo` 让报价挂到 Steam 游戏；`steam-status`/`backfill` 自然补齐 Steam 信息（零额外任务）；
+- 删除/忽略的组不再恢复；如需恢复走"重新生成候选"。
 
 ## 5. 验收
 
@@ -122,6 +140,9 @@ docker exec steamdeals node src/cli.js match --confirm <skuId> <steamAppId>
 5. **性能**：单轮 `limit=100` 的匹配在可接受时间内完成（目标 < 30s），不阻塞调度；
 6. **安全/正确性**：不会把两个不同游戏合并（抽查 Dying Light 系列、塔拉萨号、造物主2）；冲突/低分交人工；
 7. **测试**：`match` 单元测试（中↔中、英↔英、中↔英经英文名、版次剥离、阈值分级）、后台接口测试、`npm test` 全绿。
+8. **去重与决定继承**：同归一化名的多个 SKU 只出现一行（组）；确认/忽略一次处理整组；再次运行不重复排队；
+   已确认组的新 SKU 自动继承映射、已忽略组的新 SKU 自动忽略；队列计数按组。
+9. **收敛**：连续两次运行，`pending_review + no_candidate` 组数不增长（除新游戏）；不出现"处理完这条又冒出同名另一条"。
 
 ## 6. 本批不做
 
@@ -132,10 +153,12 @@ docker exec steamdeals node src/cli.js match --confirm <skuId> <steamAppId>
 
 ## 7. 待确认（有默认值，不阻塞）
 
-1. 版次 SKU 默认自动映射到基础版（若价格可比性优先，改为只进审核）；
-2. 匹配调度：并入 `sonkwo` 收尾（默认）还是独立 `match` 任务每 6 小时；
-3. 审核面板放在「游戏管理」下新 tab（默认）还是「同步与回填」页；
-4. 自动/人工阈值是否仍用 0.94 / 0.86（默认沿用）。
+> 2026-11-16 所有者已确认：**审核页并入 CD**、**去重分组 + 决定继承**、**映射落 `game_source_map` 表**、**批量确认先不做**。
+
+1. 版次 SKU 默认自动映射基础版（保留此默认；若要严格价格可比，改为只进审核）；
+2. 审核页位置默认「游戏管理 → 对齐审核」新 tab；
+3. 自动/人工阈值沿用 0.94 / 0.86；
+4. 匹配调度默认并入 `sonkwo` 任务收尾（不新增 cron）。
 
 ## 8. 补充：ITAD 也需要对齐（2026-11-16 复核）
 
