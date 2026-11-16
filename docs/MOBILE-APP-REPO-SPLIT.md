@@ -1,6 +1,8 @@
 # App 代码仓库拆分：android/ 迁出到独立仓库（BY 完成后执行）（待开发）
 
 > 状态：**方案已确认，待 BY 完成后执行（2026-11-16 所有者确认）**。编号 **BZ**。
+> **2026-11-16 后续（CA）**：本方案**作废**——CA 直接新建独立原生 App 仓库（见 [APP-NATIVE.md](APP-NATIVE.md) §2），
+> 不再迁移 `android/` 到独立仓库。
 > 关联：[MOBILE-APP-TWA.md](MOBILE-APP-TWA.md)（BS 批 TWA 工程与 APK 交付）、
 > [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md)（BY 内置更新，先在本仓库完成）、
 > [DELIVERY.md](DELIVERY.md)（发版流程）、[TODO.md](TODO.md) 的 BZ 条目。

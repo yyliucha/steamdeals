@@ -1,6 +1,8 @@
 # 安卓 App 内置更新：检测新版本 → 提示 → 下载 → 用户确认安装（待开发）
 
 > 状态：**已确认待开发（2026-11-16，所有者确认 5 组细节）**。编号 **BY**。
+> **2026-11-16 后续（CA）**：TWA 被原生 Android App 取代，本批**已过时**；交互与元数据契约由 **CA-4** 沿用
+> （见 [APP-NATIVE.md](APP-NATIVE.md) §4.3）。
 > 关联：[MOBILE-APP-TWA.md](MOBILE-APP-TWA.md)（BS 批 TWA App / `/app` 下载页 / BS §3.4「不做静默安装」）、
 > [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md)（移动端重设计，互不依赖）、[TODO.md](TODO.md) 的 BY 条目。
 

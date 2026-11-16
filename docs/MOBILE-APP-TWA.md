@@ -162,3 +162,9 @@
   APK 由站点 CI 从 app 仓库 Release 拉取并生成 `latest.json`——详见
   [MOBILE-APP-REPO-SPLIT.md](MOBILE-APP-REPO-SPLIT.md) 与 TODO **BZ**；
 - **交付不变**：`/app` 页仍从站点下载；包名、签名 keystore、`assetlinks.json` 指纹、`app-v<version>` tag 规则全部不变。
+
+## 12. 2026-11-16 后续决策（CA，本方案停用）
+
+所有者决定改用**原生 Android App**（[APP-NATIVE.md](APP-NATIVE.md)，编号 CA）：App 与 Web 完全拆分（页面/部署/认证独立）、
+共用同一数据库与后端。本 TWA 方案与 APK **停发**；已装 2.16.0 的用户可**同包名/同签名直接覆盖安装**原生 App（一次），
+之后由 App 内置更新接管。本规格作为历史保留。

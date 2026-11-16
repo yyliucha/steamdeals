@@ -1,6 +1,8 @@
 # 移动端重设计：登录页 / 前台底部 Tab / 后台卡片化 / 下载提示（待开发）
 
 > 状态：**已确认待开发（2026-11-16，所有者确认 6 组细节）**。编号 **BU / BV / BW / BX**。
+> **2026-11-16 后续决策（CA）**：手机浏览器前台只给 `/app` 下载页，**BU / BV / BX 已过时**；**BW 仅保留 `/console` 后台手机端**；
+> 见 [APP-NATIVE.md](APP-NATIVE.md)。
 > **效果图已确认（2026-11-16）**：四屏登录/首页/详情/后台，见 §10；各期按该基线开工，改版另议。
 > 前置：**BT**（[MOBILE-LOGIN-ENTRY-FIX.md](MOBILE-LOGIN-ENTRY-FIX.md)，登录入口硬跳）——BU 必须在 BT 之上做。
 > 关联：[MOBILE-FIX.md](MOBILE-FIX.md)（Z 批移动适配）、[MOBILE-PWA.md](MOBILE-PWA.md)（PWA 决策）、

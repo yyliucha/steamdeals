@@ -1409,6 +1409,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 **解锁：** 先补服务端静态白名单（`/.well-known/assetlinks.json`、`/sw.js`、`/app/*.apk`），否则 TWA 退化带地址栏、离线不生效、APK 下不到
 **规格**：[MOBILE-APP-TWA.md](MOBILE-APP-TWA.md)
 
+> **2026-11-16 后续决策：已被 CA（原生 Android App）取代，TWA 停发；旧 TWA 用户可同包名/同签名直接覆盖安装原生 App。**
 - **需求（2026-11-14 所有者）**：做一个不上架商店的安卓 App；要比 PWA 更像 App、点 Steam 外链不整页跳出；
   同时接受"可清缓存"的离线，并要能从站点和 GitHub 两处下载。
 - **已确认决策（8 项）**：① 只做 Android；② 允许引入 Android 工具链（JDK 17 + cmdline-tools + SDK，密钥不入库）；
@@ -1457,9 +1458,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   带 `next` 登录后回原页；chunk 失败自动硬载一次且不循环；返回键不卡死；`next` 只接受站内相对路径；
   注册/改密站内跳转不回归；`npm test` / `frontend:build` / `scan` 全绿；部署后真机复测。
 
-## BU. 依赖阻塞：移动端登录页重做（大表单 + 键盘避让 + 验证码/下载入口）
+## BU. ~~依赖阻塞：移动端登录页重做~~ → **已过时（2026-11-16：CA 原生 App 决策后，手机前台只给下载页）**
 
-**状态：依赖阻塞（前置 BT；效果图已确认 2026-11-16）**
+**状态：已过时（2026-11-16 被 CA 取代；桌面 web 登录页维持现状）**
 **效果图：** [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §10（2026-11-16 已确认）
 **依赖：** BT（登录入口硬跳，未完成）
 **解锁：** BV（前台重设计的登录/我的页风格）
@@ -1470,9 +1471,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - 验收：见规格 §3.2——小米浏览器/iPhone Safari/微信/Chrome 均可登录；键盘不遮挡；验证码失败可重试；
   `reason=expired` 提示；`next` 只接受站内相对路径；桌面端不变；`npm test` / `frontend:build` / `scan` 全绿。
 
-## BV. 依赖阻塞：前台移动端重设计（底部 Tab：首页 / 搜索 / 愿望单 / 我的）
+## BV. ~~依赖阻塞：前台移动端重设计（底部 Tab）~~ → **已过时（2026-11-16：CA 决策，手机前台只给下载页）**
 
-**状态：依赖阻塞（前置 BU；效果图已确认 2026-11-16）**
+**状态：已过时（2026-11-16 被 CA 取代；前台移动 web 不再建设）**
 **效果图：** [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §10（2026-11-16 已确认）
 **依赖：** BU（登录页与"我的"页风格）
 **解锁：** 无
@@ -1486,6 +1487,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 ## BW. 待开发：后台移动端重设计（☰ 抽屉 + 表格全卡片 + 批量吸底 + 表单全屏）
 
 **状态：待开发（2026-11-16，效果图已确认；按约定在 BV 之后派发）**
+**范围（2026-11-16 CA 决策后）：仅 `/console` 后台手机端；前台手机浏览器改为 `/app` 下载页，前台移动 web 不再建设。**
 **效果图：** [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §10（2026-11-16 已确认）
 **依赖：** 无（可与 BV 并行）
 **解锁：** 无
@@ -1497,9 +1499,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   卡片字段与桌面表格一致；批量计数与回执正确；表单保存/取消正确；危险操作有确认；桌面端一致；
   `npm test` / `frontend:build` / `scan` 全绿。
 
-## BX. 待开发：手机浏览器首访「下载安卓 App」提示（只安卓浏览器，一次、可关闭）
+## BX. ~~待开发：手机浏览器首访「下载安卓 App」提示~~ → **已过时（2026-11-16：手机访问直接给下载页）**
 
-**状态：待开发（2026-11-16，所有者确认；可随 BU/BV 或单独发）**
+**状态：已过时（2026-11-16 被 CA 取代；首访提示由“手机访问即下载页”替代）**
 **依赖：** 无
 **解锁：** 无
 **规格**：[MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §6
@@ -1509,9 +1511,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - 验收：小米浏览器首访出现一次、关闭后不再出现、点下载进 `/app`；微信/iOS 不出现；TWA standalone 不出现；
   清 localStorage 后可重新出现；`npm test` / `frontend:build` / `scan` 全绿。
 
-## BY. 待开发：安卓 App 内置更新（检测新版本 → 提示 → 下载校验 → 用户确认安装）
+## BY. ~~待开发：安卓 App 内置更新~~ → **已过时（2026-11-16：TWA 被 CA 原生 App 取代；更新能力并入 CA-4）**
 
-**状态：待开发（2026-11-16，所有者确认 5 组细节）**
+**状态：已过时（并入 CA-4；latest.json / versionCode / notes / minVersionCode 契约沿用）**
 **依赖：** 无（BS 已发布 v2.17.0 / app-v2.16.0；批内 BY-1 服务端字段先行，BY-2 依赖 BY-1）
 **解锁：** 无
 **规格**：[MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md)
@@ -1534,9 +1536,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   同一签名覆盖升级成功、数据保留；「我的→检查更新」可用、浏览器回落 `/app`；站点不可达回落 GitHub；
   `npm test` / `frontend:build` / `scan` 全绿。**注意**：2.16.0 及更早的 App 没有更新模块，需手动装一次新版后才会收到提示。
 
-## BZ. 依赖阻塞：App 代码仓库拆分（android/ 迁到独立公开仓库，BY 完成后执行）
+## BZ. ~~依赖阻塞：App 代码仓库拆分~~ → **已过时（2026-11-16：CA 直接新建独立 App 仓库）**
 
-**状态：依赖阻塞（前置 BY；方案已确认 2026-11-16）**
+**状态：已过时（2026-11-16 被 CA 取代；不再迁移 android/）**
 **依赖：** BY（App 内置更新，未完成；避免同时迁移原生模块）
 **解锁：** 无
 **规格**：[MOBILE-APP-REPO-SPLIT.md](MOBILE-APP-REPO-SPLIT.md)
@@ -1553,3 +1555,22 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   包名/签名/assetlinks 不变；站点侧 `npm test` / `frontend:build` / `scan` 全绿。
 
 
+
+## CA. 待开发：原生安卓 App（与 Web 完全拆分，共用同一数据库/后端）
+
+**状态：待开发（2026-11-16，所有者确认 5 组方向）**
+**依赖：** 无（批内 CA-1 后端 Token/API 先行；CA-2~4 依赖 CA-1；CA-5 依赖 CA-1~4）
+**解锁：** 无；**取代**：BS（TWA）、BU/BV/BX（移动 web 重设计）、BY（TWA 内置更新）、BZ（拆 android/）；BW 保留（仅后台手机端）
+**规格**：[APP-NATIVE.md](APP-NATIVE.md)
+
+- **需求（2026-11-16 所有者）**：App 与 Web 完全拆开（代码/仓库、页面、部署、认证独立），数据库共用；App 改原生 Android，
+  页面与 web 不同；手机浏览器前台只给 App 下载页；App 第一期功能与 web 对齐。
+- **已确认决策（5 组）**：① 完全拆分（四独立）；② 共用同一 PG，经同一后端 API（App 不直连 DB）；③ 原生 Kotlin + Compose；
+  ④ 手机浏览器前台 → `/app`（`/console`、`/login`、`/app` 豁免），微信内给“在浏览器打开”提示；⑤ 先规格 + 效果图再开发。
+- **改动落点**：后端 `src/server.js`（Bearer Token 中间件、`/api/auth/token`、`/api/auth/token/revoke`）、
+  `src/store/pg.js`（`api_tokens` 表 + 迁移）、新增 `docs/APP-API.md`（契约清单）；新仓库 `steamdeals-app`
+  （Kotlin/Compose：登录、首页、搜索、详情、愿望单、我的、内置更新）；Web 侧手机 UA 跳转 + `/app` 改版 + 旧 TWA 退场；
+  复用 `cn.yyliucha.steamdeals` 包名 + 现有 keystore（可覆盖旧 TWA）。
+- **验收**：见规格 §7——Token 登录/过期/撤销/限流/审计；首页/详情（含 DLC/历史）/搜索/愿望单/我的与 web 对齐；
+  原生 APK 同包名同签名覆盖旧 TWA；App 内置更新可用；手机浏览器前台跳 `/app`、微信提示、`/console` 手机端保留；
+  桌面 web 不变；站点侧 `npm test` / `frontend:build` / `scan` 全绿。
