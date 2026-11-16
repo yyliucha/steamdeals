@@ -1595,3 +1595,26 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **验收**：见规格 §4——HTML 含 KPI/Top/7 天/链接/转义、无外部资源与 flex/grid；`deliver` 带 html → multipart 两段，
   webhook/wecom 仍 text；假 SMTP/本地验证 HTML 段可解码；QQ/163/企业微信邮箱/手机显示正常；
   `npm test` / `scan` 全绿；部署后手动跑一次 `report price --notify` 确认收到 HTML。
+
+## CC. 待开发：多源采集推进——ITAD / GOG / Humble 覆盖全目录 + 命中率 + 后台触发
+
+**状态：待开发（2026-11-16，所有者反馈“只看到杉果和 Steam 被同步”；根因已核对）**
+**依赖：** 无（可直接改；不改 Steam/杉果既有队列）
+**解锁：** 无
+**规格**：[SOURCE-SYNC-COVERAGE.md](SOURCE-SYNC-COVERAGE.md)
+
+- **现象（2026-11-16 后台截图）**：数据源开关全开、ITAD Key 已维护，但游戏目录里只有杉果/Steam 的同步痕迹；
+  指标「已同步 60464 / 未探测 101595 / 待回填 133447」。
+- **根因（代码证据）**：ITAD 候选 `order by id limit 50`（`src/cli.js:636-643`）、GOG/Humble 候选
+  `where steam_appid/name_en ... order by id limit 50`（`src/cli.js:821-829`）——**每次都是同一批前 50 条，没有游标/状态**；
+  ITAD 还优先用中文名搜索（命中率低且不缓存 id）；GOG 只认精确标题、Humble 靠 slug 猜；杉果是 `data/skus.json` 驱动；
+  Steam 有热点/冷门队列所以看起来正常。后台「同步与回填」只列/触发 5 个任务（`AdminModules.vue:324`），
+  `/api/admin/sync` 也只接受 catalog/steam-prices/steamall——**四个源任务无法从后台手动触发**。
+- **改动落点**：`src/store/pg.js`（`game_source_sync` 表 + 迁移 + offers 回填 matched + 候选查询）、
+  `src/cli.js`（ITAD/GOG/Humble 候选按 pending→nomatch→refresh 取数；ITAD 优先 `name_en`、命中缓存 external_id、
+  批量取价；GOG/Humble 缓存 product id/slug 后按 id 刷新）、`src/server.js`（`/api/admin/sync` 支持 itad/gog/humble/sonkwo）、
+  `frontend/src/pages/AdminModules.vue`（`TASK_ORDER` 增加四源、显示上次运行/匹配/剩余）、
+  `src/settings.js`（每源 `limit`，默认 50）、日志 `sync.source_progress`、对应测试。
+- **验收**：见规格 §4——连续两次运行处理不同游戏、状态落库、ITAD 英文名优先且 external_id 复用、
+  GOG/Humble 命中缓存、后台四源可触发（运行中 409）、日志有进度、`npm test` 全绿、部署后观察「未探测」下降；
+  **不新增定时任务**（复用现有 itad/gog/humble/sonkwo 任务）。
