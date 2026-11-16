@@ -76,6 +76,7 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 公共：`/api/site`、`/api/games`（分页/筛选/排序）、`/api/games/:appid`、`/api/games/:appid/dlc`、`/api/games/count`、`/api/announcements`（公开部分）。
 用户（需 Bearer）：`/api/me`、`/api/prefs`、`/api/games/:appid` 的 `wishlisted/interested` 字段、愿望单切换接口、公告已读、修改密码、注册。
 > CA-1 交付前先产出 **API 契约清单**（`docs/APP-API.md`）：路径、方法、鉴权、请求/响应、错误码；App 只按契约开发。
+> 公开接口（首页/搜索/详情/DLC/声明）匿名可调；用户接口需 Bearer；未登录/Token 失效统一返回 `401 { error: "login_required" }`，App 按 §4.2.1 弹登录提示。
 
 ### 3.4 App 命名空间与封禁豁免（2026-11-16 所有者确认）
 
@@ -106,12 +107,21 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 | **启动检查** | 请求 `/api/app/status`；命中 IP 黑名单/设备封禁 → 原生对话框「你已经被封禁」+「已知晓」→ 退出 App；无申诉、无其它限制界面 | `/api/app/status` |
 | 登录/注册 | 用户名密码 + 验证码（Token 登录）；注册；改密 | `/api/auth/token`、`/api/captcha`、注册/改密接口 |
 | 首页 | 游戏列表：搜索、筛选（全部/折扣/史低/免费/未发售）、排序（热度/发行时间）、加载更多 | `/api/games` |
-| 详情 | 封面、指标、描述、各区服报价、价格历史、DLC（数量+列表+Steam 跳转）、购买/愿望单/感兴趣 | `/api/games/:appid`、`/api/games/:appid/dlc` |
+| 详情 | 封面、指标、描述、各区服报价、价格历史、DLC（数量+列表+Steam 跳转）、购买；**愿望单/感兴趣需登录** | `/api/games/:appid`、`/api/games/:appid/dlc` |
 | 搜索 | 搜索框（历史本地）、结果列表 | `/api/games` |
-| 愿望单 | 本站愿望单列表 + 移除；未登录引导登录 | 愿望单接口 |
-| 我的 | 账号信息、主题（跟随系统/深/浅）、通知、检查更新、关于、退出登录 | `/api/me`、`/api/prefs`、公告 |
+| 愿望单（需登录） | 本站愿望单列表 + 移除；未登录显示登录引导 | 愿望单接口 |
+| 我的（需登录） | 账号信息、主题（跟随系统/深/浅）、通知、检查更新、关于、退出登录 | `/api/me`、`/api/prefs`、公告 |
 
-- 外链（Steam 商店）用 Custom Tabs 打开（`androidx.browser`）；
+### 4.2.1 游客模式与登录门槛（2026-11-16 所有者确认）
+
+- **未登录也可正常使用**：首页（列表/搜索/筛选/排序）、详情（报价/价格历史/DLC/Steam 跳转）、搜索页；
+- **需要登录的功能**：感兴趣 / 不感兴趣 / 已拥有、愿望单（切换与列表）、通知已读、主题偏好保存、「我的」里的账号相关操作；
+- 未登录点击上述功能：
+  - 弹原生提示（底部弹层/对话框）：「登录后才能使用该功能」+「去登录」/「取消」；
+  - 去登录 → 登录页；登录成功后回到原页面（保留列表滚动/详情数据），**不自动执行原操作**（需用户再点一次，避免误操作）；
+- 请求层：公开 API 匿名可调；用户 API 未登录/Token 失效返回 `401 { error: 'login_required' }`，App 统一拦截 → 弹登录提示；
+- 「愿望单」「我的」Tab：未登录时显示登录引导页（不空白、不报错）；
+- **不强制登录、不弹全屏登录墙**；只有用户主动点用户功能时才提示。- 外链（Steam 商店）用 Custom Tabs 打开（`androidx.browser`）；
 - 详情价格历史用原生绘制（Compose Canvas，不引入图表库）；
 - 离线：列表/详情缓存最近数据（Room 或 DataStore 简版，待定）。
 
@@ -151,6 +161,9 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 4. **App 更新**：启动/回前台/手动检查 → 原生更新对话框 → 下载校验 → 系统安装确认；`minVersionCode` 强制生效。
 5. **Web 跳转**：手机浏览器前台 → `/app`；微信内 → 浏览器打开提示；`/console` 手机端仍可登录使用。
 6. **桌面 web** 行为不变；`npm test` / `frontend:build` / `scan` 全绿。
+7. **游客模式**：未登录可正常浏览首页/搜索/详情（含 DLC/价格历史）；点「感兴趣/不感兴趣/愿望单」弹登录提示；
+   登录成功后回到原页面、不自动执行原操作；「愿望单/我的」未登录显示登录引导。
+8. **鉴权语义**：公开 API 匿名可调；用户 API 未登录/Token 失效返回 401 `login_required`，App 统一弹登录提示；不出现全屏登录墙。
 7. **仓库**：App 代码在独立 `steamdeals-app` 仓库；站点仓库不再含 App 工程与 APK 构建；规格/TODO 仍在站点仓库。
 8. **App 启动封禁**：黑名单 IP / 设备封禁 → 打开 App 弹出「你已经被封禁」+「已知晓」→ 点击后退出；未被封正常进入；
    Web 端同一 IP 仍被拦；App 无申诉入口、无黑名单管理界面（管理界面后置）。
@@ -175,7 +188,7 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 6. **依赖清单**：默认 Compose + OkHttp + kotlinx.serialization + Coil + DataStore（不引 Hilt/Retrofit）；
 7. **App 页面效果图确认**：开发前置（CA-2 起每期先确认）；**六屏已确认（2026-11-16）**；
 8. **App 命名空间限流**：**已确认保留全局 API 基础限流（2026-11-16）**；App 无感，滥用才 429；后续可按需单独调高阈值；
-9. **设备 ID 来源**：默认 App 安装 UUID（DataStore），不使用 Android ID（隐私/重置问题）。
+9. **设备 ID 来源**：默认 App 安装 UUID（DataStore），不使用 Android ID（隐私/重置问题）。10. **登录后动作**：默认回到原页面、不自动重放原操作（简单、防误触）；若希望"登录后自动完成刚才的操作"，需明确。
 
 ## 10. App 页面效果图（2026-11-16 已确认，CA-2~CA-4 设计基线）
 
