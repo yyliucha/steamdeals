@@ -215,7 +215,7 @@ const validTab = (t) => TABS.some((x) => x.id === t);
 const activeTab = ref(validTab(String(route.query.tab ?? '')) ? String(route.query.tab) : TABS[0].id);
 
 // 窄屏（手机）：表格由 .m-console 的「左右滑动查看更多」提示覆盖
-const mobileQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 760px)') : null;
+const mobileQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 768px)') : null;
 const isMobile = ref(Boolean(mobileQuery && mobileQuery.matches));
 function onMobileChange(e) { isMobile.value = e.matches; }
 if (mobileQuery) { if (mobileQuery.addEventListener) mobileQuery.addEventListener('change', onMobileChange); else mobileQuery.addListener(onMobileChange); }

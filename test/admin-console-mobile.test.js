@@ -52,3 +52,17 @@ test('BW：批量条吸底 + 安全区避让（main.css）', () => {
   assert.match(mainCss, /env\(safe-area-inset-bottom\)/, '安全区避让');
   assert.match(mainCss, /\.m-shell\{grid-template-columns:1fr\}/, '移动 shell 单列');
 });
+
+test('BW：级联修复——旧 ≤760 压缩规则不得命中 ☰ 抽屉与顶栏（QA 第 1 轮打回回归锁）', () => {
+  // 抽屉内恢复分组标题 / 纵向导航 / 底部账号区（旧规则 .nav-heading{display:none} 等不能命中抽屉）
+  assert.match(mainCss, /\.m-nav-drawer \.admin-nav\{flex-direction:column/, '抽屉导航保持纵向');
+  assert.match(mainCss, /\.m-nav-drawer \.nav-heading\{display:block\}/, '抽屉分组标题可见');
+  assert.match(mainCss, /\.m-nav-drawer \.admin-bottom\{display:flex\}/, '抽屉底部账号/返回网站可见');
+  assert.match(mainCss, /\.m-nav-drawer \.admin-nav button\{width:100%/, '抽屉按钮恢复全宽');
+  // 顶栏通知铃不被旧规则 .header-actions .el-button:first-child{display:none} 隐藏
+  assert.match(consoleVue, /m-bell/, '通知铃带专属 class');
+  assert.match(mainCss, /\.m-shell \.header-actions \.el-button\.m-bell\{display:inline-flex\}/, '通知铃强制可见');
+  // 断点统一：BW 新增组件用 768
+  assert.match(extras, /max-width: 768px/, 'AdminExtras 断点 768');
+  assert.match(logs, /max-width: 768px/, 'AdminLogs 断点 768');
+});

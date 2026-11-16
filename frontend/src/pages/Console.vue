@@ -41,7 +41,7 @@
             </div>
           </div>
         </div>
-        <div class="header-actions"><el-button v-if="isMobile" text class="theme-btn" title="站点通知" @click="goAnnouncements">🔔</el-button><span class="header-version" :title="versionTitle" @click="loadVersion(true)">v{{ verInfo.current || '—' }}<em v-if="verInfo.updateAvailable && verInfo.latest"> ↑ 新版 v{{ String(verInfo.latest).replace(/^v/i, '') }} 可用</em></span><el-button text class="theme-btn" :title="themeMode === 'dark' ? '切换亮色' : '切换暗色'" @click="toggleTheme">{{ themeMode === 'dark' ? '🌞' : '🌙' }}</el-button></div>
+        <div class="header-actions"><el-button v-if="isMobile" text class="theme-btn m-bell" title="站点通知" @click="goAnnouncements">🔔</el-button><span class="header-version" :title="versionTitle" @click="loadVersion(true)">v{{ verInfo.current || '—' }}<em v-if="verInfo.updateAvailable && verInfo.latest"> ↑ 新版 v{{ String(verInfo.latest).replace(/^v/i, '') }} 可用</em></span><el-button text class="theme-btn" :title="themeMode === 'dark' ? '切换亮色' : '切换暗色'" @click="toggleTheme">{{ themeMode === 'dark' ? '🌞' : '🌙' }}</el-button></div>
       </header>
       <AdminModules v-if="nativeSections.includes(selected)" :section="selected" />
       <AdminLogs v-else-if="selected === 'op-logs'" />

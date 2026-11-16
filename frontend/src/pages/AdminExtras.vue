@@ -117,7 +117,7 @@ import { fmtDateTime as dateTime } from '../utils/siteTime.js';
 const props=defineProps({section:{type:String,required:true},me:{type:Object,default:null}});
 const route=useRoute(),router=useRouter();
 // 窄屏（手机）：其余表格由 .m-console 的「左右滑动查看更多」提示覆盖（docs/MOBILE-FIX.md §3D）
-const mobileQuery=typeof window!=='undefined'&&window.matchMedia?window.matchMedia('(max-width: 760px)'):null;
+const mobileQuery=typeof window!=='undefined'&&window.matchMedia?window.matchMedia('(max-width: 768px)'):null;
 const isMobile=ref(Boolean(mobileQuery&&mobileQuery.matches));
 function onMobileChange(e){isMobile.value=e.matches;}
 if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',onMobileChange);else mobileQuery.addListener(onMobileChange);}

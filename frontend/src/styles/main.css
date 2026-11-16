@@ -45,3 +45,11 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 .m-shell .bulk-bar{position:sticky;bottom:calc(0px + env(safe-area-inset-bottom));z-index:20;box-shadow:0 -6px 18px #26345a14}
 .m-shell .el-tabs__nav-wrap{overflow-x:auto;scrollbar-width:none}
 .m-shell .el-tabs__nav-wrap::-webkit-scrollbar{display:none}
+
+/* BW 批级联修复（docs/QA-CONSOLE-MOBILE-BW.md 第 1 轮打回）：旧 ≤760 压缩规则不得命中 ☰ 抽屉与顶栏 */
+.m-nav-drawer .admin-nav{flex-direction:column;overflow-x:visible;gap:4px}
+.m-nav-drawer .admin-nav button{width:100%;white-space:normal}
+.m-nav-drawer .nav-heading{display:block}
+.m-nav-drawer .admin-bottom{display:flex}
+.m-shell .header-actions .el-button:first-child{display:inline-flex}
+.m-shell .header-actions .el-button.m-bell{display:inline-flex}
