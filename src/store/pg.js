@@ -373,8 +373,24 @@ create index if not exists appeals_contact on appeals (contact);
 create index if not exists appeals_action_token on appeals (action_token_hash);
 `;
 
-const ALTERS = [
-  'alter table games add column if not exists interested boolean not null default true',
+// CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.1）：每游戏 × 每源的采集推进状态——
+// pending（无行即待处理）/ matched（命中外部条目）/ nomatch（未命中，7 天重试窗口）/ failed（退避）。
+const SOURCE_SYNC_DDL = `
+create table if not exists game_source_sync (
+  game_id        integer not null references games(id) on delete cascade,
+  platform_code  text not null,
+  status         text not null default 'pending',
+  external_id    text,
+  last_tried_at  timestamptz,
+  last_ok_at     timestamptz,
+  fail_count     integer not null default 0,
+  last_error     text,
+  primary key (game_id, platform_code)
+);
+create index if not exists idx_gss_pending on game_source_sync (platform_code, status, last_tried_at);
+`;
+
+const ALTERS = [  'alter table games add column if not exists interested boolean not null default true',
   'alter table games add column if not exists owned boolean not null default false',
   'alter table games add column if not exists blocked boolean not null default false',
   'alter table games add column if not exists description text',
@@ -458,6 +474,15 @@ export async function migrate(store, { logger = null } = {}) {
   await store.exec(USER_SCHEMA);
   // 申诉系统（O/BQ）：users 表已建，可直接带外键建表（幂等，每次启动跑一次）
   await store.exec(APPEALS_DDL);
+  // CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.1）：四源推进状态表 + 从既有 offers 回填 matched
+  await store.exec(SOURCE_SYNC_DDL);
+  await store.query(
+    `insert into game_source_sync (game_id, platform_code, status)
+     select distinct o.game_id, o.platform_code, 'matched'
+       from offers o
+      where o.platform_code in ('itad', 'gog', 'humble', 'sonkwo')
+     on conflict (game_id, platform_code) do nothing`,
+  );
   // 老库补列：必须幂等，容器每次启动都会跑
   for (const ddl of ALTERS) {
     await store.exec(ddl);
@@ -821,6 +846,70 @@ export async function priceChangesByDay(q, { days = 7 } = {}) {
     rises: Number(x.rises ?? 0),
     changed: Number(x.changed ?? 0),
   }));
+}
+
+// ---------------------------------------------------------------- CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.2）
+// 每源候选：pending（无行，热度/近 90 天访问优先）→ nomatch（7 天窗口）→ matched（按源间隔刷新）
+// → failed（fail_count 退避 2^n 天上限 30 天）。同一游戏同一源只取一次（按状态分组排序）。
+export async function sourceSyncCandidates(q, { platform, limit = 50, refreshInterval = '24 hours' }) {
+  const n = Math.min(Math.max(Number(limit) || 50, 1), 1000);
+  const r = await q(
+    `select g.id as game_id, g.steam_appid, g.name, g.name_en,
+            coalesce(s.status, 'pending') as status,
+            s.external_id, s.last_tried_at, s.last_ok_at, s.fail_count
+       from games g
+       left join game_source_sync s on s.game_id = g.id and s.platform_code = $2
+      where not g.deleted
+        and coalesce(nullif(g.name, ''), nullif(g.name_en, '')) is not null
+        and (
+          s.status is null
+          or (s.status = 'nomatch' and (s.last_tried_at is null or s.last_tried_at < now() - interval '7 days'))
+          or (s.status = 'matched' and (s.last_ok_at is null or s.last_ok_at < now() - $3::interval))
+          or (s.status = 'failed' and (s.last_tried_at is null or s.last_tried_at < now() - make_interval(days => least(30, (2 ^ least(coalesce(s.fail_count, 0), 5))::int))))
+        )
+      order by
+        case coalesce(s.status, 'pending') when 'pending' then 0 when 'nomatch' then 1 when 'matched' then 2 else 3 end,
+        (select count(*) from page_views pv where pv.appid = g.steam_appid and pv.created_at > now() - interval '90 days') desc,
+        coalesce(g.heat, 0) desc nulls last,
+        g.id
+      limit $1`,
+    [n, String(platform), String(refreshInterval)],
+  );
+  return r.rows;
+}
+
+/** 写入单条状态：命中（ok=true）置 matched + last_ok_at + external_id；未命中 nomatch；异常 failed（fail_count+1）。 */
+export async function sourceSyncMark(q, { gameId, platform, status, externalId = null, ok = false, error = null }) {
+  await q(
+    `insert into game_source_sync (game_id, platform_code, status, external_id, last_tried_at, last_ok_at, fail_count, last_error)
+     values ($1, $2, $3, $4, now(), case when $5 then now() else null end, case when $5 then 0 else 1 end, $6)
+     on conflict (game_id, platform_code) do update set
+       status = excluded.status,
+       external_id = coalesce(excluded.external_id, game_source_sync.external_id),
+       last_tried_at = excluded.last_tried_at,
+       last_ok_at = case when $5 then now() else game_source_sync.last_ok_at end,
+       fail_count = case when $5 then 0 else game_source_sync.fail_count + 1 end,
+       last_error = excluded.last_error`,
+    [Number(gameId), String(platform), String(status), externalId, Boolean(ok), error],
+  );
+}
+
+/** 每源状态汇总：matched/nomatch/failed/pending（pending = 无状态行的存活游戏）。 */
+export async function sourceSyncStats(q) {
+  const totalRow = await q('select count(*)::int as n from games where not deleted');
+  const rows = await q(
+    `select platform_code, status, count(*)::int as n from game_source_sync group by platform_code, status`,
+  );
+  const total = Number(totalRow.rows[0]?.n ?? 0);
+  const byPlatform = {};
+  for (const r of rows.rows) {
+    byPlatform[r.platform_code] = byPlatform[r.platform_code] || { matched: 0, nomatch: 0, failed: 0, pending: 0 };
+    byPlatform[r.platform_code][String(r.status) === 'pending' ? 'pending' : String(r.status)] = Number(r.n ?? 0);
+  }
+  for (const p of Object.keys(byPlatform)) {
+    byPlatform[p].pending = Math.max(0, total - (byPlatform[p].matched + byPlatform[p].nomatch + byPlatform[p].failed));
+  }
+  return { total, byPlatform };
 }
 
 /** 窗口内的全部价格变动明细（CSV 导出用，最多 5000 条）。 */

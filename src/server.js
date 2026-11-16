@@ -2670,7 +2670,8 @@ export function createApiServer({
       if (path === '/api/admin/sync' && req.method === 'POST') {
         if (!requireAdmin()) return;
         const body = await readBody(req);
-        const MODES = new Set(['catalog', 'steam-prices', 'steamall']);
+        // CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.4）：四源任务可后台立即运行（spawn `sync <mode>`）
+        const MODES = new Set(['catalog', 'steam-prices', 'steamall', 'itad', 'gog', 'humble', 'sonkwo']);
         const mode = MODES.has(String(body.mode)) ? String(body.mode) : 'steam-prices';
         const args = ['src/cli.js', 'sync', mode];
         if (mode === 'steamall') {
@@ -2700,6 +2701,8 @@ export function createApiServer({
         }
         // BL-2（docs/BACKFILL-THROUGHPUT.md §3.4）：合并回填进度文件（只读文件，不加 DB 查询）
         const { readBackfillProgress } = await import('./backfill.js');
+        // CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.4）：四源状态汇总（matched/nomatch/failed/pending）
+        const sourceStats = await db.sourceSyncStats(q).catch(() => null);
         return json(res, 200, {
           running,
           run: running ? syncRun : null,
@@ -2707,6 +2710,7 @@ export function createApiServer({
           last: last[0] ?? null,
           schedule,
           backfillProgress: readBackfillProgress(),
+          sourceStats,
           // AC1（docs/SYNC-FAILURE-MODES.md）：该有但没有的任务，后台显式提示（缺 Key / 被 *_ENABLED=0 关闭）
           warnings: auditSchedulerJobs(process.env),
         });

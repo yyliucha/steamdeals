@@ -65,6 +65,11 @@ export const SETTINGS = [
   def('sources.itad.intervalMin', 'ITAD_INTERVAL_MIN', 'sources', 'ITAD 间隔（分钟）', 'int', 1440, { min: 0, max: 10080 }),
   def('sources.gog.intervalMin', 'GOG_INTERVAL_MIN', 'sources', 'GOG 间隔（分钟）', 'int', 720, { min: 0, max: 10080 }),
   def('sources.humble.intervalMin', 'HUMBLE_INTERVAL_MIN', 'sources', 'Humble 间隔（分钟）', 'int', 720, { min: 0, max: 10080 }),
+  // CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.4）：四源每轮处理条数（调大可加速覆盖，注意单轮时长）
+  def('sources.itad.limit', 'SOURCES_ITAD_LIMIT', 'sources', 'ITAD 每轮条数', 'int', 50, { min: 1, max: 1000, help: 'ITAD 每轮候选数（搜索约 1s/条）。' }),
+  def('sources.gog.limit', 'SOURCES_GOG_LIMIT', 'sources', 'GOG 每轮条数', 'int', 50, { min: 1, max: 1000, help: 'GOG 每轮候选数（约 1.2–1.5s/条）。' }),
+  def('sources.humble.limit', 'SOURCES_HUMBLE_LIMIT', 'sources', 'Humble 每轮条数', 'int', 50, { min: 1, max: 1000, help: 'Humble 每轮候选数（约 1.5s/条）。' }),
+  def('sources.sonkwo.limit', 'SOURCES_SONKWO_LIMIT', 'sources', '杉果每轮条数', 'int', 0, { min: 0, max: 10000, help: '杉果每轮 SKU 数（0 = 全部 SKU）。' }),
   def('sources.discover.intervalMin', 'DISCOVER_INTERVAL_MIN', 'sources', 'SKU 发现间隔（分钟）', 'int', 720, { min: 0, max: 10080, advanced: true }),
 
   // ---- 站点与内容分级（docs/STEAM-SYNC-STATUS-AND-RATING.md §5.2）----

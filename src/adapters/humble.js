@@ -86,6 +86,22 @@ export function toOffer(ld, { slug, steamAppid = null } = {}) {
 }
 
 /**
+ * CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.3）：按已命中 slug 直接拉商品页刷新（不再猜 slug）。
+ */
+export async function fetchBySlug(slug, { logger = null, fetchImpl, steamAppid = null } = {}) {
+  const url = `${BASE}${encodeURIComponent(String(slug))}`;
+  const html = await fetchText(url, { logger, label: 'humble.product_by_slug', fetchImpl, retries: 0, timeoutMs: 20000 });
+  const ld = parseProductLd(html);
+  const offer = toOffer(ld, { slug: String(slug), steamAppid });
+  if (!offer) {
+    logger?.warn('adapter.humble.no_offer_by_slug', { slug });
+    return { offer: null };
+  }
+  logger?.debug('adapter.humble.refresh_by_slug', { slug, priceCents: offer.priceCents });
+  return { offer };
+}
+
+/**
  * 按英文名查找。返回 { offer, tried }：tried 记录试过哪些 slug，
  * 便于事后解释"为什么没这家"。
  */

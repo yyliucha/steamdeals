@@ -148,3 +148,28 @@ export async function searchOffer(
   });
   return { offer, candidates: products.length };
 }
+
+/**
+ * CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.3）：按 GOG product id 直接刷新（不再搜索）。
+ * catalog 接口支持 `ids=` 查询参数，返回同构 products[0]。
+ */
+export async function fetchById(
+  productId,
+  { logger = null, fetchImpl, region = descriptor.defaultRegion, steamAppid = null } = {},
+) {
+  const { country, currency } = resolveRegion(region);
+  const url = `${BASE}?ids=${encodeURIComponent(String(productId))}&countryCode=${country}&currencyCode=${currency}&locale=en-US`;
+  const { json } = await fetchJson(url, { logger, label: 'gog.product_by_id', fetchImpl, timeoutMs: 30000 });
+  const product = json?.products?.[0];
+  if (!product) {
+    logger?.warn('adapter.gog.no_product_by_id', { id: productId, region });
+    return { offer: null };
+  }
+  const offer = toOffer(product, { title: product.title, steamAppid, region });
+  if (!offer) {
+    logger?.warn('adapter.gog.no_price_by_id', { id: product.id, region });
+    return { offer: null };
+  }
+  logger?.debug('adapter.gog.refresh_by_id', { id: product.id, priceCents: offer.priceCents });
+  return { offer };
+}

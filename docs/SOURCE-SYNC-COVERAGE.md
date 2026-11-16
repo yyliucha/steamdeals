@@ -1,6 +1,6 @@
 # 多源采集推进：ITAD / GOG / Humble 覆盖全目录 + 命中率 + 后台触发（待开发）
 
-> 状态：**已确认待开发（2026-11-16，所有者反馈"只看到杉果和 Steam 被同步"）**。编号 **CC**。
+> 状态：**已实现待发版（2026-11-16，本地验证全绿，待质检）**。编号 **CC**。
 > 关联：[DATA-SOURCES.md](DATA-SOURCES.md)（各源可达性与 ITAD Key）、[ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md)（同步与回填页）、
 > [TODO.md](TODO.md) 的 CC 条目。
 

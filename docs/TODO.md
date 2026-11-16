@@ -1598,7 +1598,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CC. 待开发：多源采集推进——ITAD / GOG / Humble 覆盖全目录 + 命中率 + 后台触发
 
-**状态：待开发（2026-11-16，所有者反馈“只看到杉果和 Steam 被同步”；根因已核对）**
+**状态：已实现待发版（2026-11-16，提交哈希待补；本地验证全绿，待调 gameprice-qa）**
 **依赖：** 无（可直接改；不改 Steam/杉果既有队列）
 **解锁：** 无
 **规格**：[SOURCE-SYNC-COVERAGE.md](SOURCE-SYNC-COVERAGE.md)

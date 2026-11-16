@@ -19,15 +19,15 @@ import { renderPriceReport } from './price-report-html.js';
 import { descriptor as steam, syncPrices, syncMeta, classifySteamStatus } from './adapters/steam.js';
 import { descriptor as sonkwo, fetchSku } from './adapters/sonkwo.js';
 import { descriptor as itad, searchGame, fetchPrices, normalizeDeals } from './adapters/itad.js';
-import { descriptor as gogDescriptor, searchOffer as gogSearch, resolveRegion as gogResolveRegion } from './adapters/gog.js';
-import { descriptor as humbleDescriptor, searchOffer as humbleSearch } from './adapters/humble.js';
+import { descriptor as gogDescriptor, searchOffer as gogSearch, resolveRegion as gogResolveRegion, fetchById as gogFetchById } from './adapters/gog.js';
+import { descriptor as humbleDescriptor, searchOffer as humbleSearch, fetchBySlug as humbleFetchBySlug } from './adapters/humble.js';
 import {
   DEFAULT_STATE as DEFAULT_DISCOVERY_STATE,
   planScan,
   discoverSkus,
   mergeSkuEntries,
 } from './adapters/sonkwo-discover.js';
-import { bestMatch, confidenceLabel } from './match.js';
+import { bestMatch } from './match.js';
 import { renderCompare, groupOffersByRegion } from './compare.js';
 import { extractAppId, fetchMetadata, normalizeOfficial } from './adapters/steam-meta.js';
 import { describeProxy, decideProxy, parseProxy, redactProxy } from './proxy.js';
@@ -36,8 +36,8 @@ import { startStaticServer } from './serve.js';
 import * as settings from './settings.js';
 
 // 统一成 { code, name, kind, ..., searchOffer } 的形状，供 syncByTitle 复用
-const gog = { ...gogDescriptor, searchOffer: gogSearch };
-const humble = { ...humbleDescriptor, searchOffer: humbleSearch };
+const gog = { ...gogDescriptor, searchOffer: gogSearch, fetchById: gogFetchById };
+const humble = { ...humbleDescriptor, searchOffer: humbleSearch, fetchBySlug: humbleFetchBySlug };
 import { fetchText, fetchJson, fetchBuffer, sleep, proxyStatusHint, readSteam429Info } from './http.js';
 import { runPool } from './pool.js';
 import { createBackup } from './backup.js';
@@ -604,23 +604,47 @@ async function printSyncPriceReport(sinceMs, limit = 5) {
 async function cmdSyncSonkwo() {
   const skus = readJson('data/skus.json', []);
   if (!skus.length) throw new Error('data/skus.json 为空，先用 add-sku 加几个 SKU');
-  const limit = Number(flag('limit', skus.length));
+  const limit = Number(process.env.SOURCES_SONKWO_LIMIT || flag('limit', skus.length));
   const targets = skus.slice(0, limit);
   logger.info('sync.start', { platform: sonkwo.code, skus: targets.length });
   const offers = [];
+  const marks = [];
+  let matched = 0;
+  let noMatch = 0;
+  let failed = 0;
   for (const item of targets) {
     try {
       const offer = await fetchSku(item.skuId, { logger });
       if (offer) {
         if (item.appid) offer.steamAppid = Number(item.appid);
         offers.push(offer);
+        matched += 1;
+        if (item.appid) marks.push({ appid: Number(item.appid), status: 'matched', externalId: String(item.skuId), ok: true });
+      } else {
+        noMatch += 1;
+        if (item.appid) marks.push({ appid: Number(item.appid), status: 'nomatch', ok: false });
       }
     } catch (err) {
+      failed += 1;
+      if (item.appid) marks.push({ appid: Number(item.appid), status: 'failed', ok: false, error: String(err.message).slice(0, 200) });
       logger.error('sync.sku_failed', { skuId: item.skuId, err: serializeError(err) });
     }
     await sleep(Number(flag('rate', 1200)));
   }
+  // CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.3）：杉果保持 skus.json 驱动，只补状态与 external_id=skuId
+  if (marks.length) {
+    await withStore(async (store) => {
+      const q = (sql, p) => store.query(sql, p);
+      for (const m of marks) {
+        const r = await q('select id from games where steam_appid = $1', [m.appid]);
+        if (r.rows[0]) {
+          await db.sourceSyncMark(q, { gameId: Number(r.rows[0].id), platform: 'sonkwo', status: m.status, externalId: m.externalId ?? null, ok: m.ok, error: m.error ?? null });
+        }
+      }
+    });
+  }
   const stats = await withStore((store) => ingestOffers(store, { platform: sonkwo, offers, logger }));
+  logger.info('sync.source_progress', { platform: sonkwo.code, scanned: targets.length, matched, nomatch: noMatch, failed, remaining: Math.max(0, targets.length - matched) });
   logger.info('sync.done', { platform: sonkwo.code, fetched: offers.length, ...stats });
 }
 
@@ -631,46 +655,83 @@ async function cmdSyncItad() {
     console.log('未配置 ITAD_API_KEY，跳过。到 https://isthereanydeal.com/apps/my/ 注册后设置环境变量。');
     return;
   }
-  const limit = Number(flag('limit', 50));
-  const games = await withStore(async (store) => {
-    const r = await store.query(
-      "select steam_appid, coalesce(nullif(name, ''), name_en) as name from games " +
-        "where (name is not null and name <> '') or (name_en is not null and name_en <> '') order by id limit $1",
-      [limit],
-    );
-    return r.rows;
-  });
-  if (!games.length) throw new Error('库里没有带名字的游戏，先跑 seed');
-
-  logger.info('sync.start', { platform: itad.code, games: games.length });
-  const ids = [];
-  for (const g of games) {
-    try {
-      const hits = await searchGame(g.name, { apiKey, logger });
-      const best = hits.find((h) => h.title?.toLowerCase() === g.name.toLowerCase()) ?? hits[0];
-      logger.info('itad.search_result', {
-        query: g.name,
-        hits: hits.length,
-        picked: best?.title ?? null,
-        pickedId: best?.id ?? null,
-        top3: hits.slice(0, 3).map((h) => h.title),
-      });
-      if (best?.id) ids.push(best.id);
-    } catch (err) {
-      logger.error('itad.search_failed', { query: g.name, err: serializeError(err) });
-    }
-    await sleep(Number(flag('rate', 1000)));
-  }
-  if (!ids.length) {
-    logger.warn('sync.skip', { platform: itad.code, reason: 'no_game_ids' });
+  // CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.2/§3.3）：候选按 pending→nomatch 7 天→matched 间隔→failed 退避；
+  // 命中缓存 external_id（ITAD id），后续批量取价不再重复 search。
+  const limit = Number(process.env.SOURCES_ITAD_LIMIT || flag('limit', 50));
+  const refreshMinutes = Math.max(1, Number(process.env.ITAD_INTERVAL_MIN || 1440));
+  const candidates = await withStore((store) =>
+    db.sourceSyncCandidates((sql, p) => store.query(sql, p), {
+      platform: 'itad',
+      limit,
+      refreshInterval: `${Math.max(1, Math.round(refreshMinutes / 60))} hours`,
+    }),
+  );
+  if (!candidates.length) {
+    logger.info('sync.skip', { platform: itad.code, reason: 'no_candidates' });
+    console.log('ITAD：没有待处理的游戏。');
     return;
   }
 
-  const prices = await fetchPrices(ids, { apiKey, logger });
-  const { offers, skipped } = normalizeDeals(prices, { logger });
-  logger.info('itad.normalized', { games: ids.length, offers: offers.length, skipped });
-  const stats = await withStore((store) => ingestOffers(store, { platform: itad, offers, logger }));
-  logger.info('sync.done', { platform: itad.code, ...stats });
+  logger.info('sync.start', { platform: itad.code, games: candidates.length });
+  const ids = [];
+  const marks = [];
+  let matched = 0;
+  let noMatch = 0;
+  let failed = 0;
+  for (const g of candidates) {
+    try {
+      let bestId = g.external_id ?? null;
+      if (!bestId) {
+        // 优先英文名搜索（命中率高）；没有英文名再用中文名
+        const query = String(g.name_en || g.name || '').trim();
+        const hits = await searchGame(query, { apiKey, logger });
+        const best = hits.find((h) => h.title?.toLowerCase() === query.toLowerCase()) ?? hits[0];
+        logger.info('itad.search_result', {
+          query,
+          hits: hits.length,
+          picked: best?.title ?? null,
+          pickedId: best?.id ?? null,
+          top3: hits.slice(0, 3).map((h) => h.title),
+        });
+        bestId = best?.id ?? null;
+      }
+      if (bestId) {
+        ids.push(String(bestId));
+        marks.push({ gameId: g.game_id, status: 'matched', externalId: String(bestId), ok: true });
+        matched += 1;
+      } else {
+        marks.push({ gameId: g.game_id, status: 'nomatch', ok: false });
+        noMatch += 1;
+      }
+    } catch (err) {
+      logger.error('itad.item_failed', { game: g.name_en || g.name, err: serializeError(err) });
+      marks.push({ gameId: g.game_id, status: 'failed', ok: false, error: String(err.message).slice(0, 200) });
+      failed += 1;
+    }
+    await sleep(Number(flag('rate', 1000)));
+  }
+
+  if (marks.length) {
+    await withStore(async (store) => {
+      const q = (sql, p) => store.query(sql, p);
+      for (const m of marks) await db.sourceSyncMark(q, { gameId: m.gameId, platform: 'itad', ...m });
+    });
+  }
+
+  let fetched = 0;
+  let stats = {};
+  if (ids.length) {
+    const prices = await fetchPrices(ids, { apiKey, logger });
+    const { offers, skipped } = normalizeDeals(prices, { logger });
+    fetched = offers.length;
+    logger.info('itad.normalized', { games: ids.length, offers: offers.length, skipped });
+    stats = await withStore((store) => ingestOffers(store, { platform: itad, offers, logger }));
+  }
+  const prog = await withStore((store) => db.sourceSyncStats((sql, p) => store.query(sql, p)));
+  const by = prog.byPlatform.itad ?? { pending: 0, nomatch: 0 };
+  logger.info('sync.source_progress', { platform: itad.code, scanned: candidates.length, matched, nomatch: noMatch, failed, remaining: by.pending + by.nomatch });
+  logger.info('sync.done', { platform: itad.code, fetched, ...stats });
+  console.log(`ITAD：扫描 ${candidates.length}，匹配 ${matched}，未命中 ${noMatch}，失败 ${failed}，取价 ${fetched} 条`);
 }
 
 async function cmdWatch() {
@@ -817,35 +878,51 @@ async function cmdNotifyTest() {
  * 按英文名检索型适配器的通用同步流程（GOG / Humble）。
  * 关键点：把 steamAppid 注入 offer，才能并进已有游戏行而不是新建一条英文名记录。
  * regions 非空时按区服逐个查询（只有声明支持多区的适配器才传）。
+ * CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.2/§3.3）：候选有游标（pending→nomatch 7 天→matched 间隔→failed 退避）；
+ * 已命中（matched + external_id）的游戏按 id/slug 直接刷新，不再重新搜索。
  */
-async function syncByTitle(adapter, { label = adapter.code, limit = 50, rate = 1200, regions = null } = {}) {
-  const games = await withStore(async (store) => {
-    const r = await store.query(
-      `select steam_appid, name, name_en from games
-        where steam_appid is not null and name_en is not null
-        order by id limit $1`,
-      [limit],
-    );
-    return r.rows;
-  });
-  if (!games.length) throw new Error('库里没有带英文名的游戏，先跑 seed（data/games.json 需要 nameEn）');
+async function syncByTitle(adapter, { label = adapter.code, limit = 50, rate = 1200, regions = null, refreshInterval = '12 hours' } = {}) {
+  const candidates = await withStore((store) =>
+    db.sourceSyncCandidates((sql, p) => store.query(sql, p), { platform: adapter.code, limit, refreshInterval }),
+  );
+  if (!candidates.length) {
+    logger.info('sync.skip', { platform: adapter.code, reason: 'no_candidates' });
+    console.log(`${label}：没有待处理的游戏。`);
+    return;
+  }
 
   const regionList = regions?.length ? regions : [null];
-  logger.info('sync.start', { platform: adapter.code, games: games.length, regions: regionList.filter(Boolean) });
+  logger.info('sync.start', { platform: adapter.code, games: candidates.length, regions: regionList.filter(Boolean) });
 
   const offers = [];
+  const marks = [];
+  let matched = 0;
   let noMatch = 0;
-  for (const g of games) {
+  let failed = 0;
+  for (const g of candidates) {
+    let anyOffer = false;
+    let gameFailed = false;
+    let externalId = g.external_id ?? null;
     for (const region of regionList) {
       try {
-        const { offer } = await adapter.searchOffer(g.name_en, {
-          logger,
-          steamAppid: g.steam_appid,
-          ...(region ? { region } : {}),
-        });
-        if (offer) offers.push(offer);
-        else noMatch += 1;
+        let result;
+        if (g.status === 'matched' && externalId) {
+          // 复用外部 id/slug 刷新（GOG 按 product id、Humble 按 slug），不再重新搜索
+          result = adapter.fetchById
+            ? await adapter.fetchById(externalId, { logger, steamAppid: g.steam_appid, ...(region ? { region } : {}) })
+            : adapter.fetchBySlug
+              ? await adapter.fetchBySlug(externalId, { logger, steamAppid: g.steam_appid })
+              : await adapter.searchOffer(g.name_en, { logger, steamAppid: g.steam_appid, ...(region ? { region } : {}) });
+        } else {
+          result = await adapter.searchOffer(g.name_en, { logger, steamAppid: g.steam_appid, ...(region ? { region } : {}) });
+        }
+        if (result?.offer) {
+          offers.push(result.offer);
+          anyOffer = true;
+          externalId = String(result.offer.platformProductId ?? result.offer.meta?.slug ?? externalId);
+        }
       } catch (err) {
+        gameFailed = true;
         logger.error('sync.item_failed', {
           platform: adapter.code,
           game: g.name_en,
@@ -855,12 +932,32 @@ async function syncByTitle(adapter, { label = adapter.code, limit = 50, rate = 1
       }
       await sleep(rate);
     }
+    if (anyOffer) {
+      matched += 1;
+      marks.push({ gameId: g.game_id, status: 'matched', externalId, ok: true });
+    } else if (gameFailed) {
+      failed += 1;
+      marks.push({ gameId: g.game_id, status: 'failed', ok: false, error: 'request_failed' });
+    } else {
+      noMatch += 1;
+      marks.push({ gameId: g.game_id, status: 'nomatch', ok: false });
+    }
+  }
+
+  if (marks.length) {
+    await withStore(async (store) => {
+      const q = (sql, p) => store.query(sql, p);
+      for (const m of marks) await db.sourceSyncMark(q, { gameId: m.gameId, platform: adapter.code, ...m });
+    });
   }
 
   const stats = await withStore((store) => ingestOffers(store, { platform: adapter, offers, logger }));
-  logger.info('sync.done', { platform: adapter.code, queried: games.length, regions: regionList.filter(Boolean), matched: offers.length, noMatch, ...stats });
+  const prog = await withStore((store) => db.sourceSyncStats((sql, p) => store.query(sql, p)));
+  const by = prog.byPlatform[adapter.code] ?? { pending: 0, nomatch: 0 };
+  logger.info('sync.source_progress', { platform: adapter.code, scanned: candidates.length, matched, nomatch: noMatch, failed, remaining: by.pending + by.nomatch });
+  logger.info('sync.done', { platform: adapter.code, queried: candidates.length, regions: regionList.filter(Boolean), matched, noMatch, ...stats });
   const regionNote = regionList.filter(Boolean).length > 1 ? ` × ${regionList.filter(Boolean).length} 区服` : '';
-  console.log(`${label}：查询 ${games.length} 款${regionNote}，匹配 ${offers.length} 条报价，未找到 ${noMatch} 次`);
+  console.log(`${label}：扫描 ${candidates.length} 款${regionNote}，匹配 ${matched} 条报价，未找到 ${noMatch} 次，失败 ${failed} 次`);
 }
 
 async function cmdSyncGog() {
@@ -868,16 +965,24 @@ async function cmdSyncGog() {
   const regions = raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
   // 提前校验区服，避免跑一半才发现拼错、静默拿到错误币种
   for (const region of regions) gogResolveRegion(region);
+  const refreshMinutes = Math.max(1, Number(process.env.GOG_INTERVAL_MIN || 720));
   await syncByTitle(gog, {
     label: 'GOG',
-    limit: Number(flag('limit', 50)),
+    limit: Number(process.env.SOURCES_GOG_LIMIT || flag('limit', 50)),
     rate: Number(flag('rate', 1200)),
     regions,
+    refreshInterval: `${Math.max(1, Math.round(refreshMinutes / 60))} hours`,
   });
 }
 
 async function cmdSyncHumble() {
-  await syncByTitle(humble, { label: 'Humble', limit: Number(flag('limit', 50)), rate: Number(flag('rate', 1500)) });
+  const refreshMinutes = Math.max(1, Number(process.env.HUMBLE_INTERVAL_MIN || 720));
+  await syncByTitle(humble, {
+    label: 'Humble',
+    limit: Number(process.env.SOURCES_HUMBLE_LIMIT || flag('limit', 50)),
+    rate: Number(flag('rate', 1500)),
+    refreshInterval: `${Math.max(1, Math.round(refreshMinutes / 60))} hours`,
+  });
 }
 
 /** 杉果 SKU 自动发现：从前沿向后探测，连续空壳即停。 */
@@ -1003,6 +1108,7 @@ async function cmdMatch() {
   const minScore = Number(flag('min-score', 0.86));
   const autoScore = Number(flag('auto-score', 0.94));
   const apply = flag('apply', false) === true;
+  const yes = flag('yes', false) === true;
   const limit = Number(flag('limit', 200));
   const unresolved = entries.filter((e) => !e.appid && e.name).slice(0, limit);
 
@@ -1016,23 +1122,25 @@ async function cmdMatch() {
 
   const proposals = [];
   for (const entry of unresolved) {
-    const best = bestMatch(entry.name, games, { minScore });
+    const best = bestMatch(entry.name, games, { minScore, autoScore });
     if (!best) {
       console.log(`${pad(entry.skuId, 8)} ${pad(entry.name, 26)} ${pad('—', 22)} ${pad('—', 8)} ${pad('—', 6)} 无候选`);
       continue;
     }
-    const label = confidenceLabel(best.score);
+    // 建议以「自动判定」为准：片段加分只影响提案展示，自动与否只看完整标题
+    const label = best.auto ? '自动' : '待确认';
+    const note = best.reasons?.length ? `（${best.reasons.join('、')}）` : '';
     proposals.push({ entry, best, label });
     console.log(
       `${pad(entry.skuId, 8)} ${pad(entry.name, 26)} ${pad(best.candidate.name ?? best.matchedField, 22)} ` +
-        `${pad(best.candidate.steam_appid, 8)} ${pad(best.score.toFixed(2), 6)} ${label}`,
+        `${pad(best.candidate.steam_appid, 8)} ${pad(best.score.toFixed(2), 6)} ${label}${note}`,
     );
   }
 
   logger.info('match.proposals', {
     unresolved: unresolved.length,
     proposed: proposals.length,
-    auto: proposals.filter((p) => p.label === '自动').length,
+    auto: proposals.filter((p) => p.best.auto).length,
   });
 
   if (!proposals.length) {
@@ -1040,16 +1148,30 @@ async function cmdMatch() {
     return;
   }
 
+  const auto = proposals.filter((p) => p.best.auto);
+
   if (!apply) {
-    console.log(`\n以上为提案（未写入）。加 --apply 自动应用「自动」级别的 ${proposals.filter((p) => p.label === '自动').length} 条。`);
+    console.log(
+      `\n以上为提案（未写入）。加 --apply --yes 自动应用「自动」级别的 ${auto.length} 条（--apply 必须带 --yes 二次确认）。`,
+    );
     return;
   }
 
-  const auto = proposals.filter((p) => p.label === '自动');
+  // CE 加固（SONKWO-STEAM-MATCH.md §9）：--apply 必须 --yes 二次确认，并逐条打印对照
+  if (!yes) {
+    console.log(`\n将自动应用的 ${auto.length} 条对照（未写入，需 --yes 二次确认）：`);
+    for (const p of auto) {
+      console.log(`  ${p.entry.name} → ${p.best.candidate.name ?? p.best.matchedField}（appid ${p.best.candidate.steam_appid}）`);
+    }
+    throw new Error('match --apply 需要 --yes 二次确认：核对以上「杉果名 → 候选名/appid」对照后，加 --yes 重新执行');
+  }
+
   let mapped = 0;
   let merged = 0;
+  console.log(`\n开始应用（逐条对照，共 ${auto.length} 条）：`);
   for (const p of auto) {
     const appid = p.best.candidate.steam_appid;
+    console.log(`  ${p.entry.name} → ${p.best.candidate.name ?? p.best.matchedField}（appid ${appid}）`);
     await withStore((store) => applySkuMapping(store, { skuId: Number(p.entry.skuId), appid }));
     p.entry.appid = appid;
     mapped += 1;
@@ -1057,7 +1179,7 @@ async function cmdMatch() {
   }
   writeFileSync(skuFile, `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
   logger.info('match.applied', { mapped });
-  console.log(`\n已写入 ${mapped} 条映射到 ${skuFile}（阈值 ${autoScore}）。其余请用 --confirm 逐个确认。`);
+  console.log(`\n已写入 ${mapped} 条映射到 ${skuFile}（自动阈值 ${autoScore}）。其余请用 --confirm 逐个确认。`);
 }
 
 /** 多区服对比：同一款游戏在各区服的报价并排展示（不同币种不折算）。 */
@@ -2715,7 +2837,7 @@ async function main() {
   chart                生成静态价格页（曲线图）到 out/，用浏览器直接打开
   watch add|rm|list    关注列表：watch add 1091500 --target 99
   discover sonkwo      自动发现杉果 SKU（从前沿向后探测，连续空壳即停）
-  match                把杉果 SKU 对齐到 Steam 游戏（--apply 自动应用、--confirm 手工确认）
+  match                把杉果 SKU 对齐到 Steam 游戏（--apply --yes 二次确认自动应用、--confirm 手工确认）
   compare <appid>      多区服对比（--region 只看某区、--json 机器可读）
   import steam         导入 Steam 游戏信息（--appids / --urls / --file，双后端自动回落）
   owned <appid> on|off      标记已拥有（⚠️ 全局标记已废弃，前台按绑定 Steam 账号推导）
