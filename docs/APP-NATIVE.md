@@ -118,13 +118,23 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 - **需要登录的功能**：感兴趣 / 不感兴趣 / 已拥有、愿望单（切换与列表）、通知已读、主题偏好保存、「我的」里的账号相关操作；
 - 未登录点击上述功能：
   - 弹原生提示（底部弹层/对话框）：「登录后才能使用该功能」+「去登录」/「取消」；
-  - 去登录 → 登录页；登录成功后回到原页面（保留列表滚动/详情数据），**不自动执行原操作**（需用户再点一次，避免误操作）；
+  - 去登录 → 登录页；登录成功后回到原页面（保留列表滚动/详情数据），并**自动执行刚才的操作一次**（见 §4.2.2）；
 - 请求层：公开 API 匿名可调；用户 API 未登录/Token 失效返回 `401 { error: 'login_required' }`，App 统一拦截 → 弹登录提示；
 - 「愿望单」「我的」Tab：未登录时显示登录引导页（不空白、不报错）；
 - **不强制登录、不弹全屏登录墙**；只有用户主动点用户功能时才提示。- 外链（Steam 商店）用 Custom Tabs 打开（`androidx.browser`）；
 - 详情价格历史用原生绘制（Compose Canvas，不引入图表库）；
 - 离线：列表/详情缓存最近数据（Room 或 DataStore 简版，待定）。
 
+### 4.2.2 登录后自动完成刚才的操作（2026-11-16 确认）
+
+- 触发登录提示时，App 暂存一个 `pendingAction`：`{ type: 'interested'|'uninterested'|'wishlist'|..., appid, payload, route, scrollY }`；
+  **同一时间只保留最近一次**，新的登录门槛操作覆盖旧的；
+- 登录成功回到原页面：先恢复路由与滚动位置，再**执行 pendingAction 一次**，无论成功失败都清空；
+  - 成功：刷新该游戏状态，Toast 提示（如「已加入愿望单」「已标记感兴趣」）；
+  - 失败：Toast 错误、保持原状态，**不自动重试、不循环弹登录**；
+- 用户取消登录 / 登录失败 / App 被杀 → 清空 `pendingAction`，不执行；
+- 执行期间按钮 loading/防抖，避免重复提交；
+- 「愿望单」「我的」这类整页需要登录的入口：登录后直接进入对应页面，不需要 `pendingAction`。
 ### 4.3 App 内置更新（接管原 BY）
 
 - 沿用 [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md) 的**交互与元数据契约**（`latest.json` + `versionCode/notes/minVersionCode`、Wi-Fi 默认、SHA-256 校验、系统安装确认），
@@ -162,12 +172,13 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 5. **Web 跳转**：手机浏览器前台 → `/app`；微信内 → 浏览器打开提示；`/console` 手机端仍可登录使用。
 6. **桌面 web** 行为不变；`npm test` / `frontend:build` / `scan` 全绿。
 7. **游客模式**：未登录可正常浏览首页/搜索/详情（含 DLC/价格历史）；点「感兴趣/不感兴趣/愿望单」弹登录提示；
-   登录成功后回到原页面、不自动执行原操作；「愿望单/我的」未登录显示登录引导。
+   登录成功后回到原页面并**自动完成刚才的操作一次**；取消登录/失败则清空待执行动作；「愿望单/我的」未登录显示登录引导。
 8. **鉴权语义**：公开 API 匿名可调；用户 API 未登录/Token 失效返回 401 `login_required`，App 统一弹登录提示；不出现全屏登录墙。
 7. **仓库**：App 代码在独立 `steamdeals-app` 仓库；站点仓库不再含 App 工程与 APK 构建；规格/TODO 仍在站点仓库。
 8. **App 启动封禁**：黑名单 IP / 设备封禁 → 打开 App 弹出「你已经被封禁」+「已知晓」→ 点击后退出；未被封正常进入；
    Web 端同一 IP 仍被拦；App 无申诉入口、无黑名单管理界面（管理界面后置）。
 9. **App 命名空间**：`/api/app/*` 不执行 IP 黑名单/设备封禁；`/api/app/status` 返回类型正确；Web `/api/*` 行为不变。10. **App 限流**：`/api/app/*` 保留基础限流；滥用时返回 429（不弹窗、不算封禁）；黑名单豁免不影响 Web 端拦截。
+11. **pendingAction**：登录后自动执行刚才的操作一次并 Toast；取消/失败清空且不循环；恢复原路由与滚动；执行期间防重复提交。
 
 ## 8. 本批不做
 
@@ -188,7 +199,7 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 6. **依赖清单**：默认 Compose + OkHttp + kotlinx.serialization + Coil + DataStore（不引 Hilt/Retrofit）；
 7. **App 页面效果图确认**：开发前置（CA-2 起每期先确认）；**六屏已确认（2026-11-16）**；
 8. **App 命名空间限流**：**已确认保留全局 API 基础限流（2026-11-16）**；App 无感，滥用才 429；后续可按需单独调高阈值；
-9. **设备 ID 来源**：默认 App 安装 UUID（DataStore），不使用 Android ID（隐私/重置问题）。10. **登录后动作**：默认回到原页面、不自动重放原操作（简单、防误触）；若希望"登录后自动完成刚才的操作"，需明确。
+9. **设备 ID 来源**：默认 App 安装 UUID（DataStore），不使用 Android ID（隐私/重置问题）。10. **登录后动作**：**已确认自动完成刚才的操作一次**（2026-11-16）；见 §4.2.2。
 
 ## 10. App 页面效果图（2026-11-16 已确认，CA-2~CA-4 设计基线）
 
