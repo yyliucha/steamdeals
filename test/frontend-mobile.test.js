@@ -52,3 +52,50 @@ test('AdminModules 手机卡片分支存在，断点 760 响应式', () => {
   const cardBranches = (adminModules.match(/v-else class="game-card-list"/g) || []).length;
   assert.ok(cardBranches >= 8, `访问记录各 tab 都要有卡片分支，实际 ${cardBranches}`);
 });
+
+// ---------------------------------------------------------------- BY 批（docs/MOBILE-APP-UPDATE.md §4.5/§5）
+// 「我的 → 检查更新」：自定义 scheme 拉起 App 检查逻辑，浏览器 1.5s 回落 /app；
+// Android 侧（AppUpdater/LauncherActivity/Manifest/文件路径）静态断言锁关键契约。
+
+test('BY-3：Home.vue「我的」面板有检查更新入口（scheme + 1.5s 回落 /app + 切后台取消）', () => {
+  assert.match(home, /检查更新/, '「我的」面板入口文案');
+  assert.match(home, /steamdeals:\/\/check-update/, '自定义 scheme 拉起 App 检查');
+  assert.match(home, /setTimeout\(\(\)=>\{router\.push\('\/app'\);?\},1500\)/, '浏览器 1.5s 回落 /app');
+  assert.match(home, /cancelUpdateFallback/, '切后台/卸载时取消回落定时');
+});
+
+test('BY-2：Android 更新模块关键契约——检查/对话框/下载/校验/安装/权限/scheme', () => {
+  const updater = readFileSync(ROOT + 'android/app/src/main/java/cn/yyliucha/steamdeals/AppUpdater.java', 'utf8');
+  const launcher = readFileSync(ROOT + 'android/app/src/main/java/cn/yyliucha/steamdeals/LauncherActivity.java', 'utf8');
+  const manifest = readFileSync(ROOT + 'android/app/src/main/AndroidManifest.xml', 'utf8');
+  const filepaths = readFileSync(ROOT + 'android/app/src/main/res/xml/filepaths.xml', 'utf8');
+  const gradle = readFileSync(ROOT + 'android/app/build.gradle', 'utf8');
+
+  assert.match(updater, /BuildConfig\.VERSION_CODE/, '版本比较用 BuildConfig.VERSION_CODE');
+  assert.match(updater, /KEY_IGNORED_VERSION/, '忽略此版本（SharedPreferences）');
+  assert.match(updater, /CHECK_THROTTLE_MS = 24L/, '回前台 24h 节流');
+  assert.match(updater, /minVersionCode > currentCode/, '低于 minVersionCode 强制');
+  assert.match(updater, /DownloadManager/, 'DownloadManager 下载');
+  assert.match(updater, /SHA-256|MessageDigest/, 'SHA-256 校验');
+  assert.match(updater, /PackageInstaller/, 'PackageInstaller 安装');
+  assert.match(updater, /canRequestPackageInstalls/, 'Android 8+ 未知来源引导');
+  assert.match(updater, /isAllowedUrl/, 'https + 白名单主机');
+  assert.match(updater, /githubFallbackUrl|GITHUB_RELEASE/, 'GitHub Release 兜底');
+  assert.match(launcher, /AppUpdater\.checkForUpdate\(this, false, false\)/, '启动时检查');
+  assert.match(launcher, /AppUpdater\.checkForUpdate\(this, true, false\)/, '回前台检查（24h 节流）');
+  assert.match(launcher, /steamdeals.*check-update/, 'onNewIntent 处理手动 scheme');
+  assert.match(manifest, /REQUEST_INSTALL_PACKAGES/, '安装权限声明');
+  assert.match(manifest, /android:scheme="steamdeals"/, 'scheme intent-filter');
+  assert.match(filepaths, /updates/, 'FileProvider 更新包路径');
+  assert.match(gradle, /buildConfig true/, '启用 BuildConfig');
+});
+
+test('BY-1：latest.json 契约——新字段齐全且与 BS 字段并存', () => {
+  const latest = JSON.parse(readFileSync(ROOT + 'frontend/public/app/latest.json', 'utf8'));
+  assert.equal(latest.versionCode, 21600, 'versionCode 沿用 major*10000+minor*100+patch');
+  assert.equal(latest.minVersionCode, 21600, 'minVersionCode 存在');
+  assert.ok(Array.isArray(latest.notes) && latest.notes.length > 0, 'notes 字符串数组');
+  for (const key of ['version', 'apkPath', 'sha256', 'size', 'releasedAt']) {
+    assert.ok(key in latest, `旧字段 ${key} 保留`);
+  }
+});

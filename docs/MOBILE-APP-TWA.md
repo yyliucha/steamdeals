@@ -168,3 +168,18 @@
 所有者决定改用**原生 Android App**（[APP-NATIVE.md](APP-NATIVE.md)，编号 CA）：App 与 Web 完全拆分（页面/部署/认证独立）、
 共用同一数据库与后端。本 TWA 方案与 APK **停发**；已装 2.16.0 的用户可**同包名/同签名直接覆盖安装**原生 App（一次），
 之后由 App 内置更新接管。本规格作为历史保留。
+
+## 13. 2026-11-16 BY 重新派发（所有者指令，落地记录）
+
+CA 决策后 BY 曾标「已过时 · 并入 CA-4」；所有者 2026-11-16 重新派发 BY（BY-1 ~ BY-4），按 §11 的
+「原生小模块、不换壳」在本 TWA 工程内落地，交互与元数据契约由 CA-4 沿用（[APP-NATIVE.md](APP-NATIVE.md) §4.3）：
+
+- **BY-1 元数据**：`latest.json` / `GET /api/app/latest` 增加 `versionCode` / `minVersionCode` / `notes`
+  （缺失返回 null、旧字符串 notes 按单条处理，旧客户端忽略新字段）；
+- **BY-2 更新模块**：`android/.../AppUpdater.java`——启动检查 + 回前台 24h 节流；原生对话框
+  （版本/大小/说明，可选=立即更新/稍后/忽略此版本，低于 minVersionCode 强制不可取消）；
+  DownloadManager 下载（默认仅 Wi-Fi、移动网络弹选择、进度轮询、站点失败回落 GitHub Release、
+  https+白名单主机）、SHA-256 校验（不匹配删除并提示）、PackageInstaller 安装（Android 8+ 引导
+  允许安装未知应用、FileProvider 兜底）；`LauncherActivity` 挂 onCreate/onResume/onNewIntent；
+- **BY-3 手动入口**：`steamdeals://check-update` intent-filter + 「我的 → 检查更新」（浏览器 1.5s 回落 `/app`）；
+- **BY-4 文档**：本节 + README 能力表 + DELIVERY 发版清单（versionCode 递增、签名不变、最近 3 个 APK）。

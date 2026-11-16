@@ -15,4 +15,6 @@
 -->
 <paths>
     <files-path path="twa_splash/" name="twa_splash" />
+    <!-- BY 批（docs/MOBILE-APP-UPDATE.md §4.4）：更新包落 filesDir/updates/，FileProvider 兜底安装用 -->
+    <files-path path="updates/" name="updates" />
 </paths>

@@ -3,5 +3,8 @@
   "releasedAt": "2026-11-14",
   "size": 1472278,
   "apkPath": "/app/steamdeals-2.16.0.apk",
-  "version": "2.16.0"
+  "version": "2.16.0",
+  "versionCode": 21600,
+  "minVersionCode": 21600,
+  "notes": ["封禁自助恢复与手机适配", "站内申诉系统（提交 / 后台处理 / 邮件一键信任）"]
 }

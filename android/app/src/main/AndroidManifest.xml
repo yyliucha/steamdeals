@@ -22,6 +22,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="cn.yyliucha.steamdeals">
 
+    <!-- BY 批（docs/MOBILE-APP-UPDATE.md §4.4）：Android 8+ 用户确认安装需要该权限 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     
 
     
@@ -150,6 +153,14 @@
                     android:host="@string/hostName"
                 
                 />
+            </intent-filter>
+
+            <!-- BY-3（docs/MOBILE-APP-UPDATE.md §4.5）：「我的 → 检查更新」自定义 scheme -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="steamdeals" android:host="check-update" />
             </intent-filter>
 
             

@@ -1507,8 +1507,13 @@ export function createApiServer({
         const file = process.env.APP_LATEST_FILE ?? resolve(frontendDir ?? 'frontend/dist', 'app', 'latest.json');
         try {
           const data = JSON.parse(readFileSync(file, 'utf8'));
+          // BY 批（docs/MOBILE-APP-UPDATE.md §3）：versionCode/minVersionCode/notes 透传，
+          // 缺失时返回 null 不报错（旧清单/旧客户端不受影响）；notes 兼容旧字符串格式（按单条处理）。
           return json(res, 200, {
             version: data.version ?? null,
+            versionCode: data.versionCode == null ? null : Number(data.versionCode),
+            minVersionCode: data.minVersionCode == null ? null : Number(data.minVersionCode),
+            notes: data.notes == null ? null : (Array.isArray(data.notes) ? data.notes : [data.notes]),
             apkPath: data.apkPath ?? null,
             sha256: data.sha256 ?? null,
             size: data.size == null ? null : Number(data.size),
@@ -1516,7 +1521,7 @@ export function createApiServer({
           });
         } catch (err) {
           logger?.warn?.('api.app_latest_missing', { file, message: String(err?.message ?? err).slice(0, 120) });
-          return json(res, 200, { version: null, apkPath: null, sha256: null, size: null, releasedAt: null });
+          return json(res, 200, { version: null, versionCode: null, minVersionCode: null, notes: null, apkPath: null, sha256: null, size: null, releasedAt: null });
         }
       }
 

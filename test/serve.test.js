@@ -144,7 +144,7 @@ test('BS-1：/.well-known/assetlinks.json、/sw.js、/app/*.apk 返回 200 + 正
   writeFileSync(join(frontend, 'sw.js'), 'self.addEventListener("install",()=>{});');
   mkdirSync(join(frontend, 'app'));
   writeFileSync(join(frontend, 'app', 'steamdeals-test.apk'), 'fake-apk-bytes');
-  writeFileSync(join(frontend, 'app', 'latest.json'), JSON.stringify({ version: '2.16.0', apkPath: '/app/steamdeals-test.apk', sha256: 'abc123', size: 42, releasedAt: '2026-11-14' }));
+  writeFileSync(join(frontend, 'app', 'latest.json'), JSON.stringify({ version: '2.16.0', versionCode: 21600, minVersionCode: 21600, notes: ['修复 A', '新增 B'], apkPath: '/app/steamdeals-test.apk', sha256: 'abc123', size: 42, releasedAt: '2026-11-14' }));
   const store = await openStore('pglite:', {});
   await db.migrate(store);
   const q = (sql, p) => store.query(sql, p);
@@ -166,9 +166,43 @@ test('BS-1：/.well-known/assetlinks.json、/sw.js、/app/*.apk 返回 200 + 正
     assert.ok(FRONTEND_PAGES.includes('/app') && FRONTEND_PAGES.includes('/app/'), '/app 已登记 FRONTEND_PAGES');
     // BS-2：/api/app/latest 读 frontendDir 下的 app/latest.json（字段齐全且透传）
     const latest = await (await fetch(`${base}/api/app/latest`)).json();
-    assert.deepEqual(latest, { version: '2.16.0', apkPath: '/app/steamdeals-test.apk', sha256: 'abc123', size: 42, releasedAt: '2026-11-14' }, '清单透传');
+    assert.deepEqual(latest, { version: '2.16.0', versionCode: 21600, minVersionCode: 21600, notes: ['修复 A', '新增 B'], apkPath: '/app/steamdeals-test.apk', sha256: 'abc123', size: 42, releasedAt: '2026-11-14' }, '清单透传（含 BY 批 versionCode/minVersionCode/notes）');
   } finally {
     await srv.close();
+    await store.close();
+  }
+});
+
+test('BY-1：/api/app/latest 新字段缺失时返回 null 不报错（旧清单兼容）；notes 旧字符串格式按单条处理', async () => {
+  const frontend = mkdtempSync(join(tmpdir(), 'gp-frontend-'));
+  writeFileSync(join(frontend, 'index.html'), '<!doctype html><html><body>ok</body></html>');
+  mkdirSync(join(frontend, 'app'));
+  // 旧格式清单：无 versionCode/minVersionCode，notes 是单段字符串
+  writeFileSync(join(frontend, 'app', 'latest.json'), JSON.stringify({ version: '2.16.0', apkPath: '/app/x.apk', notes: '单段说明' }));
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  const srv = await startApiServer({ query: q, frontendDir: frontend, port: 0, host: '127.0.0.1' });
+  const base = `http://127.0.0.1:${srv.port}`;
+  try {
+    const latest = await (await fetch(`${base}/api/app/latest`)).json();
+    assert.equal(latest.versionCode, null, '缺失 versionCode → null');
+    assert.equal(latest.minVersionCode, null, '缺失 minVersionCode → null');
+    assert.deepEqual(latest.notes, ['单段说明'], '旧字符串 notes 按单条数组处理');
+    assert.equal(latest.sha256, null, '其它缺失字段仍是 null（旧形状不变）');
+    // 清单文件不存在也不报错
+    await srv.close();
+    const srv2 = await startApiServer({ query: q, frontendDir: mkdtempSync(join(tmpdir(), 'gp-frontend-empty-')), port: 0, host: '127.0.0.1' });
+    try {
+      const missing = await (await fetch(`http://127.0.0.1:${srv2.port}/api/app/latest`)).json();
+      assert.equal(missing.version, null);
+      assert.equal(missing.versionCode, null);
+      assert.equal(missing.minVersionCode, null);
+      assert.equal(missing.notes, null);
+    } finally {
+      await srv2.close();
+    }
+  } finally {
     await store.close();
   }
 });

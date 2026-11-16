@@ -15,6 +15,7 @@
  */
 package cn.yyliucha.steamdeals;
 
+import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.net.Uri;
 import android.os.Build;
@@ -39,6 +40,25 @@ public class LauncherActivity
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
         } else {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        }
+        // BY 批（docs/MOBILE-APP-UPDATE.md §4.1）：启动时检查更新（不节流、失败静默不阻塞进站）
+        AppUpdater.checkForUpdate(this, false, false);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 回前台检查：24 小时最多一次（手动入口与启动不受节流）
+        AppUpdater.checkForUpdate(this, true, false);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // BY-3（§4.5）：「我的 → 检查更新」用自定义 scheme 拉起本 Activity
+        Uri data = intent == null ? null : intent.getData();
+        if (data != null && "steamdeals".equals(data.getScheme()) && "check-update".equals(data.getHost())) {
+            AppUpdater.checkForUpdate(this, false, true);
         }
     }
 

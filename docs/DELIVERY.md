@@ -53,6 +53,12 @@ npm run frontend:dev           # 另开终端：Vite 5174，/api 代理到 8090�
 > **BS 批（docs/MOBILE-APP-TWA.md §5.3）：APK 必须先入库、再下令构建。**
 > 镜像构建时 `frontend/public/**` 才会被拷进 `dist/`——本机出 APK → 放 `frontend/public/app/` + 更新同目录
 > `latest.json` → 提交推 main，**之后**再下令「构建 vX.Y.Z」；先构建后放包 = 该版镜像里没有包，`/app` 页面 404。
+>
+> **BY 批（docs/MOBILE-APP-UPDATE.md §5）：App 内置更新的发版清单**
+> ① `android/twa-manifest.json` / `app/build.gradle` 的 `appVersionName/appVersionCode` = 本次版本（**单调递增**，
+> 签名 keystore 不变，否则覆盖安装被系统拒绝）；② 出包后写 `frontend/public/app/latest.json`：
+> `version/versionCode/minVersionCode/apkPath/sha256/size/releasedAt/notes`（`versionCode` = major×10000+minor×100+patch）；
+> ③ 只保留最近 3 个 APK（更早的删文件）；④ 同一 APK 传 GitHub Release（tag `app-v<version>`）作为 App 下载兜底。
 
 ```bash
 cd F:\dsh\gameprice

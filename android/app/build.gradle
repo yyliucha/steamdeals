@@ -53,6 +53,10 @@ def twaManifest = [
 android {
     compileSdkVersion 36
     namespace "cn.yyliucha.steamdeals"
+    // BY 批（docs/MOBILE-APP-UPDATE.md §4.1）：BuildConfig.VERSION_CODE 用于版本比较
+    buildFeatures {
+        buildConfig true
+    }
     defaultConfig {
         applicationId "cn.yyliucha.steamdeals"
         minSdkVersion 24
