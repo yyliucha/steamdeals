@@ -72,6 +72,10 @@ export const SETTINGS = [
     options: ['hide', 'badge', 'show'],
     help: '按 Steam 平台标签派生的站点标记（非法律定性）：hide=前台不展示（默认，后台始终可见）/ badge=展示并带「成人内容」角标 / show=正常展示。',
   }),
+  // CB 批（docs/PRICE-REPORT-EMAIL.md §3.4）：邮件/后台生成的站内链接基准地址（CLI 场景拿不到 req）
+  def('site.publicUrl', 'SITE_PUBLIC_URL', 'site', '站点公开地址', 'string', 'https://sd.yyliucha.cn', {
+    help: '价格报表邮件里的站内链接（首页/搜索/CTA）以它为准；留空回退默认值。',
+  }),
   def('steamStatus.rateMs', 'STEAM_STATUS_RATE_MS', 'sources', 'Steam 状态判定限速（毫秒）', 'int', 1500, {
     min: 0,
     max: 30000,

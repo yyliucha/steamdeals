@@ -14,6 +14,8 @@ import { applySteamDetails, entryFromMeta, runSteamStatusRound } from './steam-s
 import { buildSite } from './report.js';
 import { evaluateAlerts, renderDigest, toPayload } from './alerts.js';
 import { channelsFromEnv, deliver, hasNotifier } from './notify.js';
+// CB 批（docs/PRICE-REPORT-EMAIL.md §3.3）：价格报表邮件 HTML 渲染
+import { renderPriceReport } from './price-report-html.js';
 import { descriptor as steam, syncPrices, syncMeta, classifySteamStatus } from './adapters/steam.js';
 import { descriptor as sonkwo, fetchSku } from './adapters/sonkwo.js';
 import { descriptor as itad, searchGame, fetchPrices, normalizeDeals } from './adapters/itad.js';
@@ -2349,24 +2351,19 @@ async function cmdReport() {
     if (!channels.length) {
       console.log('\n没有配置任何提醒通道，跳过推送（ALERT_WEBHOOK_URL / WECOM_WEBHOOK_URL / SMTP_HOST+ALERT_EMAIL_TO）');
     } else {
-      const fmt = (x) => `¥${(x / 100).toFixed(2)}`;
-      const lines = [
-        `SteamDeals 价格报表（近 ${rep.hours} 小时）`,
-        `降价 ${rep.drops} 条 / 涨价 ${rep.rises} 条 / 新史低 ${rep.newLows} 条`,
-      ];
-      for (const d of rep.topDrops.slice(0, 5)) {
-        const pct = d.was > 0 ? Math.round((d.drop_cents / d.was) * 100) : 0;
-        lines.push(`↓ ${fmt(d.was)} → ${fmt(d.now_price)}（-${pct}%）${d.name} · ${d.platform_name}`);
-      }
-      for (const r of rep.topRises.slice(0, 3)) {
-        lines.push(`↑ ${fmt(r.was)} → ${fmt(r.now_price)}  ${r.name} · ${r.platform_name}`);
-      }
-      if (daily.length) lines.push('近 7 天：' + daily.map((d) => `${d.day} 降${d.drops}/涨${d.rises}`).join('；'));
-      const text = lines.join('\n');
+      // CB 批（docs/PRICE-REPORT-EMAIL.md §3.3）：无论通道类型都先生成 {subject, html, text}——
+      // email 通道发 multipart/alternative（HTML + 纯文本 fallback），webhook / 企微仍只发 text。
+      const { subject, html, text } = renderPriceReport({
+        report: rep,
+        daily,
+        siteUrl: String(process.env.SITE_PUBLIC_URL ?? '').trim() || 'https://sd.yyliucha.cn',
+        siteName: String(process.env.SITE_NAME ?? '').trim() || 'SteamDeals',
+      });
       const result = await deliver(channels, {
         text,
+        html,
         payload: { type: 'steamdeals.price_report', text },
-        subject: 'SteamDeals 价格报表',
+        subject,
         logger,
       });
       for (const r of result.results) {

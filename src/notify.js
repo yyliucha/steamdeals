@@ -320,13 +320,15 @@ export async function sendMail(
 
 // ---------------------------------------------------------------- 统一投递
 
-/** 按通道逐个投递；任一通道成功即视为"已送达"，但每个通道的结果都会记录。 */
-export async function deliver(channels, { text, payload, subject = '游戏价格提醒', logger = null, fetchImpl = globalThis.fetch } = {}) {
+/** 按通道逐个投递；任一通道成功即视为"已送达"，但每个通道的结果都会记录。
+ *  CB 批（docs/PRICE-REPORT-EMAIL.md §3.3）：email 通道透传 html（multipart/alternative），
+ *  webhook / 企业微信仍只发纯文本 text。 */
+export async function deliver(channels, { text, html = null, payload, subject = '游戏价格提醒', logger = null, fetchImpl = globalThis.fetch } = {}) {
   const results = [];
   for (const ch of channels) {
     try {
       if (ch.kind === 'email') {
-        results.push({ channel: ch.name, ...(await sendMail({ ...ch, subject, text }, { logger })) });
+        results.push({ channel: ch.name, ...(await sendMail({ ...ch, subject, text, html }, { logger })) });
       } else if (ch.kind === 'wecom') {
         results.push({ channel: ch.name, ...(await sendWecom(text, { url: ch.url, fetchImpl, logger })) });
       } else {

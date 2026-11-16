@@ -103,3 +103,16 @@ export const isMailSettingKey = (key) => MAIL_SETTING_KEYS.includes(key);
 3. 邮件服务页接入表单，系统设置过滤邮件字段并改分组标题；
 4. 构建验证（`npm run frontend:build`）+ 手动/无头核对；
 5. 提交推 main，等所有者指令再发版。
+
+## 7. 价格报表邮件（CB 批，2026-11-16 补充）
+
+- **HTML 报表**：调度任务 `report price --notify` 的邮件由 [PRICE-REPORT-EMAIL.md](PRICE-REPORT-EMAIL.md)
+  升级为 HTML（`src/price-report-html.js` 渲染，`deliver()` 透传 `html` → `multipart/alternative`）：
+  品牌头 + 日期、KPI 三卡（降价/涨价/新史低）、降价 Top 5（站内搜索与 Steam 链接）、涨价 Top 3、
+  近 7 天迷你柱状趋势、CTA、页脚；**无 HTML 开关**——邮件统一 HTML + 纯文本 fallback；
+  webhook / 企业微信保持纯文本。
+- **站点公开地址**：新增设置 `site.publicUrl`（env `SITE_PUBLIC_URL`，默认 `https://sd.yyliucha.cn`，
+  「系统设置 → 站点与内容」），邮件里的站内链接（首页/搜索/CTA）以它为准；CLI 发信场景拿不到
+  `req`，改读该设置。
+- **收件人与频率不变**：仍走「邮件服务」页的收件人/发信配置与调度任务
+  `REPORT_INTERVAL_MIN`（默认 1440 分钟）；报表邮件不提供退订链接（收件人由后台配置）。
