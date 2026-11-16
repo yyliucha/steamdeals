@@ -1459,7 +1459,8 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BU. 依赖阻塞：移动端登录页重做（大表单 + 键盘避让 + 验证码/下载入口）
 
-**状态：依赖阻塞（前置 BT；开工前需本批效果图确认）**
+**状态：依赖阻塞（前置 BT；效果图已确认 2026-11-16）**
+**效果图：** [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §10（2026-11-16 已确认）
 **依赖：** BT（登录入口硬跳，未完成）
 **解锁：** BV（前台重设计的登录/我的页风格）
 **规格**：[MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §3
@@ -1471,7 +1472,8 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BV. 依赖阻塞：前台移动端重设计（底部 Tab：首页 / 搜索 / 愿望单 / 我的）
 
-**状态：依赖阻塞（前置 BU；开工前需本批效果图确认）**
+**状态：依赖阻塞（前置 BU；效果图已确认 2026-11-16）**
+**效果图：** [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §10（2026-11-16 已确认）
 **依赖：** BU（登录页与"我的"页风格）
 **解锁：** 无
 **规格**：[MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §4
@@ -1483,7 +1485,8 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BW. 待开发：后台移动端重设计（☰ 抽屉 + 表格全卡片 + 批量吸底 + 表单全屏）
 
-**状态：待开发（2026-11-16，所有者确认；开工前需本批效果图确认）**
+**状态：待开发（2026-11-16，效果图已确认；按约定在 BV 之后派发）**
+**效果图：** [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §10（2026-11-16 已确认）
 **依赖：** 无（可与 BV 并行）
 **解锁：** 无
 **规格**：[MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §5
