@@ -85,8 +85,8 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 - App 端**只处理这一种情况**：命中 → 原生不可取消对话框「你已经被封禁」+「已知晓」→ 点击后**退出 App**（`finishAffinity`/结束进程）；
   **不展示申诉入口、不做其它封禁/限制界面**；
 - App 的管理界面**后置**（第一期不做黑名单/审核管理，后续追加）；
-- 服务端对 `/api/app/*` 保留**全局 API 基础限流**（只在滥用时 429，不弹窗、不算 App 封禁）；账号锁定/禁用等账号级保护照常。
-  若要求 App 命名空间完全不做限流，需明确（有被当作绕过通道刷接口的风险）。
+- 服务端对 `/api/app/*` **保留全局 API 基础限流**（只在滥用时 429，不弹窗、不算 App 封禁）；账号锁定/禁用等账号级保护照常。
+  **已确认保留（2026-11-16）**：App 端不展示任何限流提示，正常使用无感；后续如需可为 `/api/app/*` 单独调高阈值（仍非无限）。
 
 ## 4. App：原生 Android（CA-2 ~ CA-4）
 
@@ -154,7 +154,7 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 7. **仓库**：App 代码在独立 `steamdeals-app` 仓库；站点仓库不再含 App 工程与 APK 构建；规格/TODO 仍在站点仓库。
 8. **App 启动封禁**：黑名单 IP / 设备封禁 → 打开 App 弹出「你已经被封禁」+「已知晓」→ 点击后退出；未被封正常进入；
    Web 端同一 IP 仍被拦；App 无申诉入口、无黑名单管理界面（管理界面后置）。
-9. **App 命名空间**：`/api/app/*` 不执行 IP 黑名单/设备封禁；`/api/app/status` 返回类型正确；Web `/api/*` 行为不变。
+9. **App 命名空间**：`/api/app/*` 不执行 IP 黑名单/设备封禁；`/api/app/status` 返回类型正确；Web `/api/*` 行为不变。10. **App 限流**：`/api/app/*` 保留基础限流；滥用时返回 429（不弹窗、不算封禁）；黑名单豁免不影响 Web 端拦截。
 
 ## 8. 本批不做
 
@@ -174,7 +174,7 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 5. **App 首期是否包含 Steam 账号绑定/同步**（web 有）：默认**不做**；
 6. **依赖清单**：默认 Compose + OkHttp + kotlinx.serialization + Coil + DataStore（不引 Hilt/Retrofit）；
 7. **App 页面效果图确认**：开发前置（CA-2 起每期先确认）；**六屏已确认（2026-11-16）**；
-8. **App 命名空间限流**：默认保留全局 API 基础限流（仅 429、不弹窗）；若要求完全豁免请明示（有被当成绕过通道刷接口的风险）；
+8. **App 命名空间限流**：**已确认保留全局 API 基础限流（2026-11-16）**；App 无感，滥用才 429；后续可按需单独调高阈值；
 9. **设备 ID 来源**：默认 App 安装 UUID（DataStore），不使用 Android ID（隐私/重置问题）。
 
 ## 10. App 页面效果图（2026-11-16 已确认，CA-2~CA-4 设计基线）
