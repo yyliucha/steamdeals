@@ -1598,7 +1598,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CC. 待开发：多源采集推进——ITAD / GOG / Humble 覆盖全目录 + 命中率 + 后台触发
 
-**状态：质检通过（2026-11-16，49ec3e6 + 第 1 轮打回修复 6540719，第 2 轮复检；QA 报告 docs/QA-SOURCE-SYNC-CC.md）。第 1 轮打回摘要：杉果每轮条数默认 0 被当作「0 条」→ 默认配置下 sync sonkwo 空转——已修复：0/未设 → 全部 SKU + 回归锁。**
+**状态：已发布 v2.19.0（2026-11-16，12f4f42；QA 报告 docs/QA-SOURCE-SYNC-CC.md 两轮 ✅；验收 8 待部署观察）。第 1 轮打回摘要：杉果每轮条数默认 0 被当作「0 条」→ 默认配置下 sync sonkwo 空转——已修复：0/未设 → 全部 SKU + 回归锁。**
 **解锁：** 无
 **规格**：[SOURCE-SYNC-COVERAGE.md](SOURCE-SYNC-COVERAGE.md)
 
@@ -1649,7 +1649,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CE. 待开发（高优先级）：杉果匹配器加固 + 2026-11-16 误合并数据修复
 
-**状态：质检通过（2026-11-16，5392852；QA 第 1 轮 ✅，报告 docs/QA-CE.md；cli.js/overview 的 CE 改动随 49ec3e6 一并入 main；数据修复已完成不属本批；CD 的自动应用暂停）**
+**状态：已发布 v2.19.0（2026-11-16，12f4f42；QA 第 1 轮 ✅，报告 docs/QA-CE.md；cli.js/overview 的 CE 改动随 49ec3e6 一并入 main；数据修复已完成不属本批；CD 的自动应用暂停）**
 **依赖：** 无（必须先于 CD 的自动应用完成）
 **解锁：** CD（自动应用）、杉果源恢复
 **规格**：[SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9

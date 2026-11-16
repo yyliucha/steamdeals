@@ -1,6 +1,6 @@
-# 多源采集推进：ITAD / GOG / Humble 覆盖全目录 + 命中率 + 后台触发（已实现待发版）
+# 多源采集推进：ITAD / GOG / Humble 覆盖全目录 + 命中率 + 后台触发（已实现并发布 v2.19.0）
 
-> 状态：**已实现待发版（2026-11-16，本地验证全绿，待质检）**。编号 **CC**。
+> 状态：**已实现并发布 v2.19.0（2026-11-16，49ec3e6 + 第 1 轮打回修复 6540719；QA 两轮 ✅，报告 docs/QA-SOURCE-SYNC-CC.md；验收 8 待部署观察）**。编号 **CC**。
 > 关联：[DATA-SOURCES.md](DATA-SOURCES.md)（各源可达性与 ITAD Key）、[ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md)（同步与回填页）、
 > [TODO.md](TODO.md) 的 CC 条目。
 

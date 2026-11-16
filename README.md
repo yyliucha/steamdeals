@@ -43,7 +43,7 @@
 |---|---|---|
 | 杉果价格采集 | ✅ 已跑通 | 真实页面端到端验证：解析 ¥198 → 入库 → 写快照 |
 | **杉果 SKU 自动发现** | ✅ 已跑通 | 实测扫 120 个 id 命中 46 个商品、新增 45 条，连续空壳自动停 |
-| **跨平台名称匹配** | ✅ 已跑通 | bigram Dice + 阈值分级 + 人工确认；重复行自动合并（11+5 项测试） |
+| **跨平台名称匹配** | ✅ 已跑通 | 完整标题 bigram Dice + 片段限制 + 数字/序数/罗马数字与内容词校验 + 人工确认；`match --apply --yes` 二次确认；重复行自动合并（38 项测试） |
 | **多区服采集** | ✅ 已跑通 | GOG 真实双区采集（cn ¥36 / us $9.99）；不同币种不折算，明确告知 |
 | **Steam 游戏信息导入** | ✅ 已跑通 | 双后端（官方 / steamcmd 镜像）自动回落；实测 6 个 appid 全部拿到中文名与封面 |
 | **曲线页自动重建** | ✅ 已跑通 | 调度器采集成功后自动跑 `chart`；实测 46 SKU 同步 → 48 款游戏 49 个文件 337ms |
@@ -98,11 +98,12 @@
 | Steam 国区采集 | ⚠️ | 官方 `appdetails`，批量 + 限速；单测覆盖解析，真实网络被阻断 |
 | 杉果采集 | ✅ | 商品页内嵌 JSON 解析，不依赖 DOM 选择器；真实页面验证 |
 | 杉果 SKU 自动发现 | ✅ | 按 id 从前沿向后探测，连续空壳即停；发现的 SKU 自动并入 `data/skus.json` |
-| 跨平台名称匹配 | ✅ | bigram Dice 打分 + 阈值分级（自动/待确认/无候选）+ 人工 `--confirm`；确认后自动合并重复游戏行 |
+| 跨平台名称匹配 | ✅ | 完整标题 bigram Dice 打分 + 片段限制（长度 ≥6、非通用词、完整分 ≥0.8）+ 数字/序数/罗马数字一致性校验 + 内容词（DLC/季票/合集等）只进人工；自动条件收紧（完整相等 或 完整 Dice ≥0.94）；`match --apply --yes` 逐条对照二次确认，人工 `--confirm`；确认后自动合并重复游戏行（v2.19.0 加固） |
 | 多区服对比 | ✅ | 同一游戏按区服并排（GOG 支持 cn/us/tr/ru/ar 等）；**不同币种不折算** |
 | Steam 游戏信息导入 | ✅ | `import steam`：appid / 商店链接 / 清单文件 → 中文名、封面、发行日期、开发商 |
 | 出网代理 | ✅ | 按目标主机分流：Steam 走 `STEAM_PROXY`（**支持多条自动切换**：失败冷却 60s/5min/30min、成功粘住、全部失败报错不回退直连，v2.0.0），其余走 `HTTPS_PROXY`，境内源直连 |
 | ITAD 官方 API | ⚠️ | 按商店拆成独立平台，需自备免费 key；未用真 key 跑过 |
+| 多源采集推进 | ⚠️ | ITAD/GOG/Humble 带游标分批推进全目录（热点优先、未命中 7 天不重复、失败 2ⁿ 天退避）、命中缓存外部 id 二次直取；后台「同步与回填」四源「立即运行」+「匹配/未命中/待探测」覆盖列；四源「每轮条数」设置（杉果 0 = 全部 SKU）（v2.19.0；验收 8「上线后报价出现/未探测下降」待部署观察，ITAD 真 key 未验证） |
 | 价格历史与史低 | ✅ | 变化才写快照，按天聚合，终端画轨迹（**v2.12.1** 修详情页报表整块不渲染的 `v-for`+`v-if` 缺陷；**v2.13.0** 详情页删日期表格、趋势线加高到 150px（移动端 120px），加史低虚线参考线与轴标签） |
 | 详情页 DLC 列表 | ✅ | 详情最下方「DLC（共 N 个）」：名称/价格/折扣/缺货 + Steam 商店跳转（新窗口），10 条/页、移动端卡片；标注「Steam 不提供 DLC 拥有数据」（v2.14.0） |
 | 安卓版 App（TWA） | ✅ | 不上架商店：站点 `/app` 下载页 + GitHub Release 双通道（APK + SHA-256）；比 PWA 更像 App、Steam 外链走 Custom Tabs；可清缓存离线（只缓存静态资源，HTML/API 永不缓存）；**App 内置更新（v2.18.0+）**：启动/回前台 24h 检查 + 「我的 → 检查更新」，原生对话框（可稍后/忽略此版本、低于 minVersionCode 强制）、默认仅 Wi-Fi 下载（SHA-256 校验）、用户确认安装（同一签名覆盖升级） |
@@ -359,14 +360,14 @@ node src/cli.js chart --db pglite:./data/demo-pgdata --out out
 | `sync steam` | Steam 国区价格（`--limit 500`）⚠️ 需能访问 Steam |
 | `sync sonkwo` | 按 `data/skus.json` 抓杉果（`--limit`、`--rate 1200`）✅ |
 | `discover sonkwo` | 自动发现新 SKU（`--ahead`、`--max-misses`、`--from/--to`）✅ |
-| `match` | 把杉果 SKU 对齐到 Steam 游戏（`--apply` 自动、`--confirm <skuId> <appid>` 手工）✅ |
+| `match` | 把杉果 SKU 对齐到 Steam 游戏（`--apply --yes` 逐条对照二次确认自动、`--confirm <skuId> <appid>` 手工）✅ |
 | `compare <appid>` | 多区服对比（`--region cn` 只看单区、`--json` 机器可读）✅ |
 | `import steam` | 导入游戏信息（`--appids 730,570` / `--urls <链接>` / `--file 清单`；`--backend auto\|official\|steamcmd`）✅ |
 | `serve` | 全栈服务：前端 + JSON API（`--port 8090`、`--dir web`）✅ |
 | `user add <名> [--admin]` / `user list` | 用户管理，密码只显示一次 ✅ |
 | `backup` | 8 张核心表导出 gzip JSON，保留 7 份，顺带清理 90 天前浏览记录 ✅ |
 | `owned <appid> on\|off` | 标记已拥有（⚠️ 全局 `games.owned` 已废弃，前台不再读取；前台「已拥有」改由绑定 Steam 账号 + 个人标记推导） |
-| `sync itad` | ITAD 官方 API（`ITAD_API_KEY` 未配置则跳过）⚠️ 未验证 |
+| `sync itad` | ITAD 官方 API（`ITAD_API_KEY` 未配置则跳过；v2.19.0 起带游标推进 + 命中缓存 external_id 批量取价）⚠️ 未验证 |
 | `sync gog` | 按英文名查 GOG（catalog 接口，只接受精确标题）✅ 已跑通 |
 | `sync humble` | 按英文名探测 Humble 商品页（JSON-LD）⚠️ 命中率取决于 slug |
 | `add-sku <id...>` | 往 `data/skus.json` 加 SKU，`--appid 123` 关联 Steam 游戏 |
@@ -590,7 +591,7 @@ node test/http-error.test.js # 8 项：代理隧道错误翻译（407/403/502）
 node test/favicon.test.js    # 4 项：三个页面的图标引用一致且文件存在、SVG/ICO/PNG 格式合法
 node test/serve.test.js      # 5 项：路径穿越防护、内容类型、GET/HEAD/405
 node test/discover.test.js   # 9 项：扫描区间、连续空壳停止、404 容错、合并去重
-node test/match.test.js      # 11 项：名称归一化、bigram 相似度、候选挑选、阈值分级
+node test/match.test.js      # 38 项：名称归一化、bigram 相似度、候选挑选、CE 加固回归（§9 表 13 条误匹配 + 正确样例 + 数字/内容词校验）
 node test/compare.test.js    # 7 项：分区、同币种比较、终端渲染
 node test/regions.test.js    # 4 项：跨区报价存储与 C2C 隔离（真 PG）
 node test/store.test.js      # 12 项：URL 解析、建库 SQL、真 TCP PG 协议下自动建库
@@ -620,7 +621,7 @@ node test/docs.test.js       # 5 项：相对链接有效性、入口文档齐�
 node test/secrets.test.js    # 5 项：凭据扫描器自身的正确性 + 当前仓库无泄漏
 ```
 
-共 **427 项**断言（主链 `npm test`，50 个文件；另有 33 项在链外的 `email-auth` / `api` / `cli-dispatch` 三个文件，改相关代码时单独跑）。杉果解析器直接用真实页面快照做夹具，页面结构变化会立刻让测试变红。
+主链 `npm test` 共 **88 个测试文件**全绿（v2.19.0 发版验证）；另有 3 个链外文件（`email-auth` / `api` / `cli-dispatch`），改相关代码时单独跑。杉果解析器直接用真实页面快照做夹具，页面结构变化会立刻让测试变红。
 
 发布前额外跑一次凭据扫描（`npm run scan`）：检查 token、私钥、带真实密码的连接串，文档里的示例和占位符不会误报。
 
@@ -633,7 +634,7 @@ node test/secrets.test.js    # 5 项：凭据扫描器自身的正确性 + 当�
    `node src/cli.js heat --limit 200000 --batch 30 --sleep 1700`（约 3 小时，可中断续跑），之后调度器每周增量刷新。
 4. **`app_type` 未回填**：目录数因此只能标注「含 DLC/软件」；`type` 只能从 appdetails 全量响应获取（每款约 15KB，全量约 3GB 流量），暂不做。
 5. **杉果没有搜索接口**（`store/search` 的 loader 服务端报错、`/api/*` 返回 410），所以 SKU 靠「按 id 探测」发现：id 连续、密度约 70%，未上架的 id 返回 200 空壳页。`discover` 只能跟上前沿，**历史目录要靠一次性回填**（`--from/--to` 指定区间）；空壳页的判定依赖"无价格 + 13KB 通用页"，站点改版需要复核。
-6. **杉果商品页里没有 Steam appid**，跨平台对齐只能靠名称匹配：`match` 用 bigram Dice 打分，≥0.94 才自动应用、0.86–0.94 留给人工 `--confirm`。**匹配率取决于游戏库覆盖**；未关联的报价会计入 `ingest.summary.noAppId`。
+6. **杉果商品页里没有 Steam appid**，跨平台对齐只能靠名称匹配：`match` 只对**完整归一化标题**打 bigram Dice（片段加分需长度 ≥6、非通用词且完整分 ≥0.8），数字/序数/罗马数字不一致直接判负，内容词（DLC/季票/合集等）只进人工；自动条件为完整相等或完整 Dice ≥0.94（无内容词、数字一致、标题 ≥4），`--apply` 必须 `--yes` 二次确认，其余留给人工 `--confirm`。**匹配率取决于游戏库覆盖**；未关联的报价会计入 `ingest.summary.noAppId`。
 7. **GOG 的搜索是模糊的**：`like:` 查询对"这家店没有的游戏"会返回无关热门商品。适配器只接受标题完全相等的结果，所以宁可没有价格，也不会把别人的价格挂上去。
 8. **Humble 命中率有限**：只能用"按英文名猜 slug → 抓商品页 → 校验名称"的方式，没命中的会静默跳过（日志记 `adapter.humble.no_match`）。
 9. **邮件客户端是自实现的**，只覆盖 STARTTLS + AUTH PLAIN/LOGIN，不支持 OAuth2 与附件；协议对话已在本地假 SMTP 服务器上验证，但**未对真实邮件服务商做过端到端测试**。
