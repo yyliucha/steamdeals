@@ -151,6 +151,8 @@ test('CC-2/3：静态契约——四源接入 CLI/后台/设置/日志，不新�
   assert.match(settings, /sources\.itad\.limit/, 'ITAD 每轮条数设置');
   assert.match(gog, /export async function fetchById/, 'GOG fetchById');
   assert.match(humble, /export async function fetchBySlug/, 'Humble fetchBySlug');
+  // 杉果 limit：设置默认 0 = 全部 SKU（水合默认值不得导致空转，QA 第 1 轮打回项回归锁）
+  assert.match(cli, /rawLimit === 0 \? skus\.length : rawLimit/, '杉果 limit 0 换算为全部 SKU');
   // 不新增定时任务：scheduler 仍只有既有的 itad/gog/humble/sonkwo 4 个源任务
   const jobNames = [...scheduler.matchAll(/name: '([a-z]+)'/g)].map((m) => m[1]);
   for (const n of ['itad', 'gog', 'humble', 'sonkwo']) assert.ok(jobNames.includes(n), `既有任务 ${n} 仍在`);

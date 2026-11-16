@@ -604,7 +604,12 @@ async function printSyncPriceReport(sinceMs, limit = 5) {
 async function cmdSyncSonkwo() {
   const skus = readJson('data/skus.json', []);
   if (!skus.length) throw new Error('data/skus.json 为空，先用 add-sku 加几个 SKU');
-  const limit = Number(process.env.SOURCES_SONKWO_LIMIT || flag('limit', skus.length));
+  // CC 批：设置默认 0 = 全部 SKU——hydrateSettings 会把默认值写回 env（'0' 是 truthy 字符串），
+  // 必须显式把 0 换算成 skus.length，否则默认配置下每轮处理 0 个（质检打回项）。
+  const rawLimit = Number(process.env.SOURCES_SONKWO_LIMIT);
+  const limit = Number.isFinite(rawLimit) && rawLimit >= 0
+    ? (rawLimit === 0 ? skus.length : rawLimit)
+    : Number(flag('limit', skus.length));
   const targets = skus.slice(0, limit);
   logger.info('sync.start', { platform: sonkwo.code, skus: targets.length });
   const offers = [];
