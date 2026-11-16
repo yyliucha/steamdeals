@@ -152,3 +152,13 @@
 - 静默自动更新（需系统权限）；
 - 推送与应用角标（TWA 不可行，改用现有邮件/企业微信）；
 - Capacitor 壳（所有者选择接受 Web 分享/下载能力）。
+
+## 11. 2026-11-16 决策记录（架构与仓库）
+
+- **真机确认**：小米手机安装本 App 打开**无地址栏** → Chrome TWA 正常生效，未降级 Custom Tabs；
+- **架构**：**暂不更换 TWA**；BY 的内置更新以原生小模块实现（不换壳）。若后续原生需求继续增长（推送 / JS 桥 / 文件选择等），
+  再另批评估 WebView 壳（Capacitor 或自研），不在当前批次内翻案；
+- **仓库**：**BY 完成后**把 `android/` 拆到独立公开仓库；规格 / TODO / 发版清单仍留站点仓库；
+  APK 由站点 CI 从 app 仓库 Release 拉取并生成 `latest.json`——详见
+  [MOBILE-APP-REPO-SPLIT.md](MOBILE-APP-REPO-SPLIT.md) 与 TODO **BZ**；
+- **交付不变**：`/app` 页仍从站点下载；包名、签名 keystore、`assetlinks.json` 指纹、`app-v<version>` tag 规则全部不变。

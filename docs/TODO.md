@@ -1534,4 +1534,22 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   同一签名覆盖升级成功、数据保留；「我的→检查更新」可用、浏览器回落 `/app`；站点不可达回落 GitHub；
   `npm test` / `frontend:build` / `scan` 全绿。**注意**：2.16.0 及更早的 App 没有更新模块，需手动装一次新版后才会收到提示。
 
+## BZ. 依赖阻塞：App 代码仓库拆分（android/ 迁到独立公开仓库，BY 完成后执行）
+
+**状态：依赖阻塞（前置 BY；方案已确认 2026-11-16）**
+**依赖：** BY（App 内置更新，未完成；避免同时迁移原生模块）
+**解锁：** 无
+**规格**：[MOBILE-APP-REPO-SPLIT.md](MOBILE-APP-REPO-SPLIT.md)
+
+- **诉求（2026-11-16 所有者）**：App 代码新开一个 GitHub 仓库。
+- **已确认决策**：① `android/` 拆到独立**公开**新仓库（建议名 `steamdeals-app`），只放 Android 工程 + 构建说明 + Release；
+  ② 规格 / TODO / 发版清单**仍留站点仓库**（唯一排期来源）；③ APK 由**站点 CI 从 app 仓库 Release 拉取**并生成 `latest.json`，
+  国内用户仍从站点 `/app` 下载；④ **BY 完成后**再执行；⑤ 架构维持 TWA（不换壳），包名 / 签名 / `assetlinks` 指纹 / `app-v` tag 规则不变。
+- **改动落点（执行时）**：新仓库迁入 `android/` + 独立 CI（签名密钥走 GitHub Secrets，Release 上传 APK+sha256）；
+  站点仓库删除 `android/`、不再提交 APK、新增 `scripts/fetch-app-release.mjs`（按显式 `APP_RELEASE_TAG` 拉取 + 校验 + 写 latest.json）、
+  两个 docker workflow 在 `vite build` 前执行；`/api/app/latest` 与 `/app` 页不改；DELIVERY 发版步骤拆两段。
+- **验收**：见规格 §4——新仓库独立构建同签名 APK/Release；站点 CI 拉取后 `/app` 可下载、`/api/app/latest` 正确（含 BY 字段）；
+  站点仓库不再含 `android/` 与 APK 二进制；全流程（app tag → 站点构建 → 部署 → 下载 → App 内更新）回归；
+  包名/签名/assetlinks 不变；站点侧 `npm test` / `frontend:build` / `scan` 全绿。
+
 

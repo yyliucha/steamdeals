@@ -131,6 +131,9 @@
 | **BY-3** | 手动入口（scheme intent-filter + 「我的」页链接 + 回落） | BY-2 |
 | **BY-4** | 文档同步（MOBILE-APP-TWA.md 更新章节、DELIVERY 发版步骤、README 已知限制解除） | BY-1~3 |
 
+> 仓库拆分（[MOBILE-APP-REPO-SPLIT.md](MOBILE-APP-REPO-SPLIT.md)，TODO **BZ**）在 **BY 完成后**执行；
+> 本批仍在站点仓库的 `android/` 工程里实现。
+
 ## 8. 本批不做
 
 1. **不做静默安装**（系统不允许，保持"用户确认"）；
