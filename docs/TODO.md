@@ -1431,4 +1431,30 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   **镜像内含 APK（`frontend/dist/app/` 有包）+ `.gitignore` 不忽略交付包** /
   不放宽安全策略 + `npm test` + `frontend:build` + `scan` 全绿；**不自行构建站点版本**）。
 
+## BT. 待开发：手机端点「登录」不出现登录页（浮层 history 竞态）→ 登录入口改硬跳
+
+**状态：待开发（2026-11-16，所有者确认方案 C：登录入口硬跳）**
+**依赖：** 无（与移动端重设计解耦，可单独发）
+**解锁：** 无（移动端登录页重做 / 前台 / 后台重设计另批，建议本条先上）
+**规格**：[MOBILE-LOGIN-ENTRY-FIX.md](MOBILE-LOGIN-ENTRY-FIX.md)
+
+- **现象（2026-11-16 所有者真机，小米浏览器）**：首页 →「我的」底部面板 → 点「登录」→ **面板关闭后什么都不发生**，
+  登录页（账号/密码页）不出现；直接打开 `/login` 正常。
+- **根因（代码证据）**：手机面板的登录按钮是 `mySheet=false;goLogin()`（`Home.vue:78`），`goLogin()` 用
+  `router.push({path:'/login'…})`（`Home.vue:133-134`，promise 未处理）；面板一关，返回键守卫 `release()` 会
+  `window.history.back()`（`useBackGuard.js:27-36/46-61`）→ **把刚 push 的 /login 退回去**；登录页还是懒加载路由
+  （`router/index.js:24`），chunk 失败时 `router.push` 也会静默中止。小米浏览器的 history/popstate 时序让它稳定复现。
+  **不是会话/cookie 问题，也不是登录接口问题。**
+- **已确认决策（方案 C）**：① 登录入口改为**整页硬跳** `location.assign('/login?next=…')`，不依赖 SPA 路由与浮层历史栈；
+  ② **所有进入登录页的入口统一**走同一个 helper（桌面「登录」、手机「我的」面板、未登录点搜索/愿望单、401 会话失效跳转）；
+  ③ 加 `router.onError` 兜底：懒加载 chunk 失败时整页重载目标路由（同路径每会话只一次）；
+  ④ 登录页仍保持 SPA，登录成功 `router.replace(next)` 不变；⑤ 本批**不改登录页视觉/交互**。
+- **改动落点**：新增 `frontend/src/utils/login-entry.js`（`openLogin()`：next 安全 + reason）；
+  `frontend/src/pages/Home.vue`（`goLogin()` 改调 `openLogin`）；`frontend/src/utils/session.js`
+  （`redirectToLogin` 改走 `openLogin({reason})`，去掉动态 import router / bypassNextGuard）；`frontend/src/main.js`
+  （`router.onError` chunk 兜底）；新增前端静态断言测试。
+- **验收**：见规格 §6——小米浏览器真机点「登录」能出现登录页并登录成功；入口矩阵（桌面/手机面板/未登录 Tab/401）全部可达；
+  带 `next` 登录后回原页；chunk 失败自动硬载一次且不循环；返回键不卡死；`next` 只接受站内相对路径；
+  注册/改密站内跳转不回归；`npm test` / `frontend:build` / `scan` 全绿；部署后真机复测。
+
 
