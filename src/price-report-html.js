@@ -57,10 +57,10 @@ export function renderPriceReport({ report, daily = [], siteUrl = 'https://sd.yy
   const dailyRows = daily
     .map(
       (d) => `<tr>
-        <td style="${CELL}">${esc(dayShort(d.day))}</td>
-        <td style="${CELL}">${barCell(d.drops, '#13876f')}&nbsp;<span style="${MUTED}">降 ${esc(d.drops)}</span></td>
-        <td style="${CELL}">${barCell(d.rises, '#d9485f')}&nbsp;<span style="${MUTED}">涨 ${esc(d.rises)}</span></td>
-        <td style="${CELL}">共 ${esc(d.changed)}</td>
+        <td class="stack" style="${CELL}">${esc(dayShort(d.day))}</td>
+        <td class="stack" style="${CELL}">${barCell(d.drops, '#13876f')}&nbsp;<span style="${MUTED}">降 ${esc(d.drops)}</span></td>
+        <td class="stack" style="${CELL}">${barCell(d.rises, '#d9485f')}&nbsp;<span style="${MUTED}">涨 ${esc(d.rises)}</span></td>
+        <td class="stack" style="${CELL}">共 ${esc(d.changed)}</td>
       </tr>`,
     )
     .join('');
@@ -69,12 +69,12 @@ export function renderPriceReport({ report, daily = [], siteUrl = 'https://sd.yy
     .map((d) => {
       const steam = d.steam_appid ? ` <a href="${steamUrl(d.steam_appid)}" style="color:#635bdf;text-decoration:none">Steam ↗</a>` : '';
       return `<tr>
-        <td style="${CELL}">
+        <td class="stack" style="${CELL}">
           <a href="${searchUrl(siteUrl, d.name)}" style="color:#202a3d;text-decoration:none;font-weight:600">${esc(d.name)}</a><br>
           <span style="${MUTED}">${esc(d.platform_name)}</span>
         </td>
-        <td style="${CELL};white-space:nowrap"><span style="color:#8791a3;text-decoration:line-through">${fmtYuan(d.was)}</span> → <strong>${fmtYuan(d.now_price)}</strong></td>
-        <td style="${CELL}"><span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#13876f;color:#ffffff;font-size:12px">-${pctOf(d)}%</span>${steam}</td>
+        <td class="stack" style="${CELL};white-space:nowrap"><span style="color:#8791a3;text-decoration:line-through">${fmtYuan(d.was)}</span> → <strong>${fmtYuan(d.now_price)}</strong></td>
+        <td class="stack" style="${CELL}"><span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#13876f;color:#ffffff;font-size:12px">-${pctOf(d)}%</span>${steam}</td>
       </tr>`;
     })
     .join('');
@@ -82,23 +82,25 @@ export function renderPriceReport({ report, daily = [], siteUrl = 'https://sd.yy
   const riseRows = topRises
     .map(
       (r) => `<tr>
-        <td style="${CELL}"><a href="${searchUrl(siteUrl, r.name)}" style="color:#202a3d;text-decoration:none">${esc(r.name)}</a><br><span style="${MUTED}">${esc(r.platform_name)}</span></td>
-        <td style="${CELL};white-space:nowrap"><span style="color:#8791a3">${fmtYuan(r.was)}</span> → <span style="color:#d9485f">${fmtYuan(r.now_price)}</span></td>
+        <td class="stack" style="${CELL}"><a href="${searchUrl(siteUrl, r.name)}" style="color:#202a3d;text-decoration:none">${esc(r.name)}</a><br><span style="${MUTED}">${esc(r.platform_name)}</span></td>
+        <td class="stack" style="${CELL};white-space:nowrap"><span style="color:#8791a3">${fmtYuan(r.was)}</span> → <span style="color:#d9485f">${fmtYuan(r.now_price)}</span></td>
       </tr>`,
     )
     .join('');
 
   const kpi = (value, label, color) => `
-    <td style="padding:12px 8px;text-align:center;border-right:1px solid #e8ebf1">
+    <td class="kpi" style="padding:12px 8px;text-align:center;border-right:1px solid #e8ebf1">
       <div style="font-size:26px;font-weight:800;color:${color}">${esc(value)}</div>
       <div style="${MUTED}">${label}</div>
     </td>`;
 
   const html = `<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>@media (max-width:480px){table.main{width:100%!important;border-radius:0!important}td.kpi{display:block!important;border-right:0!important;border-bottom:1px solid #e8ebf1;padding:10px 12px!important}td.stack{display:block!important;width:100%!important;padding:6px 12px!important;border-bottom:0!important}td.stack:last-child{padding-bottom:10px!important;border-bottom:1px solid #e8ebf1!important}}</style>
+</head>
 <body style="margin:0;padding:0;background:#f5f7fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f7fb"><tr><td align="center" style="padding:16px 8px">
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;background:#ffffff;border:1px solid #e8ebf1;border-radius:12px;overflow:hidden">
+    <table role="presentation" class="main" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;background:#ffffff;border:1px solid #e8ebf1;border-radius:12px;overflow:hidden">
       <tr><td style="padding:18px 22px;background:linear-gradient(135deg,#635bdf,#22d3ee)">
         <span style="font-size:17px;font-weight:800;color:#ffffff">${esc(siteName)}</span>
         <span style="float:right;color:rgba(255,255,255,.92);font-size:13px">价格报表 · ${esc(dateLabel)} · 近 ${esc(hours)} 小时</span>

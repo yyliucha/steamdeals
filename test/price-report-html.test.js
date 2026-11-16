@@ -88,6 +88,11 @@ test('CB-1：转义与安全——动态字段全转义、无 flex/grid、无外
   assert.ok(!sonkwoLine.includes('store.steampowered.com'), '无 appid 不出 Steam 链接');
   assert.match(html, /\?q=Hades%20II/, '站内搜索链接（encodeURIComponent）');
   assert.match(html, />打开 SteamDeals</, 'CTA 按钮');
+  // 手机单列适配（§3.1 @media 480；QA 第 1 轮打回项）
+  assert.match(html, /@media \(max-width:480px\)/, '手机单列媒体查询');
+  assert.match(html, /td\.stack\{display:block/, '表格单元堆叠规则');
+  assert.match(html, /td\.kpi\{display:block/, 'KPI 卡堆叠规则');
+  assert.match(html, /table\.main\{width:100%/, '主表格手机全宽');
 });
 
 test('CB-2：deliver 透传 html——假 SMTP 收到 multipart/alternative 且 HTML 段含 KPI；webhook 只发 text', async () => {
