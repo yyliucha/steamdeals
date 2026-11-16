@@ -60,6 +60,7 @@
 | **BV** | 前台移动端重设计（底部 Tab：首页/搜索/愿望单/我的；详情全屏页） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §4 | 依赖阻塞（前置 BU；需效果图确认） | ✅ 本轮已给 |
 | **BW** | 后台移动端重设计（☰ 抽屉 + 表格全卡片 + 批量吸底 + 表单全屏） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §5 | 待开发（2026-11-16 已确认；需效果图确认） | ✅ 本轮已给 |
 | **BX** | 手机浏览器首访「下载安卓 App」提示（只安卓、一次、可关闭） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §6 | 待开发（2026-11-16 已确认） | ✅ 本轮已给 |
+| **BY** | 安卓 App 内置更新（启动/回前台检查 → 原生提示 → 下载校验 → 用户确认安装；minVersionCode 强制） | [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md) | 待开发（2026-11-16 已确认 5 组） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |
 | **AC** | 同步不可达的未保证项（AC1–AC11） | [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) | AC-1 已发布 v1.18.0；AC-2/AC-3/AC-4 已发布 v2.1.0（2026-11-09） | ✅ 已在对话给出 |
 | **AE** | 版本检测按服务器 IP 选镜像仓库（TCR/Hub） | [VERSION-SOURCE.md](VERSION-SOURCE.md) | 已发布 v1.18.0 | ✅ 已在对话给出 |

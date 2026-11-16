@@ -1506,4 +1506,29 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - 验收：小米浏览器首访出现一次、关闭后不再出现、点下载进 `/app`；微信/iOS 不出现；TWA standalone 不出现；
   清 localStorage 后可重新出现；`npm test` / `frontend:build` / `scan` 全绿。
 
+## BY. 待开发：安卓 App 内置更新（检测新版本 → 提示 → 下载校验 → 用户确认安装）
+
+**状态：待开发（2026-11-16，所有者确认 5 组细节）**
+**依赖：** 无（BS 已发布 v2.17.0 / app-v2.16.0；批内 BY-1 服务端字段先行，BY-2 依赖 BY-1）
+**解锁：** 无
+**规格**：[MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md)
+
+- **现状（2026-11-16 核对）**：网页内容有版本提示（`useVersionGuard`「已更新，点击刷新」），但 **APK 本体没有内置更新**——
+  BS 规格 §3.4 明确「App 内检查更新只做提示 + 打开发布页，不做静默安装」；当前 `LauncherActivity` 是 Bubblewrap
+  默认模板、无更新代码；`latest.json`/`/api/app/latest` 也**没有 versionCode**。用户只能手动去 `/app` 重新下载。
+- **为什么必须动原生**：TWA 里跑 Chrome，网页**读不到已安装 APK 的版本号**、也**没有安装 APK 的权限**；
+  "检测→下载→安装"只能由原生做，但仍保持 TWA/Bubblewrap，**不换壳**。
+- **已确认决策（5 组）**：① 加原生更新模块（不换壳）；② 检查时机 = 启动 + 回前台（每 24h 最多一次）+「我的」页手动入口；
+  ③ 策略 = 可选中「稍后/忽略此版本」，低于 `minVersionCode` 时强制；④ 下载 = 站点优先、GitHub 兜底、默认仅 Wi-Fi（可手动用流量）；
+  ⑤ 元数据 = `latest.json` / `/api/app/latest` 增加 `versionCode` + `notes` + `minVersionCode`。
+- **改动落点**：`frontend/public/app/latest.json`（新字段）+ `src/server.js`（`/api/app/latest` 透传）；
+  `android/` 工程（`LauncherActivity`/新增 update 模块：检查、原生对话框、DownloadManager 下载、SHA-256 校验、
+  `PackageInstaller`/FileProvider 安装、`REQUEST_INSTALL_PACKAGES`、Android 8+ 未知来源引导、忽略版本记录、
+  站点→GitHub 回落）；`AndroidManifest.xml`（权限 + `steamdeals://check-update` intent-filter）；
+  `frontend`（「我的」页「检查更新」链接 + 1.5s 回落 `/app`）；发版清单与文档（MOBILE-APP-TWA/DELIVERY/README）。
+- **验收**：见规格 §6——`latest.json`/接口字段正确；旧版启动出现原生更新对话框（版本/大小/说明）；
+  「稍后/忽略此版本」行为正确、低于 `minVersionCode` 强制；默认仅 Wi-Fi、SHA-256 校验失败删除并提示；
+  同一签名覆盖升级成功、数据保留；「我的→检查更新」可用、浏览器回落 `/app`；站点不可达回落 GitHub；
+  `npm test` / `frontend:build` / `scan` 全绿。**注意**：2.16.0 及更早的 App 没有更新模块，需手动装一次新版后才会收到提示。
+
 
