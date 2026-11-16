@@ -104,8 +104,10 @@ test('BY-2：Android 更新模块关键契约——检查/对话框/下载/校�
 
 test('BY-1：latest.json 契约——新字段齐全且与 BS 字段并存', () => {
   const latest = JSON.parse(readFileSync(ROOT + 'frontend/public/app/latest.json', 'utf8'));
-  assert.equal(latest.versionCode, 21600, 'versionCode 沿用 major*10000+minor*100+patch');
-  assert.equal(latest.minVersionCode, 21600, 'minVersionCode 存在');
+  // versionCode 沿用 major*10000+minor*100+patch（随版本派生，不锁固定值——发版时与 twa-manifest 同步递增）
+  const [ma, mi, pa] = String(latest.version).split('.').map(Number);
+  assert.equal(latest.versionCode, ma * 10000 + mi * 100 + pa, 'versionCode 与 version 派生规则一致');
+  assert.equal(typeof latest.minVersionCode, 'number', 'minVersionCode 存在（数字）');
   assert.ok(Array.isArray(latest.notes) && latest.notes.length > 0, 'notes 字符串数组');
   for (const key of ['version', 'apkPath', 'sha256', 'size', 'releasedAt']) {
     assert.ok(key in latest, `旧字段 ${key} 保留`);

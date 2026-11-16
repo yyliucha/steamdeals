@@ -1,10 +1,14 @@
 {
-  "sha256": "c28203bd74b33936ba9604cbdf7e5a167d9ff897e388721a647b8170e8d284fd",
-  "releasedAt": "2026-11-14",
-  "size": 1472278,
-  "apkPath": "/app/steamdeals-2.16.0.apk",
-  "version": "2.16.0",
-  "versionCode": 21600,
-  "minVersionCode": 21600,
-  "notes": ["封禁自助恢复与手机适配", "站内申诉系统（提交 / 后台处理 / 邮件一键信任）"]
+  "sha256": "7e7bc84ecbc1ff6610377b9f91c92c3a89e6329355944b3a44665b0684e6881b",
+  "notes": [
+    "后台手机端重设计（抽屉导航+卡片列表）",
+    "App 内置更新（检测/下载/校验/确认安装）",
+    "价格报表邮件 HTML 化"
+  ],
+  "versionCode": 21800,
+  "version": "2.18.0",
+  "size": 1480470,
+  "releasedAt": "2026-11-16",
+  "apkPath": "/app/steamdeals-2.18.0.apk",
+  "minVersionCode": 21600
 }

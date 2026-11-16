@@ -2,6 +2,36 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.18.0] - 2026-11-16
+
+移动端与邮件四连批：BT 手机登录入口修复 + BW 后台手机端重设计 + BY 安卓 App 内置更新 + CB 价格报表邮件 HTML 化。
+
+### 新增
+
+- **手机登录入口修复（BT）**：所有进登录页的入口统一走 `openLogin` 整页硬跳（`frontend/src/utils/login-entry.js`），
+  修复小米浏览器「我的」面板点登录后"面板关了、登录页不出现"的历史栈竞态；`next` 只接受站内相对路径；
+  懒加载 chunk 失败时 `router.onError` 整页重载目标路由一次（sessionStorage 防循环）；封禁自助恢复（BR 批）
+  的验证码接口纳入豁免白名单。
+- **后台移动端重设计（BW）**：手机（≤768px）打开 `/console` 侧栏收进 ☰ 抽屉（沿用 5 分组 13 模块 + 搜索 +
+  待处理角标），顶栏 ☰ + 当前模块 + 通知铃；用户/回收站/Steam 账号/登录会话/操作日志五个模块与同步记录的
+  表格改卡片（筛选/排序/分页保留、批量条吸底、危险操作确认沿用）；弹窗手机全屏 + 底部吸附按钮；桌面端
+  （≥1025px）布局不变。
+- **安卓 App 内置更新（BY）**：App 启动/回前台（24h 一次）检测新版本，原生「发现新版本」对话框
+  （版本/大小/更新说明；可稍后/忽略此版本，低于 `minVersionCode` 强制更新）；下载默认仅 Wi-Fi（移动网络弹选择）、
+  进度条、SHA-256 校验（不匹配删除并提示）、站点不可达自动回落 GitHub Release；下载完成经 PackageInstaller
+  拉起系统安装确认（同 keystore 覆盖升级、数据保留）；「我的 → 检查更新」手动入口（TWA 内触发检查，
+  浏览器 1.5s 回落 `/app`）；`latest.json` / `/api/app/latest` 新增 `versionCode`/`minVersionCode`/`notes`
+  （旧客户端忽略新字段）。
+- **价格报表邮件 HTML 化（CB）**：`report price --notify` 的邮件升级为 HTML（品牌头 + 日期、KPI 三卡、
+  降价 Top 5（站内搜索与 Steam 链接）、涨价 Top 3、近 7 天迷你柱状趋势、CTA、页脚；600px 内联 CSS + table、
+  ≤480px 单列适配、动态字段全转义）；`multipart/alternative` 保留纯文本 fallback；webhook/企业微信仍纯文本；
+  新增设置 `site.publicUrl`（env `SITE_PUBLIC_URL`）供邮件内站内链接。
+
+### 修复
+
+- 手机浏览器前台不再建设移动版 web（CA 决策后：手机访问引导到 `/app` 下载页，由 CA 原生 App 承接）；
+  BU/BV/BX/BZ 已过时，BY/CB 由所有者重新派发落地。
+
 ## [2.17.0] - 2026-11-14
 
 BS 批：安卓 App（TWA，不上架）+ 可清缓存离线 + 双通道分发。

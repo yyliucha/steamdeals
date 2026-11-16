@@ -61,8 +61,8 @@ android {
         applicationId "cn.yyliucha.steamdeals"
         minSdkVersion 24
         targetSdkVersion 36
-        versionCode 21600
-        versionName "2.16.0"
+        versionCode 21800
+        versionName "2.18.0"
 
         // The name for the application
         resValue "string", "appName", twaManifest.name
