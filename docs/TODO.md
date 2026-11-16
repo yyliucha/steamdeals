@@ -1558,7 +1558,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CA. 待开发：原生安卓 App（与 Web 完全拆分，共用同一数据库/后端）
 
-**状态：待开发（2026-11-16，所有者确认 5 组方向）**
+**状态：待开发（2026-11-16，所有者确认 5 组方向；App 六屏效果图已出，见规格 §10，待确认）**
 **依赖：** 无（批内 CA-1 后端 Token/API 先行；CA-2~4 依赖 CA-1；CA-5 依赖 CA-1~4）
 **解锁：** 无；**取代**：BS（TWA）、BU/BV/BX（移动 web 重设计）、BY（TWA 内置更新）、BZ（拆 android/）；BW 保留（仅后台手机端）
 **规格**：[APP-NATIVE.md](APP-NATIVE.md)
@@ -1574,3 +1574,24 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **验收**：见规格 §7——Token 登录/过期/撤销/限流/审计；首页/详情（含 DLC/历史）/搜索/愿望单/我的与 web 对齐；
   原生 APK 同包名同签名覆盖旧 TWA；App 内置更新可用；手机浏览器前台跳 `/app`、微信提示、`/console` 手机端保留；
   桌面 web 不变；站点侧 `npm test` / `frontend:build` / `scan` 全绿。
+
+## CB. 待开发：价格报表邮件 HTML 化 + 内容增强
+
+**状态：待开发（2026-11-16，所有者确认；HTML 邮件效果图已出，见规格 §3.2，待确认）**
+**依赖：** 无（CB-1 渲染模块先行；CB-2 依赖 CB-1）
+**解锁：** 无
+**规格**：[PRICE-REPORT-EMAIL.md](PRICE-REPORT-EMAIL.md)
+
+- **现状（2026-11-16 核对）**：`report price --notify` 每天由调度器执行（`src/scheduler.js:209-214`），邮件正文是纯文本
+  （`src/cli.js:2354-2370` 拼 `text`）；邮件层其实**已支持 HTML**（`buildMessage` 输出 `multipart/alternative`，
+  `test/notify-html.test.js`），但 `deliver()` 只透传 `text`（`src/notify.js:324-330`），所以现在收到的都是纯文本。
+- **需求**：邮件改 HTML 并丰富内容——品牌头 + 日期、KPI 三卡（降价/涨价/新史低）、降价 Top 5（名称/平台/原价→现价/折扣/
+  站内与 Steam 链接）、涨价 Top 3、近 7 天迷你柱状趋势、CTA、页脚；手机端可读。
+- **改动落点**：新增 `src/price-report-html.js`（`renderPriceReport()` → `{subject, html, text}`，零依赖、纯函数、
+  内联 CSS + table 布局、无外部资源、HTML 转义）；`src/notify.js`（`deliver()` 增加 `html` 并传给 email 通道，
+  webhook/wecom 仍纯文本）；`src/cli.js`（`cmdReport --notify` 接入渲染模块，subject 含日期与数字）；
+  `src/settings.js`（新增 `site.publicUrl`，env `SITE_PUBLIC_URL`，默认 `https://sd.yyliucha.cn`）；
+  `docs/MAIL-CONFIG-PAGE.md` 补一节；新增 `test/price-report-html.test.js`，扩展 `test/notify.test.js`。
+- **验收**：见规格 §4——HTML 含 KPI/Top/7 天/链接/转义、无外部资源与 flex/grid；`deliver` 带 html → multipart 两段，
+  webhook/wecom 仍 text；假 SMTP/本地验证 HTML 段可解码；QQ/163/企业微信邮箱/手机显示正常；
+  `npm test` / `scan` 全绿；部署后手动跑一次 `report price --notify` 确认收到 HTML。

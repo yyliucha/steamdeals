@@ -1,6 +1,7 @@
 # 原生安卓 App（与 Web 完全拆分，共用同一数据库/后端）（待开发）
 
 > 状态：**已确认待开发（2026-11-16，所有者确认 5 组方向）**。编号 **CA**（CA-1 ~ CA-5）。
+> **App 六屏效果图已出（2026-11-16，见 §10），待所有者确认后开工。**
 > **本批推翻**：[MOBILE-APP-TWA.md](MOBILE-APP-TWA.md)（BS，TWA 复用 web 页面）、
 > [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) 的 BU/BV/BX（移动 web 页面重设计）、
 > [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md)（BY，TWA 内置更新）、
@@ -156,3 +157,19 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 5. **App 首期是否包含 Steam 账号绑定/同步**（web 有）：默认**不做**；
 6. **依赖清单**：默认 Compose + OkHttp + kotlinx.serialization + Coil + DataStore（不引 Hilt/Retrofit）；
 7. **App 页面效果图确认**：开发前置（CA-2 起每期先确认）。
+
+## 10. App 页面效果图（2026-11-16 已出，CA-2~CA-4 设计基线）
+
+![原生 App 六屏效果图：登录 / 首页 / 详情 / 搜索 / 愿望单 / 我的（含更新对话框）](design/app-native-2026-11-16.png)
+
+| 屏 | 要点 |
+|---|---|
+| ① 登录 | 56dp 输入框、验证码图可刷新、Token 登录、注册/忘记密码入口 |
+| ② 首页 | 搜索 + 筛选 chips + 单列卡片（价格/折扣/史低/愿望单心形）+ 底部 4 Tab |
+| ③ 详情 | 全屏页：封面 → 指标 → 各平台报价 → 价格历史 → DLC 列表；底部固定操作条 |
+| ④ 搜索 | 自动聚焦、历史关键词、结果卡片（含 DLC） |
+| ⑤ 愿望单 | 与 web 账号共享；已降价/史低筛选；移除 |
+| ⑥ 我的 | 账号/统计、通知、主题、检查更新（原生更新对话框：稍后/立即更新）、退出 |
+
+- 视觉：Material 3 深色主题 + 品牌紫（`#8b82f5`）；页面结构独立于 web，不复用 web 页面；
+- 实现允许微调间距/字号/图标，**不得改变页面结构与信息层级**；要改结构先更新效果图并重新确认。
