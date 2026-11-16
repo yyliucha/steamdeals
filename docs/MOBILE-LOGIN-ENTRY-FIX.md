@@ -1,6 +1,8 @@
 # 手机端登录入口修复：点「登录」不出现登录页（浮层 history 竞态）（待开发）
 
 > 状态：**已实现待发版（2026-11-16，本地验证全绿，待质检）**。编号 **BT**。
+> **2026-11-16 后续（CA）**：手机浏览器前台只给 `/app` 下载页，本入口在手机前台不再使用；桌面登录入口无该竞态，
+> 硬跳兜底保留（代码已实现，`eba879c`）。
 > 关联：[MOBILE-FIX.md](MOBILE-FIX.md)（移动端既有适配）、[AUTH-REDESIGN.md](AUTH-REDESIGN.md)（独立登录页）、
 > [SESSION-MANAGEMENT.md](SESSION-MANAGEMENT.md) §8（401 软跳登录页）、[TODO.md](TODO.md) 的 BT 条目。
 
