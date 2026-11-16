@@ -95,6 +95,9 @@ import { useTheme } from '../composables/useTheme.js';
 import { NETWORK_ERROR_MESSAGE } from '../utils/network.js';
 // BM-3/BM-4（docs/SESSION-MANAGEMENT.md §8.4.3/§8.4.4）：401 软跳带 reason；主动退出登录标记心跳基线
 import { markSessionLoggedOut } from '../composables/useSessionHeartbeat.js';
+// BT 批（docs/MOBILE-LOGIN-ENTRY-FIX.md）：登录入口统一硬跳 helper；401 会话失效走 redirectToLogin
+import { openLogin } from '../utils/login-entry.js';
+import { redirectToLogin } from '../utils/session.js';
 import { useRoute, useRouter } from 'vue-router';
 import { Search, Bell, Filter, CopyDocument } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -130,8 +133,9 @@ function siteDateTime(iso){ try { return new Intl.DateTimeFormat('zh-CN', { time
 async function markNoticesRead(closeDialog){const ids=notices.value.map((n)=>Number(n.id));if(!ids.length){noticeDialog.value=false;return;}if(user.value){try{await request('/api/announcements/read',{method:'POST',body:JSON.stringify({ids})});}catch{/* 网络失败下次仍会提示未读 */}}else{try{localStorage.setItem(noticeReadKey,JSON.stringify([...new Set([...noticeReadIds.value,...ids])]));}catch{/* 忽略 */}}noticeReadIds.value=[...new Set([...noticeReadIds.value,...ids])];if(closeDialog)noticeDialog.value=false;}
 function legacyMaxAsReadIds(legacyMax){return notices.value.map((n)=>Number(n.id)).filter((id)=>id<=legacyMax);}
 const filterDrawer = ref(false), mySheet = ref(false);
-// AL 批（docs/AUTH-REDESIGN.md §5.1）：登录走独立 /login 页，带回跳 next（只允许站内相对路径）
-function goLogin(){router.push({path:'/login',query:{next:route.fullPath}});}
+// BT 批（docs/MOBILE-LOGIN-ENTRY-FIX.md §4.2）：登录入口改整页硬跳——关浮层触发的 history.back()
+// 与 router.push('/login') 抢历史栈（小米浏览器稳定复现"面板关了登录页不出现"），统一走 openLogin。
+function goLogin(){openLogin();}
 // 移动端判定：CSS 断点之外，「桌面版网站」模式的特征是 screen.width 小但视口宽（WebView 忽略 viewport）。
 // 用 v-if 分两套结构，不再用 CSS 断点"压缩"PC 结构。
 const isMobile = ref(false);
@@ -199,7 +203,7 @@ const coverFailed = ref(new Set());
 const detailCoverFailed = ref(false);
 function markCoverFailed(game) { if (!game?.id) return; const next = new Set(coverFailed.value); next.add(game.id); coverFailed.value = next; }
 function firstChar(name) { return (String(name ?? '').trim().charAt(0) || '?').toUpperCase(); }
-async function request(path, options) { const res=await fetch(path,{credentials:'same-origin',...options,headers:{'content-type':'application/json',...(options?.headers||{})}}); const raw=await res.text(); let data={}; try{data=raw?JSON.parse(raw):{}}catch{} if(res.status===401&&path!=='/api/me'&&path!=='/api/login'){router.push({path:'/login',query:{next:route.fullPath,reason:'expired'}});} if(!res.ok) throw new Error(data.error||`请求失败 (${res.status})`); return data; }
+async function request(path, options) { const res=await fetch(path,{credentials:'same-origin',...options,headers:{'content-type':'application/json',...(options?.headers||{})}}); const raw=await res.text(); let data={}; try{data=raw?JSON.parse(raw):{}}catch{} if(res.status===401&&path!=='/api/me'&&path!=='/api/login'){redirectToLogin('expired');} if(!res.ok) throw new Error(data.error||`请求失败 (${res.status})`); return data; }
 function localFlagIds(field,value){return Object.entries(guestGameFlags.value).filter(([,flags])=>flags?.[field]===value).map(([id])=>id).filter((id)=>/^\d{1,19}$/.test(id));}
 // 游客只有本地 感兴趣/不感兴趣 标记；已拥有/愿望单不展示（规格 §6）
 function visibleGames(rows){if(user.value)return rows;return rows.map((game)=>{const flags=guestGameFlags.value[String(game.id)]||{};return {...game,interested:typeof flags.interested==='boolean'?flags.interested:null,owned:false,wishlisted:false,wishlisted_by:[],site_wishlisted:false};});}

@@ -27,11 +27,13 @@ test('三条路由与标题（§5.1）', () => {
 });
 
 test('首页：登录跳 /login?next=…，不再弹登录框；用户菜单有修改密码入口；401 跳登录；mustChange 跳改密页', () => {
-  assert.match(home, /function goLogin\(\)\{router\.push\(\{path:'\/login',query:\{next:route\.fullPath\}\}\);?\}/, 'goLogin 带回跳');
+  assert.match(home, /function goLogin\(\)\{openLogin\(\);?\}/, 'goLogin 走统一硬跳 openLogin（BT 批）');
+  assert.match(home, /import \{ openLogin \} from '\.\.\/utils\/login-entry\.js'/, 'Home 引入 login-entry helper');
   assert.ok(!home.includes('loginVisible'), '首页登录弹窗已移除');
   assert.ok(!home.includes('<el-dialog v-model="loginVisible"'), '无登录弹窗模板');
   assert.match(home, /router\.push\('\/change-password'\)/, '用户菜单修改密码入口');
   assert.match(home, /res\.status===401&&path!=='\/api\/me'&&path!=='\/api\/login'/, '401 跳登录（游客 /api/me 除外）');
+  assert.match(home, /redirectToLogin\('expired'\)/, '前台 401 统一走 redirectToLogin（BT 批硬跳）');
   assert.match(home, /d\.user\?\.mustChangePassword\)\{router\.replace\('\/change-password\?forced=1'\)/, 'mustChange 跳改密页');
 });
 
@@ -79,4 +81,34 @@ test('后台：随机生成 + 临时密码弹窗（只显示一次）+ 重置留
 
 test('站点信息带注册就绪状态（/api/site → registration.enabled/smtpReady）', () => {
   assert.match(siteServer, /registration: \{ enabled: registrationEnabled, smtpReady: registrationSmtpReady \}/, '/api/site 返回注册状态');
+});
+
+// ---------------------------------------------------------------- BT 批（docs/MOBILE-LOGIN-ENTRY-FIX.md §6）
+// 登录入口统一硬跳（方案 C）：helper 结构 + next 白名单 + 懒加载 chunk 兜底。
+
+test('BT：openLogin 结构——防循环、next 白名单、reason、location.assign 整页跳', () => {
+  const entry = read('../frontend/src/utils/login-entry.js');
+  assert.match(entry, /export function openLogin\(\{ reason = '', next = null \} = \{\}\)/, 'openLogin 签名（reason + next）');
+  assert.match(entry, /window\.location\.pathname === '\/login'\)\s*return/, '已在登录页防循环');
+  assert.match(entry, /safeNextPath\(raw\)/, 'next 走白名单函数');
+  assert.match(entry, /window\.location\.assign\(`\/login\?/, 'location.assign 整页硬跳');
+  assert.match(entry, /if \(reason\) qs\.set\('reason', reason\)/, 'reason=expired 透传登录页');
+});
+
+test('BT：safeNextPath 只接受站内相对路径（// 与绝对 URL 一律回落 /）', async () => {
+  const { safeNextPath } = await import('../frontend/src/utils/login-entry.js');
+  assert.equal(safeNextPath('/console?section=games'), '/console?section=games', '站内路径原样保留');
+  assert.equal(safeNextPath('/a/b#c'), '/a/b#c', '带 hash 的站内路径保留');
+  assert.equal(safeNextPath('//evil.com/x'), '/', '协议相对地址回落 /');
+  assert.equal(safeNextPath('https://evil.com/x'), '/', '绝对 URL 回落 /');
+  assert.equal(safeNextPath(''), '/', '空值回落 /');
+  assert.equal(safeNextPath(null), '/', 'null 回落 /');
+});
+
+test('BT：main.js 注册 router.onError 懒加载 chunk 兜底（同路径每会话只硬载一次）', () => {
+  assert.match(mainJs, /router\.onError\(/, '注册 onError');
+  assert.match(mainJs, /Failed to fetch dynamically imported module\|Loading chunk\|Importing a module script failed/i, '只认 chunk 加载失败');
+  assert.match(mainJs, /sd:chunk-retry/, 'sessionStorage 防循环标记');
+  assert.match(mainJs, /sessionStorage\.setItem\(key, '1'\)/, '硬载前落标记');
+  assert.match(mainJs, /window\.location\.assign\(to\.fullPath\)/, '整页重载目标路由');
 });

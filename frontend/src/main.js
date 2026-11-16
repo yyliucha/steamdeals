@@ -75,6 +75,20 @@ window.addEventListener('resize', function () {
 
 const app = createApp(App);
 for (const component of [ElAlert, ElBadge, ElButton, ElCheckbox, ElCheckboxGroup, ElConfigProvider, ElDialog, ElDrawer, ElEmpty, ElForm, ElFormItem, ElIcon, ElInput, ElOption, ElPagination, ElPopover, ElProgress, ElSelect, ElSkeleton, ElSwitch, ElTag]) app.use(component);
+// BT 批（docs/MOBILE-LOGIN-ENTRY-FIX.md §4.3）：懒加载 chunk 失败兜底——只对"动态模块加载失败"生效，
+// 整页重载目标路由一次（sessionStorage 标记，同一路径每会话只硬载一次防死循环），避免点了没反应/白屏。
+router.onError((err, to) => {
+  const msg = String(err?.message ?? '');
+  if (!/Failed to fetch dynamically imported module|Loading chunk|Importing a module script failed/i.test(msg)) return;
+  try {
+    const key = `sd:chunk-retry:${to.fullPath}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, '1');
+  } catch {
+    /* 隐私模式禁用 storage 时仍执行一次硬载 */
+  }
+  window.location.assign(to.fullPath);
+});
 let adminUiReady = false;
 router.beforeEach(async (to) => {
   if (to.path === '/console' && !adminUiReady) {

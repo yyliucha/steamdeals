@@ -27,36 +27,39 @@ const ADMIN_401_FILES = [
   'components/UserCreateDrawer.vue',
 ];
 
-test('BM-3：源码里不再有 window.location.href = \'/login\' 整页硬跳', () => {
+test('BM-3：整页硬跳只允许走 utils/login-entry.js 的 openLogin（其余源码不得裸跳 /login）', () => {
   const files = readdirSync(srcRoot, { recursive: true })
     .map((f) => String(f).replace(/\\/g, '/'))
     .filter((f) => /\.(vue|js)$/.test(f));
   assert.ok(files.length > 30, `扫到前端源码文件（${files.length} 个）`);
   const offenders = [];
   for (const f of files) {
+    // BT 批（docs/MOBILE-LOGIN-ENTRY-FIX.md）：统一硬跳 helper 是唯一允许整页跳 /login 的地方
+    if (f === 'utils/login-entry.js') continue;
     const src = readFileSync(join(srcRoot, f), 'utf8');
     if (/window\.location\.href\s*=\s*['"`]\/login/.test(src) || /window\.location\.assign\(\s*['"`]\/login/.test(src)) offenders.push(f);
   }
-  assert.deepEqual(offenders, [], '不允许再整页跳 /login（会撞静态回退并可能 404）');
+  assert.deepEqual(offenders, [], '不允许在 openLogin 之外整页跳 /login（统一入口，防散落）');
 });
 
-test('BM-3：5 处后台 401 统一走 redirectToLogin()，软跳带 next 与 reason=expired', () => {
+test('BM-3/BT：5 处后台 401 统一走 redirectToLogin()；redirectToLogin 改为调用 openLogin 硬跳', () => {
   for (const f of ADMIN_401_FILES) {
     const src = read(`../frontend/src/${f}`);
     assert.match(src, /import \{ redirectToLogin \} from '\.\.\/utils\/session\.js'/, `${f} 引入共享 helper`);
     assert.match(src, /r\.status\s*===\s*401\)\s*\{\s*redirectToLogin\(\)/, `${f} 401 → redirectToLogin()`);
   }
   assert.match(sessionJs, /export function redirectToLogin\(reason = 'expired'\)/, '导出 redirectToLogin(reason)');
-  assert.match(sessionJs, /bypassNextGuard\(\)/, '跳转前放行未保存提醒（否则被拦）');
-  assert.match(sessionJs, /router\.push\(\{ path: '\/login', query: \{ next, reason \} \}\)/s, '软跳 router.push，带 next + reason');
-  assert.ok(!/window\.location\.href\s*=/.test(sessionJs), 'helper 自身不整页跳');
+  assert.match(sessionJs, /import \{ openLogin \} from '\.\/login-entry\.js'/, 'redirectToLogin 走统一硬跳 helper');
+  assert.match(sessionJs, /openLogin\(\{ reason \}\)/, 'openLogin({ reason })——带 reason=expired');
+  assert.ok(!/import \{ bypassNextGuard \}/.test(sessionJs), 'BT 批：整页跳转不触发路由守卫，不再 import bypassNextGuard');
+  assert.ok(!/router\.push\(\{ path: '\/login'/.test(sessionJs), '不再 SPA 软跳');
 });
 
 test('BM-3：登录页 reason=expired 提示「登录已过期，请重新登录」；无 reason 不显示', () => {
   assert.match(login, /route\.query\.reason === 'expired'/, '读 reason');
   assert.ok(login.includes('登录已过期，请重新登录'), '提示文案');
   assert.match(login, /v-if="expiredHint"/, '仅在 expiredHint 时渲染');
-  assert.match(home, /router\.push\(\{path:'\/login',query:\{next:route\.fullPath,reason:'expired'\}\}\)/, '前台 401 软跳也带 reason');
+  assert.match(home, /redirectToLogin\('expired'\)/, '前台 401 跳转也带 reason（BT 批：统一走 redirectToLogin 硬跳）');
   assert.match(home, /res\.status===401&&path!=='\/api\/me'&&path!=='\/api\/login'/, '后台探测/登录接口仍不跳（规格 §8.4.3）');
 });
 
