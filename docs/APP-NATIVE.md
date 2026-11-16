@@ -63,6 +63,8 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 | POST | `/api/auth/token/revoke` | Bearer 撤销当前 token（退出登录） |
 | GET | `/api/me` | 支持 `Authorization: Bearer <token>` 或现有 Cookie，返回同一 `user` 形状 |
 | GET | `/api/captcha` | App 复用（图片 SVG，App 渲染为位图） |
+| GET | `/api/app/status` | App 启动检查：返回 `{ banned, type: 'ip'\\|'device'\\|null }`；命中 IP 黑名单或设备封禁；无副作用，豁免封禁拦截 |
+| 其余 | `/api/app/*` | App 专用命名空间：**IP 黑名单/设备封禁的豁免只对此前缀生效**；Web `/api/*` 规则不变 |
 
 - 有效期：默认 **30 天**（`rememberMe=true`）/ **7 天**（false），`expires_at` 固定；不使用 refresh token（v1，待确认）；
 - 中间件：先 Bearer、后 Cookie；Bearer 校验 hash + 未过期 + 未撤销 + 用户未禁用；`last_used_at` 5 分钟节流写；
@@ -74,6 +76,17 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 公共：`/api/site`、`/api/games`（分页/筛选/排序）、`/api/games/:appid`、`/api/games/:appid/dlc`、`/api/games/count`、`/api/announcements`（公开部分）。
 用户（需 Bearer）：`/api/me`、`/api/prefs`、`/api/games/:appid` 的 `wishlisted/interested` 字段、愿望单切换接口、公告已读、修改密码、注册。
 > CA-1 交付前先产出 **API 契约清单**（`docs/APP-API.md`）：路径、方法、鉴权、请求/响应、错误码；App 只按契约开发。
+
+### 3.4 App 命名空间与封禁豁免（2026-11-16 所有者确认）
+
+- App 的**用户端**请求统一走 `/api/app/*`；该命名空间**不执行 IP 黑名单/设备封禁拦截**（Web `/api/*` 继续执行）；
+- `GET /api/app/status`：启动时检查 IP 黑名单 + 设备封禁；设备 ID 由 App 安装时生成并持久化（DataStore），随请求头 `X-Device-Id` 发送；
+  返回 `{ banned: true, type: 'ip'|'device' }` 或 `{ banned: false }`；
+- App 端**只处理这一种情况**：命中 → 原生不可取消对话框「你已经被封禁」+「已知晓」→ 点击后**退出 App**（`finishAffinity`/结束进程）；
+  **不展示申诉入口、不做其它封禁/限制界面**；
+- App 的管理界面**后置**（第一期不做黑名单/审核管理，后续追加）；
+- 服务端对 `/api/app/*` 保留**全局 API 基础限流**（只在滥用时 429，不弹窗、不算 App 封禁）；账号锁定/禁用等账号级保护照常。
+  若要求 App 命名空间完全不做限流，需明确（有被当作绕过通道刷接口的风险）。
 
 ## 4. App：原生 Android（CA-2 ~ CA-4）
 
@@ -90,6 +103,7 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 
 | 页面 | 内容 | 对应 API |
 |---|---|---|
+| **启动检查** | 请求 `/api/app/status`；命中 IP 黑名单/设备封禁 → 原生对话框「你已经被封禁」+「已知晓」→ 退出 App；无申诉、无其它限制界面 | `/api/app/status` |
 | 登录/注册 | 用户名密码 + 验证码（Token 登录）；注册；改密 | `/api/auth/token`、`/api/captcha`、注册/改密接口 |
 | 首页 | 游戏列表：搜索、筛选（全部/折扣/史低/免费/未发售）、排序（热度/发行时间）、加载更多 | `/api/games` |
 | 详情 | 封面、指标、描述、各区服报价、价格历史、DLC（数量+列表+Steam 跳转）、购买/愿望单/感兴趣 | `/api/games/:appid`、`/api/games/:appid/dlc` |
@@ -138,6 +152,9 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 5. **Web 跳转**：手机浏览器前台 → `/app`；微信内 → 浏览器打开提示；`/console` 手机端仍可登录使用。
 6. **桌面 web** 行为不变；`npm test` / `frontend:build` / `scan` 全绿。
 7. **仓库**：App 代码在独立 `steamdeals-app` 仓库；站点仓库不再含 App 工程与 APK 构建；规格/TODO 仍在站点仓库。
+8. **App 启动封禁**：黑名单 IP / 设备封禁 → 打开 App 弹出「你已经被封禁」+「已知晓」→ 点击后退出；未被封正常进入；
+   Web 端同一 IP 仍被拦；App 无申诉入口、无黑名单管理界面（管理界面后置）。
+9. **App 命名空间**：`/api/app/*` 不执行 IP 黑名单/设备封禁；`/api/app/status` 返回类型正确；Web `/api/*` 行为不变。
 
 ## 8. 本批不做
 
@@ -156,7 +173,9 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 4. **登录方式**：第一期只做用户名密码 + 验证码 + 注册 + 改密；邮箱验证码登录/忘记密码放第二期；
 5. **App 首期是否包含 Steam 账号绑定/同步**（web 有）：默认**不做**；
 6. **依赖清单**：默认 Compose + OkHttp + kotlinx.serialization + Coil + DataStore（不引 Hilt/Retrofit）；
-7. **App 页面效果图确认**：开发前置（CA-2 起每期先确认）。
+7. **App 页面效果图确认**：开发前置（CA-2 起每期先确认）；**六屏已确认（2026-11-16）**；
+8. **App 命名空间限流**：默认保留全局 API 基础限流（仅 429、不弹窗）；若要求完全豁免请明示（有被当成绕过通道刷接口的风险）；
+9. **设备 ID 来源**：默认 App 安装 UUID（DataStore），不使用 Android ID（隐私/重置问题）。
 
 ## 10. App 页面效果图（2026-11-16 已确认，CA-2~CA-4 设计基线）
 
