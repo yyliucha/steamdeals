@@ -55,7 +55,7 @@
 | **BQ** | 申诉邮件内一键「信任 / 封禁」（确认页 + 一次性 token，14 天有效；收件人沿用申诉邮箱） | [APPEAL-SYSTEM.md](APPEAL-SYSTEM.md) §10 / [DEV-BRIEF-APPEAL.md](DEV-BRIEF-APPEAL.md) | 已发布 v2.16.0（2026-11-14，随 O 同批） | ✅ 本轮已给 |
 | **BR** | 封禁自助恢复 + 手机/CGNAT 适配（加白即清封、`ban/state` 自查三件套、封禁页可读、页面/API 分桶） | [BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md) §11 | 已发布 v2.16.0（2026-11-14） | ✅ 本轮已给 |
 | **BS** | 安卓 App（TWA，不上架）+ 可清缓存离线 + 双通道分发（**APK 入库随镜像**，站点/GitHub 都能下；不做推送与角标） | [MOBILE-APP-TWA.md](MOBILE-APP-TWA.md) | 已发布 v2.17.0（2026-11-14） | ✅ 本轮已给 |
-| **BT** | 手机端点「登录」不出现登录页（浮层 `history.back()` 与 `router.push` 竞态）→ 登录入口统一硬跳 + chunk 兜底 | [MOBILE-LOGIN-ENTRY-FIX.md](MOBILE-LOGIN-ENTRY-FIX.md) | 已实现待发版（2026-11-16） | ✅ 本轮已给 |
+| **BT** | 手机端点「登录」不出现登录页（浮层 `history.back()` 与 `router.push` 竞态）→ 登录入口统一硬跳 + chunk 兜底 | [MOBILE-LOGIN-ENTRY-FIX.md](MOBILE-LOGIN-ENTRY-FIX.md) | 已实现待发版（2026-11-16，eba879c） | ✅ 本轮已给 |
 | **BU** | 移动端登录页重做（大表单 + 键盘避让 + 验证码/下载入口） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §3 | 依赖阻塞（前置 BT；需效果图确认） | ✅ 本轮已给 |
 | **BV** | 前台移动端重设计（底部 Tab：首页/搜索/愿望单/我的；详情全屏页） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §4 | 依赖阻塞（前置 BU；需效果图确认） | ✅ 本轮已给 |
 | **BW** | 后台移动端重设计（☰ 抽屉 + 表格全卡片 + 批量吸底 + 表单全屏） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §5 | 待开发（2026-11-16 已确认；需效果图确认） | ✅ 本轮已给 |

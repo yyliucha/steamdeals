@@ -1433,7 +1433,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BT. 待开发：手机端点「登录」不出现登录页（浮层 history 竞态）→ 登录入口改硬跳
 
-**状态：已实现待发版（2026-11-16，提交哈希待补；本地验证全绿，待调 gameprice-qa）**
+**状态：已实现待发版（2026-11-16，eba879c；本地验证全绿，待调 gameprice-qa）**
 **依赖：** 无（与移动端重设计解耦，可单独发）
 **解锁：** 无（移动端登录页重做 / 前台 / 后台重设计另批，建议本条先上）
 **规格**：[MOBILE-LOGIN-ENTRY-FIX.md](MOBILE-LOGIN-ENTRY-FIX.md)
