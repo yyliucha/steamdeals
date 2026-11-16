@@ -192,10 +192,26 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-14 更新，v2.17.0 已发布：BS 安卓 App + 可清缓存离线 + 双通道分发）
+### 当前状态（2026-11-16 更新，v2.18.0 已发布：BT 手机登录入口修复 + BW 后台手机端 + BY App 内置更新 + CB 价格报表邮件 HTML）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 
+- **v2.18.0 已发布**（tag `v2.18.0`，提交 `f71242b`）：BT（手机登录入口统一 `openLogin` 整页硬跳、
+  `next` 站内白名单、懒加载 chunk `router.onError` 兜底）+ BW（后台 ≤768px ☰ 抽屉 + 五模块卡片 +
+  批量吸底 + 弹窗全屏，桌面不变）+ BY（App 内置更新：启动/回前台 24h 检查、原生对话框可选/强制、
+  下载校验 + GitHub 兜底 + 用户确认安装、「我的 → 检查更新」scheme 手动入口；`latest.json` /
+  `/api/app/latest` 增 `versionCode`/`minVersionCode`/`notes`）+ CB（价格报表邮件 HTML 化：
+  KPI/Top5/3/7 天柱状/CTA、multipart 文本兜底、`site.publicUrl` 设置、≤480px 单列）。
+  APK `steamdeals-2.18.0.apk`（versionCode 21800，签名指纹不变，sha256 `7e7bc84e…`）入库随镜像；
+  GitHub Release **app-v2.18.0** 已发布（APK + sha256，作为 App 内更新兜底）。
+  验证：`npm test` 87 文件全绿、`frontend:build`、`scan` 干净。
+  质检：BW ✅（[QA-CONSOLE-MOBILE-BW.md](QA-CONSOLE-MOBILE-BW.md) 两轮）、BY ✅（[QA-APP-UPDATE-BY.md](QA-APP-UPDATE-BY.md) 两轮）、
+  CB ✅（[QA-PRICE-REPORT-CB.md](QA-PRICE-REPORT-CB.md) 两轮）；真机/部署侧复核项已列入各 QA 报告。
+  CI：docker-hub run 43828878651 ✅（9m47s）；docker-tcr run 43828878658 ✅（18m37s）。
+  **服务器部署待执行**（升级到 `2.18.0`）；部署后重点：① 手机打开 `/console` 为 ☰ 抽屉 + 卡片（BW 真机 3 项）；
+  ② 手动 `node src/cli.js report price --notify` 收到 HTML 邮件（CB 验收 6）；③ 真机装 `steamdeals-2.18.0.apk`
+  后启动/回前台/「我的 → 检查更新」出现原生更新对话框、安装确认、覆盖升级数据保留（BY 真机 2 项）；
+  ④ BT 小米浏览器「我的」面板点登录直达登录页。
 - **v2.17.0 已发布**（tag `v2.17.0`）：BS 批——安卓 App（TWA，`android/` 工程入库，包名
   `cn.yyliucha.steamdeals`、versionCode 21600）+ 可清缓存离线（SW 只缓存 `/assets/*` 与封面图，
   HTML/API/manifest 永不缓存、导航走网络、版本变化清缓存 + `?nosw=1`）+ 双通道分发（站点 `/app`
