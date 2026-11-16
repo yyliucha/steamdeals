@@ -1577,7 +1577,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CB. 待开发：价格报表邮件 HTML 化 + 内容增强
 
-**状态：已实现待发版（2026-11-16，c5fc536 + 第 1 轮打回修复 哈希待补；待第 2 轮复检）。第 1 轮打回摘要（docs/QA-PRICE-REPORT-CB.md）：⚠️ 有条件放行，偏差 1 条——§3.1 `@media (max-width:480px)` 单列适配缺失——已补 head 内 `<style>` 媒体查询（主表格全宽、KPI 卡与表格单元堆叠）+ 4 条断言。**
+**状态：已实现待发版（2026-11-16，c5fc536 + 第 1 轮打回修复 becff89；待第 2 轮复检）。第 1 轮打回摘要（docs/QA-PRICE-REPORT-CB.md）：⚠️ 有条件放行，偏差 1 条——§3.1 `@media (max-width:480px)` 单列适配缺失——已补 head 内 `<style>` 媒体查询（主表格全宽、KPI 卡与表格单元堆叠）+ 4 条断言。**
 **依赖：** 无（CB-1 渲染模块先行；CB-2 依赖 CB-1）
 **解锁：** 无
 **规格**：[PRICE-REPORT-EMAIL.md](PRICE-REPORT-EMAIL.md)
