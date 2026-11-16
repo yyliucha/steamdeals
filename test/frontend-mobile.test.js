@@ -66,6 +66,7 @@ test('BY-3：Home.vue「我的」面板有检查更新入口（scheme + 1.5s 回
 
 test('BY-2：Android 更新模块关键契约——检查/对话框/下载/校验/安装/权限/scheme', () => {
   const updater = readFileSync(ROOT + 'android/app/src/main/java/cn/yyliucha/steamdeals/AppUpdater.java', 'utf8');
+  const dialogAct = readFileSync(ROOT + 'android/app/src/main/java/cn/yyliucha/steamdeals/UpdateDialogActivity.java', 'utf8');
   const launcher = readFileSync(ROOT + 'android/app/src/main/java/cn/yyliucha/steamdeals/LauncherActivity.java', 'utf8');
   const manifest = readFileSync(ROOT + 'android/app/src/main/AndroidManifest.xml', 'utf8');
   const filepaths = readFileSync(ROOT + 'android/app/src/main/res/xml/filepaths.xml', 'utf8');
@@ -74,16 +75,27 @@ test('BY-2：Android 更新模块关键契约——检查/对话框/下载/校�
   assert.match(updater, /BuildConfig\.VERSION_CODE/, '版本比较用 BuildConfig.VERSION_CODE');
   assert.match(updater, /KEY_IGNORED_VERSION/, '忽略此版本（SharedPreferences）');
   assert.match(updater, /CHECK_THROTTLE_MS = 24L/, '回前台 24h 节流');
+  assert.match(updater, /!manual \&\& throttled/, '启动/手动不受节流');
+  assert.match(updater, /if \(!manual\) prefs\.edit\(\)\.putLong\(KEY_LAST_CHECK_AT/, '手动检查不写已检查时间');
   assert.match(updater, /minVersionCode > currentCode/, '低于 minVersionCode 强制');
   assert.match(updater, /DownloadManager/, 'DownloadManager 下载');
+  assert.match(updater, /setAllowedOverMetered\(allowMetered\)/, '选择使用流量后才放开计量网络');
   assert.match(updater, /SHA-256|MessageDigest/, 'SHA-256 校验');
   assert.match(updater, /PackageInstaller/, 'PackageInstaller 安装');
   assert.match(updater, /canRequestPackageInstalls/, 'Android 8+ 未知来源引导');
   assert.match(updater, /isAllowedUrl/, 'https + 白名单主机');
   assert.match(updater, /githubFallbackUrl|GITHUB_RELEASE/, 'GitHub Release 兜底');
-  assert.match(launcher, /AppUpdater\.checkForUpdate\(this, false, false\)/, '启动时检查');
+  assert.match(updater, /getApplicationContext\(\)/, '检查用 applicationContext 持活（TWA 宿主会 finish）');
+  // 对话框宿主：独立透明 Activity（LauncherActivity 启动 TWA 后即 finish，弹窗必须有宿主）
+  assert.match(dialogAct, /class UpdateDialogActivity extends Activity/, '独立弹窗 Activity');
+  assert.match(dialogAct, /发现新版本 v/, '原生对话框文案');
+  assert.match(dialogAct, /EXTRA_FORCED/, '强制更新标记透传');
+  assert.match(manifest, /android:name="\.UpdateDialogActivity"/, '弹窗 Activity 注册');
+  assert.match(manifest, /android\.permission\.INTERNET/, '应用进程联网权限（检查/下载必需）');
+  assert.match(manifest, /android:launchMode="singleTop"/, 'singleTop 使 onNewIntent 可达');
+  assert.match(launcher, /AppUpdater\.checkForUpdate\(this, false, false\)|checkForUpdate\(this, false, manualByScheme\)/, '启动时检查');
   assert.match(launcher, /AppUpdater\.checkForUpdate\(this, true, false\)/, '回前台检查（24h 节流）');
-  assert.match(launcher, /steamdeals.*check-update/, 'onNewIntent 处理手动 scheme');
+  assert.match(launcher, /isCheckUpdateIntent/, 'scheme 手动检查（onCreate + onNewIntent 双路径）');
   assert.match(manifest, /REQUEST_INSTALL_PACKAGES/, '安装权限声明');
   assert.match(manifest, /android:scheme="steamdeals"/, 'scheme intent-filter');
   assert.match(filepaths, /updates/, 'FileProvider 更新包路径');

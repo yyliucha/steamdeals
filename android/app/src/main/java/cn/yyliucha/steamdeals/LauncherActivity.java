@@ -41,8 +41,15 @@ public class LauncherActivity
         } else {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         }
-        // BY 批（docs/MOBILE-APP-UPDATE.md §4.1）：启动时检查更新（不节流、失败静默不阻塞进站）
-        AppUpdater.checkForUpdate(this, false, false);
+        // BY 批（docs/MOBILE-APP-UPDATE.md §4.1/§4.5）：启动时检查更新（不节流、失败静默不阻塞进站）；
+        // 经自定义 scheme 唤起（launchMode=singleTop 新实例路径）时按手动检查处理（不写节流时间）。
+        boolean manualByScheme = isCheckUpdateIntent(getIntent());
+        AppUpdater.checkForUpdate(this, false, manualByScheme);
+    }
+
+    private static boolean isCheckUpdateIntent(Intent intent) {
+        Uri data = intent == null ? null : intent.getData();
+        return data != null && "steamdeals".equals(data.getScheme()) && "check-update".equals(data.getHost());
     }
 
     @Override
@@ -55,9 +62,8 @@ public class LauncherActivity
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        // BY-3（§4.5）：「我的 → 检查更新」用自定义 scheme 拉起本 Activity
-        Uri data = intent == null ? null : intent.getData();
-        if (data != null && "steamdeals".equals(data.getScheme()) && "check-update".equals(data.getHost())) {
+        // BY-3（§4.5）：「我的 → 检查更新」用自定义 scheme 拉起本 Activity（launchMode=singleTop）
+        if (isCheckUpdateIntent(intent)) {
             AppUpdater.checkForUpdate(this, false, true);
         }
     }

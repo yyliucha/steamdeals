@@ -24,6 +24,9 @@
 
     <!-- BY 批（docs/MOBILE-APP-UPDATE.md §4.4）：Android 8+ 用户确认安装需要该权限 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- BY 批：AppUpdater 在应用进程内做版本检查/下载，需要网络权限（TWA 页面网络走 Chrome，
+         浏览器壳本身不声明 INTERNET，必须显式补） -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     
 
@@ -79,6 +82,7 @@
 
         <activity android:name="LauncherActivity"
             android:alwaysRetainTaskState="true"
+            android:launchMode="singleTop"
             android:label="@string/launcherName"
             android:exported="true">
             <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL"
@@ -169,6 +173,13 @@
         </activity>
 
         <activity android:name="com.google.androidbrowserhelper.trusted.FocusActivity" />
+
+        <!-- BY 批（docs/MOBILE-APP-UPDATE.md §4.2）：更新对话框宿主——
+             LauncherActivity 启动 TWA 后即 finish，弹窗必须有独立透明 Activity 承载 -->
+        <activity android:name=".UpdateDialogActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <activity android:name="com.google.androidbrowserhelper.trusted.WebViewFallbackActivity"
             android:configChanges="orientation|screenSize" />

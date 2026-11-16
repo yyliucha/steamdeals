@@ -17,8 +17,6 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
-import android.text.TextUtils;
-import android.view.Gravity;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -44,25 +42,35 @@ import java.util.ArrayList;
 import java.util.List;
 
 // BY 批（docs/MOBILE-APP-UPDATE.md §4）：安卓 App 内置更新——
-// 检查（启动 + 回前台 24h 节流 + 手动 scheme）→ 原生对话框（可选/强制）→
+// 检查（启动 + 回前台 24h 节流 + 手动 scheme）→ UpdateDialogActivity 原生对话框（可选/强制）→
 // 下载（站点优先、GitHub 兜底、默认仅 Wi-Fi、SHA-256 校验）→ 用户确认安装（覆盖升级，签名不变）。
+// 注意：LauncherActivity 启动 TWA 后即 finish——检查在后台线程跑、弹窗由独立透明
+// UpdateDialogActivity 承载；应用进程内联网必须有 INTERNET 权限（Manifest 已补）。
 public class AppUpdater {
+    static final String PREFS = "sd_update";
+    static final String KEY_IGNORED_VERSION = "ignoredVersionCode";
+    private static final String KEY_LAST_CHECK_AT = "lastCheckAt";
+    static final String KEY_ALLOW_MOBILE = "allowMobileDownload";
+    private static final long CHECK_THROTTLE_MS = 24L * 60 * 60 * 1000; // 24 小时
+
     private static final String BASE_URL = "https://sd.yyliucha.cn";
     private static final String CHECK_URL = BASE_URL + "/api/app/latest";
     private static final String GITHUB_RELEASE = "https://github.com/yyliucha/steamdeals/releases/download/";
-    private static final String PREFS = "sd_update";
-    private static final String KEY_IGNORED_VERSION = "ignoredVersionCode";
-    private static final String KEY_LAST_CHECK_AT = "lastCheckAt";
-    private static final String KEY_ALLOW_MOBILE = "allowMobileDownload";
-    private static final long CHECK_THROTTLE_MS = 24L * 60 * 60 * 1000; // 24 小时
 
     private static long lastDownloadId = -1;
     private static String lastExpectedSha = null;
     private static long lastApkSize = -1;
     private static String lastVersion = "";
     private static String lastApkPath = "";
+    private static boolean fallbackTried = false;
+    private static volatile boolean downloadUiActive = false;
 
     private AppUpdater() {}
+
+    /** 下载/安装链路是否还在活动弹窗里跑（UpdateDialogActivity 据此决定 dismiss 时是否 finish）。 */
+    public static boolean isDownloading() {
+        return downloadUiActive;
+    }
 
     /** 只允许 https + 白名单主机（站点 / GitHub 及其资源域），其它地址拒绝。 */
     public static boolean isAllowedUrl(String url) {
@@ -79,13 +87,19 @@ public class AppUpdater {
         }
     }
 
+    public static String formatSize(long bytes) {
+        return new DecimalFormat("0.0").format(bytes / 1024.0 / 1024.0) + " MB";
+    }
+
     /**
      * 检查更新。manual=true 时不写「已检查时间」（不影响 24h 节流）。
-     * 全程静默：网络失败不打扰（下次再试）；只有发现可更新版本才弹对话框。
+     * 全程静默：网络失败不打扰（下次再试）；只有发现可更新版本才拉起 UpdateDialogActivity。
+     * context 任意类型均可（内部用 applicationContext 持活后台线程）。
      */
-    public static void checkForUpdate(final Activity activity, final boolean throttled, final boolean manual) {
+    public static void checkForUpdate(Context context, final boolean throttled, final boolean manual) {
+        final Context appContext = context.getApplicationContext();
         final long now = System.currentTimeMillis();
-        final SharedPreferences prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        final SharedPreferences prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         // 回前台检查按 24h 节流；启动与手动入口不受节流；手动检查不写「已检查时间」（§4.5）
         if (!manual && throttled && now - prefs.getLong(KEY_LAST_CHECK_AT, 0) < CHECK_THROTTLE_MS) return;
         if (!manual) prefs.edit().putLong(KEY_LAST_CHECK_AT, now).apply();
@@ -93,17 +107,14 @@ public class AppUpdater {
         new Thread(new Runnable() {
             @Override public void run() {
                 JSONObject latest = fetchJson(CHECK_URL);
-                if (latest == null) {
-                    // 站点不可达：直接试 GitHub 兜底会没有版本信息，本批检查阶段静默（§4.6）
-                    return;
-                }
+                if (latest == null) return; // 站点不可达：检查阶段静默（§4.6）
                 final int versionCode = latest.optInt("versionCode", -1);
                 final int minVersionCode = latest.optInt("minVersionCode", -1);
                 final String version = latest.optString("version", "");
                 final long size = latest.optLong("size", -1);
                 final String apkPath = latest.optString("apkPath", "");
                 final String sha256 = latest.optString("sha256", "");
-                final List<String> notes = new ArrayList<>();
+                final ArrayList<String> notes = new ArrayList<>();
                 JSONArray notesArr = latest.optJSONArray("notes");
                 if (notesArr != null) {
                     for (int i = 0; i < notesArr.length(); i++) notes.add(notesArr.optString(i));
@@ -117,11 +128,7 @@ public class AppUpdater {
                 final int ignored = prefs.getInt(KEY_IGNORED_VERSION, -1);
                 if (ignored == versionCode && !forced) return; // 忽略此版本（强制时忽略不生效）
 
-                activity.runOnUiThread(new Runnable() {
-                    @Override public void run() {
-                        showUpdateDialog(activity, version, versionCode, size, notes, apkPath, sha256, forced);
-                    }
-                });
+                UpdateDialogActivity.start(appContext, version, versionCode, size, notes, apkPath, sha256, forced);
             }
         }).start();
     }
@@ -166,39 +173,6 @@ public class AppUpdater {
         return GITHUB_RELEASE + "app-v" + version + "/" + base;
     }
 
-    private static void showUpdateDialog(final Activity activity, final String version, final int versionCode,
-                                         final long size, final List<String> notes, final String apkPath,
-                                         final String sha256, final boolean forced) {
-        String title = "发现新版本 v" + version;
-        StringBuilder body = new StringBuilder();
-        if (size > 0) body.append("安装包大小：").append(formatSize(size)).append("\n");
-        if (!notes.isEmpty()) {
-            body.append("更新说明：\n").append(TextUtils.join("\n", notes));
-        }
-        AlertDialog.Builder b = new AlertDialog.Builder(activity)
-                .setTitle(title)
-                .setMessage(body.toString().trim())
-                .setCancelable(!forced);
-        if (forced) {
-            b.setNegativeButton("立即更新", (d, w) -> startDownload(activity, apkUrl(apkPath), sha256, size, version, apkPath));
-        } else {
-            b.setPositiveButton("立即更新", (d, w) -> startDownload(activity, apkUrl(apkPath), sha256, size, version, apkPath));
-            b.setNeutralButton("稍后", null);
-            b.setNegativeButton("忽略此版本", (d, w) -> {
-                activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                        .edit().putInt(KEY_IGNORED_VERSION, versionCode).apply();
-                Toast.makeText(activity, "已忽略 v" + version + "，出现更高版本会再提示", Toast.LENGTH_SHORT).show();
-            });
-        }
-        AlertDialog dialog = b.create();
-        if (forced) dialog.setCanceledOnTouchOutside(false);
-        dialog.show();
-    }
-
-    private static String formatSize(long bytes) {
-        return new DecimalFormat("0.0").format(bytes / 1024.0 / 1024.0) + " MB";
-    }
-
     private static boolean isWifi(Context ctx) {
         try {
             ConnectivityManager cm = (ConnectivityManager) ctx.getSystemService(Context.CONNECTIVITY_SERVICE);
@@ -209,10 +183,15 @@ public class AppUpdater {
         }
     }
 
-    private static void startDownload(final Activity activity, final String url, final String sha, final long size,
-                                      final String version, final String apkPath) {
+    /** 入口：移动网络且未授权流量时先弹选择；否则直接下载（站点优先，失败自动回落 GitHub 一次）。 */
+    public static void startDownload(final Activity activity, final String apkPath, final String sha,
+                                     final long size, final String version) {
+        downloadUiActive = true;
+        final String url = apkUrl(apkPath);
         if (!isAllowedUrl(url)) {
             Toast.makeText(activity, "下载地址不合法，已拒绝", Toast.LENGTH_SHORT).show();
+            downloadUiActive = false;
+            activity.finish();
             return;
         }
         final SharedPreferences prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -224,15 +203,17 @@ public class AppUpdater {
                         prefs.edit().putBoolean(KEY_ALLOW_MOBILE, true).apply();
                         doDownload(activity, url, sha, size, version, apkPath);
                     })
-                    .setNegativeButton("仅 Wi-Fi 下载", (d, w) -> openFallbackPage(activity))
+                    .setNegativeButton("仅 Wi-Fi 下载", (d, w) -> {
+                        downloadUiActive = false;
+                        openFallbackPage(activity);
+                        activity.finish();
+                    })
                     .setCancelable(false)
                     .show();
             return;
         }
         doDownload(activity, url, sha, size, version, apkPath);
     }
-
-    private static boolean fallbackTried = false;
 
     private static void doDownload(final Activity activity, final String url, final String sha, final long size,
                                    final String version, final String apkPath) {
@@ -248,7 +229,9 @@ public class AppUpdater {
             req.setTitle("SteamDeals v" + version);
             req.setDescription("下载完成后请在系统弹窗中确认安装");
             req.setDestinationInExternalFilesDir(activity, Environment.DIRECTORY_DOWNLOADS, "steamdeals-" + version + ".apk");
-            req.setAllowedOverMetered(false);
+            // 用户明确选择「使用流量下载」后才放开计量网络（BY 批：默认仅 Wi-Fi）
+            boolean allowMetered = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ALLOW_MOBILE, false);
+            req.setAllowedOverMetered(allowMetered);
             req.setAllowedOverRoaming(false);
             long id = dm.enqueue(req);
 
@@ -258,7 +241,6 @@ public class AppUpdater {
             lastVersion = version;
             lastApkPath = apkPath;
 
-            // 完成广播：校验 → 安装；失败（含 SHA 不匹配）时给重试/打开发布页
             BroadcastReceiver receiver = new BroadcastReceiver() {
                 @Override public void onReceive(Context context, Intent intent) {
                     long doneId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
@@ -301,7 +283,7 @@ public class AppUpdater {
         final ProgressBar bar = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
         bar.setMax(100);
         final TextView label = new TextView(activity);
-        label.setGravity(Gravity.CENTER);
+        label.setGravity(android.view.Gravity.CENTER);
         label.setText("正在下载更新包…");
         box.addView(bar, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         box.addView(label, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -380,11 +362,15 @@ public class AppUpdater {
     }
 
     private static void showDownloadFailed(final Activity activity, final String version, final String apkPath) {
+        downloadUiActive = false;
         new AlertDialog.Builder(activity)
                 .setTitle("下载失败")
                 .setMessage("更新包下载失败。可重试，或打开下载页手动更新。")
-                .setPositiveButton("重试", (d, w) -> startDownload(activity, apkUrl(apkPath), lastExpectedSha, lastApkSize, version, apkPath))
-                .setNegativeButton("打开发布页", (d, w) -> openFallbackPage(activity))
+                .setPositiveButton("重试", (d, w) -> startDownload(activity, apkPath, lastExpectedSha, lastApkSize, version))
+                .setNegativeButton("打开发布页", (d, w) -> {
+                    openFallbackPage(activity);
+                    activity.finish();
+                })
                 .setCancelable(false)
                 .show();
     }
@@ -393,6 +379,7 @@ public class AppUpdater {
         // Android 8+：先确认"允许安装未知应用"，否则引导去设置打开
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             if (!activity.getPackageManager().canRequestPackageInstalls()) {
+                downloadUiActive = false;
                 new AlertDialog.Builder(activity)
                         .setTitle("需要允许安装应用")
                         .setMessage("请在设置中允许「SteamDeals」安装应用，然后回来点击重试。")
@@ -406,7 +393,7 @@ public class AppUpdater {
                                 } catch (Exception ignored) {}
                             }
                         })
-                        .setNegativeButton("取消", null)
+                        .setNegativeButton("取消", (d, w) -> activity.finish())
                         .show();
                 return;
             }
@@ -427,6 +414,8 @@ public class AppUpdater {
             in.close();
             session.commit(null); // 系统弹安装确认；结果不在本批跟踪（失败由系统提示，用户可到 /app 手动更新）
             session.close();
+            downloadUiActive = false;
+            activity.finish();
             return;
         } catch (Exception e) {
             try {
@@ -435,9 +424,13 @@ public class AppUpdater {
                 view.setDataAndType(content, "application/vnd.android.package-archive");
                 view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
                 activity.startActivity(view);
+                downloadUiActive = false;
+                activity.finish();
             } catch (Exception e2) {
+                downloadUiActive = false;
                 Toast.makeText(activity, "无法拉起安装，请到下载页手动更新", Toast.LENGTH_LONG).show();
                 openFallbackPage(activity);
+                activity.finish();
             }
         }
     }

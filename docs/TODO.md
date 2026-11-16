@@ -1513,7 +1513,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## BY. 待开发：安卓 App 内置更新（检测 → 提示 → 下载 → 用户确认安装）
 
-**状态：已实现待发版（2026-11-16，所有者重新派发——CA 决策后本批曾标「已过时·并入 CA-4」，交互与元数据契约由 CA-4 沿用；92cae3e；本地验证全绿，待调 gameprice-qa）**
+**状态：已实现待发版（2026-11-16，92cae3e + 第 1 轮打回修复 提交哈希待补；待第 2 轮复检）。第 1 轮打回摘要（docs/QA-APP-UPDATE-BY.md）：① Manifest 缺 INTERNET 权限（App 内检查静默失败）② 更新对话框宿主 LauncherActivity 启动 TWA 后即 finish（弹窗无法显示）③ 「使用流量下载」与 setAllowedOverMetered(false) 冲突 ④ scheme 手动检查误写 24h 节流时间——已修复：INTERNET 权限 + 独立 UpdateDialogActivity + launchMode=singleTop（onNewIntent 可达、手动检查不写节流）+ 计量网络按用户选择放开。**
 **依赖：** 无（BS 已发布 v2.17.0 / app-v2.16.0；批内 BY-1 服务端字段先行，BY-2 依赖 BY-1）
 **解锁：** 无
 **规格**：[MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md)
