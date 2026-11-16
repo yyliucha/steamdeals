@@ -39,24 +39,32 @@
 
 ## 2. 现在可以怎么做（运维步骤，不改代码）
 
-在服务器容器内执行（`match` 会读容器内 `data/skus.json`，该目录是持久卷）：
+`match` 读写的是**容器内** `data/skus.json`（compose 卷 `appdata:/app/data`，重启/重新部署不丢）。
+建议**分批**执行，不要一次对全部 SKU 跑 `--apply`——它会合并孤立游戏行（删除源行、迁移报价/快照），
+属于不可自动回滚的写操作。
 
 ```bash
-# 1) 先看提案（只读，不写库）
-docker exec steamdeals node src/cli.js match
+# 0) 备份映射文件（持久卷内，带时间戳）
+docker exec steamdeals sh -c 'cp /app/data/skus.json /app/data/skus.json.bak-$(date +%Y%m%d-%H%M%S) && ls -l /app/data/skus.json*'
 
-# 2) 自动应用 ≥0.94 的映射（写 skus.json + 合并孤立行）
-docker exec steamdeals node src/cli.js match --apply
+# 1) 先看提案（只读；会加载全部带 appid 的 Steam 游戏，几秒到几十秒）
+docker exec steamdeals node src/cli.js match --limit 50
 
-# 3) 0.86–0.94 的逐条人工确认（skuId 和 appid 从提案列表里取）
+# 2) 小批量自动应用 ≥0.94 的映射（写 skus.json + 合并无 appid 的孤立行）
+docker exec steamdeals node src/cli.js match --apply --limit 50
+
+# 3) 回后台「游戏管理」抽查这 50 条：Steam 价 / 同步状态 / 平台是否变化；无误后继续下一批
+docker exec steamdeals node src/cli.js match --apply --limit 200
+
+# 4) 0.86–0.94 的逐条人工确认（skuId 与 appid 从提案列表里取）
 docker exec steamdeals node src/cli.js match --confirm <skuId> <steamAppId>
-
-# 4) 让杉果报价挂到 Steam 游戏上（并触发后续 Steam 信息/报价回填）
-docker exec steamdeals node src/cli.js sync sonkwo
 ```
 
-- `--limit`（默认 200）控制本轮处理的未映射 SKU 数；`--min-score` 默认 0.86；
-- 确认后后台该行会显示 Steam appid、`sync sonkwo` 后续报价并入 Steam 游戏行，`未探测` 会随回填下降；
+- `--apply` 只应用「自动」（≥0.94）；0.86–0.94 只能逐条 `--confirm`；`--limit` 默认 200（只影响本轮处理的未映射 SKU 数）；
+- 映射写入后**不需要手动 `sync sonkwo`**：`sonkwo` 定时任务（默认 60 分钟）下次运行会读 `skus.json` 的新 `appid`，
+  把报价挂到 Steam 游戏；想立刻生效可手动跑，但默认会处理整个文件（每 SKU 约 1.2s），耗时长；
+- **回滚**：`skus.json` 可用备份覆盖（`cp /app/data/skus.json.bak-... /app/data/skus.json`），
+  但**已合并的孤立行不会自动还原**——所以先 50 条、后台抽查、再继续；
 - 若 `match` 跑完仍有大量"无候选"，说明中文名与 Steam 中文名不一致，等 CD 的英文名匹配上线。
 
 ## 3. 目标（CD 批）
@@ -166,3 +174,39 @@ docker exec steamdeals node src/cli.js sync sonkwo
 2. 无 Steam deal 的 ITAD 游戏走名称匹配或保留独立平台行，不误挂；
 3. `sync itad --limit 3` 的日志能证明 URL 形态（直链/跳转），以此决定实现分支；
 4. 后台「未探测」中杉果/ITAD 产生的孤立行数量下降，且抽查不出现错误关联。
+
+**验证 `deal.url` 形态（只读，不写库）**：在容器里跑下面的探针（不改仓库代码）：
+
+```bash
+docker exec -i steamdeals node --input-type=module <<'EOF'
+import { openStore } from '/app/src/store/index.js';
+import * as settings from '/app/src/settings.js';
+import { searchGame, fetchPrices } from '/app/src/adapters/itad.js';
+
+const store = await openStore(process.env.DATABASE_URL, {});
+await settings.hydrateSettings({ store });
+const key = process.env.ITAD_API_KEY;
+if (!key) { console.log('ITAD_API_KEY 未配置（设置页保存后调度器约 15 秒水合）'); process.exit(0); }
+
+for (const title of ['Dying Light: The Beast', 'HELLDIVERS 2', 'Cyberpunk 2077']) {
+  const hits = await searchGame(title, { apiKey: key });
+  const game = hits?.[0];
+  if (!game) { console.log(`${title}: 无搜索结果`); continue; }
+  const prices = await fetchPrices([game.id], { apiKey: key });
+  const row = prices.find((p) => p?.id === game.id) ?? prices?.[0];
+  const deals = row?.deals ?? [];
+  console.log(`\n# ${title} → ITAD ${game.id} ${game.title}，deals=${deals.length}`);
+  for (const d of deals) {
+    const m = String(d?.url ?? '').match(/steampowered\.com\/app\/(\d+)/i);
+    console.log(`  shop=${d?.shop?.name} url=${d?.url ?? '—'}${m ? ` → appid=${m[1]}` : ''}`);
+  }
+}
+await store.close();
+EOF
+```
+
+判读：
+
+- Steam 店的 `url` 形如 `https://store.steampowered.com/app/<id>/...` → **CD 的 URL 反解方案成立**；
+- 若是 `https://isthereanydeal.com/...` 或带 `redirect` 的跳转 → 反解不可用，改用「ITAD 英文名 ↔ Steam `name_en`」名称匹配兜底；
+- 某个游戏没有 Steam deal 时换另一个 Steam 游戏再试（至少验证 2 个）。
