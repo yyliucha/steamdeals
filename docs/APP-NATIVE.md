@@ -1,7 +1,7 @@
 # 原生安卓 App（与 Web 完全拆分，共用同一数据库/后端）（待开发）
 
-> 状态：**已确认待开发（2026-11-16，所有者确认 5 组方向）**。编号 **CA**（CA-1 ~ CA-5）。
-> **App 六屏效果图已确认（2026-11-16，见 §10）**：CA-2 起按该基线开发。
+> 状态：**已确认待开发（2026-11-16）**。编号拆分：**CA**（站点侧：CA-1 后端 Token/API + CA-5 Web 改造）、**CG**（Android：CA-2~4，独立仓库）。
+> **App 六屏效果图已确认（2026-11-16，见 §10）**：CG 按该基线开发。
 > **本批推翻**：[MOBILE-APP-TWA.md](MOBILE-APP-TWA.md)（BS，TWA 复用 web 页面）、
 > [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) 的 BU/BV/BX（移动 web 页面重设计）、
 > [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md)（BY，TWA 内置更新）、
@@ -89,7 +89,7 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 - 服务端对 `/api/app/*` **保留全局 API 基础限流**（只在滥用时 429，不弹窗、不算 App 封禁）；账号锁定/禁用等账号级保护照常。
   **已确认保留（2026-11-16）**：App 端不展示任何限流提示，正常使用无感；后续如需可为 `/api/app/*` 单独调高阈值（仍非无限）。
 
-## 4. App：原生 Android（CA-2 ~ CA-4）
+## 4. App：原生 Android（CG：CA-2 ~ CA-4）
 
 ### 4.1 技术栈（默认，待确认）
 
@@ -142,7 +142,7 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 - 检查时机：启动 + 回前台（24h 节流）+「我的 → 检查更新」；
 - 下载源：站点优先、GitHub Release 兜底；同签名覆盖安装。
 
-## 5. Web 侧改造（CA-5）
+## 5. Web 侧改造（CA：CA-5）
 
 - **手机浏览器前台跳转**：UA 为移动端且路径属于前台（`/` 及游戏列表/详情等）→ 展示/跳转 `/app`；
   豁免：`/console`、`/login`（后台用）、`/register`、`/app`、`/banned`、`/appeal`、`/api/*`；

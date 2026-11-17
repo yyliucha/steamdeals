@@ -1556,26 +1556,39 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 
 
-## CA. 待开发：原生安卓 App（与 Web 完全拆分，共用同一数据库/后端）
+## CA. 待开发：原生 Android 的站点侧（Token/API + Web 手机端改造，不含 Android 工程）
 
-**状态：待开发（2026-11-16，所有者确认 5 组方向；App 六屏效果图已确认 2026-11-16；待派发 CA-1）**
-**依赖：** 无（批内 CA-1 后端 Token/API 先行；CA-2~4 依赖 CA-1；CA-5 依赖 CA-1~4）
-**解锁：** 无；**取代**：BS（TWA）、BU/BV/BX（移动 web 重设计）、BY（TWA 内置更新）、BZ（拆 android/）；BW 保留（仅后台手机端）
-**规格**：[APP-NATIVE.md](APP-NATIVE.md)
+**状态：待开发（2026-11-16；仅站点侧；六屏效果图已确认；Android 工程见 CG）**
+**依赖：** 无（CA-5 手机前台跳转开关默认关闭，等 CG 发布后开启；旧 TWA 退场归 CG）
+**解锁：** CG（Android 工程）；**取代**：BS（TWA）、BU/BV/BX（移动 web 重设计）、BY（TWA 内置更新）、BZ（拆 android/）；BW 保留（仅后台手机端）
+**规格**：[APP-NATIVE.md](APP-NATIVE.md)（§3 CA-1 / §5 CA-5）
 
 - **需求（2026-11-16 所有者）**：App 与 Web 完全拆开（代码/仓库、页面、部署、认证独立），数据库共用；App 改原生 Android，
   页面与 web 不同；手机浏览器前台只给 App 下载页；App 第一期功能与 web 对齐。
-- **已确认决策（5 组）**：① 完全拆分（四独立）；② 共用同一 PG，经同一后端 API（App 不直连 DB）；③ 原生 Kotlin + Compose；
+- **已确认决策（5 组）**：① 完全拆分（四独立）；② 共用同一 PG，经同一后端 API（App 不直连 DB）；③ Android 工程（CG）用原生 Kotlin + Compose；CA 只做站点侧；
   ④ 手机浏览器前台 → `/app`（`/console`、`/login`、`/app` 豁免），微信内给“在浏览器打开”提示；⑤ 先规格 + 效果图再开发。
-- **改动落点**：后端 `src/server.js`（Bearer Token 中间件、`/api/auth/token`、`/api/auth/token/revoke`）、
-  `src/store/pg.js`（`api_tokens` 表 + 迁移）、新增 `docs/APP-API.md`（契约清单）；新仓库 `steamdeals-app`
-  （Kotlin/Compose：登录、首页、搜索、详情、愿望单、我的、内置更新）；Web 侧手机 UA 跳转 + `/app` 改版 + 旧 TWA 退场；
-  复用 `cn.yyliucha.steamdeals` 包名 + 现有 keystore（可覆盖旧 TWA）。
-- **验收**：见规格 §7——Token 登录/过期/撤销/限流/审计；首页/详情（含 DLC/历史）/搜索/愿望单/我的与 web 对齐；
-  原生 APK 同包名同签名覆盖旧 TWA；App 内置更新可用；手机浏览器前台跳 `/app`、微信提示、`/console` 手机端保留；
-  桌面 web 不变；站点侧 `npm test` / `frontend:build` / `scan` 全绿。
+- **改动落点（CA，仅站点侧）**：后端 `src/server.js`（Bearer Token 中间件、`/api/auth/token`、`/api/auth/token/revoke`、
+  `/api/app/*` 命名空间与 `/api/app/status`）、`src/store/pg.js`（`api_tokens` 表 + 迁移）、新增 `docs/APP-API.md`（契约清单）；
+  Web 侧手机 UA 跳转（**默认关闭的开关**，等 CG 发布后开启）、`/app` 页改版（暂保留现有 APK 下载）、微信内“在浏览器打开”提示；
+  **不建 Android 仓库、不做 APK**。
+- **验收（CA）**：见规格 §3/§5——Token 登录/过期/撤销/限流/审计；`/api/app/*` 黑名单/设备封禁豁免但保留基础限流；
+  Web 侧手机跳转开关可开/关、微信提示、`/app` 页可下载现有包；桌面/移动 Web 行为符合 §5；`npm test` / `frontend:build` / `scan` 全绿。
 
-## CB. 待开发：价格报表邮件 HTML 化 + 内容增强
+## CG. 依赖阻塞：原生 Android App（CA-2~4，独立仓库 steamdeals-app）
+
+**状态：依赖阻塞（前置 CA；Android 工程由独立开发会话做）**
+**依赖：** CA（Token/API、`/api/app/*` 契约）
+**解锁：** CA-5 的手机前台跳转开关、旧 TWA 退场
+**规格**：[APP-NATIVE.md](APP-NATIVE.md) §4（技术栈/页面/更新/游客模式）
+
+- 范围：新建仓库 `steamdeals-app`（Kotlin/Compose + OkHttp/kotlinx.serialization + Coil + DataStore）；
+  CA-2 骨架/登录/Token 持久化；CA-3 首页/搜索/详情（DLC/历史）；CA-4 愿望单/我的/通知/主题/内置更新；
+  启动 `/api/app/status` 命中黑名单/设备封禁 → 「你已经被封禁」+「已知晓」→ 退出；游客可浏览，用户操作弹登录，
+  `pendingAction` 登录后自动完成一次；包名复用 `cn.yyliucha.steamdeals` + 现有 keystore；管理界面后置。
+- 验收：见 APP-NATIVE §7 的 Android 项——六屏可走通、游客模式、`pendingAction`、启动封禁提示、同签名覆盖旧 TWA、内置更新；
+  APK 构建由 Android 工具链完成；旧 TWA 停发在 CG 收尾处理。
+
+## CB. ~~待开发：价格报表邮件 HTML 化 + 内容增强~~ → **已发布 v2.18.0（2026-11-16）**
 
 **状态：质检通过（2026-11-16，c5fc536 + 第 1 轮打回修复 becff89，第 2 轮复检）。打回摘要：第 1 轮偏差 1 条——§3.1 `@media (max-width:480px)` 单列适配缺失——已补 head 内 `<style>` 媒体查询（主表格全宽、KPI 卡与表格单元堆叠）+ 4 条断言（docs/QA-PRICE-REPORT-CB.md）。**
 **依赖：** 无（CB-1 渲染模块先行；CB-2 依赖 CB-1）
