@@ -5,6 +5,7 @@ import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import { startApiServer } from '../src/server.js';
 import { ingestOffers } from '../src/ingest.js';
+import * as visitors from '../src/visitors.js';
 
 // 测试里默认关掉登录验证码（专门有一个用例打开它验证拦截）
 process.env.CAPTCHA_ENABLED = '0';
@@ -983,6 +984,176 @@ test('已拥有标记：匿名 401、普通用户 403、管理员可改', async 
     assert.equal(ok.status, 200);
     const row = (await q('select owned from games where steam_appid = 413150')).rows[0];
     assert.equal(row.owned, true, '标记要落库');
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});
+
+// ── CA-1（docs/APP-NATIVE.md §3）：App Token 认证 + /api/app/* 命名空间 ──────────────
+
+const tokenLogin = async (base, body) => {
+  // App 实际只调 /api/app/*（前缀重写），token 签发走 App 路径
+  const res = await fetch(`${base}/api/app/auth/token`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, body: await res.json() };
+};
+
+test('CA-1 Token 生命周期：签发（7/30 天）、Bearer 访问、撤销、过期、禁用后一律 401', async () => {
+  const { store, q, srv, base } = await setup();
+  try {
+    // 签发：默认 7 天、rememberMe 30 天
+    const issued = await tokenLogin(base, { username: 'alice', password: 'alice123456', deviceName: 'Pixel 9' });
+    assert.equal(issued.status, 200, JSON.stringify(issued.body));
+    assert.ok(issued.body.token, '响应必须含明文 token（唯一一次）');
+    assert.ok(issued.body.expiresAt);
+    assert.equal(issued.body.user.username, 'alice');
+    const seven = new Date(issued.body.expiresAt).getTime() - Date.now();
+    assert.ok(seven < 8 * 86400_000 && seven > 6 * 86400_000, '默认 7 天');
+
+    const remember = await tokenLogin(base, { username: 'alice', password: 'alice123456', rememberMe: true });
+    const thirty = new Date(remember.body.expiresAt).getTime() - Date.now();
+    assert.ok(thirty < 31 * 86400_000 && thirty > 29 * 86400_000, 'rememberMe 30 天');
+
+    // 库中只有哈希，没有明文
+    const hashRow = (await q("select token_hash from api_tokens where token_hash = $1", [db.apiTokenHash(issued.body.token)])).rows[0];
+    assert.ok(hashRow, '库中应能按 sha256(token) 找到行');
+    const plainRow = (await q('select token_hash from api_tokens where token_hash = $1', [issued.body.token])).rows;
+    assert.equal(plainRow.length, 0, '明文绝不能直接落库');
+
+    // Bearer 访问用户接口与 /api/me
+    const auth = { authorization: `Bearer ${issued.body.token}` };
+    const me = await (await fetch(`${base}/api/me`, { headers: auth })).json();
+    assert.equal(me.user.username, 'alice', '/api/me 支持 Bearer');
+    const prefs = await fetch(`${base}/api/prefs`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ sort: 'price' }),
+    });
+    assert.equal(prefs.status, 200, 'Bearer 可调用用户接口');
+
+    // 撤销后立即失效
+    const revoke = await fetch(`${base}/api/auth/token/revoke`, { method: 'POST', headers: auth });
+    assert.equal(revoke.status, 200);
+    const afterRevoke = await fetch(`${base}/api/prefs`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ sort: 'name' }),
+    });
+    assert.equal(afterRevoke.status, 401, '撤销后必须 401');
+    assert.equal((await afterRevoke.json()).error, 'login_required');
+
+    // 过期：直接把过期时间拨回过去
+    await q("update api_tokens set expires_at = now() - interval '1 hour' where token_hash = $1", [db.apiTokenHash(remember.body.token)]);
+    const expired = await fetch(`${base}/api/prefs`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${remember.body.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(expired.status, 401, '过期 token 必须 401');
+    assert.equal((await expired.json()).error, 'login_required');
+
+    // 用户被禁用后 token 立即失效
+    const bob = await db.createUser(q, { username: 'bobca', password: 'bob1234567' });
+    const bobToken = await tokenLogin(base, { username: 'bobca', password: 'bob1234567' });
+    assert.equal(bobToken.status, 200);
+    await q('update users set disabled = true where id = $1', [bob.id]);
+    const disabled = await fetch(`${base}/api/me`, { headers: { authorization: `Bearer ${bobToken.body.token}` } });
+    assert.equal((await disabled.json()).user, null, '禁用用户 token 视为未登录');
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('CA-1 Token 登录：验证码必填、错密码与 Web 共用账号锁定', async () => {
+  const { store, srv, base } = await setup();
+  try {
+    process.env.CAPTCHA_ENABLED = '1';
+    // 缺验证码 400 且不消耗密码尝试
+    const noCap = await tokenLogin(base, { username: 'alice', password: 'alice123456' });
+    assert.equal(noCap.status, 400);
+    assert.match(noCap.body.error, /验证码/);
+    // 错误验证码 400（密码校验在其后，不消耗尝试次数）
+    const cap = await (await fetch(`${base}/api/captcha`)).json();
+    const badCap = await tokenLogin(base, { username: 'alice', password: 'alice123456', captchaToken: cap.token, captchaAnswer: 'ZZZZ' });
+    assert.equal(badCap.status, 400);
+
+    // 关验证码后验证「错密码与 Web 登录共用同一账号锁定」：5 次失败锁 15 分钟
+    process.env.CAPTCHA_ENABLED = '0';
+    for (let i = 0; i < 5; i += 1) {
+      const fail = await tokenLogin(base, { username: 'alice', password: 'wrong-pass' });
+      assert.equal(fail.status, 401);
+    }
+    const locked = await tokenLogin(base, { username: 'alice', password: 'alice123456' });
+    assert.equal(locked.status, 429, '5 次失败后即使密码正确也 429（锁 15 分钟）');
+    assert.ok(locked.body.lockedUntil, '返回锁定到期时间');
+  } finally {
+    process.env.CAPTCHA_ENABLED = '0';
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('CA-1 /api/app/* 封禁豁免：黑名单 IP 仍可调 App 命名空间，Web /api/* 仍 403', async () => {
+  const { store, q, srv, base } = await setup();
+  try {
+    // 拉黑 127.0.0.1（测试自身出口 IP）并刷新内存黑名单
+    await q("insert into ip_blacklist (ip, note) values ('127.0.0.1', 'ca1-test') on conflict (ip) do update set note = excluded.note");
+    await visitors.refreshBlocklist(q);
+
+    // App 命名空间豁免：status 与命名空间接口都能 200
+    const status = await (await fetch(`${base}/api/app/status`)).json();
+    assert.deepEqual(status, { banned: true, type: 'ip', until: null }, 'status 应报告 ip 封禁（且自身不被拦）');
+    const latest = await fetch(`${base}/api/app/latest`);
+    assert.equal(latest.status, 200, '/api/app/latest 豁免封禁');
+
+    // 前缀重写：App 路径等价于 Web 路径（黑名单下 App 仍可调公开接口）
+    const gamesViaApp = await fetch(`${base}/api/app/games`);
+    assert.equal(gamesViaApp.status, 200, '/api/app/games 在黑名单下仍可调（前缀重写 + 豁免）');
+    const gBody = await gamesViaApp.json();
+    assert.ok(gBody.games.length >= 1, '重写后返回游戏列表');
+    const captchaViaApp = await fetch(`${base}/api/app/captcha`);
+    assert.equal(captchaViaApp.status, 200, '/api/app/captcha 应重写为 /api/captcha');
+
+    // Web /api/* 不变：仍被黑名单 403
+    const me = await fetch(`${base}/api/me`);
+    assert.equal(me.status, 403, 'Web /api/me 在黑名单下仍 403');
+
+    // 解封后恢复
+    await q("delete from ip_blacklist where ip = '127.0.0.1'");
+    await visitors.refreshBlocklist(q);
+    const cleared = await (await fetch(`${base}/api/app/status`)).json();
+    assert.equal(cleared.banned, false);
+  } finally {
+    await q("delete from ip_blacklist where ip = '127.0.0.1'").catch(() => {});
+    await visitors.refreshBlocklist(q).catch(() => {});
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('CA-1 用户接口 401 语义：匿名=需要登录（Web 不变），坏 Bearer=login_required', async () => {
+  const { store, srv, base } = await setup();
+  try {
+    const anon = await fetch(`${base}/api/prefs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(anon.status, 401);
+    assert.equal((await anon.json()).error, '需要登录', 'Web 匿名文案不变');
+
+    const badBearer = await fetch(`${base}/api/prefs`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer not-a-real-token-12345678', 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(badBearer.status, 401);
+    assert.equal((await badBearer.json()).error, 'login_required', 'App 语义统一 login_required');
   } finally {
     await srv.close();
     await store.close();

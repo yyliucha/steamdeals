@@ -39,6 +39,9 @@
 
 ## 3. 后端：Token 认证（CA-1）
 
+> **CA-1 已实现待发版（2026-11-17）**：`api_tokens` 表 / Token 签发与撤销（App 走 `/api/app/auth/token`，服务端前缀重写到 `/api/auth/token`）/
+> `/api/app/status`（IP 黑名单→设备封禁，返回 `{banned,type,until}`）/ `/api/app/*` 前缀重写 + 封禁豁免 + 基础限流。契约见 [APP-API.md](APP-API.md)。
+
 ### 3.1 数据表
 
 ```sql

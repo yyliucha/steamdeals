@@ -61,7 +61,8 @@ const mailTestCooldown = new Map();
 const passwordCheckHits = new Map();
 // BK 批（docs/SESSION-MANAGEMENT.md §3.2）：last_seen_at 写节流——同一 token 5 分钟最多写一次（内存态）
 const sessionSeenAt = new Map();
-// AK-2（docs/AUTH-REDESIGN.md §4.3）：登录 IP 限速（同 IP 15 分钟失败 ≥20 次 → 429，内存计数、重启清零）
+// CA-1：Bearer Token 的 last_used_at 5 分钟节流写（与 sessionSeenAt 同款内存节流）
+const apiTokenSeenAt = new Map();// AK-2（docs/AUTH-REDESIGN.md §4.3）：登录 IP 限速（同 IP 15 分钟失败 ≥20 次 → 429，内存计数、重启清零）
 const loginIpFails = new Map(); // ip -> { count, windowStart }
 
 /** 测试用：清零登录 IP 限速计数（模块级 Map 跨测试共享）。 */
@@ -536,8 +537,7 @@ export function createApiServer({
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
-    const path = url.pathname;
-      const appealPage = path === '/appeal' || path === '/appeal/';
+    let path = url.pathname;      const appealPage = path === '/appeal' || path === '/appeal/';
     // O-3（docs/APPEAL-SYSTEM.md §3.1 / §10.3）：申诉接口放行封禁拦截（与 /appeal 页同等待遇）——
     // 被封禁者必须能提交申诉、点邮件里的处理链接；其余拦截照旧。接口自身的限流在路由里做。
     const appealApi = path === '/api/appeal' || path === '/api/appeal/action';
@@ -547,6 +547,18 @@ export function createApiServer({
     const appealExempt = appealPage || appealApi || (path === '/api/captcha' && req.method === 'GET');
     const cookies = parseCookies(req.headers.cookie);
     const token = cookies[COOKIE] ?? null;
+
+    // CA-1（docs/APP-NATIVE.md §3.2/§3.4）：App 用 Bearer Token 认证（先 Bearer、后 Cookie）；
+    // /api/app/* 是 App 专用命名空间——豁免 IP 黑名单与设备封禁拦截，但保留全局 API 基础限流。
+    const bearerMatch = /^Bearer\s+([A-Za-z0-9_-]{16,})$/i.exec(String(req.headers.authorization ?? ''));
+    const bearer = bearerMatch ? bearerMatch[1] : null;
+    const appNamespace = path === '/api/app/status' || path.startsWith('/api/app/');
+    // CA-1（docs/APP-API.md §1 总则）：前缀重写——App 只调 /api/app/<rest>，服务端去掉 /api/app 后按
+    // /api/<rest> 路由（保留 query）；精确例外 /api/app/latest 与 /api/app/status 不重写。
+    // 封禁豁免按原始 /api/app/* 前缀判定（appNamespace），重写只影响后续路由匹配。
+    if (appNamespace && path !== '/api/app/latest' && path !== '/api/app/status') {
+      path = '/api' + path.slice('/api/app'.length);
+    }
 
     try {
       // ---- 基础安全响应头（所有响应都带）----
@@ -657,7 +669,30 @@ export function createApiServer({
         return json(res, 200, state, { 'cache-control': 'no-store' });
       }
 
-      const deviceBan = deviceId && !adminBypass && !whitelisted ? devices.isBanned({ deviceId }) : null;
+      // CA-1（docs/APP-API.md §3）：App 启动封禁检查——无副作用、匿名、豁免封禁拦截，
+      // 只在滥用时受全局 API 基础限流（429）。检查顺序：IP 黑名单 → 设备封禁（X-Device-Id）。
+      if (path === '/api/app/status' && req.method === 'GET') {
+        const appDeviceId = devices.normalizeDeviceId(String(req.headers['x-device-id'] ?? ''));
+        let banned = false;
+        let type = null;
+        let until = null;
+        if (!whitelisted) {
+          const ipBlocked = ip && visitors.blockedBy(ip) ? true : false;
+          const devBan = appDeviceId ? devices.isBanned({ deviceId: appDeviceId }) : null;
+          if (ipBlocked) {
+            banned = true;
+            type = 'ip';
+          } else if (devBan) {
+            banned = true;
+            type = 'device';
+            until = devBan.until ? new Date(devBan.until).toISOString() : null;
+          }
+        }
+        return json(res, 200, { banned, type, until }, { 'cache-control': 'no-store' });
+      }
+
+      // CA-1：/api/app/* 豁免设备封禁与 IP 黑名单（App 端自行按 /api/app/status 处理封禁提示）
+      const deviceBan = deviceId && !appNamespace && !adminBypass && !whitelisted ? devices.isBanned({ deviceId }) : null;
       if (deviceBan && !appealExempt) {
         if (req.method === 'GET' && isFrontendAsset(path)) return serveFrontendStatic(res, frontendDir, outDir, path);
         logger?.warn('device.denied', { ip, deviceId, until: deviceBan.until });
@@ -668,7 +703,7 @@ export function createApiServer({
       // BJ 批 A1（docs/BAN-AND-SECURITY-FIXES.md §10.4.1）：IP 黑名单检查提到频率限制**之前**——
       // 黑名单 IP 在计数之前被拦下：不计数、不三振、不升级、不写 ip_abuse / abuse_reviews，
       // 响应固定 403（不再出现"先 403、超 60 次后变 429"）。
-      const hit = ip && !adminBypass && !whitelisted ? visitors.blockedBy(ip) : null;
+      const hit = ip && !appNamespace && !adminBypass && !whitelisted ? visitors.blockedBy(ip) : null;
       if (hit && !appealExempt) {
         if (req.method === 'GET' && isFrontendAsset(path)) return serveFrontendStatic(res, frontendDir, outDir, path);
         logger?.warn('block.ip_denied', { ip, path, rule: hit });
@@ -1140,7 +1175,23 @@ export function createApiServer({
         return json(res, 200, { ok: true, code: appeal.code, status: nextStatus });
       }
 
-      const user = await resolveSession();
+      // CA-1（docs/APP-NATIVE.md §3.2）：先 Bearer、后 Cookie——Bearer 校验哈希 + 未过期 + 未撤销 +
+      // 用户未禁用；失效统一 user=null（用户接口 401 login_required）。last_used_at 5 分钟节流写。
+      let user = null;
+      if (bearer) {
+        const row = await db.userByApiToken(q, bearer).catch(() => null);
+        if (row) {
+          user = row;
+          const lastWrite = apiTokenSeenAt.get(bearer) ?? 0;
+          if (Date.now() - lastWrite > 5 * 60_000) {
+            apiTokenSeenAt.set(bearer, Date.now());
+            if (apiTokenSeenAt.size > 50_000) apiTokenSeenAt.clear();
+            db.touchApiToken(q, bearer).catch(() => {});
+          }
+        }
+      } else {
+        user = await resolveSession();
+      }
       // Steam 账号相关表幂等建表（一次后为 no-op）。列表/详情的「已拥有推导」SQL 会 join
       // steam_games / steam_accounts / steam_wishlist，必须先于任何查询存在——不能只放在
       // Steam 路由块里，否则该块之前的路由（如 /api/games/search）在全新库上会 500。
@@ -1153,6 +1204,7 @@ export function createApiServer({
           p === '/api/me' ||
           p === '/api/logout' ||
           p === '/api/user/password' ||
+          p === '/api/auth/token/revoke' ||
           p === '/api/site' ||
           p === '/api/captcha' ||
           p === '/api/password/check' ||
@@ -1167,7 +1219,8 @@ export function createApiServer({
       if (await authRoutes.handleEmailAuth({ path, req, res, q, logger, json, readBody, captcha, ip })) return;
       const requireUser = () => {
         if (!user) {
-          json(res, 401, { error: '需要登录' });
+          // CA-1：App（Bearer）语义统一 401 { error: 'login_required' }；Web（Cookie）文案不变
+          json(res, 401, { error: bearer ? 'login_required' : '需要登录' });
           return false;
         }
         return true;
@@ -1183,6 +1236,88 @@ export function createApiServer({
         }
         return true;
       };
+
+      // ---- CA-1（docs/APP-NATIVE.md §3.2）：App Token 认证 ----
+      // POST /api/auth/token：用户名 + 密码 + 图形验证码（必填）+ rememberMe。
+      // 失败限流/账号锁定与 Web 登录共用同一套计数（loginIpFails 20 次/15 分钟 → 429；账号 5 次锁 15 分钟）。
+      // 明文 token 只在本响应出现一次；库中只存哈希，审计日志只记 user_id/IP/设备名。
+      if (path === '/api/auth/token' && req.method === 'POST') {
+        const body = await readBody(req);
+        const username = String(body.username ?? '').trim();
+        const password = String(body.password ?? '');
+        const deviceName = String(body.deviceName ?? '').trim().slice(0, 64) || null;
+        // 验证码校验放在密码之前：没通过就不消耗密码尝试次数
+        if (captcha.enabled()) {
+          const okCaptcha = await captcha.verify(q, body.captchaToken, body.captchaAnswer);
+          if (!okCaptcha) {
+            logger?.warn('api.token_captcha_failed', { ip, username: username.slice(0, 32) });
+            return json(res, 400, { error: '验证码错误或已过期，请重新输入' });
+          }
+        }
+        const now = Date.now();
+        const ipEntry = loginIpFails.get(ip) ?? { count: 0, windowStart: now };
+        if (now - ipEntry.windowStart >= 15 * 60_000) {
+          ipEntry.count = 0;
+          ipEntry.windowStart = now;
+        }
+        if (ipEntry.count >= 20) {
+          const retryAfterSec = Math.ceil((ipEntry.windowStart + 15 * 60_000 - now) / 1000);
+          logger?.warn('auth.ip_throttled', { ip, count: ipEntry.count, via: 'token' });
+          return json(res, 429, { error: '尝试次数过多，请稍后再试', retryAfterSec });
+        }
+        loginIpFails.set(ip, ipEntry);
+
+        const found = await db.findUserByName(q, username);
+        if (found && found.locked_until && Date.parse(found.locked_until) > now) {
+          logger?.warn('auth.token_rejected_locked', { username });
+          return json(res, 429, {
+            error: '尝试次数过多，请稍后再试',
+            lockedUntil: found.locked_until,
+            retryAfterSec: Math.max(1, Math.ceil((Date.parse(found.locked_until) - now) / 1000)),
+          });
+        }
+        if (!found || found.disabled || !db.verifyPassword(password, found.password_hash)) {
+          const reason = !found ? 'unknown' : found.disabled ? 'disabled' : 'bad_password';
+          if (found && !found.disabled) {
+            const updated = await q('update users set failed_login_count = failed_login_count + 1 where id = $1 returning failed_login_count', [
+              found.id,
+            ]);
+            const attempts = Number(updated.rows[0]?.failed_login_count ?? 0);
+            if (attempts >= 5) {
+              const locked = await q("update users set locked_until = now() + interval '15 minutes' where id = $1 returning locked_until", [
+                found.id,
+              ]);
+              logger?.warn('auth.token_locked', { username, until: locked.rows[0]?.locked_until });
+            }
+          }
+          ipEntry.count += 1;
+          loginIpFails.set(ip, ipEntry);
+          logger?.warn('auth.token_failed', { username: username.slice(0, 32), reason });
+          return json(res, 401, { error: '用户名或密码错误' });
+        }
+        await q('update users set failed_login_count = 0, locked_until = null where id = $1', [found.id]);
+        const days = body.rememberMe ? 30 : 7;
+        const issued = await db.insertApiToken(q, { userId: found.id, name: deviceName, days });
+        logger?.info('auth.token_issued', { userId: found.id, username: found.username, deviceName: deviceName ?? null, ip, days });
+        return json(res, 200, {
+          token: issued.token,
+          expiresAt: issued.expiresAt,
+          user: {
+            id: found.id,
+            username: found.username,
+            role: found.role,
+            mustChangePassword: Boolean(found.must_change_password),
+          },
+        });
+      }
+
+      // POST /api/auth/token/revoke：撤销当前 Bearer token（退出登录）；无 Bearer / token 失效一律 401。
+      if (path === '/api/auth/token/revoke' && req.method === 'POST') {
+        if (!bearer || !user) return json(res, 401, { error: 'login_required' });
+        const revoked = await db.revokeApiToken(q, bearer);
+        logger?.info('auth.token_revoked', { userId: user.id, ip, revoked });
+        return json(res, 200, { ok: true });
+      }
 
       // ---- BK 批（docs/SESSION-MANAGEMENT.md §3.3/§3.4）：会话列表 / 踢下线 / 退出其它设备 ----
       if (path === '/api/admin/sessions' && req.method === 'GET') {

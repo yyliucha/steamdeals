@@ -1575,6 +1575,8 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   **不建 Android 仓库、不做 APK**。
 - **验收（CA）**：见规格 §3/§5——Token 登录/过期/撤销/限流/审计；`/api/app/*` 黑名单/设备封禁豁免但保留基础限流；
   Web 侧手机跳转开关可开/关、微信提示、`/app` 页可下载现有包；桌面/移动 Web 行为符合 §5；`npm test` / `frontend:build` / `scan` 全绿。
+- **进度（2026-11-17）**：**CA-1 已实现待发版**——`api_tokens` 表 + Token 签发/撤销 + `/api/app/*` 前缀重写（例外 latest/status）+ `/api/app/status`；
+  契约 docs/APP-API.md；测试 test/app-token.test.js（主链）+ test/api.test.js（生命周期真跑）。CA-5（Web 手机跳转）未做，条目保持「开发中」。
 
 ## CG. 依赖阻塞：原生 Android App（CA-2~4，独立仓库 steamdeals-app）
 
