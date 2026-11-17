@@ -1705,3 +1705,16 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `src/settings.js`（`security.autoBan.*` 热加载）、对应测试。
 - **验收**：见规格 §6——桌面不再重复卡片；指标折叠；普通超频 429 不封；四类硬规则自动临时封；阶梯/永不自动永久/白名单/申诉解封；
   审核证据与操作审计；`npm test` / `frontend:build` / `scan` 全绿。
+
+## CH. 开发中：个性化推荐 + Deck 认证 + 好评率（借鉴 steam-deals）
+
+**状态：开发中（2026-11-17，ce-dev 认领；方案已确认，排在 CF/CD 之后——CF/CD 已质检通过）**
+**依赖：** 无（CF/CD 已完成）
+**解锁：** CG 的「为你推荐」App 支持
+**规格**：[DISCOVERY-FOR-YOU.md](DISCOVERY-FOR-YOU.md)
+
+- 借鉴 [Drakey83/steam-deals](https://github.com/Drakey83/steam-deals) 三件能力 + 两件搭车项（免费角标/行为学习），全部经所有者 2026-11-17 拍板。
+- 改动落点：`src/discovery.js`（翻页+名称回退+computeForYou）、`src/store/pg.js`（games 5 列 + tags GIN + user_behaviors/user_search_logs + prune）、
+  `src/server.js`（gameSearch score/reviewMin/deck + /api/games/for-you + /api/behavior）、`src/scheduler.js`（steam-discovery 任务 + STEAM_HEAVY）、
+  `src/settings.js`（discovery.*/personal.* 8 项）、`frontend/src/pages/Home.vue`（综合评分排序/好评率与 Deck 筛选/徽标/免费角标/为你推荐 tab）。
+- 验收：见规格 §9 七条。
