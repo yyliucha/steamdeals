@@ -964,6 +964,24 @@ export function createApiServer({
         return serveFrontendStatic(res, frontendDir, outDir, path);
       }
 
+
+      // ---- CJ 批：/app/dl/<file> 白名单下载路由（只读 data/app/，HEAD 可用，非白名单 404）----
+      const dlMatch = path.match(/^\/app\/dl\/(steamdeals-[\d.]+\.apk)$/);
+      if (dlMatch) {
+        const file = dlMatch[1];
+        const dlRoot = resolve(process.cwd(), 'data', 'app');
+        const target = resolve(dlRoot, file);
+        if (!target.startsWith(dlRoot + sep) || !existsSync(target)) return json(res, 404, { error: 'not found' });
+        const size = (readFileSync(target)).length;
+        if (size > 50 * 1024 * 1024) return json(res, 404, { error: 'too large' });
+        if (req.method === 'HEAD') {
+          res.writeHead(200, { 'content-type': 'application/vnd.android.package-archive', 'content-length': size, 'cache-control': 'no-store' });
+          return res.end();
+        }
+        if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' });
+        res.writeHead(200, { 'content-type': 'application/vnd.android.package-archive', 'content-length': size, 'cache-control': 'no-store' });
+        return res.end(readFileSync(target));
+      }
       // ---- 公开接口：站点信息 / 公告 / 设备指纹上报 ----
       if (path === '/api/site' && req.method === 'GET') {
         // AL 批（docs/AUTH-REDESIGN.md §5.3）：注册页用——开关与 SMTP 就绪状态（不可用时不显示表单）
@@ -1797,12 +1815,12 @@ export function createApiServer({
       // ---- 游戏数量（匿名可读）：库内总数 + 已有价格数，前台"实时数量"靠它 ----
       // AV 批（docs/READ-MODEL.md §5.2）：priced 改读读模型（distinct game_id，跨区服去重口径不变）
       // + 60 秒进程内缓存；READ_MODEL=legacy 保留旧查询。catalog 口径不变。
-      // ---- BS 批（docs/MOBILE-APP-TWA.md §5.1）：安卓版 APK 清单（随 frontend/public/app/latest.json 提交，不查库）----
+      // ---- CJ 批（docs/APP-AUTO-UPDATE-PAGE.md §3）：优先读 data/app/latest.json（每小时同步），缺失回落镜像文件 ----
       if (path === '/api/app/latest' && req.method === 'GET') {
-        // 运行时读构建产物里的清单（Vite 会把 frontend/public/** 原样拷进 dist/app/）
+        const { readLatestMeta } = await import('./app-release.js');
         const file = process.env.APP_LATEST_FILE ?? resolve(frontendDir ?? 'frontend/dist', 'app', 'latest.json');
+        const { data } = readLatestMeta('data/app', file);
         try {
-          const data = JSON.parse(readFileSync(file, 'utf8'));
           // BY 批（docs/MOBILE-APP-UPDATE.md §3）：versionCode/minVersionCode/notes 透传，
           // 缺失时返回 null 不报错（旧清单/旧客户端不受影响）；notes 兼容旧字符串格式（按单条处理）。
           return json(res, 200, {
@@ -1810,7 +1828,7 @@ export function createApiServer({
             versionCode: data.versionCode == null ? null : Number(data.versionCode),
             minVersionCode: data.minVersionCode == null ? null : Number(data.minVersionCode),
             notes: data.notes == null ? null : (Array.isArray(data.notes) ? data.notes : [data.notes]),
-            apkPath: data.apkPath ?? null,
+            apkPath: data?.version ? `/app/dl/steamdeals-${data.version}.apk` : null,
             sha256: data.sha256 ?? null,
             size: data.size == null ? null : Number(data.size),
             releasedAt: data.releasedAt ?? null,

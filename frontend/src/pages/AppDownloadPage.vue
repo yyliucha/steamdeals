@@ -32,7 +32,7 @@
           <div v-else class="app-state">暂无安装包（发版后开放下载）</div>
           <p v-if="latest?.sha256" class="app-sha">SHA-256：<code>{{ latest.sha256 }}</code></p>
           <p class="app-sha-note">下载后建议校验：<code>certutil -hashfile steamdeals.apk SHA256</code>（Windows）/ <code>sha256sum</code>（Linux/macOS）。</p>
-          <p class="app-alt">备用下载：<a href="https://github.com/yyliucha/steamdeals/releases" target="_blank" rel="noopener noreferrer nofollow">GitHub Release ↗</a>（tag <code>app-v&lt;版本号&gt;</code>，含同名 APK 与 .sha256）</p>
+          <p class="app-alt">备用下载：<a href="https://github.com/yyliucha/steamdeals-app/releases" target="_blank" rel="noopener noreferrer nofollow">GitHub Release ↗</a>（tag <code>app-v&lt;版本号&gt;</code>，含同名 APK 与 .sha256）</p>
         </section>
 
         <section class="app-steps">

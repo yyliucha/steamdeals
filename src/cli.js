@@ -601,6 +601,17 @@ async function printSyncPriceReport(sinceMs, limit = 5) {
   }
 }
 
+async function cmdAppSync() {
+  // CJ 批（docs/APP-AUTO-UPDATE-PAGE.md §3）：手动调试同步——默认读 GitHub Release 最新资产
+  const { syncAppRelease } = await import('./app-release.js');
+  const result = await syncAppRelease({
+    repo: String(flag('repo', process.env.APP_RELEASE_SYNC_REPO ?? 'yyliucha/steamdeals-app')),
+    keep: Number(flag('keep', 3)),
+    force: flag('force', false) === true,
+    logger,
+  });
+  console.log(result.synced ? `已同步 app ${result.version}（APK ${result.apk ?? '无'}）` : `未同步：${result.reason}${result.version ? `（${result.version}）` : ''}`);
+}
 async function cmdSteamDiscovery() {
   const { runDiscoveryRound } = await import('./discovery.js');
   const stats = await withStore((store) =>
@@ -2663,6 +2674,7 @@ const commands = {
   alerts: cmdAlerts,
   discover: cmdDiscover,
   match: cmdMatch,
+  'app-sync': cmdAppSync,
   'steam-discovery': cmdSteamDiscovery,
   compare: cmdCompare,
   import: cmdImport,

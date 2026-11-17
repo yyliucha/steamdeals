@@ -69,7 +69,7 @@ test('AC11：状态文件带健康面板字段（耗时/结果/失败原因）�
 test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清理、gog / humble / discover / backup / alerts / images / readmodel），各自间隔', () => {
   const jobs = jobsFromEnv({});
   assert.deepEqual(jobs.map((j) => j.name), [
-    'steam-prices', 'heat', 'steam-status', 'steam-discovery', 'rename', 'backfill', 'prune', 'proxy-probe', 'readmodel', 'sonkwo', 'itad', 'gog', 'humble',
+    'steam-prices', 'heat', 'steam-status', 'steam-discovery', 'app-release-sync', 'rename', 'backfill', 'prune', 'proxy-probe', 'readmodel', 'sonkwo', 'itad', 'gog', 'humble',
     'discover', 'backup', 'logs', 'alerts', 'images',
   ]);
   const interval = (name) => jobs.find((j) => j.name === name).intervalMin;
@@ -246,7 +246,7 @@ test('显式禁用或间隔为 0 的任务会被剔除', () => {
     READMODEL_ENABLED: '0',
     PROXY_PROBE_ENABLED: '0',
   });
-  assert.deepEqual(jobs.map((j) => j.name), ['heat', 'steam-discovery', 'rename', 'backfill', 'prune', 'sonkwo', 'alerts']);
+  assert.deepEqual(jobs.map((j) => j.name), ['heat', 'steam-discovery', 'app-release-sync', 'rename', 'backfill', 'prune', 'sonkwo', 'alerts']);
 });
 
 test('从未跑过的任务在 initialDelay 之后才算到点', () => {
@@ -374,7 +374,7 @@ test('X 批：重任务占用单槽期间轻任务照常派发（P0-1 回归）'
   const key = '0123456789ABCDEF';
   const due = jobsFromEnv({ STEAM_API_KEY: key });
   const running = new Set(['steam-prices']);
-  const plan = planTick({ due, heavySlot: 'steam-prices', running, lightMax: 12 });
+  const plan = planTick({ due, heavySlot: 'steam-prices', running, lightMax: 20 });
   assert.equal(plan.heavy.length, 0, '重任务槽被占时不再排新的重任务');
   const lightNames = plan.light.map((j) => j.name);
   assert.ok(lightNames.includes('sonkwo'), 'steam-prices 跑 90 分钟期间 sonkwo 不被饿死');
@@ -391,7 +391,7 @@ test('X 批：重任务占用单槽期间轻任务照常派发（P0-1 回归）'
   // 并行上限只约束轻任务：lightMax=1 时只发一个轻任务（prune 非重非轻，不受上限）
   const plan3 = planTick({ due, heavySlot: 'heat', running: new Set(['heat']), lightMax: 1 });
   const lightJobs3 = plan3.light.filter((j) =>
-    ['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'backup', 'logs', 'alerts', 'images'].includes(j.name),
+    ['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'backup', 'logs', 'alerts', 'images', 'app-release-sync'].includes(j.name),
   );
   assert.equal(lightJobs3.length, 1, 'lightMax=1 只发一个轻任务');
   assert.equal(plan3.heavy.length, 0, 'heat 占槽时不排其它重任务');

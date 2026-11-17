@@ -75,6 +75,14 @@ export function jobsFromEnv(env = process.env) {
       enabled: env.STEAM_ENABLED !== '0' && env.STEAM_DISCOVERY_ENABLED !== '0',
     },
     {
+      name: 'app-release-sync',
+      // CJ 批（docs/APP-AUTO-UPDATE-PAGE.md §4）：每小时同步 App Release 到本地（轻任务，不进 STEAM_HEAVY；GitHub API 每轮 1 次调用）
+      args: ['app-sync'],
+      intervalMin: num(env.APP_RELEASE_SYNC_INTERVAL_MIN, 60),
+      initialDelaySec: num(env.APP_RELEASE_SYNC_INITIAL_DELAY_SEC, 300),
+      enabled: env.APP_RELEASE_SYNC_ENABLED !== '0',
+    },
+    {
       name: 'rename',
       // 每周重写一次名字：目录导入留下的机器英文名补成中文（英文挪进 name_en），
       // 顺带覆盖"后来才补了简中"的游戏。选择条件自带收敛，没名字可改时秒退。
