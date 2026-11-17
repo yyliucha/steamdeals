@@ -1,5 +1,7 @@
 # 安卓 App（TWA，不上架）+ 可清缓存离线 + 双通道分发：规格
 
+> **2026-11-17 停发**：本方案（BS，TWA）已被 CA/CG 原生 Android 取代（app-v2.19.0 已发布，同包名同 keystore 覆盖安装）；不再发布 TWA 包。
+
 > 状态：**需求与方案已确认，待开发（2026-11-14）；已实现并发布 v2.17.0（2026-11-14，4afc1ac；QA ✅ 放行 docs/QA-MOBILE-APP-TWA-BS.md）**。编号：**BS**（TODO 条目）。
 > 前置决策推翻（所有者 2026-11-14 确认）：[MOBILE-PWA.md](MOBILE-PWA.md) §1 决策 #1「不上架、不打 APK、不引入 Android 工具链」、§3「不加 service worker」。
 > 关联：[MOBILE-PWA.md](MOBILE-PWA.md)（现有 PWA 与已知取舍）、[SESSION-MANAGEMENT.md](SESSION-MANAGEMENT.md)（UA 绑定）、[BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md) §11（BR）、[WEB.md](WEB.md)（接口表）、[DELIVERY.md](DELIVERY.md)（发版流程）。

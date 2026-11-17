@@ -1,14 +1,14 @@
 {
-  "sha256": "7e7bc84ecbc1ff6610377b9f91c92c3a89e6329355944b3a44665b0684e6881b",
   "notes": [
-    "后台手机端重设计（抽屉导航+卡片列表）",
-    "App 内置更新（检测/下载/校验/确认安装）",
-    "价格报表邮件 HTML 化"
+    "原生 Android 第一版（覆盖旧 TWA 安装）",
+    "与 Web 共用账号，Token 登录",
+    "游客可浏览，用户操作弹登录"
   ],
-  "versionCode": 21800,
-  "version": "2.18.0",
-  "size": 1480470,
-  "releasedAt": "2026-11-16",
-  "apkPath": "/app/steamdeals-2.18.0.apk",
-  "minVersionCode": 21600
+  "size": 1905024,
+  "releasedAt": "2026-11-17",
+  "sha256": "c42454b71d3b0f95ba9d11cda6d29d643b5216e1311958643441b9dc03f72911",
+  "minVersionCode": 21600,
+  "version": "2.19.0",
+  "versionCode": 21900,
+  "apkPath": "/app/steamdeals-2.19.0.apk"
 }

@@ -1583,7 +1583,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `frontend/src/pages/AppDownloadPage.vue`（改版为主推原生 App + 微信 UA 显示「右上角 → 在浏览器打开」提示 + 保留现有 APK 下载）、
   test/serve.test.js（跳转生命周期真跑）+ test/frontend-mobile.test.js（页面静态断言）+ test/settings.test.js（86 项）；旧 TWA 停发归 CG 收尾。
 
-## CG. ~~依赖阻塞：原生 Android App（CA-2~4，独立仓库 steamdeals-app）~~ → **质检通过**
+## CG. ~~依赖阻塞：原生 Android App（CA-2~4，独立仓库 steamdeals-app）~~ → **已发布 app-v2.19.0**
 
 **状态：质检通过（2026-11-17 第 1 轮，docs/QA-CG.md 未提交。App 仓库 `steamdeals-app` 本地 main，**
 **提交 cd2aaec → 0a07994 → a3dd168；六屏模拟器走查 + 覆盖安装 + 封禁/更新全链路验证，通过 22 / 缺失 0 / 偏差 0 /**
