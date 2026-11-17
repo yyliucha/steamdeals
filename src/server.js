@@ -939,6 +939,24 @@ export function createApiServer({
         // 无构建产物时回落到下方静态资源路径（保持旧行为）
       }
 
+      // ---- CA-5（docs/APP-NATIVE.md §5）：手机浏览器前台跳转 /app ----
+      // 开关默认关闭（app.mobileRedirectEnabled / APP_MOBILE_REDIRECT_ENABLED，等原生 App（CG）发布后开启）。
+      // 只对登记在 FRONTEND_PAGES 的前台页面生效；豁免后台/登录/注册/下载/封禁/申诉/初始化/改密。
+      // 微信内置浏览器同样跳到 /app——下载页里有「右上角 → 在浏览器打开」提示（微信内不能直接下载 APK）。
+      const MOBILE_REDIRECT_EXEMPT = /^\/(console|login|register|app|banned|appeal|setup|change-password)(\/|$)/;
+      if (
+        String(process.env.APP_MOBILE_REDIRECT_ENABLED ?? '') === '1' &&
+        req.method === 'GET' &&
+        isMobileUa(req) &&
+        FRONTEND_PAGES.includes(path) &&
+        !MOBILE_REDIRECT_EXEMPT.test(path)
+      ) {
+        logger?.info('http.mobile_redirect', { ip, path });
+        res.writeHead(302, { location: '/app', 'cache-control': 'no-store', 'content-length': '0' });
+        res.end();
+        return;
+      }
+
       // 静态资源（页面本身仍由 chart 生成，这里只发文件）
       // 注意：/img/ 是服务端图片代理路由（本地缓存 → CDN 兜底），不能当静态文件处理，
       // 否则会直接 404——这正是之前"前台只有名字没有图"的真正原因。

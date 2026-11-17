@@ -81,6 +81,10 @@ export const SETTINGS = [
   def('site.publicUrl', 'SITE_PUBLIC_URL', 'site', '站点公开地址', 'string', 'https://sd.yyliucha.cn', {
     help: '价格报表邮件里的站内链接（首页/搜索/CTA）以它为准；留空回退默认值。',
   }),
+  // CA-5（docs/APP-NATIVE.md §5）：手机浏览器前台跳转 /app（默认关闭，等原生 App（CG）发布后开启）
+  def('app.mobileRedirectEnabled', 'APP_MOBILE_REDIRECT_ENABLED', 'site', '手机浏览器前台跳转 /app', 'bool', false, {
+    help: '开启后手机浏览器访问前台页面（/ 等）跳转到 App 下载页；/console、/login、/register、/app、/banned、/appeal、/setup、/change-password 与 /api/* 豁免。',
+  }),
   def('steamStatus.rateMs', 'STEAM_STATUS_RATE_MS', 'sources', 'Steam 状态判定限速（毫秒）', 'int', 1500, {
     min: 0,
     max: 30000,

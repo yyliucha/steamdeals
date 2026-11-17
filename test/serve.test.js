@@ -206,3 +206,63 @@ test('BY-1：/api/app/latest 新字段缺失时返回 null 不报错（旧清单
     await store.close();
   }
 });
+
+// CA-5（docs/APP-NATIVE.md §5）：手机浏览器前台跳转 /app——开关默认关闭；开启后仅前台页面 302 /app，
+// 桌面 UA 不跳、豁免路径（console/login/register/app/banned/appeal/setup/change-password、/api/*）不跳、
+// 微信 UA（iPhone+MicroMessenger，UA 含 Mobile）同样跳转。
+test('CA-5：手机跳转开关默认关闭；开启后前台 302 /app，豁免路径与桌面不跳', async () => {
+  const frontend = mkdtempSync(join(tmpdir(), 'gp-frontend-'));
+  writeFileSync(join(frontend, 'index.html'), '<!doctype html><html><body>ok</body></html>');
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  const MOBILE = 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36';
+  const DESKTOP = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+  const WECHAT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.49';
+  const prev = process.env.APP_MOBILE_REDIRECT_ENABLED;
+  try {
+    // 默认关闭：手机 UA 访问首页不跳转
+    delete process.env.APP_MOBILE_REDIRECT_ENABLED;
+    const srv0 = await startApiServer({ query: q, frontendDir: frontend, port: 0, host: '127.0.0.1' });
+    const base0 = `http://127.0.0.1:${srv0.port}`;
+    try {
+      const off = await fetch(`${base0}/`, { headers: { 'user-agent': MOBILE }, redirect: 'manual' });
+      assert.equal(off.status, 200, '开关默认关闭 → 手机 UA 首页 200 不跳转');
+    } finally {
+      await srv0.close();
+    }
+
+    // 开启：手机 UA 前台 302 /app；桌面不跳；微信 UA 跳；豁免路径不跳
+    process.env.APP_MOBILE_REDIRECT_ENABLED = '1';
+    const srv = await startApiServer({ query: q, frontendDir: frontend, port: 0, host: '127.0.0.1' });
+    const base = `http://127.0.0.1:${srv.port}`;
+    try {
+      const home = await fetch(`${base}/`, { headers: { 'user-agent': MOBILE }, redirect: 'manual' });
+      assert.equal(home.status, 302, '开启 → 手机 UA 首页 302');
+      assert.equal(home.headers.get('location'), '/app', '跳转目标 /app');
+      assert.equal(home.headers.get('cache-control'), 'no-store', '跳转响应 no-store');
+
+      const idx = await fetch(`${base}/index.html`, { headers: { 'user-agent': MOBILE }, redirect: 'manual' });
+      assert.equal(idx.status, 302, '/index.html 同样跳转');
+
+      const desk = await fetch(`${base}/`, { headers: { 'user-agent': DESKTOP }, redirect: 'manual' });
+      assert.equal(desk.status, 200, '桌面 UA 不跳转');
+
+      const wechat = await fetch(`${base}/`, { headers: { 'user-agent': WECHAT }, redirect: 'manual' });
+      assert.equal(wechat.status, 302, '微信 UA（MicroMessenger）也跳转 /app（下载页内有「在浏览器打开」提示）');
+
+      for (const p of ['/console', '/login', '/register', '/app', '/banned', '/appeal', '/setup', '/change-password']) {
+        const res = await fetch(`${base}${p}`, { headers: { 'user-agent': MOBILE }, redirect: 'manual' });
+        assert.notEqual(res.headers.get('location'), '/app', `豁免路径 ${p} 不跳到 /app`);
+      }
+      const api = await fetch(`${base}/api/site`, { headers: { 'user-agent': MOBILE }, redirect: 'manual' });
+      assert.notEqual(api.headers.get('location'), '/app', '/api/* 不跳转');
+    } finally {
+      await srv.close();
+    }
+  } finally {
+    if (prev === undefined) delete process.env.APP_MOBILE_REDIRECT_ENABLED;
+    else process.env.APP_MOBILE_REDIRECT_ENABLED = prev;
+    await store.close();
+  }
+});

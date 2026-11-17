@@ -113,3 +113,17 @@ test('BY-1：latest.json 契约——新字段齐全且与 BS 字段并存', () 
     assert.ok(key in latest, `旧字段 ${key} 保留`);
   }
 });
+
+// CA-5（docs/APP-NATIVE.md §5）：/app 下载页改版——主推原生 App（保留现有 APK 下载）+ 微信内「在浏览器打开」提示
+const appPage = readFileSync(ROOT + 'frontend/src/pages/AppDownloadPage.vue', 'utf8');
+
+test('CA-5：/app 页微信「在浏览器打开」提示 + 原生 App 文案（旧 TWA 文案移除、APK 下载保留）', () => {
+  assert.match(appPage, /MicroMessenger/i, '微信 UA 判定存在');
+  assert.match(appPage, /isWeChat/, '微信分支开关存在');
+  assert.match(appPage, /在浏览器打开/, '「在浏览器打开」提示文案存在');
+  assert.match(appPage, /原生 Android 应用/, '主推原生 App 文案');
+  assert.match(appPage, /覆盖安装/, '旧版（同包名同签名）覆盖升级说明');
+  assert.match(appPage, /下载 APK/, '保留现有 APK 下载入口');
+  assert.match(appPage, /fetch\('\/api\/app\/latest'/, '版本信息接口不变（/api/app/latest）');
+  assert.ok(!appPage.includes('TWA（Trusted Web Activity）'), '旧 TWA 描述文案已移除');
+});

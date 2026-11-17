@@ -3,10 +3,21 @@
     <header class="app-header">
       <a class="back-home" href="/">← 返回 SteamDeals</a>
       <h1>安卓版 App</h1>
-      <p class="app-sub">基于 TWA（Trusted Web Activity）打包，与网页版完全一致；不上架应用商店，仅本站与 GitHub 分发。</p>
+      <p class="app-sub">原生 Android 应用（Kotlin + Compose），与网页版共用同一后端数据；不上架应用商店，仅本站与 GitHub 分发。</p>
     </header>
 
-    <main class="app-card">
+    <!-- 微信内置浏览器：微信内不能直接下载安装 APK，提示转到系统浏览器（CA-5，docs/APP-NATIVE.md §5） -->
+    <main v-if="isWeChat" class="app-card wechat-hint">
+      <h2>请用浏览器打开</h2>
+      <p class="wechat-text">当前在微信内置浏览器中，无法直接下载安装 APK。请点右上角「···」→「在浏览器打开」，在本站继续下载。</p>
+      <ol class="wechat-steps">
+        <li>点右上角「···」按钮；</li>
+        <li>选择「在浏览器打开」（或复制链接到浏览器地址栏）；</li>
+        <li>在浏览器中重新打开本页，即可下载安装。</li>
+      </ol>
+    </main>
+
+    <main v-else class="app-card">
       <div v-if="loading" class="app-state">正在获取最新版本…</div>
       <el-alert v-else-if="loadError" :title="'版本信息加载失败：' + loadError" type="warning" :closable="false" />
       <template v-else>
@@ -28,18 +39,19 @@
           <h2>安装步骤</h2>
           <ol>
             <li>下载上方 APK；</li>
+            <li>已装旧版（2.x 网页打包版）可直接覆盖安装——包名与签名一致，数据与登录无需重装；</li>
             <li>首次安装时系统会提示「允许来自此来源的应用」——在弹窗里允许本站（或到 设置 → 安全 → 未知来源 里开启）；</li>
-            <li>安装后打开即全屏运行；以后站点发新版，App 内顶部会提示「已更新到 vX.Y.Z，点击刷新」。</li>
+            <li>安装后打开即用；以后发新版，App 内会提示「发现新版本」并支持一键更新。</li>
           </ol>
         </section>
 
         <section class="app-limits">
           <h2>已知限制</h2>
           <ul>
-            <li>不提供推送与桌面角标（TWA 无法实现；到价提醒仍走邮件 / 企业微信）；</li>
-            <li>不展示 Steam「已拥有哪些 DLC」——Steam 公开 API 不提供该数据；</li>
-            <li>离线时只能兜住页面观感（图标/样式），价格与列表必须联网；</li>
-            <li>App 与手机浏览器是两套独立登录会话。</li>
+            <li>App 与网页版是两套独立登录（App 用 Token 登录）；</li>
+            <li>第一期不含 Steam 账号绑定/同步与推送通知（到价提醒仍走邮件 / 企业微信）；</li>
+            <li>管理后台仍在网页版 /console（App 内不做管理）；</li>
+            <li>价格与列表必须联网（与网页版共用同一后端）。</li>
           </ul>
         </section>
       </template>
@@ -49,11 +61,14 @@
 
 <script setup>
 // BS 批（docs/MOBILE-APP-TWA.md §5.1）：安卓版下载页——版本/大小/SHA-256/安装步骤/已知限制 + GitHub 备用链接。
+// CA-5（docs/APP-NATIVE.md §5）：改版为原生 App 文案（保留现有 APK 下载）+ 微信内「在浏览器打开」提示。
 import { computed, onMounted, ref } from 'vue';
 
 const latest = ref(null);
 const loading = ref(true);
 const loadError = ref('');
+// 微信内置浏览器判定（UA 含 MicroMessenger）：显示「在浏览器打开」提示、隐藏下载区
+const isWeChat = typeof navigator !== 'undefined' && /MicroMessenger/i.test(navigator.userAgent);
 const sizeText = computed(() => {
   const n = Number(latest.value?.size);
   if (!Number.isFinite(n) || n <= 0) return '—';
@@ -106,4 +121,7 @@ onMounted(async () => {
 .app-state{color:var(--fg-muted);padding:12px 0}
 .app-steps ol,.app-limits ul{margin:0;padding-left:20px;font-size:13.5px;line-height:1.9;color:var(--fg-2)}
 .app-limits{margin-top:6px}
+.wechat-hint h2{color:var(--brand)}
+.wechat-text{font-size:14px;line-height:1.8;color:var(--fg-2);margin:0 0 10px}
+.wechat-steps{margin:0;padding-left:20px;font-size:13.5px;line-height:1.9;color:var(--fg-2)}
 </style>
