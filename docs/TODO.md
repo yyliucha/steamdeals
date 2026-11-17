@@ -1739,9 +1739,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `src/settings.js`（discovery.*/personal.* 8 项）、`frontend/src/pages/Home.vue`（综合评分排序/好评率与 Deck 筛选/徽标/免费角标/为你推荐 tab）。
 - 验收：见规格 §9 七条。
 
-## CI. 待开发：价格提醒邮件 HTML 化 + 申诉管理页视觉对齐
+## CI. 待发版：价格提醒邮件 HTML 化 + 申诉管理页视觉对齐
 
-**状态：待开发（2026-11-17，所有者确认 2 项修复；CI-1 / CI-2 可并行）**
+**状态：质检通过（2026-11-17 第 1 轮，docs/QA-CI.md；实现 d5e6dc2；所有者确认 2 项修复）**
 **依赖：** 无（CB 报表 HTML 渲染已发布 v2.18.0；CF 申诉页结构改动已发布 v2.21.0）
 **解锁：** 无
 **规格**：[ALERT-MAIL-APPEAL-UX.md](ALERT-MAIL-APPEAL-UX.md)
@@ -1760,6 +1760,3 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ② 申诉页分段控件主色选中、空态卡片式、列与效果图一致、移动端卡片不变、PC 无回归；
   ③ `npm test` / `frontend:build` / `scan` 全绿；**不自行构建**。
 - **待确认**：§11 两条（「到期」是否保留独立列；空态文案是否随筛选联动）。
-## CI. 已实现待发版：价格提醒邮件 HTML 化 + 申诉管理页视觉对齐
-**状态：质检通过（2026-11-17 第 1 轮，docs/QA-CI.md）**
-**规格**：[ALERT-MAIL-APPEAL-UX.md](ALERT-MAIL-APPEAL-UX.md)
