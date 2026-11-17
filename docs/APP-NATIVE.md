@@ -1,8 +1,8 @@
-# 原生安卓 App（与 Web 完全拆分，共用同一数据库/后端）（已实现待发版）
+# 原生安卓 App（与 Web 完全拆分，共用同一数据库/后端）（已发布 v2.22.0）
 
-> 状态：**已实现待发版（2026-11-17）**。编号拆分：**CA**（站点侧：CA-1 后端 Token/API + CA-5 Web 改造）、**CG**（Android：CA-2~4，独立仓库）。
-> CA-1 质检 ✅ 放行（docs/QA-CA1.md 第 1 轮）；CA-5（§5 手机跳转开关默认关闭/微信提示//app 改版）已实现待质检；
-> CG（Android 工程，独立仓库 steamdeals-app）质检通过（docs/QA-CG.md）。
+> 状态：**已实现并发布 v2.22.0（2026-11-17）**。编号拆分：**CA**（站点侧：CA-1 后端 Token/API + CA-5 Web 改造）、**CG**（Android：CA-2~4，独立仓库）。
+> CA-1 质检 ✅ 放行（docs/QA-CA1.md 第 1 轮）；CA-5（§5 手机跳转开关默认关闭/微信提示//app 改版）质检 ✅ 放行（docs/QA-CA5.md 第 1 轮）；
+> CG（Android 工程，独立仓库 steamdeals-app）质检通过并已发布 app-v2.19.0（docs/QA-CG.md）。
 > **App 六屏效果图已确认（2026-11-16，见 §10）**：CG 按该基线开发。
 > **本批推翻**：[MOBILE-APP-TWA.md](MOBILE-APP-TWA.md)（BS，TWA 复用 web 页面）、
 > [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) 的 BU/BV/BX（移动 web 页面重设计）、

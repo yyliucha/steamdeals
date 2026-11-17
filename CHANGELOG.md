@@ -1,5 +1,20 @@
 # 变更日志
 
+## [2.22.0] - 2026-11-17
+
+原生 Android 站点侧落地 + 提醒邮件 HTML 化 + App v2.19.0 入库：CA（App Token 认证与 `/api/app/*` 契约 + 手机前台跳转与 /app 改版）+ CI（提醒邮件 HTML 化 + 申诉页视觉对齐）+ CG App v2.19.0 APK（同 keystore 覆盖旧 TWA）。
+
+### 新增
+
+- **原生 Android 站点侧（CA）**：`api_tokens` 表 + `POST /api/auth/token`（验证码必填，IP 20 次/15 分钟、账号 5 次锁 15 分钟与 Web 共用）+ `POST /api/auth/token/revoke`；`/api/app/*` 前缀重写（`/api/app/latest`、`/api/app/status` 精确例外）并豁免 IP 黑名单/设备封禁（保留全局基础限流）；`GET /api/app/status` 启动封禁检查（`X-Device-Id` → `{banned,type}`）；用户接口 Bearer 失效统一 401 `login_required`；契约 [docs/APP-API.md](docs/APP-API.md)。Web 侧（CA-5）：手机 UA 前台页面 302 → `/app`（`app.mobileRedirectEnabled` 开关**默认关闭**，豁免 console/login/register/app/banned/appeal/setup/change-password 与 /api/*）；微信内置浏览器显示「右上角 → 在浏览器打开」提示；/app 页改版为主推原生 App（保留 APK 下载与 GitHub 兜底）。
+- **提醒邮件 HTML 化（CI）**：到价提醒邮件品牌头 + 逐条卡片 + Steam 链接（600px 内联 CSS、全字段转义、无外部资源；纯文本兜底；webhook/企微仍纯文本）。
+- **申诉管理页视觉对齐（CI）**：分段控件主色选中、桌面表格卡片式空态、「到期」并入封禁原因副行、间距收紧（移动端卡片不变）。
+- **App v2.19.0 入库**：原生 Android App（CG，独立仓库 `steamdeals-app`）APK 入库随镜像（versionCode 21900，同 keystore 覆盖旧 TWA 无需卸载；清单含 versionCode/notes/minVersionCode）。
+
+### 修复
+
+- 本版本无缺陷修复批次（全部为新功能条目）；CA-5 开发期同步修 2 处测试口径（settings 计数 85→86、setup.test.js 同步）。
+
 ## [2.21.0] - 2026-11-17
 
 后台安全与个性化三连批：CF 后台体验与自动封禁收紧 + CD 跨平台对齐（审核页/映射落库/ITAD 反解）+ CH Deck 认证/好评率/为你推荐。

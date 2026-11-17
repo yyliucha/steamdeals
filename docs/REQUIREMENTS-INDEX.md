@@ -62,14 +62,14 @@
 | **BX** | 手机浏览器首访「下载安卓 App」提示（只安卓、一次、可关闭） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §6 | 已过时（2026-11-16 被 CA 取代） | ✅ 本轮已给 |
 | **BY** | 安卓 App 内置更新（启动/回前台检查 → 原生提示 → 下载校验 → 用户确认安装；minVersionCode 强制） | [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md) | 质检通过（2026-11-16，92cae3e + 打回修复 8585dba） | ✅ 本轮已给 |
 | **BZ** | App 代码仓库拆分（`android/` 迁独立公开仓库；站点 CI 拉 Release 出 `latest.json`；规格/TODO 留站点） | [MOBILE-APP-REPO-SPLIT.md](MOBILE-APP-REPO-SPLIT.md) | 已过时（CA 直接新建独立仓库） | ✅ 本轮已给 |
-| **CA** | 原生 Android 的站点侧（Token/API + Web 手机端改造；Android 工程见 CG） | [APP-NATIVE.md](APP-NATIVE.md) §3/§5 + [APP-API.md](APP-API.md) | 质检通过（2026-11-17：CA-1 ✅ docs/QA-CA1.md；CA-5 ✅ docs/QA-CA5.md） | ✅ 本轮已给 |
+| **CA** | 原生 Android 的站点侧（Token/API + Web 手机端改造；Android 工程见 CG） | [APP-NATIVE.md](APP-NATIVE.md) §3/§5 + [APP-API.md](APP-API.md) | 已发布 v2.22.0（2026-11-17） | ✅ 本轮已给 |
 | **CG** | 原生 Android App（CA-2~4，独立仓库 `steamdeals-app`；六屏/游客/登录后自动完成/启动封禁提示/内置更新） | [APP-NATIVE.md](APP-NATIVE.md) §4 | 质检通过（2026-11-17 第 1 轮） | ✅ 本轮已给 |
 | **CB** | 价格报表邮件 HTML 化 + 内容增强（品牌头/KPI/降价 Top5/涨价 Top3/7 天趋势/CTA；multipart 文本兜底） | [PRICE-REPORT-EMAIL.md](PRICE-REPORT-EMAIL.md) | 质检通过（2026-11-16，c5fc536 + 打回修复 becff89，第 2 轮复检） | ✅ 本轮已给 |
 | **CC** | 多源采集推进：ITAD/GOG/Humble 覆盖全目录（游标/状态 + 命中缓存）+ 后台四源触发 | [SOURCE-SYNC-COVERAGE.md](SOURCE-SYNC-COVERAGE.md) | 已发布 v2.19.0（2026-11-16，12f4f42） | ✅ 本轮已给 |
 | **CD** | 跨平台对齐（杉果 + ITAD）：英文名/Steam 链接反解 + 调度化 + **对齐审核页（去重分组/合并预览/决定继承）** + 映射落库 | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) | 已发布 v2.21.0（2026-11-17，e5fced8） | ✅ 本轮已给 |
 | **CF** | 后台体验与安全策略（申诉布局 / Steam 账号重复渲染修复 / 指标压缩 / 自动封禁收紧 + 审核证据） | [ADMIN-UX-SECURITY.md](ADMIN-UX-SECURITY.md) | 已发布 v2.21.0（2026-11-17，31483fb） | ✅ 本轮已给 |
 | **CH** | 个性化推荐 + Deck 认证 + 好评率（借鉴 steam-deals；免费角标/行为学习搭车） | [DISCOVERY-FOR-YOU.md](DISCOVERY-FOR-YOU.md) | 已发布 v2.21.0（2026-11-17，b575dcc） | ✅ 本轮已给 |
-| **CI** | 价格提醒邮件 HTML 化 + 申诉管理页视觉对齐（分段控件/空态/表格列/间距） | [ALERT-MAIL-APPEAL-UX.md](ALERT-MAIL-APPEAL-UX.md) | 质检通过（2026-11-17 第 1 轮，docs/QA-CI.md；实现 d5e6dc2，待发版） | ✅ 本轮已给 |
+| **CI** | 价格提醒邮件 HTML 化 + 申诉管理页视觉对齐（分段控件/空态/表格列/间距） | [ALERT-MAIL-APPEAL-UX.md](ALERT-MAIL-APPEAL-UX.md) | 已发布 v2.22.0（2026-11-17，docs/QA-CI.md ✅） | ✅ 本轮已给 |
 | **CJ** | 安卓版 App 发版后 /app 页自动更新（GitHub Release 自动同步 + 站点自托管下载 + GitHub 兜底） | [APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md) | 待开发（2026-11-17 已确认 3 项） | ✅ 本轮已给 |
 | **CE** | 杉果匹配器加固 + 误合并数据修复（完整标题计分/片段限制/数字一致性/内容词只进人工/`--apply` 二次确认） | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9 | 已发布 v2.19.0（2026-11-16，12f4f42；QA 报告 docs/QA-CE.md） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |
@@ -112,6 +112,7 @@
 9. **AO**（后台游戏列 + 链接抽屉改版）2026-11-09 入 TODO，规格 [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md)；单批，纯前端；
 10. **AP**（价格历史报表）2026-11-09 入 TODO，规格 [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md)；单批，纯前端；
 11. **AQ / AR**（后台列表排序 / 按 IP 合并）2026-11-09 入 TODO，规格 [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md)；AR 依赖 AQ、下一期开发。
+
 
 
 
