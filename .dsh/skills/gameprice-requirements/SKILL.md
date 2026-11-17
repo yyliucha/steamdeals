@@ -166,6 +166,9 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
 - 截图用 headless Edge 生成：
   `msedge --headless=new --disable-gpu --window-size=1180,1560 --screenshot=<png> file:///<html>`；
 - 规格 §4（前端/后台）必须引用 demo 路径，§验收里必须有一条「与 demo 一致」；
+- 规格里必须附一张 **「demo 状态 ↔ 自动化断言」对照表**（每个关键状态一行：`状态 | 断言点 | 预期`）——
+  开发据此加 e2e 矩阵行（见 `gameprice-test` §2），质检据此逐行核对；页面类验收 =
+  「与 demo 一致」+「对照表逐行有断言」；
 - **没有 demo 的页面类需求视为没设计完**，不得派发给开发会话。
 
 **必写一节「去重与幂等」**（2026-11-16 起）：任何**列表 / 审核 / 队列 / 待办 / 候选**类功能，规格必须写清
