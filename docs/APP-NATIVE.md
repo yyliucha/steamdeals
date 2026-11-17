@@ -167,7 +167,7 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 | 详情：复制游戏名 | ✅ | ❌ 未做 | App 详情无复制入口 |
 | 详情：开发商/发行商 | ✅（名称） | ❌ **显示原始 JSON**（纪元1800：`{"name":"Ubisoft Mainz"}`、`{"name":"Ubisoft","creator_clan_account_id":…}`）；泰拉瑞亚正常 | **Bug**：App 未取 `name` 字段（服务端返回对象数组） |
 | 标记：感兴趣 / 不感兴趣 | ✅ | ✅ `flags` | 一致 |
-| **标记：已拥有** | ✅ | ❌ 未做 | `flags` 接口已支持 `owned`，缺 App UI |
+| **标记：已拥有** | ✅ 读 Steam 库，**终态**：显示全部账号名 + 仅「去 Steam 商店」，其余操作与到价提醒全部隐藏（管理员同规则，不开放手动标记，见 [USER-ALERTS.md](USER-ALERTS.md) §1 #3） | ❌ 未做（App 一期无 Steam 绑定，无法识别已拥有） | App 后续接入前，始终显示完整操作 |
 | 愿望单（本站） | ✅ | ✅ 增删/列表 | 一致 |
 | **到价提醒** | ✅（CL 后用户级） | ❌ 无接口 | 依赖 CL 的用户级 watchlist 接口，App 后续跟进 |
 | 站内公告 | ✅ 铃铛 + 抽屉 + 已读 | ✅ 已读（角标待核实） | — |

@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>详情页操作区改版 demo（方案 A 三段式）</title>
+<title>详情页操作区改版 demo（状态机：未拥有 / 已拥有终态）</title>
 <style>
   :root{
     --bg:#0b1020; --panel:#121a30; --panel-2:#16203a; --border:#243050; --border-2:#2e3d63;
@@ -11,73 +11,73 @@
     --warn:#e0a23c; --danger:#e05c5c;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;padding:28px}
-  h1{font-size:20px;margin:0 0 6px}
-  .sub{color:var(--fg-muted);font-size:12px;margin:0 0 22px}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;padding:26px}
+  h1{font-size:19px;margin:0 0 6px}
+  .sub{color:var(--fg-muted);font-size:12px;margin:0 0 20px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;align-items:start}
   .dialog{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 10px 30px #0006}
-  .dialog-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);font-weight:600;font-size:15px}
-  .dialog-head .x{color:var(--fg-subtle);font-size:16px}
-  .dialog-body{padding:16px 18px 18px}
-  .cover{height:170px;border-radius:10px;background:
+  .dialog-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:14px}
+  .dialog-head .x{color:var(--fg-subtle);font-size:15px}
+  .dialog-body{padding:14px 16px 16px}
+  .cover{height:130px;border-radius:10px;background:
     radial-gradient(120% 140% at 20% 10%,#1f3a5f 0%,#12203a 55%,#0d1526 100%);
     border:1px solid var(--border-2);display:flex;align-items:center;justify-content:center;
-    font-size:26px;font-weight:800;letter-spacing:.06em;color:#cfe3ff;text-shadow:0 2px 18px #4c8cff66}
-  .en{color:var(--fg-subtle);font-size:12px;margin:10px 0 0}
-  .metrics{display:flex;gap:10px;margin:12px 0 14px}
-  .metric{flex:1;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:9px 12px}
-  .metric small{display:block;color:var(--fg-muted);font-size:11px;margin-bottom:2px}
-  .metric b{font-size:16px}
-  .desc{color:var(--fg-muted);font-size:12px;margin:0 0 16px}
+    font-size:20px;font-weight:800;letter-spacing:.06em;color:#cfe3ff;text-shadow:0 2px 18px #4c8cff66}
+  .en{color:var(--fg-subtle);font-size:12px;margin:8px 0 0}
+  .metrics{display:flex;gap:8px;margin:10px 0 12px}
+  .metric{flex:1;background:var(--panel-2);border:1px solid var(--border);border-radius:9px;padding:7px 10px}
+  .metric small{display:block;color:var(--fg-muted);font-size:10px;margin-bottom:1px}
+  .metric b{font-size:14px}
+  .desc{color:var(--fg-muted);font-size:11.5px;margin:0 0 13px}
 
-  .sec-label{font-size:11px;color:var(--fg-subtle);letter-spacing:.08em;margin:0 0 8px}
-  .buy-row{display:flex;gap:10px;margin-bottom:16px}
-  .btn{display:inline-flex;align-items:center;gap:6px;border-radius:9px;padding:8px 14px;font-size:13px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--fg);cursor:pointer;white-space:nowrap}
-  .btn:hover{border-color:#3d5080}
+  .sec-label{font-size:10.5px;color:var(--fg-subtle);letter-spacing:.08em;margin:0 0 7px}
+  .buy-row{display:flex;gap:8px;margin-bottom:13px}
+  .btn{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:7px 12px;font-size:12.5px;border:1px solid var(--border-2);background:var(--panel-2);color:var(--fg);cursor:pointer;white-space:nowrap}
   .btn-primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
-  .btn-primary:hover{background:var(--brand-2)}
-  .btn-ghost{background:transparent}
-  .btn-sm{padding:5px 10px;font-size:12px;border-radius:8px}
+  .btn-sm{padding:4px 9px;font-size:11.5px;border-radius:7px}
 
-  .chips{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px}
-  .chip{border:1px solid var(--border-2);background:var(--panel-2);color:var(--fg-muted);border-radius:999px;padding:6px 14px;font-size:12.5px;cursor:pointer;transition:.15s}
-  .chip:hover{color:var(--fg);border-color:#3d5080}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+  .chip{border:1px solid var(--border-2);background:var(--panel-2);color:var(--fg-muted);border-radius:999px;padding:5px 12px;font-size:12px;cursor:pointer}
   .chip.on{color:#dff5ea;background:var(--green-bg);border-color:var(--green-border)}
-  .chip.on.brand{color:#e6e9ff;background:#1a2350;border-color:#34447f}
   .chip .tick{margin-right:2px}
 
-  .alert-block{border:1px solid var(--border);border-radius:12px;padding:13px 14px;background:linear-gradient(180deg,#121b31,#101728)}
-  .alert-title{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;margin:0 0 4px}
-  .alert-title .bell{color:var(--warn)}
-  .ref{color:var(--fg-muted);font-size:12px;margin:0 0 10px}
+  .alert-block{border:1px solid var(--border);border-radius:11px;padding:11px 12px;background:linear-gradient(180deg,#121b31,#101728)}
+  .alert-title{display:flex;align-items:center;gap:7px;font-weight:600;font-size:12.5px;margin:0 0 3px}
+  .ref{color:var(--fg-muted);font-size:11.5px;margin:0 0 9px}
   .ref b{color:var(--fg)}
-  .input-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .money{display:flex;align-items:center;gap:6px;background:var(--panel-2);border:1px solid var(--border-2);border-radius:9px;padding:0 10px;height:34px}
+  .input-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .money{display:flex;align-items:center;gap:5px;background:var(--panel-2);border:1px solid var(--border-2);border-radius:8px;padding:0 9px;height:31px}
   .money span{color:var(--fg-subtle)}
-  .money input{background:transparent;border:0;outline:0;color:var(--fg);width:110px;font-size:13px}
+  .money input{background:transparent;border:0;outline:0;color:var(--fg);width:88px;font-size:12.5px}
   .money input::placeholder{color:#5c6a8c}
-  .saved{display:flex;align-items:center;gap:10px;margin-top:10px}
-  .saved .pill{display:inline-flex;align-items:center;gap:6px;background:var(--green-bg);border:1px solid var(--green-border);color:#cff3e2;border-radius:999px;padding:5px 12px;font-size:12px}
-  .saved .link{color:var(--fg-muted);font-size:12px;text-decoration:none;border-bottom:1px dashed #3a4870;cursor:pointer}
+  .saved{display:flex;align-items:center;gap:9px;margin-top:9px}
+  .pill{display:inline-flex;align-items:center;gap:5px;background:var(--green-bg);border:1px solid var(--green-border);color:#cff3e2;border-radius:999px;padding:4px 11px;font-size:11.5px}
+  .link{color:var(--fg-muted);font-size:11.5px;text-decoration:none;border-bottom:1px dashed #3a4870;cursor:pointer}
 
-  .mobile{max-width:390px;margin-top:26px}
+  .owned-block{border:1px solid var(--green-border);background:var(--green-bg);border-radius:11px;padding:12px 13px;margin:0 0 13px}
+  .owned-head{font-size:14px;font-weight:700;color:#dff5ea;margin:0 0 4px}
+  .owned-accounts{font-size:12px;color:#b9d9c9}
+  .owned-accounts b{color:#eafff4}
+
+  .mobile{max-width:390px;margin-top:24px}
   .mobile .dialog-body{padding:12px 14px 16px}
   .mobile .chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
   .mobile .chips .chip{flex:none}
-  .fold{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border);border-radius:11px;padding:11px 13px;background:var(--panel-2)}
-  .fold .l{display:flex;align-items:center;gap:8px;font-size:13px}
-  .fold .r{color:var(--fg-muted);font-size:12px}
-  .note{color:var(--fg-subtle);font-size:11px;margin:10px 0 0}
+  .fold{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--panel-2)}
+  .fold .l{display:flex;align-items:center;gap:7px;font-size:12.5px}
+  .fold .r{color:var(--fg-muted);font-size:11.5px}
+  .note{color:var(--fg-subtle);font-size:11px;margin:9px 0 0}
+  .tag{display:inline-block;font-size:10px;padding:1px 7px;border-radius:999px;border:1px solid var(--border-2);color:var(--fg-subtle);margin-left:6px;vertical-align:middle}
 </style>
 </head>
 <body>
-  <h1>详情页 · 操作区改版 demo（方案 A：三段式）</h1>
-  <p class="sub">左：未设置提醒；右：已设置提醒（已拥有 + 提醒中）。下方为移动端折叠形态。这是纯静态 demo，交互不生效。</p>
+  <h1>详情页 · 操作区改版 demo（状态机）</h1>
+  <p class="sub">三段式 + 状态化：① 未拥有·未设提醒 ② 未拥有·已设提醒 ③ 已拥有（终态，读 Steam 库，含管理员）。纯静态 demo，交互不生效。</p>
 
   <div class="grid">
-    <!-- 状态一：未设置 -->
+    <!-- A1 未拥有 · 未设置 -->
     <section class="dialog">
-      <div class="dialog-head"><span>雾锁王国 (Enshrouded)</span><span class="x">✕</span></div>
+      <div class="dialog-head"><span>雾锁王国 (Enshrouded)<span class="tag">未拥有</span></span><span class="x">✕</span></div>
       <div class="dialog-body">
         <div class="cover">ENSHROUDED</div>
         <div class="en">Enshrouded</div>
@@ -95,12 +95,11 @@
         <div class="chips">
           <button class="chip">感兴趣</button>
           <button class="chip">不感兴趣</button>
-          <button class="chip">已拥有</button>
           <button class="chip">愿望单</button>
         </div>
 
         <div class="alert-block">
-          <p class="alert-title"><span class="bell">🔔</span>到价提醒</p>
+          <p class="alert-title">🔔 到价提醒</p>
           <p class="ref">当前 <b>¥138.00</b> · 史低 <b>¥124.20</b></p>
           <div class="input-row">
             <label class="money"><span>¥</span><input placeholder="留空 = 跌到史低时提醒"></label>
@@ -109,13 +108,13 @@
             <button class="btn btn-sm btn-primary">保存</button>
           </div>
         </div>
-        <p class="note">未设置提醒时不显示「取消」，避免误点。</p>
+        <p class="note">未设置时不显示「取消」；不再有「已拥有」按钮（已拥有只读 Steam 库）。</p>
       </div>
     </section>
 
-    <!-- 状态二：已设置 -->
+    <!-- A2 未拥有 · 已设置 -->
     <section class="dialog">
-      <div class="dialog-head"><span>雾锁王国 (Enshrouded)</span><span class="x">✕</span></div>
+      <div class="dialog-head"><span>雾锁王国 (Enshrouded)<span class="tag">未拥有</span></span><span class="x">✕</span></div>
       <div class="dialog-body">
         <div class="cover">ENSHROUDED</div>
         <div class="en">Enshrouded</div>
@@ -124,7 +123,7 @@
           <div class="metric"><small>历史最低</small><b>¥124.20</b></div>
           <div class="metric"><small>折扣</small><b>0%</b></div>
         </div>
-        <p class="desc">已拥有此游戏 → 提醒区不再显示（管理员例外，始终可见）。</p>
+        <p class="desc">已设置提醒：目标价与「提醒中」chip 展示。</p>
 
         <p class="sec-label">购买</p>
         <div class="buy-row"><button class="btn btn-primary">去 Steam 购买 ¥138.00</button></div>
@@ -133,12 +132,11 @@
         <div class="chips">
           <button class="chip">感兴趣</button>
           <button class="chip">不感兴趣</button>
-          <button class="chip on"><span class="tick">✓</span>已拥有</button>
           <button class="chip on"><span class="tick">✓</span>愿望单</button>
         </div>
 
         <div class="alert-block">
-          <p class="alert-title"><span class="bell">🔔</span>到价提醒</p>
+          <p class="alert-title">🔔 到价提醒</p>
           <p class="ref">当前 <b>¥138.00</b> · 史低 <b>¥124.20</b></p>
           <div class="input-row">
             <label class="money"><span>¥</span><input value="124.20"></label>
@@ -151,7 +149,32 @@
             <a class="link">取消提醒</a>
           </div>
         </div>
-        <p class="note">「提醒中」与取消合成一个 chip，只在已设置时出现。</p>
+        <p class="note">「提醒中」与取消合成一处，只在已设置时出现。</p>
+      </div>
+    </section>
+
+    <!-- B 已拥有 · 终态 -->
+    <section class="dialog">
+      <div class="dialog-head"><span>雾锁王国 (Enshrouded)<span class="tag">已拥有 · 终态</span></span><span class="x">✕</span></div>
+      <div class="dialog-body">
+        <div class="cover">ENSHROUDED</div>
+        <div class="en">Enshrouded</div>
+        <div class="metrics">
+          <div class="metric"><small>当前最低</small><b>¥138.00</b></div>
+          <div class="metric"><small>历史最低</small><b>¥124.20</b></div>
+          <div class="metric"><small>折扣</small><b>0%</b></div>
+        </div>
+        <p class="desc">该游戏已在你绑定的 Steam 账号库中——进入终态，只留商店入口。</p>
+
+        <div class="owned-block">
+          <p class="owned-head">✓ 已拥有</p>
+          <p class="owned-accounts">账号：<b>FF</b>、<b>Happy</b>（全部展示，不截断、不提供手动标记/取消）</p>
+        </div>
+
+        <div class="buy-row"><button class="btn btn-primary">去 Steam 商店</button></div>
+
+        <p class="note">终态规则：不渲染 感兴趣 / 不感兴趣 / 愿望单 / 到价提醒；管理员同样如此。
+        数据侧：变为已拥有时删除该用户的愿望单行与到价提醒行。</p>
       </div>
     </section>
   </div>
@@ -160,7 +183,7 @@
   <section class="dialog mobile">
     <div class="dialog-head"><span>雾锁王国 (Enshrouded)</span><span class="x">✕</span></div>
     <div class="dialog-body">
-      <div class="cover" style="height:130px;font-size:20px">ENSHROUDED</div>
+      <div class="cover" style="height:110px;font-size:17px">ENSHROUDED</div>
       <div class="metrics">
         <div class="metric"><small>当前最低</small><b>¥138.00</b></div>
         <div class="metric"><small>历史最低</small><b>¥124.20</b></div>
@@ -170,10 +193,9 @@
         <button class="chip on"><span class="tick">✓</span>愿望单</button>
         <button class="chip">感兴趣</button>
         <button class="chip">不感兴趣</button>
-        <button class="chip">已拥有</button>
       </div>
       <div class="fold">
-        <span class="l">🔔 到价提醒 <span class="pill" style="background:var(--green-bg);border:1px solid var(--green-border);color:#cff3e2;border-radius:999px;padding:2px 9px;font-size:11px">提醒中 ¥124.20</span></span>
+        <span class="l">🔔 到价提醒 <span class="pill" style="padding:2px 9px;font-size:11px">提醒中 ¥124.20</span></span>
         <span class="r">调整 ▾</span>
       </div>
       <p class="note">移动端：标记 chips 横向滚动；提醒区折叠一行，点「调整」展开输入。</p>
