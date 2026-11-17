@@ -71,11 +71,38 @@ export async function fetchPrices(gameIds, { apiKey, logger, country = 'CN' }) {
 }
 
 /**
+ * CD 批（docs/SONKWO-STEAM-MATCH.md §8/§10）：deal.url 是 itad.link 跳转链接——
+ * 跟随 301/302 取最终 URL，形如 store.steampowered.com/app/<appid>/ 才反解 appid；
+ * 反解失败返回 null（调用方回退英文名匹配）。fetchImpl 可注入（测试用）。
+ */
+export async function resolveDealSteamAppid(dealUrl, { fetchImpl = null, logger = null, maxRedirects = 5 } = {}) {
+  const url = String(dealUrl ?? '');
+  if (!/^https?:\/\//i.test(url)) return null;
+  const doFetch = fetchImpl ?? ((u, opts) => fetch(u, opts));
+  try {
+    const res = await doFetch(url, { method: 'GET', redirect: 'follow', signal: AbortSignal.timeout(10_000) });
+    const finalUrl = String(res?.url ?? res?.finalUrl ?? '');
+    const m = /store\.steampowered\.com\/app\/(\d+)/i.exec(finalUrl);
+    if (m && Number.isFinite(Number(m[1]))) {
+      logger?.info?.('adapter.itad.url_resolved', { dealUrl: url.slice(0, 120), finalUrl: finalUrl.slice(0, 120), appid: Number(m[1]) });
+      return Number(m[1]);
+    }
+    logger?.warn?.('adapter.itad.url_no_appid', { dealUrl: url.slice(0, 120), finalUrl: finalUrl.slice(0, 120) });
+    return null;
+  } catch (err) {
+    logger?.warn?.('adapter.itad.url_failed', { dealUrl: url.slice(0, 120), message: String(err?.message ?? err).slice(0, 120) });
+    return null;
+  }
+}
+
+/**
  * 把 ITAD 的 deal 摊平成我们的 RawOffer。
  * 一条 deal 带上它所属的平台（每家商店独立成一个 platform），
  * 这样主榜能显示"哪个店最便宜"，而不是笼统的 "ITAD"。
+ * gameAppids（CD 批）：game.id → steam appid 映射（从 Steam 店 deal.url 反解），
+ * 命中后同一 ITAD game 的所有商店 deal 都挂到该 Steam 游戏。
  */
-export function normalizeDeals(games, { logger = null } = {}) {
+export function normalizeDeals(games, { logger = null, gameAppids = null } = {}) {
   const offers = [];
   let skipped = 0;
   for (const game of games) {
@@ -85,6 +112,7 @@ export function normalizeDeals(games, { logger = null } = {}) {
       logger?.debug('adapter.itad.no_deals', { gameId: game?.id, title: game?.title });
       continue;
     }
+    const appid = gameAppids?.get?.(String(game.id)) ?? null;
     for (const deal of deals) {
       const priceCents = toCents(deal?.price?.amount);
       if (priceCents == null) {
@@ -97,7 +125,7 @@ export function normalizeDeals(games, { logger = null } = {}) {
         platform: shopPlatform,
         platformCode: shopPlatform.code,
         platformProductId: String(game.id),
-        steamAppid: null,
+        steamAppid: appid,
         title: game.title ?? null,
         productType: 'authorized_key',
         region: 'cn',

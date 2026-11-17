@@ -27,7 +27,7 @@ import {
   discoverSkus,
   mergeSkuEntries,
 } from './adapters/sonkwo-discover.js';
-import { bestMatch } from './match.js';
+import { bestMatchMulti } from './match.js';
 import { renderCompare, groupOffersByRegion } from './compare.js';
 import { extractAppId, fetchMetadata, normalizeOfficial } from './adapters/steam-meta.js';
 import { describeProxy, decideProxy, parseProxy, redactProxy } from './proxy.js';
@@ -651,6 +651,70 @@ async function cmdSyncSonkwo() {
   const stats = await withStore((store) => ingestOffers(store, { platform: sonkwo, offers, logger }));
   logger.info('sync.source_progress', { platform: sonkwo.code, scanned: targets.length, matched, nomatch: noMatch, failed, remaining: Math.max(0, targets.length - matched) });
   logger.info('sync.done', { platform: sonkwo.code, fetched: offers.length, ...stats });
+  // CD 批（docs/SONKWO-STEAM-MATCH.md §4.1）：sonkwo 收尾追加 match 增量（不新增 cron 任务；
+  // MATCH_ON_SONKWO=0 可关）。只自动应用「自动」级提案（CE 加固规则），失败不影响价格采集。
+  if (process.env.MATCH_ON_SONKWO !== '0') {
+    try {
+      await runSonkwoMatchStep({ limit: Number(process.env.SONKWO_MATCH_LIMIT ?? 100) });
+    } catch (err) {
+      logger.error('match.step_failed', { err: serializeError(err) });
+    }
+  }
+}
+
+/**
+ * CD 批：sonkwo 收尾的增量匹配——决定继承 + 去重组提案 + 自动应用「自动」级（写 skus.json 与
+ * game_source_map）。返回 { proposals, auto, mapped, merged } 供日志与测试。
+ */
+async function runSonkwoMatchStep({ limit = 100, autoScore = 0.94 } = {}) {
+  const skuFile = 'data/skus.json';
+  const entries = readJson(skuFile, []);
+  const align = await import('./align.js');
+  const { bestMatchMulti } = await import('./match.js');
+  const games = await withStore(async (store) =>
+    (await store.query('select id, steam_appid, name, name_en from games where steam_appid is not null')).rows,
+  );
+  const orphanRows = await withStore((store) => align.loadOrphanSonkwoGames((sql, p) => store.query(sql, p)));
+  const items = align.loadSonkwoItems(entries, orphanRows);
+  const maps = await withStore((store) => db.sourceMapsByProducts((sql, p) => store.query(sql, p), 'sonkwo', items.map((i) => String(i.skuId))));
+  const inherit = align.applyMapInheritance(items, maps);
+  if (inherit.inheritApplied) {
+    for (const item of items) {
+      const entry = entries.find((e) => Number(e.skuId) === item.skuId);
+      if (entry && item.appid) entry.appid = item.appid;
+    }
+    writeFileSync(skuFile, `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
+    logger.info('match.inherited', { applied: inherit.inheritApplied });
+  }
+  const groups = align.proposeAlignGroups(inherit.items.slice(0, limit), games, { autoScore });
+  const auto = groups.filter((g) => g.auto);
+  let mapped = 0;
+  let merged = 0;
+  for (const group of auto) {
+    const appid = group.best.candidate.steam_appid;
+    for (const skuId of group.skuIds) {
+      await withStore((store) => applySkuMapping(store, { skuId, appid }));
+      const entry = entries.find((e) => Number(e.skuId) === skuId);
+      if (entry) entry.appid = appid;
+      mapped += 1;
+    }
+    const res = await withStore((store) =>
+      align.confirmGroup({
+        store,
+        q: (sql, p) => store.query(sql, p),
+        group,
+        appid,
+        steamGames: games,
+        method: group.best.method,
+        confidence: group.best.score,
+        mergeGame: ({ fromGameId, toGameId }) => db.mergeGames((sql, p) => store.query(sql, p), { fromGameId, toGameId, logger }),
+      }),
+    );
+    merged += res.merged;
+  }
+  if (mapped) writeFileSync(skuFile, `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
+  logger.info('match.summary', { groups: groups.length, auto: auto.length, mapped, merged, limit });
+  return { proposals: groups.length, auto: auto.length, mapped, merged };
 }
 
 async function cmdSyncItad() {
@@ -727,9 +791,23 @@ async function cmdSyncItad() {
   let stats = {};
   if (ids.length) {
     const prices = await fetchPrices(ids, { apiKey, logger });
-    const { offers, skipped } = normalizeDeals(prices, { logger });
+    // CD 批（docs/SONKWO-STEAM-MATCH.md §8/§10）：先对每个 ITAD game 找 Steam 店的 deal.url，
+    // 跟随 itad.link 跳转反解 appid（必须存在于本站 games），命中后同一 game 的所有商店 deal 都挂该游戏；
+    // 反解失败回退英文名匹配（现有 ingest 行为）。
+    const { resolveDealSteamAppid } = await import('./adapters/itad.js');
+    const gameAppids = new Map();
+    for (const game of prices) {
+      const steamDeal = (Array.isArray(game?.deals) ? game.deals : []).find((d) => d?.shop?.name === 'Steam');
+      if (!steamDeal?.url) continue;
+      const appid = await resolveDealSteamAppid(steamDeal.url, { logger });
+      if (appid == null) continue;
+      const exists = await withStore(async (store) => (await store.query('select 1 from games where steam_appid = $1', [appid])).rows.length > 0);
+      if (exists) gameAppids.set(String(game.id), appid);
+      await sleep(200);
+    }
+    const { offers, skipped } = normalizeDeals(prices, { logger, gameAppids });
     fetched = offers.length;
-    logger.info('itad.normalized', { games: ids.length, offers: offers.length, skipped });
+    logger.info('itad.normalized', { games: ids.length, offers: offers.length, skipped, urlAppids: gameAppids.size });
     stats = await withStore((store) => ingestOffers(store, { platform: itad, offers, logger }));
   }
   const prog = await withStore((store) => db.sourceSyncStats((sql, p) => store.query(sql, p)));
@@ -1086,11 +1164,14 @@ async function applySkuMapping(store, { skuId, appid }) {
 async function cmdMatch() {
   const skuFile = 'data/skus.json';
   const entries = readJson(skuFile, []);
+  const { bestMatchMulti, alignGroupKey } = await import('./match.js');
+  const align = await import('./align.js');
   const games = await withStore(async (store) =>
     (await store.query('select id, steam_appid, name, name_en from games where steam_appid is not null order by id')).rows,
   );
+  const orphanRows = await withStore((store) => align.loadOrphanSonkwoGames((sql, p) => store.query(sql, p)));
 
-  // 人工确认模式：match --confirm <skuId> <appid>
+  // 人工确认模式：match --confirm <skuId> <appid>（写 skus.json + game_source_map）
   const confirmIdx = args.indexOf('--confirm');
   if (confirmIdx > -1) {
     const skuId = Number(args[confirmIdx + 1]);
@@ -1101,6 +1182,11 @@ async function cmdMatch() {
     const entry = entries.find((e) => Number(e.skuId) === skuId);
     if (!entry) throw new Error(`skus.json 里没有 ${skuId}`);
     const result = await withStore((store) => applySkuMapping(store, { skuId, appid }));
+    await withStore(async (store) => {
+      const q = (sql, p) => store.query(sql, p);
+      const target = (await q('select id from games where steam_appid = $1', [appid])).rows[0];
+      if (target) await db.upsertSourceMap(q, { platformCode: 'sonkwo', productId: String(skuId), gameId: Number(target.id), method: 'manual', confidence: 1, decision: 'confirmed' });
+    });
     entry.appid = appid;
     writeFileSync(skuFile, `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
     console.log(`已确认：${entry.name ?? skuId} → ${games.find((g) => g.steam_appid === appid)?.name ?? appid}`);
@@ -1115,35 +1201,49 @@ async function cmdMatch() {
   const apply = flag('apply', false) === true;
   const yes = flag('yes', false) === true;
   const limit = Number(flag('limit', 200));
-  const unresolved = entries.filter((e) => !e.appid && e.name).slice(0, limit);
+
+  // CD 批：决定继承——confirmed 回填 skus.json、ignored 自动跳过
+  const items = align.loadSonkwoItems(entries, orphanRows);
+  const maps = await withStore((store) => db.sourceMapsByProducts((sql, p) => store.query(sql, p), 'sonkwo', items.map((i) => String(i.skuId))));
+  const inherit = align.applyMapInheritance(items, maps);
+  if (inherit.inheritApplied) {
+    for (const item of items) {
+      const entry = entries.find((e) => Number(e.skuId) === item.skuId);
+      if (entry && item.appid) entry.appid = item.appid;
+    }
+    writeFileSync(skuFile, `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
+    logger.info('match.inherited', { applied: inherit.inheritApplied });
+  }
+  const unresolved = inherit.items.slice(0, limit);
 
   if (!unresolved.length) {
-    console.log('没有待匹配的 SKU（都已有 appid，或 skus.json 为空）。');
+    console.log('没有待匹配的 SKU（都已有 appid / 已被确认或忽略，或 skus.json 为空）。');
     return;
   }
 
-  console.log(`${pad('skuId', 8)} ${pad('杉果名', 26)} ${pad('候选游戏', 22)} ${pad('appid', 8)} ${pad('分数', 6)} 建议`);
-  console.log('-'.repeat(80));
+  const groups = align.proposeAlignGroups(unresolved, games, { minScore, autoScore });
+  console.log(`${pad('组', 30)} ${pad('SKU 数', 7)} ${pad('候选游戏', 22)} ${pad('appid', 8)} ${pad('分数', 6)} 方式/建议`);
+  console.log('-'.repeat(100));
 
   const proposals = [];
-  for (const entry of unresolved) {
-    const best = bestMatch(entry.name, games, { minScore, autoScore });
+  for (const group of groups) {
+    const best = group.best;
     if (!best) {
-      console.log(`${pad(entry.skuId, 8)} ${pad(entry.name, 26)} ${pad('—', 22)} ${pad('—', 8)} ${pad('—', 6)} 无候选`);
+      console.log(`${pad(group.name, 30)} ${pad(group.skuIds.length, 7)} ${pad('—', 22)} ${pad('—', 8)} ${pad('—', 6)} 无候选`);
       continue;
     }
-    // 建议以「自动判定」为准：片段加分只影响提案展示，自动与否只看完整标题
     const label = best.auto ? '自动' : '待确认';
     const note = best.reasons?.length ? `（${best.reasons.join('、')}）` : '';
-    proposals.push({ entry, best, label });
+    proposals.push({ group, best, label });
     console.log(
-      `${pad(entry.skuId, 8)} ${pad(entry.name, 26)} ${pad(best.candidate.name ?? best.matchedField, 22)} ` +
-        `${pad(best.candidate.steam_appid, 8)} ${pad(best.score.toFixed(2), 6)} ${label}${note}`,
+      `${pad(group.name, 30)} ${pad(group.skuIds.length, 7)} ${pad(best.candidate.name ?? best.matchedField, 22)} ` +
+        `${pad(best.candidate.steam_appid, 8)} ${pad(best.score.toFixed(2), 6)} ${best.method}/${label}${note}`,
     );
   }
 
   logger.info('match.proposals', {
     unresolved: unresolved.length,
+    groups: groups.length,
     proposed: proposals.length,
     auto: proposals.filter((p) => p.best.auto).length,
   });
@@ -1157,34 +1257,51 @@ async function cmdMatch() {
 
   if (!apply) {
     console.log(
-      `\n以上为提案（未写入）。加 --apply --yes 自动应用「自动」级别的 ${auto.length} 条（--apply 必须带 --yes 二次确认）。`,
+      `\n以上为提案（未写入；按去重组展示，确认/忽略一次处理整组）。加 --apply --yes 自动应用「自动」级别的 ${auto.length} 组（--apply 必须带 --yes 二次确认）。`,
     );
     return;
   }
 
   // CE 加固（SONKWO-STEAM-MATCH.md §9）：--apply 必须 --yes 二次确认，并逐条打印对照
   if (!yes) {
-    console.log(`\n将自动应用的 ${auto.length} 条对照（未写入，需 --yes 二次确认）：`);
+    console.log(`\n将自动应用的 ${auto.length} 组对照（未写入，需 --yes 二次确认）：`);
     for (const p of auto) {
-      console.log(`  ${p.entry.name} → ${p.best.candidate.name ?? p.best.matchedField}（appid ${p.best.candidate.steam_appid}）`);
+      console.log(`  ${p.group.name}（${p.group.skuIds.length} 个 SKU）→ ${p.best.candidate.name ?? p.best.matchedField}（appid ${p.best.candidate.steam_appid}）`);
     }
     throw new Error('match --apply 需要 --yes 二次确认：核对以上「杉果名 → 候选名/appid」对照后，加 --yes 重新执行');
   }
 
   let mapped = 0;
   let merged = 0;
-  console.log(`\n开始应用（逐条对照，共 ${auto.length} 条）：`);
+  console.log(`\n开始应用（逐组对照，共 ${auto.length} 组）：`);
   for (const p of auto) {
     const appid = p.best.candidate.steam_appid;
-    console.log(`  ${p.entry.name} → ${p.best.candidate.name ?? p.best.matchedField}（appid ${appid}）`);
-    await withStore((store) => applySkuMapping(store, { skuId: Number(p.entry.skuId), appid }));
-    p.entry.appid = appid;
-    mapped += 1;
-    if (p.best.candidate) merged += 1;
+    console.log(`  ${p.group.name}（${p.group.skuIds.length} 个 SKU）→ ${p.best.candidate.name ?? p.best.matchedField}（appid ${appid}）`);
+    for (const skuId of p.group.skuIds) {
+      await withStore((store) => applySkuMapping(store, { skuId, appid }));
+      const entry = entries.find((e) => Number(e.skuId) === skuId);
+      if (entry) entry.appid = appid;
+      mapped += 1;
+    }
+    const res = await withStore((store) =>
+      align.confirmGroup({
+        store,
+        q: (sql, p) => store.query(sql, p),
+        group: p.group,
+        appid,
+        steamGames: games,
+        method: p.best.method,
+        confidence: p.best.score,
+        mergeGame: ({ fromGameId, toGameId }) => db.mergeGames((sql, p) => store.query(sql, p), { fromGameId, toGameId, logger }),
+      }),
+    );
+    merged += res.merged;
+    if (res.errors.length) logger.warn('match.merge_errors', { group: p.group.key, errors: res.errors });
   }
   writeFileSync(skuFile, `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
-  logger.info('match.applied', { mapped });
-  console.log(`\n已写入 ${mapped} 条映射到 ${skuFile}（自动阈值 ${autoScore}）。其余请用 --confirm 逐个确认。`);
+  logger.info('match.applied', { mapped, merged });
+  logger.info('match.summary', { unresolved: unresolved.length, groups: groups.length, auto: auto.length, mapped, merged });
+  console.log(`\n已写入 ${mapped} 条映射到 ${skuFile} 与 game_source_map（自动阈值 ${autoScore}）。其余请用 --confirm 或后台对齐审核。`);
 }
 
 /** 多区服对比：同一款游戏在各区服的报价并排展示（不同币种不折算）。 */

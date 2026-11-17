@@ -310,6 +310,29 @@ export function bestMatch(title, candidates, { minScore = 0.86, getFields = (c) 
   return best;
 }
 
+/**
+ * CD 批（docs/SONKWO-STEAM-MATCH.md §4.2）：多输入变体匹配——杉果标题的
+ * 中文名 + 英文名（孤儿游戏行 games.name_en）分别对候选的 name/name_en 计分，
+ * 取最高分，记录 matchedTitle 与 method（name_zh / name_en）。
+ */
+export function bestMatchMulti(titles, candidates, { minScore = 0.86, getFields = (c) => [c.name, c.nameEn], autoScore = 0.94 } = {}) {
+  let best = null;
+  for (const title of titles ?? []) {
+    if (!title) continue;
+    const hit = bestMatch(title, candidates, { minScore, getFields, autoScore });
+    if (hit && (!best || hit.score > best.score)) {
+      best = { ...hit, matchedTitle: title, method: /[\u3400-\u9fff]/.test(title) ? 'name_zh' : 'name_en' };
+    }
+  }
+  return best;
+}
+
+/** CD 批：审核队列去重组的稳定键 = platform + normalizeName(杉果名)。 */
+export function alignGroupKey(platformCode, title) {
+  const normalized = normalizeName(title).replace(/\s+/g, '');
+  return normalized ? `${platformCode}:${normalized}` : null;
+}
+
 /** 分数 → 人读置信度（纯分数视角；自动与否以 evaluatePair/bestMatch 的 auto 为准）。 */
 export function confidenceLabel(score) {
   if (score >= 0.94) return '自动';

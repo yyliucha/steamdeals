@@ -2,6 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openStore } from '../src/store/index.js';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { writeFileSync, readFileSync } from 'node:fs';
 import * as db from '../src/store/pg.js';
 import { startApiServer } from '../src/server.js';
 import { ingestOffers } from '../src/ingest.js';
@@ -1155,6 +1158,61 @@ test('CA-1 用户接口 401 语义：匿名=需要登录（Web 不变），坏 B
     assert.equal(badBearer.status, 401);
     assert.equal((await badBearer.json()).error, 'login_required', 'App 语义统一 login_required');
   } finally {
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('CD 对齐审核：去重组队列、确认写映射、忽略与决定继承、处理后不再排队', async () => {
+  const { store, q, srv, base } = await setup();
+  const tmpFile = join(tmpdir(), `align-${Date.now()}.json`);
+  try {
+    writeFileSync(tmpFile, JSON.stringify([
+      { skuId: 5001, appid: null, name: '内核之心' },
+      { skuId: 5002, appid: null, name: '内核之心' },
+      { skuId: 5003, appid: null, name: '愚者不灭' },
+    ], null, 2));
+    process.env.ALIGN_SKU_FILE = tmpFile;
+    const cookie = (await login(base, 'admin', 'admin123456')).cookie;
+    const getQueue = async () => (await (await fetch(`${base}/api/admin/align`, { headers: { cookie } })).json()).groups;
+
+    const first = await getQueue();
+    const kernel = first.find((g) => g.name === '内核之心');
+    assert.ok(kernel, '内核之心组存在');
+    assert.equal(kernel.skuCount, 2, '同归一化名多 SKU 归一组、只出一行');
+    assert.ok(first.length === 2, '队列按组计数（2 组）');
+
+    // 手动确认到目标（appid=413150）
+    const confirm = await fetch(`${base}/api/admin/align/confirm`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ key: kernel.key, appid: 413150, method: 'manual' }),
+    });
+    assert.equal(confirm.status, 200, JSON.stringify(await confirm.json()));
+    const written = JSON.parse(readFileSync(tmpFile, 'utf8'));
+    assert.equal(written.find((e) => e.skuId === 5001).appid, 413150, 'skus.json 兼容回写');
+    const mapRow = (await q("select decision from game_source_map where platform_code = 'sonkwo' and product_id = '5001'")).rows[0];
+    assert.equal(mapRow.decision, 'confirmed', '映射落库 confirmed');
+
+    const second = await getQueue();
+    assert.ok(!second.some((g) => g.key === kernel.key), '已确认组不再排队（决定继承）');
+
+    // 忽略另一组
+    const fool = second.find((g) => g.name === '愚者不灭');
+    assert.ok(fool);
+    const ignore = await fetch(`${base}/api/admin/align/ignore`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ key: fool.key }),
+    });
+    assert.equal(ignore.status, 200);
+    const third = await getQueue();
+    assert.ok(!third.some((g) => g.key === fool.key), '已忽略组不再排队');
+
+    // 收敛：连续两次队列组数不增长
+    assert.equal(third.length, 0, '全部处理后队列为空');
+  } finally {
+    delete process.env.ALIGN_SKU_FILE;
     await srv.close();
     await store.close();
   }

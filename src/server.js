@@ -10,7 +10,7 @@
 // 折扣数据永远只由调度器写入，这里没有任何改价的接口——这是硬约束。
 import { createServer } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join, extname, resolve, sep } from 'node:path';
 import * as db from './store/pg.js';
 import * as visitors from './visitors.js';
@@ -3976,6 +3976,148 @@ export function createApiServer({
           reason: body.note ?? null,
         });
         return json(res, 200, { ok: true, action, minutes });
+      }
+
+      // ---- CD 批（docs/SONKWO-STEAM-MATCH.md §4.4）：对齐审核——按去重组队列 + 合并预览 + 确认/忽略 + 决定继承 ----
+      const alignSkuFile = () => process.env.ALIGN_SKU_FILE || resolve(process.cwd(), 'data', 'skus.json');
+      const readAlignSkus = () => {
+        try {
+          if (existsSync(alignSkuFile())) {
+            const parsed = JSON.parse(readFileSync(alignSkuFile(), 'utf8'));
+            return Array.isArray(parsed) ? parsed : [];
+          }
+        } catch {
+          /* 空/坏文件按空处理 */
+        }
+        return [];
+      };
+      const buildAlignGroups = async () => {
+        const align = await import('./align.js');
+        const entries = readAlignSkus();
+        const games = (await q('select id, steam_appid, name, name_en from games where steam_appid is not null')).rows;
+        const orphanRows = await align.loadOrphanSonkwoGames(q);
+        const items = align.loadSonkwoItems(entries, orphanRows);
+        const maps = await db.sourceMapsByProducts(q, 'sonkwo', items.map((i) => String(i.skuId)));
+        const inherit = align.applyMapInheritance(items, maps);
+        const groups = align.proposeAlignGroups(inherit.items, games);
+        return { align, entries, games, groups, inherit };
+      };
+
+      if (path === '/api/admin/align' && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const { groups, inherit } = await buildAlignGroups();
+        const rows = groups.map((g) => ({
+          key: g.key,
+          name: g.name,
+          skuCount: g.skuIds.length,
+          skuIds: g.skuIds,
+          auto: g.auto,
+          score: g.best?.score ?? null,
+          method: g.best?.method ?? null,
+          reasons: g.best?.reasons ?? [],
+          candidate: g.best?.candidate
+            ? { name: g.best.candidate.name ?? g.best.matchedField, steamAppid: g.best.candidate.steam_appid }
+            : null,
+        }));
+        return json(res, 200, { groups: rows, total: rows.length, inherited: inherit.inheritApplied });
+      }
+
+      // 合并预览：该组同归一化名的孤立游戏行（报价/快照数 + 不可撤销提示）
+      const alignPreviewMatch = path.match(/^\/api\/admin\/align\/preview$/);
+      if (alignPreviewMatch && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const key = String(url.searchParams.get('key') ?? '');
+        if (!key) return json(res, 400, { error: '缺少 key' });
+        const { groups } = await buildAlignGroups();
+        const group = groups.find((g) => g.key === key);
+        if (!group) return json(res, 404, { error: '队列里没有该组' });
+        const target = group.best?.candidate?.steam_appid;
+        if (!target) return json(res, 400, { error: '该组没有候选，请手动搜索指定目标' });
+        const orphans = [];
+        for (const name of [...new Set(group.items.map((i) => i.name))]) {
+          const rows = (await q(
+            `select g.id, g.name, (select count(*)::int from offers o where o.game_id = g.id) as offers,
+                    (select count(*)::int from price_snapshots s join offers o2 on o2.id = s.offer_id where o2.game_id = g.id) as snapshots
+               from games g
+              where g.steam_appid is null and g.name = $1 and not g.deleted`,
+            [name],
+          )).rows;
+          orphans.push(...rows.map((r) => ({ id: Number(r.id), name: r.name, offers: Number(r.offers), snapshots: Number(r.snapshots) })));
+        }
+        return json(res, 200, {
+          key,
+          target: { name: group.best.candidate.name ?? group.best.matchedField, steamAppid: target },
+          skuIds: group.skuIds,
+          orphans,
+          irreversible: true,
+        });
+      }
+
+      if (path === '/api/admin/align/confirm' && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const body = await readBody(req);
+        const key = String(body?.key ?? '');
+        const appid = Number(body?.appid);
+        if (!key || !Number.isFinite(appid)) return json(res, 400, { error: '参数不合法（key + appid）' });
+        const { align, entries, games, groups } = await buildAlignGroups();
+        const group = groups.find((g) => g.key === key);
+        if (!group) return json(res, 404, { error: '队列里没有该组（可能已被处理）' });
+        const target = games.find((g) => Number(g.steam_appid) === appid);
+        if (!target) return json(res, 404, { error: `库里没有 appid ${appid}` });
+        // 合并孤立行（只合并无 appid 的源行；有 appid 冲突跳过）——不可自动撤销
+        const merged = [];
+        for (const skuId of group.skuIds) {
+          const alias = (await q('select game_id from game_aliases where platform_code = $1 and platform_product_id = $2', ['sonkwo', String(skuId)])).rows[0];
+          if (alias) {
+            const fromId = Number(alias.game_id);
+            if (fromId !== Number(target.id)) {
+              const source = (await q('select steam_appid from games where id = $1', [fromId])).rows[0];
+              if (source && source.steam_appid == null) {
+                const res = await db.mergeGames(q, { fromGameId: fromId, toGameId: Number(target.id), logger });
+                merged.push({ fromId, moved: res.moved ?? 0, dropped: res.dropped ?? 0, merged: Boolean(res.merged) });
+              } else {
+                logger?.warn('match.skip_merge', { skuId, fromId, reason: 'source_has_appid' });
+              }
+            }
+          }
+        }
+        const outcome = await align.confirmGroup({ store, q, group, appid, steamGames: games, reviewedBy: user.id, method: body.method || 'manual', confidence: group.best?.score ?? 1, mergeGame: () => ({ merged: false }) });
+        // 写回 skus.json（兼容回落）
+        for (const skuId of group.skuIds) {
+          const entry = entries.find((e) => Number(e.skuId) === skuId);
+          if (entry) entry.appid = appid;
+        }
+        writeFileSync(alignSkuFile(), `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
+        logger?.info('match.confirmed', { by: user.username, key, appid, skus: group.skuIds, merged });
+        return json(res, 200, { ok: true, mapped: outcome.skus, merged: merged.length, appid });
+      }
+
+      if (path === '/api/admin/align/ignore' && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const body = await readBody(req);
+        const key = String(body?.key ?? '');
+        if (!key) return json(res, 400, { error: '缺少 key' });
+        const { align, groups } = await buildAlignGroups();
+        const group = groups.find((g) => g.key === key);
+        if (!group) return json(res, 404, { error: '队列里没有该组（可能已被处理）' });
+        const ignored = await align.ignoreGroup({ q, group, reviewedBy: user.id });
+        logger?.info('match.ignored', { by: user.username, key, skus: group.skuIds });
+        return json(res, 200, { ok: true, ...ignored });
+      }
+
+      if (path === '/api/admin/align/search' && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const kw = String(url.searchParams.get('q') ?? '').trim().slice(0, 60);
+        if (!kw) return json(res, 200, { games: [] });
+        const like = `%${kw}%`;
+        const rows = (await q(
+          `select id, steam_appid, name, name_en from games
+            where steam_appid is not null and not deleted
+              and (name ilike $1 or name_en ilike $1 or steam_appid::text = $2)
+            order by id limit 20`,
+          [like, kw],
+        )).rows;
+        return json(res, 200, { games: rows });
       }
 
       // ---- 管理员：批量操作（统一入口 + 白名单派发表，见 docs/ADMIN-BULK-ACTIONS.md）----
