@@ -1558,7 +1558,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CA. 待开发：原生 Android 的站点侧（Token/API + Web 手机端改造，不含 Android 工程）
 
-**状态：待开发（2026-11-16；仅站点侧；六屏效果图已确认；Android 工程见 CG）**
+**状态：开发中（2026-11-17，ce-dev 认领 CA-1；仅站点侧；六屏效果图已确认；Android 工程见 CG）**
 **依赖：** 无（CA-5 手机前台跳转开关默认关闭，等 CG 发布后开启；旧 TWA 退场归 CG）
 **解锁：** CG（Android 工程）；**取代**：BS（TWA）、BU/BV/BX（移动 web 重设计）、BY（TWA 内置更新）、BZ（拆 android/）；BW 保留（仅后台手机端）
 **规格**：[APP-NATIVE.md](APP-NATIVE.md)（§3 CA-1 / §5 CA-5）
