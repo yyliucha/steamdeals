@@ -74,7 +74,7 @@
 | **CK** | e2e 测试套件（功能矩阵 + headless Edge + Android 模拟器/真机 + 公网只读 + PDF 报告） | [E2E-SUITE.md](E2E-SUITE.md) | 待开发（2026-11-17 已确认 13 项决策） | ✅ 本轮已给 |
 | **CL** | 用户级到价提醒（列表页 + 已拥有终态隐藏 + 后台全站清单 + 详情页三段式 UI） | [USER-ALERTS.md](USER-ALERTS.md) | 已发布 v2.23.0（2026-11-17，e196382；QA ✅ docs/QA-CL.md） | ✅ 本轮已给 |
 | **CM** | App 功能补齐（开发商 JSON 修复 / DLC 列表 / 价格历史区间与指标 / 复制名；CM-5 筛选服务端化二期） | [APP-PARITY.md](APP-PARITY.md) | 质检通过（2026-11-17；QA 报告 docs/QA-CM.md） | ✅ 本轮已给 |
-| **CN** | 对齐审核查询拖垮站点（缓存 + 候选预筛 + 单飞 + 时间预算 + 分页） | [ALIGN-QUERY-PERF.md](ALIGN-QUERY-PERF.md) | 待开发（2026-11-17 线上事故；建议 v2.22.2 热修） | ✅ 本轮已给 |
+| **CN** | 对齐审核查询拖垮站点（缓存 + 候选预筛 + 单飞 + 时间预算 + 分页） | [ALIGN-QUERY-PERF.md](ALIGN-QUERY-PERF.md) | 已实现待发版（2026-11-17，5c723aa；建议 v2.24.1 热修） | ✅ 本轮已给 |
 | **CO** | 设计审计技术债清理（15 项 → CO-1~CO-4 四批，每日至少推进 1 条） | [DESIGN-AUDIT.md](DESIGN-AUDIT.md) | 待开发（2026-11-17 建条目；每批一次会话） | ✅ 本轮已给 |
 | **CP** | 手机端识别增强（Sec-CH-UA-Mobile + 前端 screen.width 兜底，修小米浏览器桌面 UA 漏判） | [MOBILE-DETECT-FIX.md](MOBILE-DETECT-FIX.md) | 待开发（2026-11-17 实测确认；P1，边缘场景） | ✅ 本轮已给 |
 | **CQ** | 系统设置信息架构重构（平台卡片 + 常用/高级折叠 + 只看非默认/来源/恢复默认） | [SETTINGS-IA.md](SETTINGS-IA.md) | 待开发（2026-11-17 demo v2 已确认） | ✅ 本轮已给 |
