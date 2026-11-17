@@ -70,7 +70,7 @@
 | **CF** | 后台体验与安全策略（申诉布局 / Steam 账号重复渲染修复 / 指标压缩 / 自动封禁收紧 + 审核证据） | [ADMIN-UX-SECURITY.md](ADMIN-UX-SECURITY.md) | 已发布 v2.21.0（2026-11-17，31483fb） | ✅ 本轮已给 |
 | **CH** | 个性化推荐 + Deck 认证 + 好评率（借鉴 steam-deals；免费角标/行为学习搭车） | [DISCOVERY-FOR-YOU.md](DISCOVERY-FOR-YOU.md) | 已发布 v2.21.0（2026-11-17，b575dcc） | ✅ 本轮已给 |
 | **CI** | 价格提醒邮件 HTML 化 + 申诉管理页视觉对齐（分段控件/空态/表格列/间距） | [ALERT-MAIL-APPEAL-UX.md](ALERT-MAIL-APPEAL-UX.md) | 已发布 v2.22.0（2026-11-17，docs/QA-CI.md ✅） | ✅ 本轮已给 |
-| **CJ** | 安卓版 App 发版后 /app 页自动更新（GitHub Release 同步 + 站点自托管 + 兜底） | [APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md) | 开发中（2026-11-17 认领；现场回归 2 项待修：apkPath 未回落 / data/app 为空） | ✅ 本轮已给 |
+| **CJ** | 安卓版 App 发版后 /app 页自动更新（GitHub Release 同步 + 站点自托管 + 兜底） | [APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md) | 已发布 v2.22.0（回归修复 b726af4 随 v2.22.1；质检 ✅） | ✅ 本轮已给 |
 | **CK** | e2e 测试套件（功能矩阵 + headless Edge + Android 模拟器/真机 + 公网只读 + PDF 报告） | [E2E-SUITE.md](E2E-SUITE.md) | 待开发（2026-11-17 已确认 13 项决策） | ✅ 本轮已给 |
 | **CL** | 用户级到价提醒（列表页 + 已拥有隐藏 + 后台全站清单 + 详情页三段式 UI） | [USER-ALERTS.md](USER-ALERTS.md) | 待开发（2026-11-17 已确认 3 项） | ✅ 本轮已给 |
 | **CE** | 杉果匹配器加固 + 误合并数据修复（完整标题计分/片段限制/数字一致性/内容词只进人工/`--apply` 二次确认） | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9 | 已发布 v2.19.0（2026-11-16，12f4f42；QA 报告 docs/QA-CE.md） | ✅ 本轮已给 |

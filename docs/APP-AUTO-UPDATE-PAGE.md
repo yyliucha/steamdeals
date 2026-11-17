@@ -1,6 +1,7 @@
-# 安卓版 App 发版后 /app 页自动更新（站点自托管 + GitHub 兜底）（待开发）
+# 安卓版 App 发版后 /app 页自动更新（站点自托管 + GitHub 兜底）（已发布 v2.22.0）
 
-> 状态：**已确认待开发（2026-11-17）**。
+> 状态：**已实现并发布 v2.22.0（2026-11-17，517ffb6；质检 ✅ docs/QA-CJ.md）；现场回归修复 b726af4**
+> **（apkPath 按 data/app 存在性回落镜像 + /app/dl/ 缺失 302 兜底，质检 ✅ docs/QA-CJ-regression.md）随 v2.22.1 发布**。
 > 关联：[TODO.md](TODO.md) CJ 条目、[APP-NATIVE.md](APP-NATIVE.md) §5（/app 页与分发口径）、
 > [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md)（App 内置更新契约：versionName/versionCode/minVersionCode/notes）、
 > [APP-API.md](APP-API.md)（`/api/app/latest` 契约）。

@@ -1,5 +1,13 @@
 # 变更日志
 
+## [2.22.1] - 2026-11-17
+
+CJ 现场回归修复：线上 v2.22.0 部署后 /app 页「下载 APK」404。
+
+### 修复
+
+- **/app 页下载链接死链（CJ 现场回归）**：`/api/app/latest` 此前无条件返回 `apkPath=/app/dl/<ver>.apk`，但首次部署/同步任务首轮未跑或失败时 `data/app` 为空、该 URL 404。现在 apkPath 按文件真实存在性三级派生——`data/app`（GitHub Release 每小时同步）优先 `/app/dl/<ver>.apk`，否则镜像内 `app/<ver>.apk` 存在则回落 `/app/<ver>.apk`，都没有返回 null（BY 契约）；`/app/dl/<file>` 文件不存在时 302 兜底到 `/app/<file>`；同时把 `/app/dl/` 路由移到静态资源分支之前（原位置为死代码，任何请求都到不了该路由）。回归断言进 `test/serve.test.js`（data/app 为空/有文件/两边都没有/302 兜底四分支）。
+
 ## [2.22.0] - 2026-11-17
 
 原生 Android 站点侧落地 + 提醒邮件 HTML 化 + App v2.19.0 入库：CA（App Token 认证与 `/api/app/*` 契约 + 手机前台跳转与 /app 改版）+ CI（提醒邮件 HTML 化 + 申诉页视觉对齐）+ CG App v2.19.0 APK（同 keystore 覆盖旧 TWA）。

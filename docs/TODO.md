@@ -1761,9 +1761,10 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ③ `npm test` / `frontend:build` / `scan` 全绿；**不自行构建**。
 - **待确认**：§11 两条（「到期」是否保留独立列；空态文案是否随筛选联动）。
 
-## CJ. 开发中：安卓版 App 发版后 /app 页自动更新（站点自托管 + GitHub 兜底）
+## CJ. ~~开发中：安卓版 App 发版后 /app 页自动更新（站点自托管 + GitHub 兜底）~~ → **已发布 v2.22.0（回归修复 b726af4，质检 ✅）**
 
-**状态：开发中（2026-11-17，ce-dev 认领）
+**状态：质检通过（2026-11-17 主体第 1 轮 ✅ docs/QA-CJ.md，517ffb6，已随 v2.22.0 发布；现场回归复检轮 ✅**
+**docs/QA-CJ-regression.md，b726af4 三处修复，随 v2.22.1 发布）**
 **依赖：** 无（App 仓库 `app-v2.19.0` Release 已就绪，含 APK + sha256）
 **解锁：** 无
 **规格**：[APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md)
@@ -1783,7 +1784,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   断网保留旧值且不 5xx；③ `/app/dl/` 白名单 200/404、HEAD 可用；④ `/app` 页显示新版本并可下载、备用链接指向新仓库；
   ⑤ 只保留最近 3 个 APK；⑥ `npm test` / `frontend:build` / `scan` 全绿；不自行打 tag。
 - **待确认**：§11 两条（Release 必须含 latest.json 资产；存量旧 TWA 2.16.0 APK 是否顺带删除）。
-- **现场回归（2026-11-17 线上 v2.22.0，待修）**：部署后 `/app` 页「下载 APK」报 404（Chrome「无法下载 - 没有文件」）。
+- **现场回归（2026-11-17 线上 v2.22.0，已修复 b726af4，质检 ✅ docs/QA-CJ-regression.md）**：部署后 `/app` 页「下载 APK」报 404（Chrome「无法下载 - 没有文件」）。
   **实测证据**：`/api/app/latest` 返回 `apkPath=/app/dl/steamdeals-2.19.0.apk` 且该 URL **404**；
   镜像内旧路径 `/app/steamdeals-2.19.0.apk` **200** 可下载。**根因**：`src/server.js:1831` 无条件生成
   `/app/dl/steamdeals-<ver>.apk`——即使 `readLatestMeta` 走的是**镜像回落**分支（`data/app` 为空：首次部署、
