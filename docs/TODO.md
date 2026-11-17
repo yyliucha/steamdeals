@@ -1556,9 +1556,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 
 
-## CA. ~~待开发：原生 Android 的站点侧（Token/API + Web 手机端改造，不含 Android 工程）~~ → **质检通过**
+## CA. ~~待开发：原生 Android 的站点侧（Token/API + Web 手机端改造，不含 Android 工程）~~ → **已发布 v2.22.0**
 
-**状态：质检通过（2026-11-17。CA-1：ce-dev，质检 ✅ 放行 docs/QA-CA1.md 第 1 轮；CA-5：质检 ✅ 放行**
+**状态：已发布 v2.22.0（2026-11-17，CA-5 实现 09af208。CA-1 质检 ✅ docs/QA-CA1.md 第 1 轮；CA-5 质检 ✅**
 **docs/QA-CA5.md 第 1 轮——手机前台跳转开关（默认关闭）/ 微信提示 / /app 改版，通过 9 / 缺失 0 / 偏差 0 / 需人工确认 1）**
 **依赖：** 无（CA-5 手机前台跳转开关默认关闭，等 CG 发布后开启；旧 TWA 退场归 CG）
 **解锁：** CG（Android 工程）；**取代**：BS（TWA）、BU/BV/BX（移动 web 重设计）、BY（TWA 内置更新）、BZ（拆 android/）；BW 保留（仅后台手机端）
@@ -1739,9 +1739,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `src/settings.js`（discovery.*/personal.* 8 项）、`frontend/src/pages/Home.vue`（综合评分排序/好评率与 Deck 筛选/徽标/免费角标/为你推荐 tab）。
 - 验收：见规格 §9 七条。
 
-## CI. 待发版：价格提醒邮件 HTML 化 + 申诉管理页视觉对齐
+## CI. ~~待发版：价格提醒邮件 HTML 化 + 申诉管理页视觉对齐~~ → **已发布 v2.22.0**
 
-**状态：质检通过（2026-11-17 第 1 轮，docs/QA-CI.md；实现 d5e6dc2；所有者确认 2 项修复）**
+**状态：已发布 v2.22.0（2026-11-17，实现 d5e6dc2；质检 ✅ docs/QA-CI.md 第 1 轮）**
 **依赖：** 无（CB 报表 HTML 渲染已发布 v2.18.0；CF 申诉页结构改动已发布 v2.21.0）
 **解锁：** 无
 **规格**：[ALERT-MAIL-APPEAL-UX.md](ALERT-MAIL-APPEAL-UX.md)
@@ -1761,9 +1761,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ③ `npm test` / `frontend:build` / `scan` 全绿；**不自行构建**。
 - **待确认**：§11 两条（「到期」是否保留独立列；空态文案是否随筛选联动）。
 
-## CJ. 待开发：安卓版 App 发版后 /app 页自动更新（站点自托管 + GitHub 兜底）
+## CJ. 开发中：安卓版 App 发版后 /app 页自动更新（站点自托管 + GitHub 兜底）
 
-**状态：待开发（2026-11-17，所有者确认 3 项：站点自托管+GitHub 兜底 / 每小时同步 / App Release 带 latest.json）**
+**状态：开发中（2026-11-17，ce-dev 认领）
 **依赖：** 无（App 仓库 `app-v2.19.0` Release 已就绪，含 APK + sha256）
 **解锁：** 无
 **规格**：[APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md)
