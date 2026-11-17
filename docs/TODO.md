@@ -1760,3 +1760,26 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ② 申诉页分段控件主色选中、空态卡片式、列与效果图一致、移动端卡片不变、PC 无回归；
   ③ `npm test` / `frontend:build` / `scan` 全绿；**不自行构建**。
 - **待确认**：§11 两条（「到期」是否保留独立列；空态文案是否随筛选联动）。
+
+## CJ. 待开发：安卓版 App 发版后 /app 页自动更新（站点自托管 + GitHub 兜底）
+
+**状态：待开发（2026-11-17，所有者确认 3 项：站点自托管+GitHub 兜底 / 每小时同步 / App Release 带 latest.json）**
+**依赖：** 无（App 仓库 `app-v2.19.0` Release 已就绪，含 APK + sha256）
+**解锁：** 无
+**规格**：[APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md)
+
+- **现象（2026-11-17 所有者截图）**：`https://sd.yyliucha.cn/app` 仍显示 2.18.0。根因两处：① `/api/app/latest` 读镜像内
+  `frontend/dist/app/latest.json`（`src/server.js:1801-1803`），不重新构建镜像不会更新——2.19.0 的 latest.json 在
+  v2.21.0 tag 之后（`9f68a1e`）才提交，部署 v2.21.0 仍显示 2.18.0；② 每次 App 发版需人工 4 步（构建 APK → 拷进
+  `frontend/public/app/` → 手改 latest.json → 提交并等站点重新构建）。所有者要求：App 更新后页面自动更新，不人工维护。
+- **已确认决策（4 项）**：① 站点自托管下载 + GitHub Release 兜底链接；② 同步任务每小时 1 次（GitHub API 每轮 1 次调用）；
+  ③ App 构建时把 `latest.json` 作为 Release 资产上传（versionCode/minVersionCode/notes 无法从 tag 推算）；
+  ④ 站点仓库不再要求手工入库新 APK 与 latest.json（存量 2.19.0 保留作镜像兜底）。
+- **改动落点**：新增 `src/app-release.js`（GitHub Release 轮询 + 下载 + sha256 校验 + 原子写 + 保留最近 3 个）、
+  `src/cli.js`（`app-sync` 调试命令）、`src/scheduler.js`（`app-release-sync` 任务进 jobsFromEnv，轻任务不进 STEAM_HEAVY）、
+  `src/server.js`（`/api/app/latest` 优先读 `data/app/latest.json`，缺失回落镜像文件；新增 `/app/dl/<file>` 白名单下载路由）、
+  `frontend/src/pages/AppDownloadPage.vue`（GitHub 备用链接改 `yyliucha/steamdeals-app`）、对应测试与文档。
+- **验收**：见规格 §9——① `app-sync --force` 后 data/app 有 APK+latest.json，`/api/app/latest` 返回新版本；② 同版本跳过、
+  断网保留旧值且不 5xx；③ `/app/dl/` 白名单 200/404、HEAD 可用；④ `/app` 页显示新版本并可下载、备用链接指向新仓库；
+  ⑤ 只保留最近 3 个 APK；⑥ `npm test` / `frontend:build` / `scan` 全绿；不自行打 tag。
+- **待确认**：§11 两条（Release 必须含 latest.json 资产；存量旧 TWA 2.16.0 APK 是否顺带删除）。
