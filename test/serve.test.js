@@ -166,7 +166,7 @@ test('BS-1：/.well-known/assetlinks.json、/sw.js、/app/*.apk 返回 200 + 正
     assert.ok(FRONTEND_PAGES.includes('/app') && FRONTEND_PAGES.includes('/app/'), '/app 已登记 FRONTEND_PAGES');
     // BS-2：/api/app/latest 读 frontendDir 下的 app/latest.json（字段齐全且透传）
     const latest = await (await fetch(`${base}/api/app/latest`)).json();
-    assert.deepEqual(latest, { version: '2.16.0', versionCode: 21600, minVersionCode: 21600, notes: ['修复 A', '新增 B'], apkPath: '/app/steamdeals-test.apk', sha256: 'abc123', size: 42, releasedAt: '2026-11-14' }, '清单透传（含 BY 批 versionCode/minVersionCode/notes）');
+    assert.deepEqual(latest, { version: '2.16.0', versionCode: 21600, minVersionCode: 21600, notes: ['修复 A', '新增 B'], apkPath: '/app/dl/steamdeals-2.16.0.apk', sha256: 'abc123', size: 42, releasedAt: '2026-11-14' }, '清单透传（含 BY 批 versionCode/minVersionCode/notes；CJ 批 apkPath 生成 /app/dl/<ver>.apk）');
   } finally {
     await srv.close();
     await store.close();
