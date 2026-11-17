@@ -66,7 +66,7 @@
 | **CG** | 原生 Android App（CA-2~4，独立仓库 `steamdeals-app`；六屏/游客/登录后自动完成/启动封禁提示/内置更新） | [APP-NATIVE.md](APP-NATIVE.md) §4 | 依赖阻塞（前置 CA） | ✅ 本轮已给 |
 | **CB** | 价格报表邮件 HTML 化 + 内容增强（品牌头/KPI/降价 Top5/涨价 Top3/7 天趋势/CTA；multipart 文本兜底） | [PRICE-REPORT-EMAIL.md](PRICE-REPORT-EMAIL.md) | 质检通过（2026-11-16，c5fc536 + 打回修复 becff89，第 2 轮复检） | ✅ 本轮已给 |
 | **CC** | 多源采集推进：ITAD/GOG/Humble 覆盖全目录（游标/状态 + 命中缓存）+ 后台四源触发 | [SOURCE-SYNC-COVERAGE.md](SOURCE-SYNC-COVERAGE.md) | 已发布 v2.19.0（2026-11-16，12f4f42） | ✅ 本轮已给 |
-| **CD** | 跨平台对齐（杉果 + ITAD）：英文名/Steam 链接反解 + 调度化 + **对齐审核页（去重分组/合并预览/决定继承）** + 映射落库 | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) | 待开发（2026-11-16 方案已确认） | ✅ 本轮已给 |
+| **CD** | 跨平台对齐（杉果 + ITAD）：英文名/Steam 链接反解 + 调度化 + **对齐审核页（去重分组/合并预览/决定继承）** + 映射落库 | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) | 质检通过（2026-11-17，e5fced8；QA 报告 docs/QA-CD.md） | ✅ 本轮已给 |
 | **CF** | 后台体验与安全策略（申诉布局 / Steam 账号重复渲染修复 / 指标压缩 / 自动封禁收紧 + 审核证据） | [ADMIN-UX-SECURITY.md](ADMIN-UX-SECURITY.md) | 质检通过（2026-11-17，31483fb；QA 报告 docs/QA-CF.md） | ✅ 本轮已给 |
 | **CE** | 杉果匹配器加固 + 误合并数据修复（完整标题计分/片段限制/数字一致性/内容词只进人工/`--apply` 二次确认） | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9 | 已发布 v2.19.0（2026-11-16，12f4f42；QA 报告 docs/QA-CE.md） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |

@@ -1637,7 +1637,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CD. 待开发：跨平台对齐（杉果 + ITAD）——自动匹配 + 英文名/Steam 链接 + 后台审核 + 调度化
 
-**状态：开发中（2026-11-17，ce-dev 认领；方案已确认：审核页 + 去重分组 + 映射落库）**
+**状态：质检通过（2026-11-17，e5fced8；QA 第 1 轮 ✅，报告 docs/QA-CD.md；方案已确认：审核页 + 去重分组 + 映射落库）**
 **依赖：** 无（匹配器与 `applySkuMapping` 已存在，本批增强 + 接调度/后台）
 **解锁：** 无
 **规格**：[SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md)
@@ -1663,6 +1663,10 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   sonkwo 收尾自动跑、有 `match.summary`；**审核页按去重组展示**（同归一化名多 SKU 只一行）、确认/忽略一次处理整组、
   已确认/已忽略组的新 SKU 自动继承、连续两次运行队列组数不增长；确认前有合并预览与审计；
   `sync sonkwo` 后报价挂到 Steam 游戏、「未探测」下降；不误合并（抽查）；`npm test` 全绿。
+- **进度（2026-11-17）**：实现中——`game_source_map` 表与映射函数、`src/align.js`（去重组提案/决定继承/确认忽略）、
+  `match` 英文名 + 孤儿扫描 + 组级提案（`match.summary`）、sonkwo 收尾 match 步（`MATCH_ON_SONKWO`）、
+  后台「对齐审核」页（队列/合并预览/确认/忽略/换候选手动搜索 + `match.confirmed/ignored` 审计）、
+  ITAD itad.link 跳转反解 appid（失败回退名称匹配）。测试 test/align.test.js + api.test.js 运行时用例。
 
 ## CE. 待开发（高优先级）：杉果匹配器加固 + 2026-11-16 误合并数据修复
 

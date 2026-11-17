@@ -102,6 +102,7 @@ docker exec steamdeals node src/cli.js match --confirm <skuId> <steamAppId>
 ### 4.4 后台审核面板（队列 + 去重 + 合并预览）
 
 > 2026-11-16 所有者确认：审核页并入 CD；**批量确认先不做**；**同游戏必须去重，一条处理整组**，不允许"处理完一条又冒出同名另一条"。
+> **2026-11-17 已实现待发版（e5fced8）**：`game_source_map` 落库 + `src/align.js` 去重组/决定继承 + 后台「对齐审核」页 + sonkwo 收尾 match + ITAD 跳转反解。
 
 - 位置：游戏管理 → 新 tab「对齐审核」；
 - **队列一行 = 一个去重组**，稳定键 = `platform + normalizeName(杉果名)`：
