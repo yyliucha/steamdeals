@@ -204,7 +204,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   验证：`npm test` 主链全绿、`frontend:build` ✓、`scan` 干净、`api.test.js` ✓；
   `npm run e2e` 全量 42 通过/0 失败/3 环境 skip（186s，PDF `F:\dsh\e2e-reports\`）、`npm run e2e:smoke` 8/8（38s）。
   质检：CK ✅（[QA-E2E-SUITE-CK.md](QA-E2E-SUITE-CK.md) 第 1 轮，通过 6/需人工确认 0）；CM ✅（[QA-CM.md](QA-CM.md) 第 1 轮）。
-  CI：**待确认**（打 tag 后观察 docker-hub / docker-tcr 双绿）。
+  CI：docker-hub run 44083043810 ✅（test/smoke/publish 全绿）；docker-tcr run 44083043852 ✅（test/publish 全绿）。
   **服务器部署待执行**（升级到 `2.24.0`；e2e 套件的 `--online --expect-version=2.24.0` 公网只读验收在部署后跑）。
 - **v2.23.0 已发布**（tag `v2.23.0`，提交 e196382）：CL 批——到价提醒改为用户级：
   详情页三段式操作区（购买 / 我的标记 chips / 到价提醒区块：参考行 + ¥ 输入 + 「按史低」「减 10%」+ 保存，

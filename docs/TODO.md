@@ -1801,9 +1801,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   Release 拉 APK + latest.json 放进镜像，运行时 `app-release-sync` 降级为"发版后免重建镜像"的加速器；
   这样国内服务器拉不到 api.github.com 也不影响 `/app` 页可用。⑤ 同步失败必须在后台任务卡/日志可见，不得静默。
 
-## CK. 开发中：e2e 测试套件（功能矩阵 + headless Edge + Android 模拟器/真机 + 公网只读 + PDF 报告）
+## CK. ~~开发中：e2e 测试套件（功能矩阵 + headless Edge + Android 模拟器/真机 + 公网只读 + PDF 报告）~~ → **已发布 v2.24.0**
 
-**状态：待开发（2026-11-17，所有者确认 10 项决策；可与 CJ 并行，错开 package.json）**
+**状态：已发布 v2.24.0（2026-11-17，实现 test(e2e) 65af42b + release 0bfaceb；QA ✅ docs/QA-E2E-SUITE-CK.md 第 1 轮——通过 6 / 缺失 0 / 偏差 0 / 需人工确认 0；实测全量 42 通过 / 0 失败 / 3 环境 skip、smoke 8/8 38s、反向自检删 DLC 区块行红并留档）**
 **依赖：** 无（CJ 的新功能矩阵行在 CJ 落地后补）
 **解锁：** 后续各批次「真实测试=上线门槛」可自动执行；`gameprice-test` 技能的 R1 级验证有工具支撑
 **规格**：[E2E-SUITE.md](E2E-SUITE.md)
@@ -1848,9 +1848,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ③ 用户隔离（A 删不掉 B 的）；④ 邮件收件人=用户本人、同用户多游戏合并一封、无邮箱跳过、站点级行为不变；
   ⑤ 后台清单可删且有审计；⑥ 迁移两次不报错、旧数据保留；⑦ `npm test` / `frontend:build` / `scan` 全绿。
 
-## CM. App 功能补齐（与 Web 对齐的差异项）
+## CM. App 功能补齐（与 Web 对齐的差异项）→ 站点侧已发布 v2.24.0
 
-**状态：质检通过（2026-11-17；QA 报告 docs/QA-CM.md 第 1 轮 ✅ 放行；App 仓库 e183584 / 2.20.0，JVM 单测 18 项 QA 独立重跑全绿 + assembleRelease 同签名复核）**
+**状态：已发布 v2.24.0（2026-11-17 站点侧，随 CK release 0bfaceb；QA docs/QA-CM.md 第 1 轮 ✅ 放行；App 仓库 steamdeals-app e183584 / 2.20.0，App 侧 app-v2.20.0 tag/Release 等所有者指令）**
 **依赖：** 无（DLC 与历史接口已就绪）；CM-5 需站点 `/api/app/games` 扩展、CM-6 需登录态核实
 **解锁：** 无
 **规格**：[APP-PARITY.md](APP-PARITY.md)
