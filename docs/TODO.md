@@ -1578,10 +1578,11 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **进度（2026-11-17）**：**CA-1 已实现待发版**——`api_tokens` 表 + Token 签发/撤销 + `/api/app/*` 前缀重写（例外 latest/status）+ `/api/app/status`；
   契约 docs/APP-API.md；测试 test/app-token.test.js（主链）+ test/api.test.js（生命周期真跑）。CA-5（Web 手机跳转）未做，条目保持「开发中」。
 
-## CG. ~~依赖阻塞：原生 Android App（CA-2~4，独立仓库 steamdeals-app）~~ → **已实现待发版**
+## CG. ~~依赖阻塞：原生 Android App（CA-2~4，独立仓库 steamdeals-app）~~ → **质检通过**
 
-**状态：已实现待发版（2026-11-17，Android 开发会话；新仓库 `steamdeals-app` 本地 main，提交 cd2aaec → 0a07994 → a3dd168；**
-**模拟器 API 35 走通六屏 + 游客模式/pendingAction/启动封禁/内置更新全链路，待 gameprice-qa 质检）**
+**状态：质检通过（2026-11-17 第 1 轮，docs/QA-CG.md 未提交。App 仓库 `steamdeals-app` 本地 main，**
+**提交 cd2aaec → 0a07994 → a3dd168；六屏模拟器走查 + 覆盖安装 + 封禁/更新全链路验证，通过 22 / 缺失 0 / 偏差 0 /**
+**需人工确认 4（均为 CA 站点侧部署项）；App 仓库尚未推 GitHub，remote 待所有者定）**
 **依赖：** CA（Token/API、`/api/app/*` 契约）
 **解锁：** CA-5 的手机前台跳转开关、旧 TWA 退场
 **规格**：[APP-NATIVE.md](APP-NATIVE.md) §4（技术栈/页面/更新/游客模式）
@@ -1722,7 +1723,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CH. 开发中：个性化推荐 + Deck 认证 + 好评率（借鉴 steam-deals）
 
-**状态：开发中（2026-11-17，ce-dev 认领；方案已确认，排在 CF/CD 之后——CF/CD 已质检通过）**
+**状态：质检通过（2026-11-17，b575dcc；QA 第 1 轮 ✅，报告 docs/QA-CH.md）**
 **依赖：** 无（CF/CD 已完成）
 **解锁：** CG 的「为你推荐」App 支持
 **规格**：[DISCOVERY-FOR-YOU.md](DISCOVERY-FOR-YOU.md)
