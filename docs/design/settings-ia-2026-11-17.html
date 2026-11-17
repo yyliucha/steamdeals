@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>系统设置改版 demo（平台卡片 + 常用/高级折叠）</title>
+<style>
+  :root{--bg:#0b1020;--panel:#121a30;--panel-2:#16203a;--border:#243050;--border-2:#2e3d63;
+    --fg:#e8edf9;--fg-muted:#93a0bf;--fg-subtle:#6d7a99;--brand:#6b7dff;--brand-2:#4f61f0;--green:#3fbf7f;--green-bg:#12291f;--green-border:#2a6b4a;--warn:#e0a23c}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:13.5px/1.6 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;padding:22px}
+  h1{font-size:18px;margin:0 0 4px}
+  .sub{color:var(--fg-muted);font-size:12px;margin:0 0 16px}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .search{flex:1;min-width:260px;background:var(--panel-2);border:1px solid var(--border-2);border-radius:9px;padding:8px 12px;color:var(--fg-subtle);font-size:12.5px}
+  .btn{border:1px solid var(--border-2);background:var(--panel-2);color:var(--fg);border-radius:9px;padding:7px 14px;font-size:12.5px;cursor:pointer}
+  .btn-primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+  .switch{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--fg-muted)}
+  .sw{width:34px;height:19px;border-radius:999px;background:#2c3b5e;position:relative;flex:none}
+  .sw::after{content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#8fa0c6;transition:.15s}
+  .sw.on{background:var(--brand)}
+  .sw.on::after{left:17px;background:#fff}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap}
+  .tab{padding:8px 12px;font-size:12.5px;color:var(--fg-muted);border-bottom:2px solid transparent;cursor:pointer}
+  .tab.on{color:var(--fg);border-bottom-color:var(--brand);font-weight:600}
+  .tab small{color:var(--fg-subtle);font-weight:400;margin-left:4px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:13px 14px;margin-bottom:12px}
+  .card-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .card-head h3{font-size:13.5px;margin:0;flex:1}
+  .card-head .pill{font-size:10.5px;color:var(--fg-subtle);border:1px solid var(--border-2);border-radius:999px;padding:1px 8px}
+  .row{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px dashed #1f2a44}
+  .row:first-of-type{border-top:0}
+  .row label{flex:1;color:var(--fg-muted);font-size:12.5px}
+  .row .val{color:var(--fg);font-size:12.5px;font-variant-numeric:tabular-nums}
+  .row .src{font-size:10px;color:var(--fg-subtle);border:1px solid #2a3550;border-radius:6px;padding:0 6px}
+  .row .src.db{color:#9fb4ff;border-color:#2f3f6b}
+  .fold{display:flex;align-items:center;gap:8px;padding:7px 0;color:var(--fg-muted);font-size:12px;cursor:pointer;border-top:1px dashed #1f2a44}
+  .fold .arrow{color:var(--fg-subtle)}
+  .fold b{color:var(--fg-subtle);font-weight:600}
+  .hint{color:var(--fg-subtle);font-size:11px;margin:2px 0 0}
+  .inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .input{background:var(--panel-2);border:1px solid var(--border-2);border-radius:8px;padding:6px 10px;color:var(--fg);font-size:12.5px;min-width:110px}
+  .badge{font-size:10.5px;color:#cfe3ff;background:#1b2747;border:1px solid #2f3f6b;border-radius:999px;padding:1px 8px}
+  .box{background:var(--panel-2);border:1px dashed var(--border-2);border-radius:9px;padding:9px 11px;color:var(--fg-subtle);font-size:11.5px;margin-top:8px}
+</style>
+</head>
+<body>
+  <h1>系统设置 · 改版 demo（平台卡片 + 常用/高级折叠）</h1>
+  <p class="sub">左：数据源与采集（按平台一张卡，卡内「常用」+「高级 N 项」折叠）；右：高级 tab（16 项拆成 4 个折叠组）。
+    顶部新增「只看非默认」。纯静态 demo，交互不生效。</p>
+
+  <div class="toolbar">
+    <div class="search">🔍 搜索设置项，例如 Steam、代理、SMTP</div>
+    <span class="switch"><span class="sw on"></span>只看非默认</span>
+    <button class="btn">重新加载</button>
+    <button class="btn btn-primary">保存设置</button>
+  </div>
+
+  <div class="tabs">
+    <div class="tab on">数据源与采集 <small>32 项</small></div>
+    <div class="tab">站点与内容 <small>8 项</small></div>
+    <div class="tab">账号与登录 <small>4 项</small></div>
+    <div class="tab">安全与限流 <small>10 项</small></div>
+    <div class="tab">通知与提醒 <small>5 项</small></div>
+    <div class="tab">网络与代理 <small>3 项</small></div>
+    <div class="tab">高级 <small>16 项</small></div>
+  </div>
+
+  <div class="grid">
+    <!-- 左：数据源与采集 -->
+    <section>
+      <div class="card">
+        <div class="card-head"><h3>⚙️ 全局</h3><span class="pill">跨平台</span></div>
+        <div class="row"><label>429 冷却（分钟）</label><span class="val">30</span><span class="src db">数据库</span></div>
+        <div class="row"><label>轻任务并发</label><span class="val">3</span><span class="src">默认</span></div>
+        <div class="row"><label>熔断阈值 / 暂停</label><span class="val">3 次 · 360 分钟</span><span class="src db">数据库</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>🎮 Steam</h3><span class="switch"><span class="sw on"></span>启用</span></div>
+        <div class="row"><label>采集间隔（分钟）</label><span class="val">1440</span><span class="src db">数据库</span></div>
+        <div class="row"><label>价格刷新间隔（分钟）</label><span class="val">1440</span><span class="src db">数据库</span></div>
+        <div class="fold"><span class="arrow">▾</span>高级 <b>5 项</b>（热点阈值 / 冷门天数 / 状态判定 limit、rate、首轮延迟）</div>
+        <div class="box">常用只放 2 项；阈值类收进「高级」，默认折叠，搜索能命中并自动展开。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>🛒 杉果</h3><span class="switch"><span class="sw on"></span>启用</span></div>
+        <div class="row"><label>采集间隔（分钟）</label><span class="val">60</span><span class="src db">数据库</span></div>
+        <div class="fold"><span class="arrow">▸</span>高级 <b>2 项</b>（SKU 自动发现 / 匹配自动阈值）</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>🔗 ITAD</h3><span class="switch"><span class="sw on"></span>启用</span></div>
+        <div class="row"><label>API Key</label><span class="val badge">已配置</span><span class="src db">数据库</span></div>
+        <div class="row"><label>间隔（分钟）</label><span class="val">1440</span></div>
+        <div class="row"><label>每轮条数</label><span class="val">50</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>🕹️ GOG / Humble</h3><span class="pill">两张卡合并展示可选</span></div>
+        <div class="row"><label>GOG 间隔 / 每轮</label><span class="val">720 / 50</span></div>
+        <div class="row"><label>Humble 间隔 / 每轮</label><span class="val">720 / 50</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>📈 发现与热度</h3><span class="pill">steam-discovery / heat / backfill</span></div>
+        <div class="row"><label>发现每轮页数</label><span class="val">100</span><span class="src db">数据库</span></div>
+        <div class="row"><label>热度 / 回填 limit</label><span class="val">20000 / 5000</span></div>
+        <div class="row"><label>首轮延迟（秒）</label><span class="val">600</span></div>
+      </div>
+    </section>
+
+    <!-- 右：高级 tab -->
+    <section>
+      <div class="card">
+        <div class="card-head"><h3>🔧 调度与熔断</h3><span class="pill">已展开</span></div>
+        <div class="row"><label>熔断阈值（连续失败次数）</label><div class="inline"><span class="input">3</span><span class="src db">数据库</span></div></div>
+        <div class="row"><label>熔断暂停（分钟）</label><div class="inline"><span class="input">360</span><span class="src db">数据库</span></div></div>
+        <div class="row"><label>采集后生成静态页</label><span class="val">关闭</span><span class="src">默认</span></div>
+        <div class="row"><label>每日备份</label><span class="val">开启</span><span class="src db">数据库</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>🗄️ 备份与日志</h3><span class="pill">折叠（默认收起）</span></div>
+        <div class="fold"><span class="arrow">▾</span>备份间隔 1440 · 备份轮延迟 3600 · 定期清理 开 · 保留 7 天 · 级别 info</div>
+        <div class="box">低频项全组收起；标题行直接显示关键值摘要，不用展开就能看。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>🖼️ 缓存与图片</h3><span class="pill">折叠</span></div>
+        <div class="fold"><span class="arrow">▸</span>封面缓存 开 · 补图间隔 240 · 首轮延迟 1200 · 每轮 200 · 总量上限</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>🌏 时区与显示</h3><span class="pill">折叠</span></div>
+        <div class="fold"><span class="arrow">▸</span>时区 Asia/Shanghai</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>🧹 维护</h3><span class="pill">新增建议</span></div>
+        <div class="row"><label>每项右侧</label><span class="val">「恢复默认」</span></div>
+        <div class="row"><label>分组标题右侧</label><span class="val">「恢复本组默认」</span></div>
+        <div class="row"><label>来源标注</label><span class="val">数据库 / 环境变量 / 默认</span></div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
