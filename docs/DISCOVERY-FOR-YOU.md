@@ -1,6 +1,6 @@
-# 个性化推荐 + Deck 认证 + 好评率（借鉴 steam-deals）（待开发）
+# 个性化推荐 + Deck 认证 + 好评率（借鉴 steam-deals）（已发布 v2.21.0）
 
-> 状态：**需求与方案已确认（2026-11-17），待开发**。
+> 状态：**已实现并发布 v2.21.0（2026-11-17，b575dcc）**。
 > 关联：[TODO.md](TODO.md) CH 条目（TODO/INDEX 被开发会话未提交改动占用，条目按 [HANDOVER.md](HANDOVER.md) §10.2 由收尾复盘补建，待补内容见本文 §12）、
 > 参考项目：[Drakey83/steam-deals](https://github.com/Drakey83/steam-deals)。
 > 本批 = 借鉴该项目的三件能力 + 两件搭车项，全部经所有者 2026-11-17 逐项拍板。

@@ -1652,7 +1652,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CD. 待开发：跨平台对齐（杉果 + ITAD）——自动匹配 + 英文名/Steam 链接 + 后台审核 + 调度化
 
-**状态：质检通过（2026-11-17，e5fced8；QA 第 1 轮 ✅，报告 docs/QA-CD.md；方案已确认：审核页 + 去重分组 + 映射落库）**
+**状态：已发布 v2.21.0（2026-11-17，e5fced8；QA 报告 docs/QA-CD.md）**
 **依赖：** 无（匹配器与 `applySkuMapping` 已存在，本批增强 + 接调度/后台）
 **解锁：** 无
 **规格**：[SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md)
@@ -1705,7 +1705,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CF. 待开发：后台体验与安全策略（申诉布局 / Steam 账号重复渲染 / 指标压缩 / 自动封禁收紧）
 
-**状态：质检通过（2026-11-17，31483fb；QA 第 1 轮 ✅，报告 docs/QA-CF.md；所有者确认 6 项；CE/CC 已发布 v2.19.0）**
+**状态：已发布 v2.21.0（2026-11-17，31483fb；QA 报告 docs/QA-CF.md）**
 **依赖：** 无（CE/CC 已发布，文件不再被占用）
 **解锁：** 无
 **规格**：[ADMIN-UX-SECURITY.md](ADMIN-UX-SECURITY.md)
@@ -1723,7 +1723,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CH. 开发中：个性化推荐 + Deck 认证 + 好评率（借鉴 steam-deals）
 
-**状态：质检通过（2026-11-17，b575dcc；QA 第 1 轮 ✅，报告 docs/QA-CH.md）**
+**状态：已发布 v2.21.0（2026-11-17，b575dcc；QA 报告 docs/QA-CH.md）**
 **依赖：** 无（CF/CD 已完成）
 **解锁：** CG 的「为你推荐」App 支持
 **规格**：[DISCOVERY-FOR-YOU.md](DISCOVERY-FOR-YOU.md)
