@@ -1784,7 +1784,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ⑤ 只保留最近 3 个 APK；⑥ `npm test` / `frontend:build` / `scan` 全绿；不自行打 tag。
 - **待确认**：§11 两条（Release 必须含 latest.json 资产；存量旧 TWA 2.16.0 APK 是否顺带删除）。
 
-## CK. 待开发：e2e 测试套件（功能矩阵 + headless Edge + Android 模拟器/真机 + 公网只读 + PDF 报告）
+## CK. 开发中：e2e 测试套件（功能矩阵 + headless Edge + Android 模拟器/真机 + 公网只读 + PDF 报告）
 
 **状态：待开发（2026-11-17，所有者确认 10 项决策；可与 CJ 并行，错开 package.json）**
 **依赖：** 无（CJ 的新功能矩阵行在 CJ 落地后补）
