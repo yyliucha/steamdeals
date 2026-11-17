@@ -1783,3 +1783,28 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   断网保留旧值且不 5xx；③ `/app/dl/` 白名单 200/404、HEAD 可用；④ `/app` 页显示新版本并可下载、备用链接指向新仓库；
   ⑤ 只保留最近 3 个 APK；⑥ `npm test` / `frontend:build` / `scan` 全绿；不自行打 tag。
 - **待确认**：§11 两条（Release 必须含 latest.json 资产；存量旧 TWA 2.16.0 APK 是否顺带删除）。
+
+## CK. 待开发：e2e 测试套件（功能矩阵 + headless Edge + Android 模拟器/真机 + 公网只读 + PDF 报告）
+
+**状态：待开发（2026-11-17，所有者确认 10 项决策；可与 CJ 并行，错开 package.json）**
+**依赖：** 无（CJ 的新功能矩阵行在 CJ 落地后补）
+**解锁：** 后续各批次「真实测试=上线门槛」可自动执行；`gameprice-test` 技能的 R1 级验证有工具支撑
+**规格**：[E2E-SUITE.md](E2E-SUITE.md)
+
+- **现状（2026-11-17）**：`test/` 99 个文件、主链 95 个，全是单元/接口层；浏览器级、App 级、线上验收
+  全靠人工（BT/BW/BY/CG 多批靠"部署后真机目视"收尾）。
+- **已确认决策（10 项）**：① 两档 `e2e`（全量）/`e2e:smoke`（核心）；② 矩阵 `test/e2e/matrix.json` 可自定义
+  （`--only`/`--tag`），新功能必须加行；③ headless Edge 做 DOM/Console/截图/PDF，**不引 playwright**；
+  ④ 默认模拟器 `steamdeals35`，真机 `--device=real` 且**无设备立即中断**并给连接步骤；⑤ 后台从新建
+  `e2e_<时间戳>` 用户开始 → 登录/改密 → 13 模块 → 彻底删除，开场清 `e2e_%` 孤儿、只删该前缀；
+  ⑥ 163 邮箱凭据放仓库外 `F:\dsh\e2e-secrets\mail.env`，IMAP 拉取断言；⑦ 报告 HTML→PDF 输出到
+  `F:\dsh\e2e-reports\`（**不入库**）；⑧ 微信只做 UA 仿真、不做客户端自动化；⑨ `--online` 部署后公网只读验收
+  （`/api/site`/页面/截图/TTFB，不碰服务器）；⑩ 不新增运行时依赖。
+- **改动落点**：新增 `test/e2e/`（`matrix.json` + `runner.mjs` + `lib/{server,browser,adb,report,account,online}.mjs`）、
+  `package.json`（`e2e` / `e2e:smoke` 脚本）、`docs/TESTING-E2E.md`（怎么跑/怎么加行/报告位置）、
+  DELIVERY 发版清单加「e2e 全量通过」门禁。
+- **验收**：见规格 §8——① `e2e:smoke` ≤5 分钟、全量逐行有结果、PDF 在 `F:\dsh\e2e-reports\`、仓库 `git status` 干净；
+  ② 设备预检（无真机立即中断、模拟器自动启停）；③ `e2e_` 账号建删无残留、中断后重跑可清孤儿；
+  ④ **反向自检**：删掉 DLC 区块 → 该行失败且截图/Console 留档；⑤ `--only` 生效、新矩阵行必须出现在报告；
+  ⑥ `npm test` / `frontend:build` / `scan` 全绿、不新增运行时依赖。
+- **待确认**：§10 三条（后台是否每模块增删改；App 覆盖安装用 2.19.0 作旧版；`--online` 是否部署后跑）。
