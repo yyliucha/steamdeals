@@ -45,6 +45,20 @@ export async function syncAccountLibrary(q, { steamId, apiKey, fetchImpl = null,
     // 空集合也成立：appid = any('{}') 恒 false → 删掉该账号全部旧行。
     const diff = await q('delete from steam_games where steam_id = $1 and not (appid = any($2::int[]))', [steamId, appids]);
     const deleted = diff.rowCount ?? 0;
+    // CL 批（docs/USER-ALERTS.md §1 #3.1）：库同步发现已拥有 → 删该用户该游戏的愿望单行与到价提醒行（幂等）。
+    if (appids.length) {
+      const acct = (await q('select user_id from steam_accounts where steam_id = $1', [steamId])).rows[0];
+      if (acct?.user_id != null) {
+        const ownedGames = (await q('select id from games where steam_appid = any($1::int[])', [appids])).rows.map((r) => Number(r.id));
+        if (ownedGames.length) {
+          await q('delete from user_wishlist where user_id = $1 and game_id = any($2::bigint[])', [acct.user_id, ownedGames]);
+          const cleared = await q('delete from watchlist where user_id = $1 and game_id = any($2::bigint[])', [acct.user_id, ownedGames]);
+          if ((cleared.rowCount ?? 0) > 0) {
+            logger?.info('steam.library_cleared_alerts', { steamId, userId: Number(acct.user_id), removed: cleared.rowCount });
+          }
+        }
+      }
+    }
     await recordSteamLog(q, {
       action: 'sync-library',
       steamId,
@@ -99,7 +113,7 @@ export async function syncAccountWishlist(q, { steamId, apiKey, userId, fetchImp
          select g.id, 'cn', null, 'Steam 愿望单', 'steam_wishlist'
            from games g
           where g.steam_appid = any($1::int[]) and not g.deleted
-         on conflict (game_id, region) do nothing`,
+         on conflict (game_id, region) where user_id is null do nothing`,
         [appids],
       );
       watches = ins.rowCount ?? 0;
@@ -391,7 +405,7 @@ export async function addUserWishlist(q, { userId, gameId }) {
   );
   await q(
     "insert into watchlist (game_id, region, target_cents, note, source) values ($1, 'cn', null, '愿望单', 'user_wishlist') " +
-      'on conflict (game_id, region) do nothing',
+      'on conflict (game_id, region) where user_id is null do nothing',
     [gameId],
   );
 }

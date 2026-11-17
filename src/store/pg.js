@@ -504,6 +504,13 @@ const ALTERS = [  'alter table games add column if not exists interested boolean
      primary key (game_id, appid)
    )`,
   'create index if not exists idx_game_dlc_appid on game_dlc (appid)',
+  // CL 批（docs/USER-ALERTS.md §2）：watchlist 用户级——user_id 列（NULL = 站点级历史数据，行为不变）。
+  // PG 的 unique 对 NULL 视为互不相等，站点级必须用部分唯一索引单独约束。
+  'alter table watchlist add column if not exists user_id bigint references users(id) on delete cascade',
+  'alter table watchlist drop constraint if exists watchlist_game_id_region_key',
+  'create unique index if not exists watchlist_user_game_uq on watchlist (user_id, game_id, region) where user_id is not null',
+  'create unique index if not exists watchlist_site_game_uq on watchlist (game_id, region) where user_id is null',
+  'create index if not exists idx_watchlist_user on watchlist (user_id, created_at desc)',
 ];
 
 export async function migrate(store, { logger = null } = {}) {
@@ -1416,11 +1423,13 @@ const GAME_SELECT_RM = `select g.id,
 
 // 生效「已拥有」推导：手动 owned=true ∪（未被 owned=false 永久排除 且 appid 在该用户所有账号的库里）。
 // $uid 为当前用户 id；游客（uid=null）不显示已拥有/谁拥有/愿望单（规格 §6）。
+// CL 批（docs/USER-ALERTS.md §2）：已拥有口径变更——只认 Steam 账号库并集；
+// user_game_flags.owned 不再参与判定（字段保留不删，历史手动标记不迁移）。
 const EFFECTIVE_OWNED_SQL = (uidRef) =>
-  `(coalesce(uf.owned, false) or (uf.owned is not false and exists (
+  `(exists (
      select 1 from steam_games sg
        join steam_accounts sa on sa.steam_id = sg.steam_id
-      where sa.user_id = ${uidRef} and sg.appid = g.steam_appid)))`;
+      where sa.user_id = ${uidRef} and sg.appid = g.steam_appid))`;
 const OWNED_BY_SQL = (uidRef) =>
   `(select coalesce(json_agg(json_build_object(
         'steamId', sa.steam_id,
@@ -1598,7 +1607,7 @@ export async function gameSearch(
     // 感兴趣/不感兴趣是用户自己的分类，不使用 games.interested 的全局默认值（通常默认为 true）。
     if (interest === 'on') conds.push(userId ? 'uf.interested = true' : `${col('interested')} = true`);
     if (interest === 'off') conds.push(userId ? 'uf.interested = false' : `${col('interested')} = false`);
-    // 已拥有：手动 owned=true ∪ 绑定账号库推导（owned=false 永久排除）。
+    // 已拥有：CL 批起只认绑定账号 Steam 库并集（user_game_flags.owned 不再参与口径，字段保留）。
     if (userId) {
       if (owned === 'exclude') conds.push(`not ${EFFECTIVE_OWNED_SQL('$3')}`);
       if (owned === 'only') conds.push(`(${EFFECTIVE_OWNED_SQL('$3')})`);
@@ -1870,40 +1879,152 @@ export async function offersOfGame(q, { gameId, region = 'cn' }) {
 
 // ---------------------------------------------------------------- 关注列表
 
+// ---------------------------------------------------------------- 关注列表
+// CL 批（docs/USER-ALERTS.md）：watchlist 拆两级——user_id 非空 = 用户级（本人管理），
+// user_id NULL = 站点级历史数据（行为不变）。稳定键：用户级 (user_id, game_id, region)，
+// 站点级 (game_id, region)，各自部分唯一索引约束。
+
+/** 站点级 upsert（历史入口：CLI watch add / 愿望单自动提醒）。冲突只在 user_id IS NULL 行内推断。 */
 export async function upsertWatch(q, { gameId, region = 'cn', targetCents = null, note = null, source = 'manual' }) {
   const r = await q(
-    `insert into watchlist (game_id, region, target_cents, note, source)
-     values ($1, $2, $3, $4, $5)
-     on conflict (game_id, region) do update
-       set target_cents = excluded.target_cents, note = excluded.note, source = 'manual'
+    `insert into watchlist (game_id, region, target_cents, note, source, user_id)
+     values ($1, $2, $3, $4, $5, null)
+     on conflict (game_id, region) where user_id is null do update
+       set target_cents = excluded.target_cents, note = excluded.note, source = excluded.source
      returning id`,
     [gameId, region, targetCents, note, source],
   );
   return Number(r.rows[0].id);
 }
 
+/** 用户级 upsert：同 (user_id, game_id, region) 重复只更新目标价/备注（§7 去重与幂等）。 */
+export async function upsertUserWatch(q, { userId, gameId, region = 'cn', targetCents = null, note = null, source = 'manual' }) {
+  const r = await q(
+    `insert into watchlist (user_id, game_id, region, target_cents, note, source)
+     values ($1, $2, $3, $4, $5, $6)
+     on conflict (user_id, game_id, region) where user_id is not null do update
+       set target_cents = excluded.target_cents, note = excluded.note, source = excluded.source
+     returning id`,
+    [userId, gameId, region, targetCents, note, source],
+  );
+  return Number(r.rows[0].id);
+}
+
+/** 站点级删除（只删 NULL 行，防误删用户级）。 */
 export async function deleteWatch(q, { gameId, region = 'cn' }) {
-  const r = await q('delete from watchlist where game_id = $1 and region = $2', [gameId, region]);
+  const r = await q('delete from watchlist where game_id = $1 and region = $2 and user_id is null', [gameId, region]);
   return r.rowCount ?? 0;
 }
 
+/** 用户级删除：只删当前用户该游戏的提醒（幂等，返回 removed 0/1）。 */
+export async function deleteUserWatch(q, { userId, gameId, region = 'cn' }) {
+  const r = await q('delete from watchlist where user_id = $1 and game_id = $2 and region = $3', [userId, gameId, region]);
+  return r.rowCount ?? 0;
+}
+
+/** 当前用户某游戏的提醒（详情 watch 字段回显），无则 null。 */
+export async function getUserWatch(q, { userId, gameId, region = 'cn' }) {
+  const r = await q(
+    `select target_cents, note, created_at from watchlist
+      where user_id = $1 and game_id = $2 and region = $3`,
+    [userId, gameId, region],
+  );
+  const row = r.rows[0];
+  if (!row) return null;
+  return { targetCents: row.target_cents == null ? null : Number(row.target_cents), note: row.note ?? null, createdAt: row.created_at };
+}
+
+/** 管理员：按提醒 id 清理任意一条（含用户级），返回被删行（审计用）。 */
+export async function deleteWatchById(q, { id, region = 'cn' }) {
+  const r = await q('delete from watchlist where id = $1 and region = $2 returning id, user_id, game_id', [id, region]);
+  return r.rows[0] ?? null;
+}
+
+/** 站点级清单（CLI 用，行为不变）。 */
 export async function listWatches(q, { region = 'cn' } = {}) {
   const r = await q(
     `select w.id, w.target_cents, w.note, w.source, w.created_at, w.last_notified_cents, w.last_notified_at,
             g.id as game_id, g.steam_appid, coalesce(nullif(g.name, ''), nullif(g.name_en, ''), 'appid:' || g.steam_appid) as name
        from watchlist w
        join games g on g.id = w.game_id
-      where w.region = $1
+      where w.region = $1 and w.user_id is null
       order by g.name asc nulls last`,
     [region],
   );
   return r.rows;
 }
 
-/** 关注列表 + 当前价 + 史低，供 alerts 判定。 */
+/** 当前用户的提醒列表（join 游戏 + 当前价/史低/货币），按加入时间倒序。 */
+export async function listUserWatches(q, { userId, region = 'cn' } = {}) {
+  const r = await q(
+    `select w.id, w.game_id, w.target_cents, w.note, w.created_at, w.last_notified_cents, w.last_notified_at,
+            g.steam_appid, coalesce(nullif(g.name, ''), nullif(g.name_en, ''), 'appid:' || g.steam_appid) as name,
+            (select min(o.price_cents) from offers o
+               join platforms p on p.code = o.platform_code
+              where o.game_id = g.id and o.region = $2 and o.in_stock
+                and p.kind in ${OFFICIAL_KINDS}) as current_cents,
+            (select o.currency from offers o
+               join platforms p on p.code = o.platform_code
+              where o.game_id = g.id and o.region = $2 and o.in_stock
+                and p.kind in ${OFFICIAL_KINDS}
+              order by o.price_cents asc limit 1) as currency,
+            (select min(d.min_price_cents) from daily_prices d
+               join platforms p on p.code = d.platform_code
+              where d.game_id = g.id and d.region = $2
+                and p.kind in ${OFFICIAL_KINDS}) as hist_low
+       from watchlist w
+       join games g on g.id = w.game_id
+      where w.user_id = $1 and w.region = $2
+      order by w.created_at desc`,
+    [userId, region],
+  );
+  return r.rows;
+}
+
+/** 管理员：全站提醒清单（含用户名；分页 + 可选用户名筛选）。 */
+export async function listAllWatchesAdmin(q, { region = 'cn', page = 1, pageSize = 20, username = null } = {}) {
+  const size = Math.min(Math.max(Number(pageSize) || 20, 1), 200);
+  const pg = Math.max(1, Number(page) || 1);
+  const offset = (pg - 1) * size;
+  const params = [region];
+  let where = "w.region = $1";
+  if (username) {
+    params.push(`%${String(username).trim()}%`);
+    where += ` and u.username ilike $${params.length}`;
+  }
+  const total = Number(
+    (await q(
+      `select count(*)::int as n from watchlist w left join users u on u.id = w.user_id where ${where}`,
+      params,
+    )).rows[0]?.n ?? 0,
+  );
+  const rows = await q(
+    `select w.id, w.user_id, u.username, w.game_id, w.target_cents, w.note, w.source, w.created_at,
+            w.last_notified_cents, w.last_notified_at,
+            g.steam_appid, coalesce(nullif(g.name, ''), nullif(g.name_en, ''), 'appid:' || g.steam_appid) as name,
+            (select min(o.price_cents) from offers o
+               join platforms p on p.code = o.platform_code
+              where o.game_id = g.id and o.region = $1 and o.in_stock
+                and p.kind in ${OFFICIAL_KINDS}) as current_cents,
+            (select min(d.min_price_cents) from daily_prices d
+               join platforms p on p.code = d.platform_code
+              where d.game_id = g.id and d.region = $1
+                and p.kind in ${OFFICIAL_KINDS}) as hist_low
+       from watchlist w
+       join games g on g.id = w.game_id
+       left join users u on u.id = w.user_id
+      where ${where}
+      order by w.created_at desc
+      limit $${params.length + 1} offset $${params.length + 2}`,
+    [...params, size, offset],
+  );
+  return { items: rows.rows, total, page: pg, pageSize: size, pages: Math.max(1, Math.ceil(total / size)) };
+}
+
+/** 关注列表 + 当前价 + 史低 + user_id/邮箱，供 alerts 判定与分组。 */
 export async function watchCandidates(q, { region = 'cn' } = {}) {
   const r = await q(
-    `select w.id as watch_id, w.target_cents, w.note, w.last_notified_cents, w.last_notified_at,
+    `select w.id as watch_id, w.user_id, u.email as user_email, w.target_cents, w.note, w.last_notified_cents, w.last_notified_at,
             g.id as game_id, g.steam_appid, coalesce(nullif(g.name, ''), nullif(g.name_en, ''), 'appid:' || g.steam_appid) as name,
             g.name_en,
             (select min(o.price_cents) from offers o
@@ -1916,6 +2037,7 @@ export async function watchCandidates(q, { region = 'cn' } = {}) {
                 and p.kind in ${OFFICIAL_KINDS}) as hist_low
        from watchlist w
        join games g on g.id = w.game_id
+       left join users u on u.id = w.user_id
       where w.region = $1
       order by g.name asc nulls last`,
     [region],
@@ -2211,7 +2333,7 @@ export async function createSession(q, { userId, days = 7, ip = null, ipKey = nu
 export async function userBySession(q, token) {
   if (!token) return null;
   const r = await q(
-    `select u.id, u.username, u.role, u.disabled, u.must_change_password,
+    `select u.id, u.username, u.role, u.disabled, u.must_change_password, u.email,
             s.id as sess_id, s.expires_at, s.ip_key, s.ua_key, s.last_seen_at
        from sessions s join users u on u.id = s.user_id
       where s.token = $1 and s.expires_at > now() and not u.disabled`,

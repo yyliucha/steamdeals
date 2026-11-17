@@ -69,6 +69,20 @@ const forYouCache = new Map();
 const behaviorBuckets = new Map();// AK-2（docs/AUTH-REDESIGN.md §4.3）：登录 IP 限速（同 IP 15 分钟失败 ≥20 次 → 429，内存计数、重启清零）
 const loginIpFails = new Map(); // ip -> { count, windowStart }
 
+// CL 批（docs/USER-ALERTS.md §8）：用户级到价提醒写操作每用户 30 次/分
+const watchUserFails = new Map(); // userId -> { count, windowStart }
+const watchUserLimited = (userId) => {
+  const now = Date.now();
+  const entry = watchUserFails.get(userId) ?? { count: 0, windowStart: now };
+  if (now - entry.windowStart >= 60_000) {
+    entry.count = 0;
+    entry.windowStart = now;
+  }
+  entry.count += 1;
+  watchUserFails.set(userId, entry);
+  return entry.count > 30;
+};
+
 /** 测试用：清零登录 IP 限速计数（模块级 Map 跨测试共享）。 */
 export function resetLoginThrottleForTest() {
   loginIpFails.clear();
@@ -1820,7 +1834,8 @@ export function createApiServer({
       if (path === '/api/me' && req.method === 'GET') {        const prefs = user ? await db.getPrefs(q, user.id) : null;
         return json(res, 200, {
           user: user
-            ? { id: user.id, username: user.username, role: user.role, mustChangePassword: Boolean(user.must_change_password) }
+            // CL 批：带本人 email（用户级提醒保存后前端提示绑定邮箱；只回显自己）
+            ? { id: user.id, username: user.username, role: user.role, mustChangePassword: Boolean(user.must_change_password), email: user.email ?? null }
             : null,
           prefs,
           // 站点时区（系统设置里的「时区」）：前端用它格式化时间，而不是浏览器本地时区
@@ -1997,8 +2012,10 @@ export function createApiServer({
         if (!game) return json(res, 404, { error: '没有该游戏' });
         const offers = await db.offersOfGame(q, { gameId: game.id, region: 'cn' });
         const series = await db.dailyMinSeries(q, { gameId: game.id, region: 'cn' });
+        // CL 批（docs/USER-ALERTS.md §3.1）：详情回显当前用户的到价提醒（游客 null）
+        const watch = user ? await db.getUserWatch(q, { userId: user.id, gameId: game.id, region: 'cn' }) : null;
         if (user) await db.recordView(q, { userId: user.id, path: `/game/id/${id}`, appid: game.steam_appid ?? null });
-        return json(res, 200, { game, offers, series });
+        return json(res, 200, { game, offers, series, watch });
       }
 
       // ---- Steam 图片代理：/img/steam/<appid>/<size>（服务端经代理取 CDN，前端无需直连） ----
@@ -2084,8 +2101,10 @@ export function createApiServer({
         const series = await db.dailyMinSeries(q, { gameId: game.id, region: 'cn' });
         // BP 批（docs/GAME-DLC.md §3.3）：详情只带摘要（DLC 上千时列表走单独接口，详情不拖慢）
         const dlc = await db.dlcSummary(q, { steamAppid: appid });
+        // CL 批（docs/USER-ALERTS.md §3.1）：详情回显当前用户的到价提醒（游客 null）
+        const watch = user ? await db.getUserWatch(q, { userId: user.id, gameId: game.id, region: 'cn' }) : null;
         if (user) await db.recordView(q, { userId: user.id, path: `/game/${appid}`, appid });
-        return json(res, 200, { game, offers, series, dlc });
+        return json(res, 200, { game, offers, series, dlc, watch });
       }
 
       // ---- BP 批（docs/GAME-DLC.md §3.3）：DLC 列表（公开）----
@@ -2483,6 +2502,47 @@ export function createApiServer({
         return json(res, 200, result);
       }
 
+      // ---- CL 批（docs/USER-ALERTS.md §3.1）：用户级到价提醒（登录必需；POST/DELETE 每用户 30 次/分）----
+      if (path === '/api/watchlist' && req.method === 'GET') {
+        if (!requireUser()) return;
+        return json(res, 200, { watches: await db.listUserWatches(q, { userId: user.id, region: 'cn' }) });
+      }
+
+      if (path === '/api/watchlist' && req.method === 'POST') {
+        if (!requireUser()) return;
+        if (watchUserLimited(user.id)) return json(res, 429, { error: '请求过于频繁', retryAfterSec: 60 });
+        const body = await readBody(req);
+        let gameId = Number(body.gameId);
+        if (!Number.isFinite(gameId) || gameId <= 0) {
+          const appid = Number(body.appid);
+          const found = Number.isFinite(appid) && appid > 0 ? await db.gameDetail(q, { steamAppid: appid }) : null;
+          if (!found) return json(res, 404, { error: '没有该游戏' });
+          gameId = found.id;
+        } else {
+          const found = await db.gameDetail(q, { gameId });
+          if (!found) return json(res, 404, { error: '没有该游戏' });
+        }
+        let targetCents = null;
+        if (body.targetCents != null && body.targetCents !== '') {
+          const n = Math.round(Number(body.targetCents));
+          if (!Number.isFinite(n) || n < 0) return json(res, 400, { error: '目标价不合法' });
+          targetCents = n;
+        }
+        const note = String(body.note ?? '').trim().slice(0, 200) || null;
+        const id = await db.upsertUserWatch(q, { userId: user.id, gameId, region: 'cn', targetCents, note });
+        logger?.info('api.watch_user_saved', { userId: user.id, gameId, targetCents });
+        return json(res, 200, { ok: true, id });
+      }
+
+      const userWatchDel = path.match(/^\/api\/watchlist\/(\d+)$/);
+      if (userWatchDel && req.method === 'DELETE') {
+        if (!requireUser()) return;
+        if (watchUserLimited(user.id)) return json(res, 429, { error: '请求过于频繁', retryAfterSec: 60 });
+        const removed = await db.deleteUserWatch(q, { userId: user.id, gameId: Number(userWatchDel[1]), region: 'cn' });
+        logger?.info('api.watch_user_deleted', { userId: user.id, gameId: Number(userWatchDel[1]), removed });
+        return json(res, 200, { ok: true, removed });
+      }
+
       // ---- 手动愿望单（BE 批 docs/WISHLIST-SITE-ONLY.md §4.1）：只写本站 + 建史低提醒，不再推 Steam ----
       if (path === '/api/wishlist' && req.method === 'POST') {
         if (!requireUser()) return;
@@ -2628,11 +2688,15 @@ export function createApiServer({
         return json(res, 200, { games: await db.listDeletedGames(q, { limit }) });
       }
 
-      // ---- 管理员：到价提醒（关注列表）----
+      // ---- 管理员：到价提醒（CL 批 docs/USER-ALERTS.md §3.2：全站清单只读+清理；旧加/删兼容保留）----
       if (path === '/api/admin/watchlist' && req.method === 'GET') {
         if (!requireAdmin()) return;
         const region = String(url.searchParams.get('region') ?? 'cn');
-        return json(res, 200, { watches: await db.listWatches(q, { region }) });
+        const page = Math.max(1, Number(url.searchParams.get('page') ?? 1) || 1);
+        const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize') ?? 20) || 20, 1), 200);
+        const username = String(url.searchParams.get('username') ?? '').trim() || null;
+        const result = await db.listAllWatchesAdmin(q, { region, page, pageSize, username });
+        return json(res, 200, { ...result, region });
       }
 
       if (path === '/api/admin/watchlist' && req.method === 'POST') {
@@ -2661,12 +2725,14 @@ export function createApiServer({
         return json(res, 200, { id });
       }
 
+      // CL 批：按提醒 id 清理任意一条（含用户级），记审计 api.watch_deleted
       const watchDel = path.match(/^\/api\/admin\/watchlist\/(\d+)$/);
       if (watchDel && req.method === 'DELETE') {
         if (!requireAdmin()) return;
-        const removed = await db.deleteWatch(q, { gameId: Number(watchDel[1]), region: 'cn' });
-        logger?.info('api.watch_deleted', { gameId: Number(watchDel[1]), removed, by: user.username });
-        return json(res, 200, { removed });
+        const row = await db.deleteWatchById(q, { id: Number(watchDel[1]), region: 'cn' });
+        if (!row) return json(res, 404, { error: '提醒不存在' });
+        logger?.info('api.watch_deleted', { watchId: Number(row.id), userId: row.user_id ?? null, gameId: Number(row.game_id), by: user.username });
+        return json(res, 200, { ok: true, removed: 1 });
       }
 
       // ---- 管理员：版本与更新检查 ----

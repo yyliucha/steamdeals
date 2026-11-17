@@ -12,7 +12,7 @@ import { ingestOffers } from './ingest.js';
 import { missingPriceAppids, mergePriceOffers, writeBackfillProgress } from './backfill.js';
 import { applySteamDetails, entryFromMeta, runSteamStatusRound } from './steam-status.js';
 import { buildSite } from './report.js';
-import { evaluateAlerts, renderDigest, toPayload } from './alerts.js';
+import { evaluateAlerts, renderDigest, toPayload, groupAlertsByUser } from './alerts.js';
 import { channelsFromEnv, deliver, hasNotifier } from './notify.js';
 // CB 批（docs/PRICE-REPORT-EMAIL.md §3.3）：价格报表邮件 HTML 渲染
 import { renderPriceReport } from './price-report-html.js';
@@ -907,9 +907,14 @@ async function cmdAlerts() {
   if (typeof extraWebhook === 'string') channels.push({ name: 'webhook(cli)', kind: 'webhook', url: extraWebhook });
   const mark = flag('mark', false) === true || flag('mark', false) === 'true';
 
+  // CL 批（docs/USER-ALERTS.md §3.3）：按 user_id 分组——站点级走原全通道，用户级一人一封邮件。
+  const { site: siteHits, users: userGroups } = groupAlertsByUser(hits);
+
   logger.info('alert.evaluated', {
     watched: rows.length,
     hits: hits.length,
+    siteHits: siteHits.length,
+    userGroups: userGroups.length,
     channels: channels.map((c) => c.name),
     reasons: hits.reduce((acc, h) => ({ ...acc, [h.reason]: (acc[h.reason] ?? 0) + 1 }), {}),
   });
@@ -925,38 +930,84 @@ async function cmdAlerts() {
     console.log(renderDigest(hits, { now: new Date() }));
   }
 
+  const marked = []; // 成功投递后才记 last_notified（同价位不重复打扰）
   let delivered = false;
-  if (channels.length) {
-    // CI-1（docs/ALERT-MAIL-APPEAL-UX.md §3）：提醒邮件 HTML 化——deliver 支持 html（email multipart 两段），
-    // webhook/企微仍纯文本（notify.js 契约不变）
+
+  // ---- 站点级（NULL）：行为不变（webhook / 企微 / 邮件到 ALERT_EMAIL_TO）----
+  if (siteHits.length && channels.length) {
     const { renderAlertsHtml } = await import('./alerts-html.js');
-    const mail = renderAlertsHtml(hits, { now: new Date() });
+    const mail = renderAlertsHtml(siteHits, { now: new Date() });
     const result = await deliver(channels, {
-      text: renderDigest(hits, { now: new Date() }),
+      text: renderDigest(siteHits, { now: new Date() }),
       html: mail.html,
-      payload: toPayload(hits, { now: new Date() }),
+      payload: toPayload(siteHits, { now: new Date() }),
       subject: mail.subject,
       logger,
     });
-    delivered = result.ok;
+    delivered = delivered || result.ok;
     for (const r of result.results) {
       const detail = r.ok ? `HTTP ${r.status ?? ''}`.trim() : (r.error ?? `errcode=${r.errcode}`);
       console.log(`  ${r.ok ? '✔' : '✘'} ${r.channel}  ${detail}`);
     }
-  } else {
+    if (result.ok) marked.push(...siteHits);
+  } else if (siteHits.length && !channels.length) {
     console.log('\n未配置任何提醒通道（ALERT_WEBHOOK_URL / WECOM_WEBHOOK_URL / SMTP_HOST+ALERT_EMAIL_TO），仅输出到终端。');
+    // 与旧行为一致：无通道时 --mark 仍记录（终端已展示，避免每轮重复评估）
+    if (mark) marked.push(...siteHits);
   }
 
-  if (mark && (delivered || !channels.length)) {
+  // ---- 用户级：一人一封邮件（收件人 = 用户绑定邮箱）；无邮箱跳过并记日志 ----
+  if (userGroups.length) {
+    const { renderAlertsHtml } = await import('./alerts-html.js');
+    for (const group of userGroups) {
+      if (!group.email) {
+        logger.info('alert.skipped_no_email', { userId: group.userId, count: group.hits.length });
+        console.log(`  ✘ 用户 ${group.userId} 未绑定邮箱，跳过 ${group.hits.length} 条提醒。`);
+        continue;
+      }
+      if (!process.env.SMTP_HOST || !process.env.SMTP_FROM && !process.env.SMTP_USER) {
+        logger.warn('alert.user_skipped_no_smtp', { userId: group.userId, count: group.hits.length });
+        console.log(`  ✘ SMTP 未配置，跳过用户 ${group.userId}（${group.email}）。`);
+        continue;
+      }
+      const mail = renderAlertsHtml(group.hits, { now: new Date() });
+      const emailChannel = {
+        name: `email(user:${group.userId})`,
+        kind: 'email',
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT ?? 465),
+        secure: (process.env.SMTP_SECURE ?? '1') !== '0',
+        user: process.env.SMTP_USER ?? '',
+        pass: process.env.SMTP_PASS ?? '',
+        from: process.env.SMTP_FROM ?? process.env.SMTP_USER ?? '',
+        to: [group.email],
+      };
+      const result = await deliver([emailChannel], {
+        text: renderDigest(group.hits, { now: new Date() }),
+        html: mail.html,
+        payload: toPayload(group.hits, { now: new Date() }),
+        subject: mail.subject,
+        logger,
+      });
+      const r = result.results[0];
+      console.log(`  ${r?.ok ? '✔' : '✘'} ${emailChannel.name} ${r?.ok ? `HTTP ${r.status ?? ''}`.trim() : (r?.error ?? '')}`);
+      if (result.ok) {
+        delivered = true;
+        marked.push(...group.hits);
+      }
+    }
+  }
+
+  if (mark && marked.length) {
     await withStore(async (store) => {
       const q = (sql, p) => store.query(sql, p);
-      for (const h of hits) await db.markNotified(q, { watchId: h.watchId, priceCents: h.currentCents });
+      for (const h of marked) await db.markNotified(q, { watchId: h.watchId, priceCents: h.currentCents });
     });
-    logger.info('alert.marked', { count: hits.length });
-    console.log(`已记录 ${hits.length} 条提醒，同价位不会重复通知。`);
-  } else if (mark && !delivered) {
-    logger.warn('alert.not_marked', { reason: 'delivery_failed' });
-    console.log('投递全部失败，未记录提醒状态（下轮会重试）。');
+    logger.info('alert.marked', { count: marked.length });
+    console.log(`已记录 ${marked.length} 条提醒，同价位不会重复通知。`);
+  } else if (mark && hits.length && !marked.length) {
+    logger.warn('alert.not_marked', { reason: 'delivery_failed', hits: hits.length });
+    console.log('投递全部失败（或全部跳过），未记录提醒状态（下轮会重试）。');
   }
 }
 

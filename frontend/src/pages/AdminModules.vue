@@ -71,6 +71,22 @@
         <el-table-column label="操作" width="90"><template #default="{row}"><el-button link type="danger" @click="removeWishlist(row)">删除</el-button></template></el-table-column>
       </el-table><PaginationBar v-model:page="wishPage" v-model:page-size="wishPageSize" :total="wishlists.length"/></div>
     </template>
+    <!-- CL 批（docs/USER-ALERTS.md §4.3）：全站到价提醒清单（只读 + 清理，含用户级/站点级） -->
+    <template v-else-if="section==='watchlist'">
+      <div class="module-card"><div class="card-heading"><div><h3>全站到价提醒</h3><p>用户级 + 站点级提醒清单；新增请走前台详情页，后台只提供清理。</p></div></div>
+      <div class="inline-form"><el-input v-model="watchQuery" clearable placeholder="搜索用户名" @keyup.enter="loadAdminWatches(1)" @clear="loadAdminWatches(1)"/><el-button type="primary" :loading="loading" @click="loadAdminWatches(1)">搜索</el-button><span class="muted">共 {{ watchTotal }} 条</span></div></div>
+      <div v-if="isMobile" class="game-card-list"><div v-for="w in adminWatches" :key="w.id" class="admin-card"><div class="admin-card-main"><strong>{{ w.name||('appid:'+w.steam_appid) }}</strong><small>{{ w.username||'站点级' }} · 加入 {{ dateTime(w.created_at) }}</small><span class="muted">目标 {{ w.target_cents==null?'史低':price(w.target_cents) }} · 当前 {{ price(w.current_cents) }} · 史低 {{ price(w.hist_low) }}</span></div><el-button type="danger" plain size="small" @click="removeAdminWatch(w)">删除</el-button></div><el-empty v-if="!adminWatches.length" description="没有到价提醒"/></div>
+      <div v-else class="module-card table-card"><el-table :data="adminWatches" v-loading="loading" stripe>
+        <el-table-column prop="username" label="用户" min-width="120"><template #default="{row}">{{ row.username||'站点级' }}</template></el-table-column>
+        <el-table-column label="游戏" min-width="240"><template #default="{row}"><div class="game-name-row"><span class="game-name">{{ row.name||row.name_en||('appid:'+row.steam_appid) }}</span><span v-if="row.steam_appid" class="muted mono">{{ row.steam_appid }}</span></div></template></el-table-column>
+        <el-table-column label="目标价" width="110" align="right"><template #default="{row}">{{ row.target_cents==null?'史低':price(row.target_cents) }}</template></el-table-column>
+        <el-table-column label="当前价" width="110" align="right"><template #default="{row}">{{ price(row.current_cents) }}</template></el-table-column>
+        <el-table-column label="史低" width="110" align="right"><template #default="{row}">{{ price(row.hist_low) }}</template></el-table-column>
+        <el-table-column label="加入时间" min-width="150"><template #default="{row}">{{ dateTime(row.created_at) }}</template></el-table-column>
+        <el-table-column label="最近提醒" min-width="150"><template #default="{row}">{{ row.last_notified_at?dateTime(row.last_notified_at):'—' }}</template></el-table-column>
+        <el-table-column label="操作" width="90"><template #default="{row}"><el-button link type="danger" @click="removeAdminWatch(row)">删除</el-button></template></el-table-column>
+      </el-table><PaginationBar v-model:page="watchAdminPage" :page-size="20" :total="watchTotal" @change="loadAdminWatches(watchAdminPage)"/></div>
+    </template>
     <!-- 公告 -->
     <template v-else-if="section==='announcements'">
       <div class="module-card announcement-head"><div class="card-heading"><div><h3>站点通知</h3><p>这里只留公告列表；新建 / 编辑通知走右侧抽屉（带前台预览，不跳页）。</p></div><el-button type="primary" @click="openAnnouncementDrawer()">＋ 新建通知</el-button></div></div>
@@ -438,6 +454,13 @@ async function removeWishlist(row){
   try{await ElMessageBox.confirm(`删除「${row.username}」的愿望单「${row.name||row.name_en||row.steam_appid}」？删除后前台不再显示，该游戏的自动史低提醒在无人收藏时一起清理。`,'删除愿望单',{type:'warning',confirmButtonText:'删除',cancelButtonText:'取消'});}catch{return;}
   try{await api(`/api/admin/wishlists/${row.id}`,{method:'DELETE'});ElMessage.success('已删除');await loadWishlists();}catch(e){notifyError(e);}
 }
+// CL 批（docs/USER-ALERTS.md §4.3）：全站到价提醒清单——分页 + 用户名筛选 + 删除确认（审计在服务端 api.watch_deleted）
+const adminWatches=ref([]),watchTotal=ref(0),watchQuery=ref(''),watchAdminPage=ref(1);
+async function loadAdminWatches(nextPage=1){loading.value=true;try{const qs=new URLSearchParams({page:String(nextPage),pageSize:'20'});if(watchQuery.value.trim())qs.set('username',watchQuery.value.trim());const d=await api(`/api/admin/watchlist?${qs}`);adminWatches.value=d.items||[];watchTotal.value=Number(d.total)||0;watchAdminPage.value=Number(d.page)||1;}catch(e){notifyError(e);}finally{loading.value=false;}}
+async function removeAdminWatch(row){
+  try{await ElMessageBox.confirm(`删除「${row.username||'站点级'}」的到价提醒「${row.name||row.steam_appid}」？`,'删除到价提醒',{type:'warning',confirmButtonText:'删除',cancelButtonText:'取消'});}catch{return;}
+  try{await api(`/api/admin/watchlist/${row.id}`,{method:'DELETE'});ElMessage.success('已删除');await loadAdminWatches(watchAdminPage.value);}catch(e){notifyError(e);}
+}
 // AT 批（docs/ADMIN-CONSOLE-IA.md §7.3）：抽屉状态与 URL 双向同步——
 // ?section=announcements&drawer=new[&id=…] 可直达；关闭去掉 drawer/id，保留其它参数。
 // 带 id 直达时等列表加载完再定位行（列表未就绪会闪一帧空表单）。
@@ -530,7 +553,7 @@ async function resetCircuit(row){await run(async()=>{const d=await api('/api/adm
 async function runTask(name){await run(async()=>{if(['steam-prices','catalog','itad','gog','humble','sonkwo'].includes(name)){await api('/api/admin/sync',json('POST',{mode:name}));}else{await api(`/api/admin/${name}`,json('POST',{}));}ElMessage.success('任务已提交到服务器');await loadSyncStatus();});}
 async function stopCurrent(){await run(async()=>{const mode=syncStatus.value?.run?.mode||'';const path=mode==='rename'?'/api/admin/rename/stop':mode==='heat'?'/api/admin/heat/stop':'/api/admin/backfill/stop';await api(path,json('POST',{}));ElMessage.success('已请求停止');await loadSyncStatus();});}
 
-watch(()=>props.section,(section)=>{if(section==='games')loadGames(1);else if(section==='visitors')loadVisitorView();else if(section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(section==='wishlist')loadWishlists();else if(section==='settings')loadSettings();else if(section==='stats')loadStats();});
+watch(()=>props.section,(section)=>{if(section==='games')loadGames(1);else if(section==='visitors')loadVisitorView();else if(section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(section==='wishlist')loadWishlists();else if(section==='watchlist')loadAdminWatches(1);else if(section==='settings')loadSettings();else if(section==='stats')loadStats();});
 // AN 批（docs/UNSAVED-GUARD.md §4.4）：本组件注册三个编辑面——系统设置 / 站点通知 / 编辑游戏
 const unregisterUnsaved=[];
 onMounted(()=>{if(props.section==='games')loadGames(1);else if(props.section==='visitors')loadVisitorView();else if(props.section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(props.section==='wishlist')loadWishlists();else if(props.section==='settings'){loadSettings();loadProxyHealth();}else if(props.section==='stats')loadStats();startProxyTimer();unregisterUnsaved.push(registerUnsavedSource({id:'settings',label:'系统设置',isDirty:()=>settingsDirty.value,save:submitSettings,discard:discardSettings}),registerUnsavedSource({id:'edit-game',label:'编辑游戏',isDirty:gameDirty,save:submitGameSave,discard:closeGameDialog}));if(window.matchMedia){const mq=window.matchMedia('(max-width: 720px)');const on=()=>isMobile.value=mq.matches;mq.addEventListener?mq.addEventListener('change',on):mq.addListener(on);}});
@@ -569,6 +592,7 @@ if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('ch
 .ip-detail .log-line{display:flex;gap:12px;font-size:12px;line-height:1.7;align-items:center}
 .ip-detail .log-line span:first-child{min-width:150px;color:var(--muted)}
 </style>
+
 
 
 

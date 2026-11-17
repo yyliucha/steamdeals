@@ -516,7 +516,7 @@ test('已拥有推导：绑定账号库并集 + 谁拥有（owned_by）+ 愿望�
   }
 });
 
-test('手动标记与推导：owned=false 永久排除（再同步不恢复），clear 回到跟随推导', async () => {
+test('CL 批已拥有口径：owned 只由 Steam 库并集决定，user_game_flags.owned 不再参与（历史字段保留但无效）', async () => {
   const { store, q, srv, base } = await ownedSetup();
   try {
     const alice = await login(base, 'alice', 'alice123456');
@@ -528,34 +528,34 @@ test('手动标记与推导：owned=false 永久排除（再同步不恢复）�
         body: JSON.stringify({ owned }),
       });
 
-    // 手动取消（Steam 库里有）→ 标记消失
+    // 手动 owned=false（历史字段仍可写入）→ 库里有 730 → owned 仍是 true（字段不再参与口径）
     const setFalse = await (await flags(false)).json();
-    assert.equal(setFalse.flags.owned, false);
-    assert.equal(setFalse.flags.user_owned, false);
+    assert.equal(setFalse.flags.user_owned, false, '历史字段照写不误');
+    assert.equal(setFalse.flags.owned, true, 'CL：owned 口径只认 Steam 库并集，手动 false 不再排除');
 
-    // 再次同步（模拟调度器）→ 不恢复
+    // 再次同步 → 依旧 true
     await steamAccounts.syncAccountLibrary(q, {
       steamId: SID_A,
       apiKey: 'x',
       fetchImpl: async () => [{ appid: 730, name: 'CS2', playtimeMinutes: 1, lastPlayedAt: null }],
     });
     let mine = await (await search(base, params, alice.cookie)).json();
-    assert.equal(mine.games.find((g) => g.steam_appid === 730).owned, false, '永久排除不被同步恢复');
+    assert.equal(mine.games.find((g) => g.steam_appid === 730).owned, true, '同步后仍为已拥有');
 
-    // 恢复跟随推导
+    // clear 同样不影响推导
     const cleared = await (await flags('clear')).json();
-    assert.equal(cleared.flags.owned, true, '清除后回到库推导');
+    assert.equal(cleared.flags.owned, true, 'CL：清除手动字段后 owned 仍由库推导');
     mine = await (await search(base, params, alice.cookie)).json();
     assert.equal(mine.games.find((g) => g.steam_appid === 730).owned, true);
 
-    // 手动加已拥有（库里没有的 620）
+    // 手动 owned=true（库里没有的 620）→ owned 仍是 false（不开放手动标记口径）
     const added = await (await fetch(`${base}/api/games/620/flags`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: alice.cookie },
       body: JSON.stringify({ owned: true }),
     })).json();
-    assert.equal(added.flags.owned, true);
-    assert.deepEqual(added.flags.user_owned, true);
+    assert.equal(added.flags.user_owned, true, '历史字段照写不误');
+    assert.equal(added.flags.owned, false, 'CL：库里没有就不算已拥有，手动标记无效');
   } finally {
     await srv.close();
     await store.close();

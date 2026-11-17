@@ -39,6 +39,8 @@ export function evaluateAlerts(rows, { now = new Date() } = {}) {
 
     hits.push({
       watchId: Number(row.watch_id),
+      userId: row.user_id == null ? null : Number(row.user_id),
+      userEmail: row.user_email ?? null,
       gameId: Number(row.game_id),
       steamAppid: row.steam_appid ?? null,
       name: row.name,
@@ -91,6 +93,29 @@ export function toPayload(hits, { now = new Date() } = {}) {
       note: h.note,
     })),
   };
+}
+
+// ---------------------------------------------------------------- CL 批：按用户分组
+// 用户级提醒（userId 非空）一人一封邮件（收件人 = 用户绑定邮箱）；站点级（NULL）走原全通道逻辑。
+
+/**
+ * 把 hits 按 user_id 分组（CL 批 docs/USER-ALERTS.md §3.3）。
+ * 返回 { site: hits[], users: [{ userId, email, hits }] }——users 按 userId 升序保证投递顺序稳定。
+ */
+export function groupAlertsByUser(hits) {
+  const site = [];
+  const byUser = new Map();
+  for (const h of hits ?? []) {
+    if (h.userId == null) {
+      site.push(h);
+    } else {
+      const key = String(h.userId);
+      if (!byUser.has(key)) byUser.set(key, { userId: h.userId, email: h.userEmail ?? null, hits: [] });
+      byUser.get(key).hits.push(h);
+    }
+  }
+  const users = [...byUser.values()].sort((a, b) => a.userId - b.userId);
+  return { site, users };
 }
 
 // 投递实现已下沉到 src/notify.js（webhook / 企业微信 / 邮件统一走那里），

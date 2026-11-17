@@ -1,6 +1,7 @@
-# 用户级到价提醒（列表页 + 已拥有隐藏 + 后台全站清单）（待开发）
+# 用户级到价提醒（列表页 + 已拥有隐藏 + 后台全站清单）（已实现待发版）
 
-> 状态：**已确认待开发（2026-11-17）**。
+> 状态：**已实现待发版（2026-11-17，CL 批）**：数据模型/接口/提醒分组/详情三段式与已拥有终态/
+> 「到价提醒」列表 tab/后台全站清单均已落地，测试 `test/watchlist-user.test.js`（8 项）进主链。
 > 关联：[TODO.md](TODO.md) CL 条目、[WISHLIST-SITE-ONLY.md](WISHLIST-SITE-ONLY.md)（愿望单口径）、
 > [PRICE-REPORT-EMAIL.md](PRICE-REPORT-EMAIL.md)（邮件 HTML 样式）、[ALERT-MAIL-APPEAL-UX.md](ALERT-MAIL-APPEAL-UX.md)（提醒邮件 HTML 化）。
 
