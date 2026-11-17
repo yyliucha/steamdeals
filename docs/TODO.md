@@ -1783,6 +1783,15 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   断网保留旧值且不 5xx；③ `/app/dl/` 白名单 200/404、HEAD 可用；④ `/app` 页显示新版本并可下载、备用链接指向新仓库；
   ⑤ 只保留最近 3 个 APK；⑥ `npm test` / `frontend:build` / `scan` 全绿；不自行打 tag。
 - **待确认**：§11 两条（Release 必须含 latest.json 资产；存量旧 TWA 2.16.0 APK 是否顺带删除）。
+- **现场回归（2026-11-17 线上 v2.22.0，待修）**：部署后 `/app` 页「下载 APK」报 404（Chrome「无法下载 - 没有文件」）。
+  **实测证据**：`/api/app/latest` 返回 `apkPath=/app/dl/steamdeals-2.19.0.apk` 且该 URL **404**；
+  镜像内旧路径 `/app/steamdeals-2.19.0.apk` **200** 可下载。**根因**：`src/server.js:1831` 无条件生成
+  `/app/dl/steamdeals-<ver>.apk`——即使 `readLatestMeta` 走的是**镜像回落**分支（`data/app` 为空：首次部署、
+  同步任务首轮未跑或失败），apkPath 没有跟着回落。
+  **修复（3 处）**：① apkPath 仅在 `data/app/steamdeals-<ver>.apk` 存在时用 `/app/dl/…`；否则若镜像内
+  `app/steamdeals-<ver>.apk` 存在则回落 `/app/<ver>.apk`；都没有返回 `null`；
+  ② `/app/dl/<file>` 文件不存在时 **302 到 `/app/<file>`** 兜底旧链接；
+  ③ 回归测试：`serve.test.js` 断言「`data/app` 为空时 apkPath 回落镜像路径」，并覆盖"同步失败/断网时页面不死链"。
 
 ## CK. 开发中：e2e 测试套件（功能矩阵 + headless Edge + Android 模拟器/真机 + 公网只读 + PDF 报告）
 
