@@ -62,7 +62,7 @@
 | **BX** | 手机浏览器首访「下载安卓 App」提示（只安卓、一次、可关闭） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §6 | 已过时（2026-11-16 被 CA 取代） | ✅ 本轮已给 |
 | **BY** | 安卓 App 内置更新（启动/回前台检查 → 原生提示 → 下载校验 → 用户确认安装；minVersionCode 强制） | [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md) | 质检通过（2026-11-16，92cae3e + 打回修复 8585dba） | ✅ 本轮已给 |
 | **BZ** | App 代码仓库拆分（`android/` 迁独立公开仓库；站点 CI 拉 Release 出 `latest.json`；规格/TODO 留站点） | [MOBILE-APP-REPO-SPLIT.md](MOBILE-APP-REPO-SPLIT.md) | 已过时（CA 直接新建独立仓库） | ✅ 本轮已给 |
-| **CA** | 原生 Android 的站点侧（Token/API + Web 手机端改造；Android 工程见 CG） | [APP-NATIVE.md](APP-NATIVE.md) §3/§5 | 待开发（2026-11-16 已确认；效果图已确认） | ✅ 本轮已给 |
+| **CA** | 原生 Android 的站点侧（Token/API + Web 手机端改造；Android 工程见 CG） | [APP-NATIVE.md](APP-NATIVE.md) §3/§5 + [APP-API.md](APP-API.md) | 待开发（2026-11-16 已确认；效果图已确认） | ✅ 本轮已给 |
 | **CG** | 原生 Android App（CA-2~4，独立仓库 `steamdeals-app`；六屏/游客/登录后自动完成/启动封禁提示/内置更新） | [APP-NATIVE.md](APP-NATIVE.md) §4 | 依赖阻塞（前置 CA） | ✅ 本轮已给 |
 | **CB** | 价格报表邮件 HTML 化 + 内容增强（品牌头/KPI/降价 Top5/涨价 Top3/7 天趋势/CTA；multipart 文本兜底） | [PRICE-REPORT-EMAIL.md](PRICE-REPORT-EMAIL.md) | 质检通过（2026-11-16，c5fc536 + 打回修复 becff89，第 2 轮复检） | ✅ 本轮已给 |
 | **CC** | 多源采集推进：ITAD/GOG/Humble 覆盖全目录（游标/状态 + 命中缓存）+ 后台四源触发 | [SOURCE-SYNC-COVERAGE.md](SOURCE-SYNC-COVERAGE.md) | 已发布 v2.19.0（2026-11-16，12f4f42） | ✅ 本轮已给 |

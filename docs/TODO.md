@@ -1568,7 +1568,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **已确认决策（5 组）**：① 完全拆分（四独立）；② 共用同一 PG，经同一后端 API（App 不直连 DB）；③ Android 工程（CG）用原生 Kotlin + Compose；CA 只做站点侧；
   ④ 手机浏览器前台 → `/app`（`/console`、`/login`、`/app` 豁免），微信内给“在浏览器打开”提示；⑤ 先规格 + 效果图再开发。
 - **改动落点（CA，仅站点侧）**：后端 `src/server.js`（Bearer Token 中间件、`/api/auth/token`、`/api/auth/token/revoke`、
-  `/api/app/*` 命名空间与 `/api/app/status`）、`src/store/pg.js`（`api_tokens` 表 + 迁移）、新增 `docs/APP-API.md`（契约清单）；
+  `/api/app/*` 前缀重写（精确例外 `/api/app/latest`、`/api/app/status`；只对该前缀豁免黑名单/设备封禁）、`/api/app/status`、
+  `/api/app/latest` 补 `versionCode`/`minVersionCode`/`notes`）、`src/store/pg.js`（`api_tokens` 表 + 迁移）、
+  **`docs/APP-API.md` 契约已产出**（App 唯一接口口径）；
   Web 侧手机 UA 跳转（**默认关闭的开关**，等 CG 发布后开启）、`/app` 页改版（暂保留现有 APK 下载）、微信内“在浏览器打开”提示；
   **不建 Android 仓库、不做 APK**。
 - **验收（CA）**：见规格 §3/§5——Token 登录/过期/撤销/限流/审计；`/api/app/*` 黑名单/设备封禁豁免但保留基础限流；

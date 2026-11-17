@@ -62,8 +62,9 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 | POST | `/api/auth/token` | 用户名 + 密码 +（**图形验证码，必填**）+ `rememberMe` → `{ token, expiresAt, user }`；失败限流/锁定与 web 一致（同 IP 15 分钟 ≥20 次 429；账号 5 次锁 15 分钟） |
 | POST | `/api/auth/token/revoke` | Bearer 撤销当前 token（退出登录） |
 | GET | `/api/me` | 支持 `Authorization: Bearer <token>` 或现有 Cookie，返回同一 `user` 形状 |
-| GET | `/api/captcha` | App 复用（图片 SVG，App 渲染为位图） |
-| GET | `/api/app/status` | App 启动检查：返回 `{ banned, type: 'ip'\\|'device'\\|null }`；命中 IP 黑名单或设备封禁；无副作用，豁免封禁拦截 |
+| GET | `/api/captcha` | App 经 `/api/app/captcha` 复用（图片 SVG，App 渲染为位图） |
+| GET | `/api/app/latest` | 现有 APK 清单；CA-1 补 `versionCode`/`minVersionCode`/`notes`（App 内置更新用），缺失返回 null |
+| GET | `/api/app/status` | App 启动检查：返回 `{ banned, type: 'ip'\|'device'\|null }`；命中 IP 黑名单或设备封禁；无副作用，豁免封禁拦截 |
 | 其余 | `/api/app/*` | App 专用命名空间：**IP 黑名单/设备封禁的豁免只对此前缀生效**；Web `/api/*` 规则不变 |
 
 - 有效期：默认 **30 天**（`rememberMe=true`）/ **7 天**（false），`expires_at` 固定；不使用 refresh token（v1，待确认）；
@@ -75,12 +76,13 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 
 公共：`/api/site`、`/api/games`（分页/筛选/排序）、`/api/games/:appid`、`/api/games/:appid/dlc`、`/api/games/count`、`/api/announcements`（公开部分）。
 用户（需 Bearer）：`/api/me`、`/api/prefs`、`/api/games/:appid` 的 `wishlisted/interested` 字段、愿望单切换接口、公告已读、修改密码、注册。
-> CA-1 交付前先产出 **API 契约清单**（`docs/APP-API.md`）：路径、方法、鉴权、请求/响应、错误码；App 只按契约开发。
+> **API 契约已产出**：`docs/APP-API.md`（路径、方法、鉴权、请求/响应、错误码、`/api/app/*` 前缀重写与例外）；App 只按契约开发。
 > 公开接口（首页/搜索/详情/DLC/声明）匿名可调；用户接口需 Bearer；未登录/Token 失效统一返回 `401 { error: "login_required" }`，App 按 §4.2.1 弹登录提示。
 
 ### 3.4 App 命名空间与封禁豁免（2026-11-16 所有者确认）
 
 - App 的**用户端**请求统一走 `/api/app/*`；该命名空间**不执行 IP 黑名单/设备封禁拦截**（Web `/api/*` 继续执行）；
+- 服务端对 `/api/app/<rest>` **去掉前缀按 `/api/<rest>` 路由**（保留 method/query/body）；精确例外：`/api/app/latest`、`/api/app/status`；
 - `GET /api/app/status`：启动时检查 IP 黑名单 + 设备封禁；设备 ID 由 App 安装时生成并持久化（DataStore），随请求头 `X-Device-Id` 发送；
   返回 `{ banned: true, type: 'ip'|'device' }` 或 `{ banned: false }`；
 - App 端**只处理这一种情况**：命中 → 原生不可取消对话框「你已经被封禁」+「已知晓」→ 点击后**退出 App**（`finishAffinity`/结束进程）；
@@ -177,7 +179,8 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 7. **仓库**：App 代码在独立 `steamdeals-app` 仓库；站点仓库不再含 App 工程与 APK 构建；规格/TODO 仍在站点仓库。
 8. **App 启动封禁**：黑名单 IP / 设备封禁 → 打开 App 弹出「你已经被封禁」+「已知晓」→ 点击后退出；未被封正常进入；
    Web 端同一 IP 仍被拦；App 无申诉入口、无黑名单管理界面（管理界面后置）。
-9. **App 命名空间**：`/api/app/*` 不执行 IP 黑名单/设备封禁；`/api/app/status` 返回类型正确；Web `/api/*` 行为不变。10. **App 限流**：`/api/app/*` 保留基础限流；滥用时返回 429（不弹窗、不算封禁）；黑名单豁免不影响 Web 端拦截。
+9. **App 命名空间**：`/api/app/*` 不执行 IP 黑名单/设备封禁；`/api/app/status` 返回类型正确；Web `/api/*` 行为不变。
+10. **App 限流**：`/api/app/*` 保留基础限流；滥用时返回 429（不弹窗、不算封禁）；黑名单豁免不影响 Web 端拦截。
 11. **pendingAction**：登录后自动执行刚才的操作一次并 Toast；取消/失败清空且不循环；恢复原路由与滚动；执行期间防重复提交。
 
 ## 8. 本批不做
