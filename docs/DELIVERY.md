@@ -207,7 +207,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   后台新增「到价提醒」全站清单（分页 + 用户名筛选 + 删除确认，按提醒 id 清理 + 审计 `api.watch_deleted`）。
   验证：`npm test` 全链绿（新增 test/watchlist-user.test.js 8 项进主链）、`frontend:build` ✓、`scan` ✅。
   质检：CL ✅（[QA-CL.md](QA-CL.md) 第 1 轮，通过 8 / 需人工确认 2：部署后 UI 目视（demo 对照）+ 邮件实发）。
-  CI：docker-hub / docker-tcr run **待记录**。
+  CI：docker-hub run 44069918147 ✅（test/smoke/publish）；docker-tcr run 44069918129 ✅（test/publish）。
   **服务器部署待执行**（升级到 `2.23.0`）；部署后：① 详情页三段式与 demo 逐屏目视（桌面/移动/已拥有终态）；
   ② 绑邮箱账号设目标价跑 `alerts --mark` 观察本人邮箱收件与无邮箱跳过日志；③ 后台全站清单抽查删除审计。
 - **v2.22.1 已发布**（tag `v2.22.1` → bb1318b）：CJ 现场回归修复——`/api/app/latest` 的 apkPath 按文件真实存在性三级派生
