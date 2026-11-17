@@ -55,22 +55,24 @@
 | **BQ** | 申诉邮件内一键「信任 / 封禁」（确认页 + 一次性 token，14 天有效；收件人沿用申诉邮箱） | [APPEAL-SYSTEM.md](APPEAL-SYSTEM.md) §10 / [DEV-BRIEF-APPEAL.md](DEV-BRIEF-APPEAL.md) | 已发布 v2.16.0（2026-11-14，随 O 同批） | ✅ 本轮已给 |
 | **BR** | 封禁自助恢复 + 手机/CGNAT 适配（加白即清封、`ban/state` 自查三件套、封禁页可读、页面/API 分桶） | [BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md) §11 | 已发布 v2.16.0（2026-11-14） | ✅ 本轮已给 |
 | **BS** | 安卓 App（TWA，不上架）+ 可清缓存离线 + 双通道分发（**APK 入库随镜像**，站点/GitHub 都能下；不做推送与角标） | [MOBILE-APP-TWA.md](MOBILE-APP-TWA.md) | 已发布 v2.17.0（2026-11-14；已被 CA 取代，TWA 停发） | ✅ 本轮已给 |
-| **BT** | 手机端点「登录」不出现登录页（浮层 `history.back()` 与 `router.push` 竞态）→ 登录入口统一硬跳 + chunk 兜底 | [MOBILE-LOGIN-ENTRY-FIX.md](MOBILE-LOGIN-ENTRY-FIX.md) | 质检通过（2026-11-16，eba879c） | ✅ 本轮已给 |
+| **BT** | 手机端点「登录」不出现登录页（浮层 `history.back()` 与 `router.push` 竞态）→ 登录入口统一硬跳 + chunk 兜底 | [MOBILE-LOGIN-ENTRY-FIX.md](MOBILE-LOGIN-ENTRY-FIX.md) | 已发布 v2.18.0（2026-11-16，eba879c） | ✅ 本轮已给 |
 | **BU** | 移动端登录页重做（大表单 + 键盘避让 + 验证码/下载入口） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §3 / §10 效果图 | 已过时（2026-11-16 被 CA 取代） | ✅ 本轮已给 |
 | **BV** | 前台移动端重设计（底部 Tab：首页/搜索/愿望单/我的；详情全屏页） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §4 / §10 效果图 | 已过时（2026-11-16 被 CA 取代） | ✅ 本轮已给 |
-| **BW** | 后台移动端重设计（☰ 抽屉 + 表格全卡片 + 批量吸底 + 表单全屏） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §5 / §10 效果图 | 质检通过（2026-11-16，605e05a + 打回修复 8817207） | ✅ 本轮已给 |
+| **BW** | 后台移动端重设计（☰ 抽屉 + 表格全卡片 + 批量吸底 + 表单全屏） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §5 / §10 效果图 | 已发布 v2.18.0（2026-11-16，605e05a + 打回修复 8817207） | ✅ 本轮已给 |
 | **BX** | 手机浏览器首访「下载安卓 App」提示（只安卓、一次、可关闭） | [MOBILE-REDESIGN.md](MOBILE-REDESIGN.md) §6 | 已过时（2026-11-16 被 CA 取代） | ✅ 本轮已给 |
-| **BY** | 安卓 App 内置更新（启动/回前台检查 → 原生提示 → 下载校验 → 用户确认安装；minVersionCode 强制） | [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md) | 质检通过（2026-11-16，92cae3e + 打回修复 8585dba） | ✅ 本轮已给 |
+| **BY** | 安卓 App 内置更新（启动/回前台检查 → 原生提示 → 下载校验 → 用户确认安装；minVersionCode 强制） | [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md) | 已发布 v2.18.0（2026-11-16，92cae3e + 打回修复 8585dba） | ✅ 本轮已给 |
 | **BZ** | App 代码仓库拆分（`android/` 迁独立公开仓库；站点 CI 拉 Release 出 `latest.json`；规格/TODO 留站点） | [MOBILE-APP-REPO-SPLIT.md](MOBILE-APP-REPO-SPLIT.md) | 已过时（CA 直接新建独立仓库） | ✅ 本轮已给 |
 | **CA** | 原生 Android 的站点侧（Token/API + Web 手机端改造；Android 工程见 CG） | [APP-NATIVE.md](APP-NATIVE.md) §3/§5 + [APP-API.md](APP-API.md) | 已发布 v2.22.0（2026-11-17） | ✅ 本轮已给 |
-| **CG** | 原生 Android App（CA-2~4，独立仓库 `steamdeals-app`；六屏/游客/登录后自动完成/启动封禁提示/内置更新） | [APP-NATIVE.md](APP-NATIVE.md) §4 | 质检通过（2026-11-17 第 1 轮） | ✅ 本轮已给 |
-| **CB** | 价格报表邮件 HTML 化 + 内容增强（品牌头/KPI/降价 Top5/涨价 Top3/7 天趋势/CTA；multipart 文本兜底） | [PRICE-REPORT-EMAIL.md](PRICE-REPORT-EMAIL.md) | 质检通过（2026-11-16，c5fc536 + 打回修复 becff89，第 2 轮复检） | ✅ 本轮已给 |
+| **CG** | 原生 Android App（CA-2~4，独立仓库 `steamdeals-app`；六屏/游客/登录后自动完成/启动封禁提示/内置更新） | [APP-NATIVE.md](APP-NATIVE.md) §4 | 已发布 app-v2.19.0（2026-11-17，App 仓库 tag + Release） | ✅ 本轮已给 |
+| **CB** | 价格报表邮件 HTML 化 + 内容增强（品牌头/KPI/降价 Top5/涨价 Top3/7 天趋势/CTA；multipart 文本兜底） | [PRICE-REPORT-EMAIL.md](PRICE-REPORT-EMAIL.md) | 已发布 v2.18.0（2026-11-16，c5fc536 + 打回修复 becff89） | ✅ 本轮已给 |
 | **CC** | 多源采集推进：ITAD/GOG/Humble 覆盖全目录（游标/状态 + 命中缓存）+ 后台四源触发 | [SOURCE-SYNC-COVERAGE.md](SOURCE-SYNC-COVERAGE.md) | 已发布 v2.19.0（2026-11-16，12f4f42） | ✅ 本轮已给 |
 | **CD** | 跨平台对齐（杉果 + ITAD）：英文名/Steam 链接反解 + 调度化 + **对齐审核页（去重分组/合并预览/决定继承）** + 映射落库 | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) | 已发布 v2.21.0（2026-11-17，e5fced8） | ✅ 本轮已给 |
 | **CF** | 后台体验与安全策略（申诉布局 / Steam 账号重复渲染修复 / 指标压缩 / 自动封禁收紧 + 审核证据） | [ADMIN-UX-SECURITY.md](ADMIN-UX-SECURITY.md) | 已发布 v2.21.0（2026-11-17，31483fb） | ✅ 本轮已给 |
 | **CH** | 个性化推荐 + Deck 认证 + 好评率（借鉴 steam-deals；免费角标/行为学习搭车） | [DISCOVERY-FOR-YOU.md](DISCOVERY-FOR-YOU.md) | 已发布 v2.21.0（2026-11-17，b575dcc） | ✅ 本轮已给 |
 | **CI** | 价格提醒邮件 HTML 化 + 申诉管理页视觉对齐（分段控件/空态/表格列/间距） | [ALERT-MAIL-APPEAL-UX.md](ALERT-MAIL-APPEAL-UX.md) | 已发布 v2.22.0（2026-11-17，docs/QA-CI.md ✅） | ✅ 本轮已给 |
-| **CJ** | 安卓版 App 发版后 /app 页自动更新（GitHub Release 自动同步 + 站点自托管下载 + GitHub 兜底） | [APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md) | 待开发（2026-11-17 已确认 3 项） | ✅ 本轮已给 |
+| **CJ** | 安卓版 App 发版后 /app 页自动更新（GitHub Release 同步 + 站点自托管 + 兜底） | [APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md) | 开发中（2026-11-17 认领；现场回归 2 项待修：apkPath 未回落 / data/app 为空） | ✅ 本轮已给 |
+| **CK** | e2e 测试套件（功能矩阵 + headless Edge + Android 模拟器/真机 + 公网只读 + PDF 报告） | [E2E-SUITE.md](E2E-SUITE.md) | 待开发（2026-11-17 已确认 13 项决策） | ✅ 本轮已给 |
+| **CL** | 用户级到价提醒（列表页 + 已拥有隐藏 + 后台全站清单 + 详情页三段式 UI） | [USER-ALERTS.md](USER-ALERTS.md) | 待开发（2026-11-17 已确认 3 项） | ✅ 本轮已给 |
 | **CE** | 杉果匹配器加固 + 误合并数据修复（完整标题计分/片段限制/数字一致性/内容词只进人工/`--apply` 二次确认） | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9 | 已发布 v2.19.0（2026-11-16，12f4f42；QA 报告 docs/QA-CE.md） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |
 | **AC** | 同步不可达的未保证项（AC1–AC11） | [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) | AC-1 已发布 v1.18.0；AC-2/AC-3/AC-4 已发布 v2.1.0（2026-11-09） | ✅ 已在对话给出 |
@@ -90,7 +92,7 @@
 | **AR** | 异常审核「按 IP 合并」视图 | [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md) §4 | 已发布 v2.2.0（2026-11-09，0aa6842） | ✅ 规格自包含 |
 | **AS** | README 开发进度摘要（自动生成） | [TODO-PROGRESS.md](TODO-PROGRESS.md) | 已发布 v2.3.0（de71311）；**2026-11-12 已下线**（方案 B：删生成块/脚本/CI/测试） | ✅ 规格自包含 |
 | **F** | Steam 价格同步优化（缩量 / 热点优先） | 计划写在 [TODO.md](TODO.md) F 段 | 已发布 v2.2.1（f32e2b9） | ✅ 按 F 段方案实现 |
-| **C1** | heat 逐 appid 全 `success:false` | ❌ 无规格（[TODO.md](TODO.md) C1） | 待探测 | ❌ 未给 |
+| **C1** | heat 逐 appid 全 `success:false` | 无独立规格（[TODO.md](TODO.md) C 段定案） | 已发布 v2.2.0（2026-11-09，b01aaf8 修复） | ✅ 已在对话给出 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
 
@@ -100,10 +102,10 @@
 
 ## 未落实项（本轮对账结论）
 
-1. **F**（价格同步优化）只有 TODO 里的计划，没有独立规格、没有开发描述；
-2. **C1**（heat 全失败）只有 TODO 一行，没有规格、没有探测结论；
+1. **F**（价格同步优化）已随 v2.2.1 发布（f32e2b9），方案写在 TODO F 段、无独立规格；
+2. **C1**（heat 全失败）2026-11-09 已定案并随 v2.2.0 修复（b01aaf8），无独立规格；
 3. **Y** 原先只有 TODO，现并入 AB 规格 §3-F；
-4. **AA** 缺所有者输入（`wishlist_add_failed` 日志），因此还没有开发描述；**AC / AE** 的决策已于 2026-11-06 拿到，已转「待开发」并给出开发描述；
+4. **AA** 已随 v2.5.0 发布（方案 A，785670b）；**AC / AE** 已于 2026-11-06 拿到决策并随 v2.1.0 / v1.18.0 发布；
 5. [TODO.md](TODO.md) 的历史段落存在**重复字母**（K/M/N/O/P 各出现两次）、A 段停留在 v1.4.6，扫描时容易被误导；
 6. **AH–AL** 五条已入 TODO（2026-11-06）：用户生命周期 3 条见 [USER-LIFECYCLE.md](USER-LIFECYCLE.md)，密码系统与页面 2 条见 [AUTH-REDESIGN.md](AUTH-REDESIGN.md)；
    AK/AL 未单独给开发描述——所有者明确"按规格 §8 顺序直接派发"；
