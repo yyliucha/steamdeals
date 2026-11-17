@@ -63,13 +63,12 @@ async function loginAdmin(base) {
 
 const getNoFollow = (base, ip, path, extra = {}) => fetch(base + path, { headers: { 'x-forwarded-for': ip, ...extra }, redirect: 'manual' });
 
-test('未封禁访问 /appeal 与 /appeal/ → 302 回首页（no-store）', async () => {
+test('CF 批：未封禁访问 /appeal → 200 正常页面（不再 302；前端只显示「无需申诉」提示）', async () => {
   const { base, close } = await boot({ frontendDir: frontDir() });
   try {
     for (const p of ['/appeal', '/appeal/', '/appeal?code=AP-ABC123&reason=访问被拒绝&until=&email=']) {
       const res = await getNoFollow(base, '198.51.101.1', p);
-      assert.equal(res.status, 302, p);
-      assert.equal(res.headers.get('location'), '/');
+      assert.equal(res.status, 200, p);
       assert.equal(res.headers.get('cache-control'), 'no-store');
     }
   } finally {
@@ -166,7 +165,10 @@ test('前端：BanPage 申诉链接只带 code；AppealPage 读 __APPEAL__、去
   assert.ok(!/info\.reason|info\.until|info\.email/.test(route), 'URL 不得再带 reason/until/email');
 
   assert.match(appealPage, /window\.__APPEAL__/, '申诉页应读注入的 __APPEAL__');
-  assert.match(appealPage, /useBanOnlyPage\(\)/, '申诉页应挂载解封复查');
+  // CF 批（docs/ADMIN-UX-SECURITY.md §2.1）：未封禁访问只提示不展示表单（不再用 useBanOnlyPage 踢回首页）
+  assert.ok(!/useBanOnlyPage\(\)/.test(appealPage), '申诉页不再挂载解封复查（未封禁改为提示而非踢回首页）');
+  assert.match(appealPage, /api\/ban\/state/, '申诉页查封禁状态决定是否展示表单');
+  assert.match(appealPage, /当前未被封禁，无需申诉/, '未封禁提示存在');
   assert.match(appealPage, /router\.replace\(\{ path: '\/appeal'/, '旧链接应清洗地址栏');
   const template = appealPage.slice(appealPage.indexOf('<template>'));
   assert.ok(!template.includes('限制原因'), '申诉页不再展示限制原因');

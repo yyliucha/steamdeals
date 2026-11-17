@@ -51,7 +51,7 @@
         <el-table :data="pagedSteamGames" v-loading="loading" stripe><el-table-column label="游戏" min-width="260"><template #default="{row}"><div class="game-admin"><img :src="`/img/steam/${row.appid}/capsule_sm_120`" @error="$event.target.style.display='none'"><div><a :href="`https://store.steampowered.com/app/${row.appid}/`" target="_blank" rel="noopener">{{ row.name||`appid:${row.appid}` }}</a><small>AppID {{ row.appid }} · {{ row.in_db?'已在本站目录':'尚未入库' }}</small></div></div></template></el-table-column><el-table-column label="游玩时间" width="155" align="right"><template #default="{row}">{{ Number(row.playtime_minutes||0) }} 分钟 · {{ (Number(row.playtime_minutes||0)/60).toFixed(1) }} 小时</template></el-table-column><el-table-column label="本站最低价" width="130" align="right"><template #default="{row}">{{ price(row.low) }}</template></el-table-column><el-table-column label="最近游玩" min-width="150"><template #default="{row}">{{ dateTime(row.last_played_at) }}</template></el-table-column></el-table>
         <PaginationBar v-model:page="steamPage" v-model:page-size="steamPageSize" :total="libraryGames.length"/>
       </div>
-      <template v-else>
+      <template v-else-if="isMobile">
         <el-empty v-if="!steamAccounts.length" description="还没有绑定 Steam 账号，点右上角「绑定新账号」开始"/>
         <div v-if="steamAccounts.length" class="game-card-list"><div v-for="a in steamAccounts" :key="a.steam_id" class="admin-card">
           <div class="admin-card-main"><strong>{{ a.alias||a.persona_name||a.steam_id }}</strong><small class="mono">{{ a.steam_id }}</small><small class="muted">游戏库 {{ a.games }} · 愿望单 {{ a.wishlist }} · {{ a.api_key_set?'API Key 已配置':'API Key 未配置' }} · 最近同步 {{ dateTime(a.library_synced_at)||'未同步' }}</small></div>

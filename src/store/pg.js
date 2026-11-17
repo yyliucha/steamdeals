@@ -2876,6 +2876,20 @@ export async function countPendingReviews(q) {
   return Number(r.rows[0]?.n ?? 0);
 }
 
+/** CF 批（docs/ADMIN-UX-SECURITY.md §4）：审核证据抽屉——该 IP 最近一条申诉状态。 */
+export async function appealStatusByIp(q, ip) {
+  if (!ip) return null;
+  const r = await q('select status from appeals where ip = $1 order by created_at desc limit 1', [String(ip)]);
+  return r.rows[0]?.status ?? null;
+}
+
+/** CF 批：该 IP 最近一次访问的 User-Agent（证据抽屉用，已有数据不新增抓取）。 */
+export async function lastUaByIp(q, ip) {
+  if (!ip) return null;
+  const r = await q('select user_agent from visitor_logs where ip = $1 and user_agent is not null order by created_at desc limit 1', [String(ip)]);
+  return r.rows[0]?.user_agent ?? null;
+}
+
 // ---------------------------------------------------------------- 申诉系统（docs/APPEAL-SYSTEM.md §2/§3，O/BQ 批次）
 
 /** 提交申诉入库；token 相关列（BQ）在提交时生成（只存 sha256 + 14 天到期）。 */

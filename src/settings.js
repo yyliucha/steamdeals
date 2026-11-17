@@ -181,6 +181,31 @@ export const SETTINGS = [
     help: 'API 独立桶窗口上限（默认 150）：脚本/纯接口高频仍会被拦，且封禁期内的升级计数只累计 API 请求。',
   }),
 
+  // ---- 自动封禁策略（CF 批，docs/ADMIN-UX-SECURITY.md §3）----
+  def('security.autoBan.mode', 'SECURITY_AUTOBAN_MODE', 'security', '自动封禁模式', 'enum', 'strict', {
+    options: ['strict', 'off', 'legacy'],
+    help: 'strict=只按硬规则自动临时封（漏洞路径/凭据爆破/极端频率/异常 UA），普通超频只 429；off=只 429 + 人工审核；legacy=旧三振（回退用）。',
+  }),
+  def('security.autoBan.pathDistinctMax', 'SECURITY_AUTOBAN_PATH_MAX', 'security', '漏洞路径：不同签名数（次/窗口）', 'int', 3, {
+    min: 1,
+    max: 100,
+    help: '窗口内命中不同扫描器签名路径的数量达到该值即自动临时封。',
+  }),
+  def('security.autoBan.pathWindowSec', 'SECURITY_AUTOBAN_PATH_WINDOW', 'security', '漏洞路径窗口（秒）', 'int', 600, { min: 60, max: 86400 }),
+  def('security.autoBan.credentialIpMax', 'SECURITY_AUTOBAN_CRED_MAX', 'security', '登录失败/IP（次/15 分钟）', 'int', 50, {
+    min: 5,
+    max: 1000,
+    help: '同 IP 15 分钟登录失败达到该值即自动临时封；20 次起仍只返回 429，账号 5 次锁 15 分钟不变。',
+  }),
+  def('security.autoBan.extremeMultiplier', 'SECURITY_AUTOBAN_EXTREME_MULT', 'security', '极端频率倍数', 'int', 5, { min: 2, max: 100 }),
+  def('security.autoBan.extremeWindows', 'SECURITY_AUTOBAN_EXTREME_WINDOWS', 'security', '极端频率连续窗口数', 'int', 2, { min: 1, max: 10 }),
+  def('security.autoBan.uaPatterns', 'SECURITY_AUTOBAN_UA_PATTERNS', 'security', '异常 UA 名单（逗号/换行分隔）', 'string', 'sqlmap,nikto,masscan,zgrab,nuclei,wpscan,gobuster,dirbuster,metasploit,acunetix,nessus', {
+    help: 'UA 命中名单关键词视为异常 UA，同 IP 10 分钟 ≥2 次自动临时封。',
+  }),
+  def('security.autoBan.banLadderMin', 'SECURITY_AUTOBAN_LADDER', 'security', '封禁阶梯（分钟，逗号分隔）', 'string', '10,60,1440', {
+    help: '同一天第 1/2/3 次自动封禁时长，第 3 次起封顶 1 天；跨天重置；永不自动永久。',
+  }),
+
   // ---- 网络 ----
   def('network.steamProxy', 'STEAM_PROXY', 'network', 'Steam 专用代理', 'secret', '', {
     help: '只作用于 Steam 域名，如 http://127.0.0.1:7890。可配多条（换行分隔、按顺序尝试、最多 10 条），仅支持 http/https。',

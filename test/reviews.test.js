@@ -622,14 +622,15 @@ async function banState(base, ip, extra = {}) {
   throw new Error('/api/ban/state 一直被限流');
 }
 
-test('BAN_ONLY_PAGES 遍历：未封禁一律 302；被封禁时 /banned* 403、/appeal* 200', async () => {
+test('BAN_ONLY_PAGES 遍历：未封禁一律 302；被封禁时 /banned* 403（CF 批：/appeal 已移出注册表，未封可见）', async () => {
   const { base, close } = await boot({}, { admin: true, frontendDir: banFrontDir() });
   try {
     const cookie = await loginAdmin(base);
     const victim = '198.51.100.80';
     const bystander = '198.51.100.81';
     const pages = [...BAN_ONLY_PAGES];
-    assert.ok(pages.length >= 5, '注册表至少包含 /banned、/banned.html 与 /appeal 三组');
+    assert.ok(pages.length >= 3, '注册表至少包含 /banned、/banned/、/banned.html');
+    assert.ok(!BAN_ONLY_PAGES.has('/appeal'), 'CF 批：/appeal 未封禁也应可见（只显示无需申诉提示）');
 
     // 未封禁：全部 302 回首页
     for (const p of pages) {
@@ -647,15 +648,13 @@ test('BAN_ONLY_PAGES 遍历：未封禁一律 302；被封禁时 /banned* 403、
     });
     assert.equal(ban.status, 200);
 
-    // 被封禁：/banned* 由拦截链给 403 封禁页；/appeal* 豁免拦截链、可见（守卫不拦被封禁者）
+    // 被封禁：/banned* 由拦截链给 403 封禁页；/appeal 豁免拦截链、可见（申诉入口）
     for (const p of pages) {
       const res = await fetch(base + p, { headers: { 'x-forwarded-for': victim, accept: 'text/html' } });
-      if (p.startsWith('/appeal')) {
-        assert.equal(res.status, 200, `被封禁 ${p} 应可见（申诉入口）`);
-      } else {
-        assert.equal(res.status, 403, `被封禁 ${p} 应给封禁页`);
-      }
+      assert.equal(res.status, 403, `被封禁 ${p} 应给封禁页`);
     }
+    const appealRes = await fetch(base + '/appeal', { headers: { 'x-forwarded-for': victim, accept: 'text/html' } });
+    assert.equal(appealRes.status, 200, '被封禁 /appeal 应可见（申诉入口）');
   } finally {
     await close();
   }

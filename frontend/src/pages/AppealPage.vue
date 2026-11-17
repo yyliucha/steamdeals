@@ -2,12 +2,9 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { useBanOnlyPage } from '../composables/useBanOnlyPage.js';
 
-// 客户端复查（docs/BAN-AND-SECURITY-FIXES.md §3.4）：挂载 + 每 30 秒 + 切回标签页查一次，
-// 解封后自动回首页——"仅封禁可见"的页面解封后不能继续显示。
-useBanOnlyPage();
-
+// CF 批（docs/ADMIN-UX-SECURITY.md §2.1）：申诉对所有封禁类型开放；
+// 未被封访问时只显示「当前未被封禁，无需申诉」，不展示提交表单（不再用 useBanOnlyPage 踢回首页）。
 const router = useRouter();
 // 站点信息由服务端注入 window.__APPEAL__（URL 不再带 reason/until/email，见
 // docs/URL-PARAM-PRIVACY.md §4.2）。本地 dev 无注入时回退 fetch('/api/site') 只补邮箱。
@@ -25,6 +22,9 @@ const captchaImage = ref('');
 const submitting = ref(false);
 const submitted = ref(false);
 const submittedCode = ref('');
+// CF 批：未封禁访问只提示不展示表单
+const notBanned = ref(false);
+const banStateLoading = ref(true);
 
 async function loadCaptcha() {
   captchaToken.value = '';
@@ -53,6 +53,16 @@ const appealText = computed(() => [
 // 旧链接兼容（docs/URL-PARAM-PRIVACY.md §4.4）：挂载后把地址栏清洗成只剩 ?code=，
 // 忽略 reason/until/email 等旧参数，不留明文在 history；再补一次邮箱回退。
 onMounted(async () => {
+  // CF 批：先查封禁状态——未封只提示；被封才加载验证码与表单
+  try {
+    const r = await fetch('/api/ban/state', { headers: { accept: 'application/json' } });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d && d.banned === false) notBanned.value = true;
+  } catch {
+    /* 查不到状态按被封处理，表单照常 */
+  }
+  banStateLoading.value = false;
+  if (notBanned.value) return;
   const raw = new URLSearchParams(window.location.search).get('code') || '';
   // 与服务端同一口径：整串必须匹配白名单，非法按空处理（不反射）
   const code = /^[A-Za-z0-9-]{1,16}$/.test(raw) ? raw : '';
@@ -127,7 +137,7 @@ async function copyAppeal() {
     <p class="intro">请说明当时的操作和网络情况，管理员会根据申诉编号核查访问记录。</p>
     <div class="appeal-meta"><span>申诉编号 <code>{{ appealCode || '未提供' }}</code></span></div>
 
-    <template v-if="!submitted">
+    <template v-if="!submitted && !notBanned">
       <el-alert v-if="!email" type="warning" :closable="false" title="站点尚未配置申诉邮箱；申诉仍会入库，管理员可在后台处理。" />
       <el-form label-position="top" @submit.prevent="submitAppeal">
         <el-form-item label="联系邮箱（必填，结果会发送到此邮箱）"><el-input v-model="contact" type="email" autocomplete="email" placeholder="例如 user@example.com" /></el-form-item>
@@ -142,6 +152,8 @@ async function copyAppeal() {
         <div class="appeal-actions"><el-button type="primary" :loading="submitting" @click="submitAppeal">提交申诉</el-button><el-button plain @click="copyAppeal">复制申诉内容</el-button></div>
       </el-form>
     </template>
+
+    <el-alert v-if="notBanned && !banStateLoading" type="info" :closable="false" title="当前未被封禁，无需申诉" description="如果你遇到了访问问题，请先确认网络或稍后重试；只有被封禁的用户才能提交申诉。" />
 
     <el-alert v-else class="submitted" type="success" :closable="false" :title="`已受理，申诉编号 ${submittedCode}`" description="处理结果会发送到你填写的邮箱；请勿重复提交。" />
   </section></main>

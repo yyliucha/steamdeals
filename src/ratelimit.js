@@ -29,6 +29,9 @@ export const DEFAULTS = {
   banMinutes: [10, 30], // 第 1、2 次封禁时长（分钟）
   dayBanStrikes: 3, // 第几次异常开始封到当天结束
   blockedEscalate: 100, // 封禁期内继续请求多少次 → 升一档（只累计 API）
+  // CF 批（docs/ADMIN-UX-SECURITY.md §3）：strict=普通超频只 429、自动封禁交给 auto-ban 硬规则；
+  // off=只 429 + 审核；legacy=旧三振（默认，env 未配置时保持历史行为——生产 hydrate 会写 strict）。
+  mode: 'legacy',
 };
 
 const pageHits = new Map(); // ip -> number[]（页面）
@@ -59,6 +62,7 @@ export function configure(next = {}) {
       : config.banMinutes,
     dayBanStrikes: boundedInt(next.dayBanStrikes, config.dayBanStrikes, 1, 100),
     blockedEscalate: boundedInt(next.blockedEscalate, config.blockedEscalate, 1, 100_000),
+    mode: ['strict', 'off', 'legacy'].includes(next.mode) ? next.mode : config.mode,
   };
   return { ...config };
 }
@@ -74,6 +78,8 @@ export function configureFromEnv(env = process.env) {
     apiMax: Number(env.RATE_LIMIT_API_MAX ?? DEFAULTS.apiMax),
     assetMax: Number(env.RATE_LIMIT_ASSET_MAX ?? DEFAULTS.assetMax),
     windowSec: Number(env.RATE_LIMIT_WINDOW_SEC ?? DEFAULTS.windowSec),
+    // CF 批：env 未配置保持 legacy（测试与历史行为）；生产 hydrate 会写 strict
+    mode: ['strict', 'off', 'legacy'].includes(env.SECURITY_AUTOBAN_MODE) ? env.SECURITY_AUTOBAN_MODE : 'legacy',
   });
 }
 
@@ -279,6 +285,10 @@ export async function hit(q, ip, { bucket = 'page' } = {}) {
     if (dayBanned.has(key)) {
       return { limited: true, until: activeBan, reason: '请求过于频繁（今天已被封禁），明天 0 点自动恢复', banned: true, dayBanned: true };
     }
+    // CF 批：strict/off 模式下封禁期内不升级（阶梯由 auto-ban 按天计算，不按请求数）
+    if (config.mode !== 'legacy') {
+      return { limited: true, until: activeBan, reason: '请求过于频繁（封禁中）', banned: true };
+    }
     if (bucket === 'api') {
       const blocked = (blockedHits.get(key) ?? 0) + 1;
       setBounded(blockedHits, key, blocked);
@@ -310,7 +320,21 @@ export async function hit(q, ip, { bucket = 'page' } = {}) {
   if (list.length > max + 1) list.splice(0, list.length - max - 1);
   setWindowEntry(map, key, list);
 
-  if (list.length <= max) return { limited: false };
+  if (list.length <= max) return { limited: false, count: list.length };
+
+  // CF 批（docs/ADMIN-UX-SECURITY.md §3.1/§3.3）：strict/off 模式下普通超频**只 429、不三振不封禁**——
+  // 极端频率（5 倍 × 连续 2 窗口）由调用方交给 auto-ban 判定；legacy 保持旧三振。
+  if (config.mode !== 'legacy') {
+    return {
+      limited: true,
+      over: true,
+      count: list.length,
+      bucket,
+      max,
+      reason: '请求过于频繁，请稍后再试',
+      needsReview: false,
+    };
+  }
 
   deleteWindowEntry(pageHits, key);
   deleteWindowEntry(apiHits, key);

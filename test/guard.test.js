@@ -122,3 +122,41 @@ test('inspect：正常页面/资源不上报；未知路径达到阈值才上报
   assert.equal(reviews[0].rule, 'unknown-paths');
   guard.resetState();
 });
+
+// ── CF 批（docs/ADMIN-UX-SECURITY.md §3.1）：UA 名单 / 空 UA 只记录不封 ──
+
+test('CF guard：异常 UA 上报 ua-list（uaHit 供 auto-ban 判定），不封禁', async () => {
+  guard.resetState();
+  guard.configure({ enabled: true });
+  const reviews = [];
+  const r = await guard.inspect({ ip: '203.0.113.9', path: '/api/games', userAgent: 'sqlmap/1.0', uaBad: true, onReview: (p) => reviews.push(p) });
+  assert.equal(r.action, 'review');
+  assert.equal(r.rule, 'ua-list');
+  assert.equal(r.uaHit, true);
+  assert.equal(reviews.length, 1);
+  assert.equal(reviews[0].rule, 'ua-list');
+});
+
+test('CF guard：空 UA 只进审核；未提供 UA 字段的旧调用不受影响', async () => {
+  guard.resetState();
+  guard.configure({ enabled: true });
+  const reviews = [];
+  const empty = await guard.inspect({ ip: '203.0.113.10', path: '/api/games', userAgent: '', onReview: (p) => reviews.push(p) });
+  assert.equal(empty.action, 'review');
+  assert.equal(empty.rule, 'empty-ua');
+  assert.equal(reviews.length, 1);
+  guard.resetState();
+  const reviews2 = [];
+  const legacy = await guard.inspect({ ip: '203.0.113.11', path: '/api/games', onReview: (p) => reviews2.push(p) });
+  assert.equal(legacy.action, 'pass', '未提供 userAgent（undefined）走旧行为');
+  assert.equal(reviews2.length, 0);
+});
+
+test('CF guard：签名路径证据优先于 UA 判定', async () => {
+  guard.resetState();
+  guard.configure({ enabled: true });
+  const reviews = [];
+  const r = await guard.inspect({ ip: '203.0.113.12', path: '/.env', userAgent: 'sqlmap/1.0', uaBad: true, onReview: (p) => reviews.push(p) });
+  assert.equal(r.rule, 'secret-file', '路径签名优先');
+  assert.equal(r.uaHit, undefined);
+});

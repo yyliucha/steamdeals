@@ -63,6 +63,14 @@ async function boot({ smtp = true, captchaEnabled = '0', frontendDir = null } = 
   const base = `http://127.0.0.1:${srv.port}`;
   const asIp = (ip, extra = {}) => ({ headers: { 'x-forwarded-for': ip, ...extra } });
   const post = async (path, body, ip = '203.0.113.60', extra = {}) => {
+    // CF 批（docs/ADMIN-UX-SECURITY.md §2.1）：提交校验封禁上下文——测试里先给该 IP
+    // 建立一条临时封禁记录（rate 来源），未封禁提交 400 的用例单独写。
+    if (path === '/api/appeal' && !extra.keepUnbanned) {
+      await q(
+        "insert into ip_abuse (ip, strikes, strike_day, banned_until, ban_source, updated_at) values ($1, 1, current_date, now() + interval '1 hour', 'rate', now()) on conflict (ip) do update set banned_until = excluded.banned_until, ban_source = excluded.ban_source",
+        [ip],
+      );
+    }
     const res = await fetch(base + path, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-forwarded-for': ip, ...extra },

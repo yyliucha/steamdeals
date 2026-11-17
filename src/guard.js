@@ -192,25 +192,46 @@ function throttleReview(ip, rule, now = Date.now()) {
 }
 
 /**
- * 检查一次请求。只上报、不封禁。
- * 返回 { action: 'pass' | 'review', verdict, count?, rule?, detail? }
+ * 检查一次请求。只上报、不封禁（CF 批：命中 UA 名单/路径签名由调用方交给 auto-ban 判封）。
+ * 返回 { action: 'pass' | 'review' | 'log', verdict, count?, rule?, detail?, uaHit? }
  * onReview(payload) 由调用方落库（默认没有任何副作用）。
+ * userAgent：原始 UA（undefined = 未提供，跳过 UA 检查——测试与旧调用不受影响）；
+ * uaBad：调用方按 settings 名单判定的「异常 UA」（guard 不持有名单）。
  */
-export async function inspect({ ip, path, method = 'GET', outDir = null, logger = null, onReview = null }) {
+export async function inspect({ ip, path, method = 'GET', outDir = null, logger = null, onReview = null, userAgent = undefined, uaBad = false }) {
   if (!config.enabled || !ip) return { action: 'pass' };
   if (method === 'OPTIONS') return { action: 'pass' }; // CORS 预检永远放行
 
+  // 路径证据优先：签名路径直接上报（CF：自动封由调用方按硬规则交给 auto-ban）
   const verdict = classifyPath(path, { outDir });
-  if (verdict.kind === 'known') return { action: 'pass' };
   const shown = String(path ?? '').slice(0, 200);
-
   if (verdict.kind === 'signature') {
     logger?.warn('security.path_detected', { ip, path: shown, rule: verdict.rule, action: 'review' });
     if (throttleReview(ip, verdict.rule) && typeof onReview === 'function') {
       await onReview({ rule: verdict.rule, detail: '扫描器路径', path: shown });
     }
-    return { action: 'review', verdict, rule: verdict.rule, detail: '扫描器路径' };
+    return { action: 'review', verdict, rule: verdict.rule, detail: '扫描器路径', path: shown };
   }
+
+  // CF 批（docs/ADMIN-UX-SECURITY.md §3.1）：UA 证据与路径无关——异常 UA 只记录待审核
+  // （自动封禁由调用方按「10 分钟 ≥2 次」交给 auto-ban）；空 UA 只进审核。
+  const uaProvided = userAgent !== undefined;
+  if (uaProvided && uaBad) {
+    const ua = String(userAgent ?? '').trim();
+    logger?.warn('security.ua_list_hit', { ip, ua: ua.slice(0, 80), action: 'review' });
+    if (throttleReview(ip, 'ua-list') && typeof onReview === 'function') {
+      await onReview({ rule: 'ua-list', detail: `异常 UA：${ua.slice(0, 120) || '（空）'}`, path: shown });
+    }
+    return { action: 'review', rule: 'ua-list', detail: '扫描器 UA', uaHit: true };
+  }
+  if (uaProvided && !String(userAgent ?? '').trim()) {
+    if (throttleReview(ip, 'empty-ua') && typeof onReview === 'function') {
+      await onReview({ rule: 'empty-ua', detail: '空 User-Agent', path: shown });
+    }
+    return { action: 'review', rule: 'empty-ua', detail: '空 User-Agent' };
+  }
+
+  if (verdict.kind === 'known') return { action: 'pass' };
 
   const count = recordUnknown(ip, path);
   if (count === 1) logger?.info('security.path_unknown', { ip, path: shown, threshold: config.unknownMax });

@@ -19,7 +19,7 @@ test('AO 前端接线：点名字开抽屉、点图标复制、中英文复制�
   const vue = read('../frontend/src/pages/AdminModules.vue');
   assert.match(vue, /import GameLinksDrawer/);
   assert.match(vue, /import \{ nameCopyText \}/);
-  assert.match(vue, /import \{ CopyDocument, Check \}/);
+  assert.match(vue, /import \{ CopyDocument, Check, ArrowDown \}/);
   assert.match(vue, /class="game-name" :title="row.name" @click="openGameLinks\(row\)"/);
   assert.match(vue, /@click.stop="copyGameName\(row\)"/);
   assert.match(vue, /copiedGameId/);

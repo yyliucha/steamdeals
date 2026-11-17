@@ -17,6 +17,7 @@ import * as visitors from './visitors.js';
 import * as images from './images.js';
 import * as ratelimit from './ratelimit.js';
 import * as guard from './guard.js';
+import * as autoBan from './auto-ban.js';
 import * as devices from './devices.js';
 import * as captcha from './captcha.js';
 import { createBackup, listBackups } from './backup.js';
@@ -85,7 +86,7 @@ const isMobileUa = (req) => /mobile/i.test(String(req.headers['user-agent'] ?? '
 
 // 仅被封禁者可见的页面：未封禁访问一律 302 回首页（docs/BAN-AND-SECURITY-FIXES.md §3）。
 // 以后新增同类页面必须登记进这里——测试会遍历它，漏登记直接红。
-export const BAN_ONLY_PAGES = new Set(['/banned', '/banned/', '/banned.html', '/appeal', '/appeal/']);
+export const BAN_ONLY_PAGES = new Set(['/banned', '/banned/', '/banned.html']);
 
 // 申诉编号：crypto 随机 + 去易混字符（0/O/1/I），保留 AP- 前缀（docs/URL-PARAM-PRIVACY.md §5/§6.1）。
 // 4 字节 32 bit → 取 30 bit 按 5 bit 一组映射到 32 字符表 → 恰好 6 位。
@@ -704,6 +705,25 @@ export function createApiServer({
       // 黑名单 IP 在计数之前被拦下：不计数、不三振、不升级、不写 ip_abuse / abuse_reviews，
       // 响应固定 403（不再出现"先 403、超 60 次后变 429"）。
       const hit = ip && !appNamespace && !adminBypass && !whitelisted ? visitors.blockedBy(ip) : null;
+
+      // CF 批（docs/ADMIN-UX-SECURITY.md §3）：auto-ban 硬规则作用域——白名单/管理员/内网/App 命名空间不参与
+      const autoBanScope = Boolean(ip && !whitelisted && !adminBypass && !appNamespace && !visitors.isPrivateAddress(ip));
+      const tryAutoBan = async (trigger, detail) => {
+        if (!trigger || !autoBanScope) return null;
+        const res = await autoBan.applyAutoBan(q, ip, { rule: trigger.rule, detail, path: trigger.paths?.[0] ?? null, ratelimit });
+        if (res) {
+          logger?.warn('auto_ban.applied', {
+            ip,
+            rule: trigger.rule,
+            until: new Date(res.until).toISOString(),
+            minutes: res.minutes,
+            strikes: res.strikes,
+          });
+        } else {
+          logger?.warn('auto_ban.skipped', { ip, rule: trigger.rule, reason: 'whitelisted or mode off' });
+        }
+        return res;
+      };
       if (hit && !appealExempt) {
         if (req.method === 'GET' && isFrontendAsset(path)) return serveFrontendStatic(res, frontendDir, outDir, path);
         logger?.warn('block.ip_denied', { ip, path, rule: hit });
@@ -729,7 +749,26 @@ export function createApiServer({
             reason: verdict.reason,
             escalated: Boolean(verdict.escalated),
             needsReview: Boolean(verdict.needsReview),
+            over: Boolean(verdict.over),
+            count: verdict.count ?? null,
           });
+          // CF 批（docs/ADMIN-UX-SECURITY.md §3.1）：strict 模式普通超频只 429；
+          // 极端频率（≥阈值 extremeMultiplier 倍且连续 extremeWindows 个窗口）交给 auto-ban 自动临时封。
+          if (verdict.over) {
+            const trigger = autoBanScope
+              ? autoBan.recordRateOver(ip, bucket, verdict.count)
+              : null;
+            if (trigger) {
+              const ban = await tryAutoBan(trigger, `极端频率：${bucket} 桶 ${verdict.count} 次/窗口（阈值 ${verdict.max}）`);
+              if (ban) {
+                logBlocked({ ip, req, path, status: 403, reason: 'auto:extreme-rate' });
+                return denyBanned(req, res, { status: 403, until: ban.until, reason: '检测到恶意高频请求，已临时封禁', ip });
+              }
+            }
+            // 未到极端：只 429（带 retry-after），不封禁、不算 App 封禁
+            logBlocked({ ip, req, path, status: 429, reason: verdict.reason });
+            return denyBanned(req, res, { status: 429, until, reason: verdict.reason, ip });
+          }
           // 只有"新一次超限"才记审核；封禁期内的重复请求不重复记
           if (!verdict.banned && verdict.needsReview) {
             await recordReview({
@@ -746,16 +785,19 @@ export function createApiServer({
         }
       }
 
-      // ---- 路径守卫：白名单 / 扫描器签名 / 未知路径计数 ----
-      // 只记录待审核，**绝不自动封禁**；管理员在控制台审批后才封 IP/设备。
+      // ---- 路径守卫：白名单 / 扫描器签名 / 未知路径计数 + 异常 UA（CF 批）----
+      // 只记录待审核；自动封禁只按 auto-ban 硬规则（路径签名/UA 名单），普通异常仍人工审批。
       if (ip && !whitelisted && !adminBypass && !visitors.isPrivateAddress(ip) && visitors.isIpLike(ip)) {
         try {
-          await guard.inspect({
+          const uaBad = autoBan.isBadUa(req.headers['user-agent']);
+          const result = await guard.inspect({
             ip,
             path,
             method: req.method ?? 'GET',
             outDir,
             logger,
+            userAgent: req.headers['user-agent'] ?? '',
+            uaBad,
             onReview: (payload) =>
               recordReview({
                 ip,
@@ -764,6 +806,16 @@ export function createApiServer({
                 ...payload,
               }),
           });
+          // CF 批硬规则：UA 名单（10 分钟 ≥2 次）/ 漏洞路径（窗口内 ≥N 个不同签名）→ 自动临时封
+          if (autoBanScope) {
+            if (result.uaHit) {
+              const trigger = autoBan.recordUaHit(ip);
+              if (trigger) await tryAutoBan(trigger, '异常 UA 名单命中');
+            } else if (result.verdict?.kind === 'signature') {
+              const trigger = autoBan.recordPathSignature(ip, result.rule, result.path ?? path);
+              if (trigger) await tryAutoBan(trigger, `漏洞路径探测：${trigger.paths?.join('、')}`);
+            }
+          }
         } catch (err) {
           // 守卫自己出错只记日志，绝不影响正常请求（fail-open）
           logger?.warn('guard.failed', { ip, path, message: String(err.message).slice(0, 160) });
@@ -1031,6 +1083,13 @@ export function createApiServer({
         } catch {
           /* 快照失败不阻塞提交 */
         }
+        // CF 批（docs/ADMIN-UX-SECURITY.md §2.1）：申诉对所有封禁类型开放；取不到封禁记录直接提示，
+        // 不展示/不接受"未封禁"的申诉（与页面「当前未被封禁，无需申诉」一致）。
+        const rateUntil = ip ? ratelimit.bannedUntil(ip) : null;
+        if (!reason && !hit && !rateUntil && !deviceBan) {
+          logger?.info('appeal.not_banned', { ip: ip || null });
+          return json(res, 400, { error: '当前未被封禁，无需申诉' });
+        }
         // BQ（§10.2）：动作 token 提交时生成——32 字节随机、只存 sha256、14 天有效
         const { token, hash } = newActionToken();
         const actionExpiresAt = new Date(Date.now() + 14 * 86400_000).toISOString();
@@ -1261,6 +1320,11 @@ export function createApiServer({
           ipEntry.windowStart = now;
         }
         if (ipEntry.count >= 20) {
+          // CF 批：被 429 挡下的尝试也计入凭据爆破计数（≥50 次自动临时封）
+          if (autoBanScope) {
+            const t = autoBan.recordCredentialFail(ip);
+            if (t) await tryAutoBan(t, `登录凭据爆破：15 分钟失败 ${t.count} 次`);
+          }
           const retryAfterSec = Math.ceil((ipEntry.windowStart + 15 * 60_000 - now) / 1000);
           logger?.warn('auth.ip_throttled', { ip, count: ipEntry.count, via: 'token' });
           return json(res, 429, { error: '尝试次数过多，请稍后再试', retryAfterSec });
@@ -1269,6 +1333,10 @@ export function createApiServer({
 
         const found = await db.findUserByName(q, username);
         if (found && found.locked_until && Date.parse(found.locked_until) > now) {
+          if (autoBanScope) {
+            const t = autoBan.recordCredentialFail(ip);
+            if (t) await tryAutoBan(t, `登录凭据爆破：15 分钟失败 ${t.count} 次`);
+          }
           logger?.warn('auth.token_rejected_locked', { username });
           return json(res, 429, {
             error: '尝试次数过多，请稍后再试',
@@ -1277,6 +1345,11 @@ export function createApiServer({
           });
         }
         if (!found || found.disabled || !db.verifyPassword(password, found.password_hash)) {
+          // CF 批：失败计入凭据爆破计数（≥50 次自动临时封；20 次起只 429 不变）
+          if (autoBanScope) {
+            const t = autoBan.recordCredentialFail(ip);
+            if (t) await tryAutoBan(t, `登录凭据爆破：15 分钟失败 ${t.count} 次`);
+          }
           const reason = !found ? 'unknown' : found.disabled ? 'disabled' : 'bad_password';
           if (found && !found.disabled) {
             const updated = await q('update users set failed_login_count = failed_login_count + 1 where id = $1 returning failed_login_count', [
@@ -1487,6 +1560,11 @@ export function createApiServer({
           ipEntry.windowStart = now;
         }
         if (ipEntry.count >= 20) {
+          // CF 批：被 429 挡下的尝试也计入凭据爆破计数（≥50 次自动临时封）
+          if (autoBanScope) {
+            const t = autoBan.recordCredentialFail(ip);
+            if (t) await tryAutoBan(t, `登录凭据爆破：15 分钟失败 ${t.count} 次`);
+          }
           const retryAfterSec = Math.ceil((ipEntry.windowStart + 15 * 60_000 - now) / 1000);
           logger?.warn('auth.ip_throttled', { ip, count: ipEntry.count });
           return json(res, 429, { error: '尝试次数过多，请稍后再试', retryAfterSec });
@@ -1496,6 +1574,10 @@ export function createApiServer({
         const found = await db.findUserByName(q, username);
         // 账号锁定：5 次失败锁 15 分钟（锁定期内即使密码正确也先 429）
         if (found && found.locked_until && Date.parse(found.locked_until) > now) {
+          if (autoBanScope) {
+            const t = autoBan.recordCredentialFail(ip);
+            if (t) await tryAutoBan(t, `登录凭据爆破：15 分钟失败 ${t.count} 次`);
+          }
           logger?.warn('auth.login_rejected_locked', { username });
           return json(res, 429, {
             error: '尝试次数过多，请稍后再试',
@@ -1504,6 +1586,11 @@ export function createApiServer({
           });
         }
         if (!found || found.disabled || !db.verifyPassword(password, found.password_hash)) {
+          // CF 批：失败计入凭据爆破计数（≥50 次自动临时封；20 次起只 429 不变）
+          if (autoBanScope) {
+            const t = autoBan.recordCredentialFail(ip);
+            if (t) await tryAutoBan(t, `登录凭据爆破：15 分钟失败 ${t.count} 次`);
+          }
           // 统一 401「用户名或密码错误」：不再暴露账号是否存在/是否被禁用（验收 11）；原因只进日志
           const reason = !found ? 'unknown' : found.disabled ? 'disabled' : 'bad_password';
           let attempts = 0;
@@ -3786,7 +3873,16 @@ export function createApiServer({
         if (!requireAdmin()) return;
         const status = String(url.searchParams.get('status') ?? '') === 'all' ? 'all' : 'pending';
         const reviews = await db.listAbuseReviews(q, { status, limit: Number(url.searchParams.get('limit') ?? 500) });
-        return json(res, 200, { reviews, pending: await db.countPendingReviews(q) });
+        // CF 批（docs/ADMIN-UX-SECURITY.md §4）：证据抽屉补充——地区/申诉状态/最近 UA（只用已有字段）
+        const enriched = await Promise.all(
+          reviews.map(async (r) => ({
+            ...r,
+            region: r.ip ? visitors.cachedRegion(r.ip) : null,
+            appeal_status: r.ip ? await db.appealStatusByIp(q, r.ip) : null,
+            last_ua: r.ip ? await db.lastUaByIp(q, r.ip) : null,
+          })),
+        );
+        return json(res, 200, { reviews: enriched, pending: await db.countPendingReviews(q) });
       }
       if (path === '/api/admin/reviews/approve' && req.method === 'POST') {
         if (!requireAdmin()) return;
@@ -3826,6 +3922,60 @@ export function createApiServer({
         const row = await db.finishAbuseReview(q, Number(body.id), { status: 'rejected', reviewedBy: user.id, note: body.note });
         if (!row) return json(res, 404, { error: '审核记录不存在' });
         return json(res, 200, { ok: true });
+      }
+
+      // CF 批（docs/ADMIN-UX-SECURITY.md §4）：单条审核四操作——临时封（10min/1h/1d）/
+      // 永久封（黑名单）/ 信任（白名单）/ 忽略（保留记录）；全部审计 review.action。
+      if (path === '/api/admin/reviews/act' && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const body = await readBody(req);
+        const id = Number(body.id);
+        const action = ['tempban', 'permban', 'trust', 'ignore'].includes(body.action) ? body.action : null;
+        if (!Number.isFinite(id) || !action) return json(res, 400, { error: '参数不合法（action: tempban/permban/trust/ignore）' });
+        const review = await db.getAbuseReview(q, id);
+        if (!review || review.status !== 'pending') return json(res, 404, { error: '审核记录不存在或已处理' });
+        if (!review.ip) return json(res, 400, { error: '该记录没有 IP，无法执行该操作' });
+        let minutes = null;
+        if (action === 'tempban') {
+          minutes = [10, 60, 1440].includes(Number(body.minutes)) ? Number(body.minutes) : 0;
+          if (!minutes) return json(res, 400, { error: '临时封时长必须是 10 / 60 / 1440 分钟' });
+          const until = Date.now() + minutes * 60_000;
+          await q(
+            `insert into ip_abuse (ip, strikes, strike_day, banned_until, ban_source, updated_at)
+             values ($1, 1, current_date, $2::timestamptz, 'manual:temp', now())
+             on conflict (ip) do update set banned_until = excluded.banned_until, ban_source = excluded.ban_source, updated_at = now()`,
+            [review.ip, new Date(until).toISOString()],
+          );
+          ratelimit.applyExternalBan(review.ip, until, { source: 'manual' });
+        } else if (action === 'permban') {
+          await banIpExclusive(review.ip, `审核永久封禁（${review.rule}）by ${user.username}`, 'ban');
+        } else if (action === 'trust') {
+          // 信任 = 白名单：加白移黑 + 清临时封禁 + 内存态同步（与 BJ/BR 批互斥口径一致）
+          await q('insert into ip_whitelist (ip, note) values ($1, $2) on conflict (ip) do update set note = excluded.note', [
+            review.ip,
+            `审核信任（${review.rule}）by ${user.username}`,
+          ]);
+          await q('delete from ip_blacklist where ip = $1', [review.ip]);
+          await q('update ip_abuse set banned_until = null where ip = $1', [review.ip]);
+          ratelimit.addWhitelist(review.ip);
+          autoBan.addWhitelist(review.ip);
+          ratelimit.clearBanMemory(review.ip);
+          await visitors.refreshBlocklist(q).catch(() => {});
+        }
+        await db.finishAbuseReview(q, id, {
+          status: action === 'ignore' ? 'rejected' : 'approved',
+          reviewedBy: user.id,
+          note: action === 'ignore' ? (body.note || '忽略') : body.note,
+        });
+        logger?.info('review.action', {
+          id,
+          ip: review.ip,
+          action,
+          minutes,
+          by: user.username,
+          reason: body.note ?? null,
+        });
+        return json(res, 200, { ok: true, action, minutes });
       }
 
       // ---- 管理员：批量操作（统一入口 + 白名单派发表，见 docs/ADMIN-BULK-ACTIONS.md）----
@@ -4439,8 +4589,10 @@ export function startApiServer({
         // 频率限制与白名单：内存计数 + 启动时从库里回填白名单/未到期封禁
         // BR 批：阈值来自 env（settings 水合后为 RATE_LIMIT_PAGE_MAX/API_MAX，DB > env > 默认）
         ratelimit.configureFromEnv(process.env);
+        // CF 批：auto-ban 硬规则阈值同样来自 env（SECURITY_AUTOBAN_*，settings 热加载）
+        autoBan.configureFromEnv(process.env);
         const loaded = await ratelimit.loadState(query);
-        logger?.info('rate.init', { ...ratelimit.currentConfig(), ...loaded });
+        logger?.info('rate.init', { ...ratelimit.currentConfig(), autoBan: autoBan.currentConfig(), ...loaded });
       } catch (err) {
         logger?.warn('rate.init_failed', { message: String(err.message).slice(0, 120) });
       }

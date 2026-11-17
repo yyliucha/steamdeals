@@ -220,3 +220,42 @@ test('BR：默认阈值下手机正常浏览（连刷首页 20 次）不触发�
   assert.equal(stats.inserts, 0, '20 次页面浏览不得触发三振写库');
   ratelimit.resetState();
 });
+
+// ── CF 批（docs/ADMIN-UX-SECURITY.md §3）：strict 模式普通超频只 429、不三振不封禁 ──
+
+test('CF strict 模式：普通超频只 429（over），不写三振、不封禁', async () => {
+  ratelimit.resetState();
+  ratelimit.configure({ enabled: true, mode: 'strict', apiMax: 2, windowSec: 60 });
+  const { q, stats } = fakeQ();
+  assert.equal((await ratelimit.hit(q, '203.0.113.9', { bucket: 'api' })).limited, false);
+  assert.equal((await ratelimit.hit(q, '203.0.113.9', { bucket: 'api' })).limited, false);
+  const over = await ratelimit.hit(q, '203.0.113.9', { bucket: 'api' });
+  assert.equal(over.limited, true);
+  assert.equal(over.over, true, '标记 over 供 auto-ban 判极端频率');
+  assert.equal(over.count, 3);
+  assert.equal(ratelimit.bannedUntil('203.0.113.9'), null, '普通超频绝不封禁');
+  assert.equal(stats.inserts, 0, '不写三振');
+});
+
+test('CF off 模式：与 strict 相同，普通超频只 429', async () => {
+  ratelimit.resetState();
+  ratelimit.configure({ enabled: true, mode: 'off', apiMax: 1, windowSec: 60 });
+  const { q, stats } = fakeQ();
+  await ratelimit.hit(q, '203.0.113.10', { bucket: 'api' });
+  const over = await ratelimit.hit(q, '203.0.113.10', { bucket: 'api' });
+  assert.equal(over.limited, true);
+  assert.equal(over.over, true);
+  assert.equal(ratelimit.bannedUntil('203.0.113.10'), null);
+  assert.equal(stats.inserts, 0);
+});
+
+test('CF legacy 模式：旧三振行为保留', async () => {
+  ratelimit.resetState();
+  ratelimit.configure({ enabled: true, mode: 'legacy', apiMax: 1, windowSec: 60, banMinutes: [10, 30] });
+  const { q } = fakeQ();
+  await ratelimit.hit(q, '203.0.113.11', { bucket: 'api' });
+  const over = await ratelimit.hit(q, '203.0.113.11', { bucket: 'api' });
+  assert.equal(over.limited, true);
+  assert.ok(!over.over);
+  assert.ok(ratelimit.bannedUntil('203.0.113.11') != null, 'legacy 仍自动三振');
+});

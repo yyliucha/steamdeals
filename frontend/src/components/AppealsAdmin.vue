@@ -109,16 +109,31 @@ async function confirmReject(action) {
   await ElMessageBox.alert('拒绝将保持封禁状态，并邮件通知申请人未通过。', '拒绝申诉');
 }
 
+// CF 批（docs/ADMIN-UX-SECURITY.md §2.1）：邮件处理说明——标题区只留说明 + 本入口
+function showMailNote() {
+  ElMessageBox.alert(
+    '申诉邮件里带「查看申诉 / 通过解封 / 拒绝」处理链接（14 天有效，一次性 token）。' +
+      '邮件内处理与后台处理共用同一状态机（先到先得）：通过 = 解封 IP + 设备并回信；拒绝 = 保持封禁并附理由；查看 = 只预览、无副作用。' +
+      '同一封邮件重复点击时，后到的操作会提示「该申诉已处理」。',
+    '邮件处理说明',
+    { confirmButtonText: '知道了' },
+  );
+}
+
 onMounted(() => loadAppeals());
 </script>
 
 <template>
   <div>
-    <div class="module-card"><div class="card-heading"><div><h3>申诉管理</h3><p>用户在被封禁时提交的解封申诉。处理动作会联动解封（IP / 设备），结果邮件通知申请人；邮件内一键处理与这里共用同一状态机（先到先得）。</p></div><el-button :loading="loading" @click="loadAppeals()">刷新</el-button></div>
-      <div class="module-tabs">
-        <button :class="{ on: filter === 'pending' }" @click="filter = 'pending'; loadAppeals(1)">待处理<template v-if="pendingCount">（{{ pendingCount }}）</template></button>
-        <button :class="{ on: filter === 'done' }" @click="filter = 'done'; loadAppeals(1)">已处理</button>
-        <button :class="{ on: filter === 'all' }" @click="filter = 'all'; loadAppeals(1)">全部</button>
+    <div class="module-card">
+      <div class="card-heading"><div><h3>申诉管理</h3><p>用户在被封禁时提交的解封申诉。处理动作会联动解封（IP / 设备），结果邮件通知申请人；邮件内一键处理与这里共用同一状态机（先到先得）。</p></div><el-button link type="primary" @click="showMailNote">邮件处理说明</el-button></div>
+      <div class="appeal-filter-row">
+        <div class="module-tabs">
+          <button :class="{ on: filter === 'pending' }" @click="filter = 'pending'; loadAppeals(1)">待处理<template v-if="pendingCount">（{{ pendingCount }}）</template></button>
+          <button :class="{ on: filter === 'done' }" @click="filter = 'done'; loadAppeals(1)">已处理</button>
+          <button :class="{ on: filter === 'all' }" @click="filter = 'all'; loadAppeals(1)">全部</button>
+        </div>
+        <el-button :loading="loading" @click="loadAppeals()">刷新</el-button>
       </div>
     </div>
 
@@ -178,5 +193,6 @@ onMounted(() => loadAppeals());
 </template>
 
 <style scoped>
+.appeal-filter-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:2px}.appeal-filter-row .module-tabs{border-bottom:0;padding:0}
 .appeal-detail dl{margin:0;border:1px solid var(--border);border-radius:12px;overflow:hidden}.appeal-detail dl div{display:flex;gap:10px;padding:9px 13px;border-bottom:1px solid var(--border);font-size:13px}.appeal-detail dl div:last-child{border-bottom:0}.appeal-detail dt{min-width:76px;color:var(--fg-muted);flex:none}.appeal-detail dd{margin:0;overflow-wrap:anywhere}.appeal-detail a{color:var(--brand);text-decoration:none}.appeal-message{white-space:pre-wrap}.resolve-title{margin:18px 0 10px;font-size:14px}.resolve-actions{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-bottom:12px}.resolve-buttons{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 </style>

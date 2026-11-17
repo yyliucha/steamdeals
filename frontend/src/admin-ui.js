@@ -1,11 +1,14 @@
 import {
-  ElCheckbox, ElCollapse, ElCollapseItem, ElDatePicker, ElInputNumber,
-  ElLoading, ElRadio, ElRadioGroup, ElSwitch, ElTable, ElTableColumn,
+  ElCheckbox, ElCollapse, ElCollapseItem, ElDatePicker, ElDropdown, ElDropdownItem, ElDropdownMenu,
+  ElInputNumber, ElLoading, ElRadio, ElRadioGroup, ElSwitch, ElTable, ElTableColumn,
   ElTabs, ElTabPane,
 } from 'element-plus';
 import 'element-plus/es/components/checkbox/style/css';
 import 'element-plus/es/components/collapse/style/css';
 import 'element-plus/es/components/date-picker/style/css';
+import 'element-plus/es/components/dropdown/style/css';
+import 'element-plus/es/components/dropdown-item/style/css';
+import 'element-plus/es/components/dropdown-menu/style/css';
 import 'element-plus/es/components/input-number/style/css';
 import 'element-plus/es/components/loading/style/css';
 import 'element-plus/es/components/message-box/style/css';
@@ -15,6 +18,6 @@ import 'element-plus/es/components/table/style/css';
 import 'element-plus/es/components/tabs/style/css';
 
 export function installAdminUi(app) {
-  for (const component of [ElCheckbox, ElCollapse, ElCollapseItem, ElDatePicker, ElInputNumber, ElRadio, ElRadioGroup, ElSwitch, ElTable, ElTableColumn, ElTabs, ElTabPane]) app.use(component);
+  for (const component of [ElCheckbox, ElCollapse, ElCollapseItem, ElDatePicker, ElDropdown, ElDropdownItem, ElDropdownMenu, ElInputNumber, ElRadio, ElRadioGroup, ElSwitch, ElTable, ElTableColumn, ElTabs, ElTabPane]) app.use(component);
   app.directive('loading', ElLoading.directive);
 }
