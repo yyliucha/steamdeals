@@ -69,6 +69,7 @@
 | **CD** | 跨平台对齐（杉果 + ITAD）：英文名/Steam 链接反解 + 调度化 + **对齐审核页（去重分组/合并预览/决定继承）** + 映射落库 | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) | 已发布 v2.21.0（2026-11-17，e5fced8） | ✅ 本轮已给 |
 | **CF** | 后台体验与安全策略（申诉布局 / Steam 账号重复渲染修复 / 指标压缩 / 自动封禁收紧 + 审核证据） | [ADMIN-UX-SECURITY.md](ADMIN-UX-SECURITY.md) | 已发布 v2.21.0（2026-11-17，31483fb） | ✅ 本轮已给 |
 | **CH** | 个性化推荐 + Deck 认证 + 好评率（借鉴 steam-deals；免费角标/行为学习搭车） | [DISCOVERY-FOR-YOU.md](DISCOVERY-FOR-YOU.md) | 已发布 v2.21.0（2026-11-17，b575dcc） | ✅ 本轮已给 |
+| **CI** | 价格提醒邮件 HTML 化 + 申诉管理页视觉对齐（分段控件/空态/表格列/间距） | [ALERT-MAIL-APPEAL-UX.md](ALERT-MAIL-APPEAL-UX.md) | 待开发（2026-11-17 已确认 2 项） | ✅ 本轮已给 |
 | **CE** | 杉果匹配器加固 + 误合并数据修复（完整标题计分/片段限制/数字一致性/内容词只进人工/`--apply` 二次确认） | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9 | 已发布 v2.19.0（2026-11-16，12f4f42；QA 报告 docs/QA-CE.md） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |
 | **AC** | 同步不可达的未保证项（AC1–AC11） | [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) | AC-1 已发布 v1.18.0；AC-2/AC-3/AC-4 已发布 v2.1.0（2026-11-09） | ✅ 已在对话给出 |
