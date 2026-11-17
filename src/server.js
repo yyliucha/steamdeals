@@ -26,7 +26,7 @@ import { VERSION } from './settings.js';
 import * as settings from './settings.js';
 import { handleSetupRoutes } from './setup-routes.js';
 import { sessionCookie } from './session-cookie.js';
-import { createAlignRunner } from './align-query.js';
+import { createAlignRunner, parseAlignPage } from './align-query.js';
 import { buildCandidateIndex } from './match.js';
 import { handleSettingsRoutes } from './settings-routes.js';
 import { appealEmailFrom } from './appeal.js';
@@ -4215,8 +4215,7 @@ export function createApiServer({
       if (path === '/api/admin/align' && req.method === 'GET') {
         if (!requireAdmin()) return;
         const refresh = url.searchParams.get('refresh') === '1';
-        const page = Math.max(1, Number.parseInt(url.searchParams.get('page') ?? '1', 10) || 1);
-        const pageSize = Math.min(50, Math.max(1, Number.parseInt(url.searchParams.get('pageSize') ?? '20', 10) || 20));
+        const { page, pageSize } = parseAlignPage(url.searchParams);
         const result = await buildAlignGroups({ refresh });
         const { groups, inherit } = result;
         const rows = groups.map((g) => ({

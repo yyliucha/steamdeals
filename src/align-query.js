@@ -8,6 +8,21 @@
 //   await runner.run();              // 缓存命中 / 首次计算（并发共享同一 Promise）
 //   await runner.run({ refresh: 1 }); // 绕过缓存强制重算
 //   runner.invalidate();             // 队列被 confirm/ignore 修改后失效
+
+/**
+ * CN 批：align 分页参数解析——非法/越界回落（page≥1；1≤pageSize≤50，默认 20）。
+ * 纯函数可单测；query 传 URL.searchParams。
+ */
+export function parseAlignPage(query) {
+  const num = (v, fallback) => {
+    const n = Number.parseInt(String(v ?? ''), 10);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  };
+  const page = Math.max(1, num(query.get('page'), 1));
+  const pageSize = Math.min(50, Math.max(1, num(query.get('pageSize'), 20)));
+  return { page, pageSize };
+}
+
 export function createAlignRunner({ compute, ttlMs = 10 * 60 * 1000, log = () => {} }) {
   let cache = null;
   let cachedAt = 0;

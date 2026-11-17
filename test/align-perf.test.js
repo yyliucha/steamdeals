@@ -7,7 +7,7 @@
 //           ③ 删 proposeAlignGroupsBudgeted 的预算检查 → partial 用例红。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAlignRunner } from '../src/align-query.js';
+import { createAlignRunner, parseAlignPage } from '../src/align-query.js';
 import { buildCandidateIndex, preselectCandidates, bestMatch, evaluatePair } from '../src/match.js';
 import { proposeAlignGroupsBudgeted, loadSonkwoItems } from '../src/align.js';
 
@@ -65,6 +65,16 @@ test('CN：ttlMs=0 时每次都重算（可测性锚点）', async () => {
   await runner.run();
   await runner.run();
   assert.equal(computes, 2);
+});
+
+test('CN：分页参数解析——非法/越界回落（page≥1；1≤pageSize≤50）', () => {
+  const q = (s) => new URL(`http://x/?${s}`).searchParams;
+  assert.deepEqual(parseAlignPage(q('')), { page: 1, pageSize: 20 }, '缺省回落');
+  assert.deepEqual(parseAlignPage(q('page=3&pageSize=10')), { page: 3, pageSize: 10 });
+  assert.deepEqual(parseAlignPage(q('page=abc&pageSize=xyz')), { page: 1, pageSize: 20 }, '非数字回落');
+  assert.deepEqual(parseAlignPage(q('page=0&pageSize=0')), { page: 1, pageSize: 20 }, '0 回落');
+  assert.deepEqual(parseAlignPage(q('page=-5&pageSize=999')), { page: 1, pageSize: 50 }, '越界钳制');
+  assert.deepEqual(parseAlignPage(q('page=2.9&pageSize=2.9')), { page: 2, pageSize: 2 }, '小数截断与 parseInt 同语义');
 });
 
 // ── 二、候选预筛不改口径（match.js + CE 回归数据）─────────────────────
