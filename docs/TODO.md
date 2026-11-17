@@ -1792,6 +1792,13 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `app/steamdeals-<ver>.apk` 存在则回落 `/app/<ver>.apk`；都没有返回 `null`；
   ② `/app/dl/<file>` 文件不存在时 **302 到 `/app/<file>`** 兜底旧链接；
   ③ 回归测试：`serve.test.js` 断言「`data/app` 为空时 apkPath 回落镜像路径」，并覆盖"同步失败/断网时页面不死链"。
+- **现场回归后续（2026-11-17 15:56 部署侧取证）**：容器 `Up 20 minutes (healthy)`（≈15:36 重启，与 15:39 的首页
+  20s 超时吻合，属重启窗口）；调度日志 itad/images/proxy-probe 均正常；但 `docker exec steamdeals ls -la /app/data/app`
+  **目录为空**（仅创建于 15:40）→ 同步任务未产出 APK，`/app/dl/<ver>.apk` 持续 404。
+  待查：`docker logs steamdeals 2>&1 | grep -i 'app.release'`（network / no_latest_asset / 未运行）。
+  **待定建议（需所有者拍板）**：④ **构建期兜底**——站点 CI（GitHub Actions 可访问 GitHub）在构建镜像时从 App 仓库
+  Release 拉 APK + latest.json 放进镜像，运行时 `app-release-sync` 降级为"发版后免重建镜像"的加速器；
+  这样国内服务器拉不到 api.github.com 也不影响 `/app` 页可用。⑤ 同步失败必须在后台任务卡/日志可见，不得静默。
 
 ## CK. 开发中：e2e 测试套件（功能矩阵 + headless Edge + Android 模拟器/真机 + 公网只读 + PDF 报告）
 
