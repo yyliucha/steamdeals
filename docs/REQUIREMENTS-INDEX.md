@@ -63,7 +63,7 @@
 | **BY** | 安卓 App 内置更新（启动/回前台检查 → 原生提示 → 下载校验 → 用户确认安装；minVersionCode 强制） | [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md) | 质检通过（2026-11-16，92cae3e + 打回修复 8585dba） | ✅ 本轮已给 |
 | **BZ** | App 代码仓库拆分（`android/` 迁独立公开仓库；站点 CI 拉 Release 出 `latest.json`；规格/TODO 留站点） | [MOBILE-APP-REPO-SPLIT.md](MOBILE-APP-REPO-SPLIT.md) | 已过时（CA 直接新建独立仓库） | ✅ 本轮已给 |
 | **CA** | 原生 Android 的站点侧（Token/API + Web 手机端改造；Android 工程见 CG） | [APP-NATIVE.md](APP-NATIVE.md) §3/§5 + [APP-API.md](APP-API.md) | 开发中（2026-11-17：CA-1 已实现待发版；CA-5 未做） | ✅ 本轮已给 |
-| **CG** | 原生 Android App（CA-2~4，独立仓库 `steamdeals-app`；六屏/游客/登录后自动完成/启动封禁提示/内置更新） | [APP-NATIVE.md](APP-NATIVE.md) §4 | 依赖阻塞（前置 CA） | ✅ 本轮已给 |
+| **CG** | 原生 Android App（CA-2~4，独立仓库 `steamdeals-app`；六屏/游客/登录后自动完成/启动封禁提示/内置更新） | [APP-NATIVE.md](APP-NATIVE.md) §4 | 已实现待发版（2026-11-17） | ✅ 本轮已给 |
 | **CB** | 价格报表邮件 HTML 化 + 内容增强（品牌头/KPI/降价 Top5/涨价 Top3/7 天趋势/CTA；multipart 文本兜底） | [PRICE-REPORT-EMAIL.md](PRICE-REPORT-EMAIL.md) | 质检通过（2026-11-16，c5fc536 + 打回修复 becff89，第 2 轮复检） | ✅ 本轮已给 |
 | **CC** | 多源采集推进：ITAD/GOG/Humble 覆盖全目录（游标/状态 + 命中缓存）+ 后台四源触发 | [SOURCE-SYNC-COVERAGE.md](SOURCE-SYNC-COVERAGE.md) | 已发布 v2.19.0（2026-11-16，12f4f42） | ✅ 本轮已给 |
 | **CD** | 跨平台对齐（杉果 + ITAD）：英文名/Steam 链接反解 + 调度化 + **对齐审核页（去重分组/合并预览/决定继承）** + 映射落库 | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) | 质检通过（2026-11-17，e5fced8；QA 报告 docs/QA-CD.md） | ✅ 本轮已给 |

@@ -1578,9 +1578,10 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **进度（2026-11-17）**：**CA-1 已实现待发版**——`api_tokens` 表 + Token 签发/撤销 + `/api/app/*` 前缀重写（例外 latest/status）+ `/api/app/status`；
   契约 docs/APP-API.md；测试 test/app-token.test.js（主链）+ test/api.test.js（生命周期真跑）。CA-5（Web 手机跳转）未做，条目保持「开发中」。
 
-## CG. 依赖阻塞：原生 Android App（CA-2~4，独立仓库 steamdeals-app）
+## CG. ~~依赖阻塞：原生 Android App（CA-2~4，独立仓库 steamdeals-app）~~ → **已实现待发版**
 
-**状态：依赖阻塞（前置 CA；Android 工程由独立开发会话做）**
+**状态：已实现待发版（2026-11-17，Android 开发会话；新仓库 `steamdeals-app` 本地 main，提交 cd2aaec → 0a07994 → a3dd168；**
+**模拟器 API 35 走通六屏 + 游客模式/pendingAction/启动封禁/内置更新全链路，待 gameprice-qa 质检）**
 **依赖：** CA（Token/API、`/api/app/*` 契约）
 **解锁：** CA-5 的手机前台跳转开关、旧 TWA 退场
 **规格**：[APP-NATIVE.md](APP-NATIVE.md) §4（技术栈/页面/更新/游客模式）
@@ -1591,6 +1592,19 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `pendingAction` 登录后自动完成一次；包名复用 `cn.yyliucha.steamdeals` + 现有 keystore；管理界面后置。
 - 验收：见 APP-NATIVE §7 的 Android 项——六屏可走通、游客模式、`pendingAction`、启动封禁提示、同签名覆盖旧 TWA、内置更新；
   APK 构建由 Android 工具链完成；旧 TWA 停发在 CG 收尾处理。
+- **实现记录（2026-11-17）**：包名 `cn.yyliucha.steamdeals`、minSdk 24/targetSdk 36、versionCode 21900（>旧 TWA 21800）、
+  同 keystore 签名（指纹 `48a30df9…` 与旧包一致）；接口全部按 APP-API.md 走 `/api/app/*`（`X-Device-Id` 头由安装时
+  生成的 UUID 提供）；登录 Token/主题/搜索历史落 DataStore；验证码 SVG 渲染为位图；价格历史用 Compose Canvas 原生绘制；
+  内置更新沿用 BY 契约（versionCode/notes/minVersionCode、Wi-Fi 默认、SHA-256 校验、系统安装确认、白名单主机）；
+  模拟器（API 35，WHPX）联调本地后端走通六屏：游客浏览/登录门槛弹层/登录后回原页自动完成刚才一次操作（后端
+  `api.user_flag` 日志佐证）/愿望单增删/主题切换/公告已读/检查更新下载校验安装/封禁对话框退出进程。
+- **已知限制（App README 同步）**：① 首页「折扣/史低/免费/未发售」筛选与「热度/发行时间/价格」排序按已加载数据
+  本地处理（列表行自带 `discount/prev_hist_low/release_date/heat` 字段；服务端补 `filter` 参数后替换
+  `HomeScreenState.applyDisplay` 即可）；② 契约端点 `POST /api/games/:appid/interest` 当前服务端仍是管理员专用，
+  App 收到 403 时回退现有用户级 `/api/games/:appid/flags`（请求体相同，契约放开后自动失效）；③ 内置更新下载用
+  OkHttp 流式 + 应用内进度条（BY 契约的 DownloadManager 属 TWA 实现细节，校验/默认 Wi-Fi/系统确认/白名单均一致）；
+  ④ 注册完成后回登录页预填用户名（Token 登录仍需再输一次图形验证码，服务端验证码必填）；⑤「已拥有」标记第一期
+  未做（APP-API.md 未提供 App 端 owned 接口）。
 
 ## CB. ~~待开发：价格报表邮件 HTML 化 + 内容增强~~ → **已发布 v2.18.0（2026-11-16）**
 
