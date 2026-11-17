@@ -144,6 +144,8 @@ test('BS-1：/.well-known/assetlinks.json、/sw.js、/app/*.apk 返回 200 + 正
   writeFileSync(join(frontend, 'sw.js'), 'self.addEventListener("install",()=>{});');
   mkdirSync(join(frontend, 'app'));
   writeFileSync(join(frontend, 'app', 'steamdeals-test.apk'), 'fake-apk-bytes');
+  // CJ 现场回归修复：镜像内有与 version 对应的 APK 文件 → apkPath 回落 /app/<ver>.apk
+  writeFileSync(join(frontend, 'app', 'steamdeals-2.16.0.apk'), 'fake-apk-bytes');
   writeFileSync(join(frontend, 'app', 'latest.json'), JSON.stringify({ version: '2.16.0', versionCode: 21600, minVersionCode: 21600, notes: ['修复 A', '新增 B'], apkPath: '/app/steamdeals-test.apk', sha256: 'abc123', size: 42, releasedAt: '2026-11-14' }));
   const store = await openStore('pglite:', {});
   await db.migrate(store);
@@ -164,9 +166,9 @@ test('BS-1：/.well-known/assetlinks.json、/sw.js、/app/*.apk 返回 200 + 正
     assert.match(apk.headers.get('content-type') || '', /vnd\.android\.package-archive/, 'APK Content-Type');
     assert.match(apk.headers.get('cache-control') || '', /no-cache/, 'APK no-cache（避免缓存旧包）');
     assert.ok(FRONTEND_PAGES.includes('/app') && FRONTEND_PAGES.includes('/app/'), '/app 已登记 FRONTEND_PAGES');
-    // BS-2：/api/app/latest 读 frontendDir 下的 app/latest.json（字段齐全且透传）
+    // BS-2：/api/app/latest 读 frontendDir 下的 app/latest.json（字段齐全；apkPath 按文件存在性回落镜像 /app/<ver>.apk）
     const latest = await (await fetch(`${base}/api/app/latest`)).json();
-    assert.deepEqual(latest, { version: '2.16.0', versionCode: 21600, minVersionCode: 21600, notes: ['修复 A', '新增 B'], apkPath: '/app/dl/steamdeals-2.16.0.apk', sha256: 'abc123', size: 42, releasedAt: '2026-11-14' }, '清单透传（含 BY 批 versionCode/minVersionCode/notes；CJ 批 apkPath 生成 /app/dl/<ver>.apk）');
+    assert.deepEqual(latest, { version: '2.16.0', versionCode: 21600, minVersionCode: 21600, notes: ['修复 A', '新增 B'], apkPath: '/app/steamdeals-2.16.0.apk', sha256: 'abc123', size: 42, releasedAt: '2026-11-14' }, '清单字段齐全（CJ 回归修复：data/app 为空时 apkPath 回落镜像路径）');
   } finally {
     await srv.close();
     await store.close();
@@ -190,7 +192,7 @@ test('BY-1：/api/app/latest 新字段缺失时返回 null 不报错（旧清单
     assert.equal(latest.minVersionCode, null, '缺失 minVersionCode → null');
     assert.deepEqual(latest.notes, ['单段说明'], '旧字符串 notes 按单条数组处理');
     assert.equal(latest.sha256, null, '其它缺失字段仍是 null（旧形状不变）');
-    assert.equal(latest.apkPath, '/app/dl/steamdeals-2.16.0.apk', 'apkPath 派生自 version（清单自带 apkPath 字段不再透传，CJ 批语义）');
+    assert.equal(latest.apkPath, null, '镜像内无对应 APK 文件 → apkPath null（CJ 回归修复：不再无条件 /app/dl/）');
     // 清单文件不存在也不报错
     await srv.close();
     const srv2 = await startApiServer({ query: q, frontendDir: mkdtempSync(join(tmpdir(), 'gp-frontend-empty-')), port: 0, host: '127.0.0.1' });
@@ -264,6 +266,59 @@ test('CA-5：手机跳转开关默认关闭；开启后前台 302 /app，豁免�
   } finally {
     if (prev === undefined) delete process.env.APP_MOBILE_REDIRECT_ENABLED;
     else process.env.APP_MOBILE_REDIRECT_ENABLED = prev;
+    await store.close();
+  }
+});
+
+// CJ 现场回归（2026-11-17 线上 v2.22.0，docs/TODO.md CJ 条目）：/api/app/latest 的 apkPath 必须按
+// 文件真实存在性派生——data/app（GitHub 每小时同步）优先 /app/dl/<ver>.apk，否则镜像内 /app/<ver>.apk 存在
+// 时回落镜像路径（不能无条件 /app/dl/ 造成死链）；/app/dl/<file> 缺失时 302 兜底到 /app/<file>。
+test('CJ-回归：apkPath 按 data/app 存在性回落镜像；/app/dl/<file> 缺失 302 到 /app/<file>', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'gp-appdata-'));
+  const frontend = mkdtempSync(join(tmpdir(), 'gp-frontend-'));
+  writeFileSync(join(frontend, 'index.html'), '<!doctype html><html><body>ok</body></html>');
+  mkdirSync(join(frontend, 'app'));
+  writeFileSync(join(frontend, 'app', 'steamdeals-2.16.0.apk'), 'mirror-apk-bytes');
+  writeFileSync(join(frontend, 'app', 'latest.json'), JSON.stringify({ version: '2.16.0', versionCode: 21600, minVersionCode: 21600, notes: ['修复 A'], apkPath: 'ignored', sha256: 'abc123', size: 42, releasedAt: '2026-11-14' }));
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  const prevDataDir = process.env.APP_DATA_DIR;
+  // 空目录 = 同步任务首轮未跑/失败（现场回归场景：data/app 为空）
+  process.env.APP_DATA_DIR = dataDir;
+  const srv = await startApiServer({ query: q, frontendDir: frontend, port: 0, host: '127.0.0.1' });
+  const base = `http://127.0.0.1:${srv.port}`;
+  try {
+    // ① data/app 为空 → apkPath 回落镜像 /app/<ver>.apk（不是死链 /app/dl/…）
+    const latest = await (await fetch(`${base}/api/app/latest`)).json();
+    assert.equal(latest.apkPath, '/app/steamdeals-2.16.0.apk', 'data/app 为空 → apkPath 回落镜像路径');
+
+    // ② /app/dl/<file> 不存在 → 302 到 /app/<file>（旧链接兜底）
+    const dl = await fetch(`${base}/app/dl/steamdeals-2.16.0.apk`, { redirect: 'manual' });
+    assert.equal(dl.status, 302, '/app/dl/ 缺失 → 302 兜底');
+    assert.equal(dl.headers.get('location'), '/app/steamdeals-2.16.0.apk', '302 目标为镜像路径');
+    assert.equal(dl.headers.get('cache-control'), 'no-store', '302 no-store');
+
+    // 镜像路径真实可下载（200）
+    const mirror = await fetch(`${base}/app/steamdeals-2.16.0.apk`);
+    assert.equal(mirror.status, 200, '镜像 /app/<ver>.apk 200 可下载');
+
+    // ③ data/app 有文件 → apkPath 用 /app/dl/ 且该路由 200
+    writeFileSync(join(dataDir, 'steamdeals-2.16.0.apk'), 'synced-apk-bytes');
+    const latest2 = await (await fetch(`${base}/api/app/latest`)).json();
+    assert.equal(latest2.apkPath, '/app/dl/steamdeals-2.16.0.apk', 'data/app 有文件 → /app/dl/ 路径');
+    const dl2 = await fetch(`${base}/app/dl/steamdeals-2.16.0.apk`);
+    assert.equal(dl2.status, 200, 'data/app 有文件 → /app/dl/ 200');
+    assert.match(dl2.headers.get('content-type') || '', /vnd\.android\.package-archive/, '/app/dl/ Content-Type');
+
+    // ④ 两边都没有 → null（BY 契约：缺失字段不报错）
+    writeFileSync(join(frontend, 'app', 'latest.json'), JSON.stringify({ version: '2.17.0' }));
+    const latest3 = await (await fetch(`${base}/api/app/latest`)).json();
+    assert.equal(latest3.apkPath, null, '镜像与 data/app 都没有该版本 → apkPath null');
+  } finally {
+    if (prevDataDir === undefined) delete process.env.APP_DATA_DIR;
+    else process.env.APP_DATA_DIR = prevDataDir;
+    await srv.close();
     await store.close();
   }
 });

@@ -87,6 +87,23 @@ const wantsHtml = (req) =>
 /** 手机 UA 粗判（日志用：下次"某个端不生效"时能直接区分 PC/移动端）。 */
 const isMobileUa = (req) => /mobile/i.test(String(req.headers['user-agent'] ?? ''));
 
+/**
+ * CJ 现场回归修复（2026-11-17 线上 v2.22.0）：/api/app/latest 的 apkPath 按文件真实存在性派生——
+ * data/app（GitHub Release 每小时同步）优先 → `/app/dl/<ver>.apk`；
+ * 否则镜像内 app/<ver>.apk 存在 → 回落 `/app/<ver>.apk`（旧路径，isFrontendPublicFile 白名单内）；
+ * 都没有 → null（BY 契约：缺失字段不报错）。
+ * APP_DATA_DIR 可覆盖 data 目录（测试隔离/运维）。
+ */
+export function appApkPathFor(version, frontendDir, cwd = process.cwd()) {
+  if (!version || !/^\d+\.\d+\.\d+$/.test(version)) return null;
+  const name = `steamdeals-${version}.apk`;
+  const synced = resolve(cwd, process.env.APP_DATA_DIR ?? 'data/app', name);
+  if (existsSync(synced)) return `/app/dl/${name}`;
+  const mirror = resolve(frontendDir ?? 'frontend/dist', 'app', name);
+  if (existsSync(mirror)) return `/app/${name}`;
+  return null;
+}
+
 // 仅被封禁者可见的页面：未封禁访问一律 302 回首页（docs/BAN-AND-SECURITY-FIXES.md §3）。
 // 以后新增同类页面必须登记进这里——测试会遍历它，漏登记直接红。
 export const BAN_ONLY_PAGES = new Set(['/banned', '/banned/', '/banned.html']);
@@ -957,21 +974,20 @@ export function createApiServer({
         return;
       }
 
-      // 静态资源（页面本身仍由 chart 生成，这里只发文件）
-      // 注意：/img/ 是服务端图片代理路由（本地缓存 → CDN 兜底），不能当静态文件处理，
-      // 否则会直接 404——这正是之前"前台只有名字没有图"的真正原因。
-      if (!path.startsWith('/api/') && !path.startsWith('/img/')) {
-        return serveFrontendStatic(res, frontendDir, outDir, path);
-      }
-
-
-      // ---- CJ 批：/app/dl/<file> 白名单下载路由（只读 data/app/，HEAD 可用，非白名单 404）----
+      // ---- CJ 批：/app/dl/<file> 白名单下载路由（只读 data/app/，HEAD 可用）----
+      // 必须在静态资源分支之前——/app/dl/ 不是镜像文件，落到 serveFrontendStatic 只会 404。
+      // CJ 现场回归修复（2026-11-17 线上 v2.22.0）：文件不存在时 302 回落到镜像 /app/<file>——
+      // 首轮同步未跑/失败（data/app 为空）时旧下载链接不死。
       const dlMatch = path.match(/^\/app\/dl\/(steamdeals-[\d.]+\.apk)$/);
       if (dlMatch) {
         const file = dlMatch[1];
-        const dlRoot = resolve(process.cwd(), 'data', 'app');
+        const dlRoot = resolve(process.cwd(), process.env.APP_DATA_DIR ?? 'data/app');
         const target = resolve(dlRoot, file);
-        if (!target.startsWith(dlRoot + sep) || !existsSync(target)) return json(res, 404, { error: 'not found' });
+        if (!target.startsWith(dlRoot + sep) || !existsSync(target)) {
+          res.writeHead(302, { location: `/app/${file}`, 'cache-control': 'no-store', 'content-length': '0' });
+          res.end();
+          return;
+        }
         const size = (readFileSync(target)).length;
         if (size > 50 * 1024 * 1024) return json(res, 404, { error: 'too large' });
         if (req.method === 'HEAD') {
@@ -982,6 +998,14 @@ export function createApiServer({
         res.writeHead(200, { 'content-type': 'application/vnd.android.package-archive', 'content-length': size, 'cache-control': 'no-store' });
         return res.end(readFileSync(target));
       }
+
+      // 静态资源（页面本身仍由 chart 生成，这里只发文件）
+      // 注意：/img/ 是服务端图片代理路由（本地缓存 → CDN 兜底），不能当静态文件处理，
+      // 否则会直接 404——这正是之前"前台只有名字没有图"的真正原因。
+      if (!path.startsWith('/api/') && !path.startsWith('/img/')) {
+        return serveFrontendStatic(res, frontendDir, outDir, path);
+      }
+
       // ---- 公开接口：站点信息 / 公告 / 设备指纹上报 ----
       if (path === '/api/site' && req.method === 'GET') {
         // AL 批（docs/AUTH-REDESIGN.md §5.3）：注册页用——开关与 SMTP 就绪状态（不可用时不显示表单）
@@ -1819,16 +1843,17 @@ export function createApiServer({
       if (path === '/api/app/latest' && req.method === 'GET') {
         const { readLatestMeta } = await import('./app-release.js');
         const file = process.env.APP_LATEST_FILE ?? resolve(frontendDir ?? 'frontend/dist', 'app', 'latest.json');
-        const { data } = readLatestMeta('data/app', file);
+        const { data } = readLatestMeta(process.env.APP_DATA_DIR ?? 'data/app', file);
         try {
           // BY 批（docs/MOBILE-APP-UPDATE.md §3）：versionCode/minVersionCode/notes 透传，
           // 缺失时返回 null 不报错（旧清单/旧客户端不受影响）；notes 兼容旧字符串格式（按单条处理）。
+          // CJ 现场回归修复：apkPath 按文件真实存在性派生（data/app → 镜像 → null），不再无条件 /app/dl/。
           return json(res, 200, {
             version: data.version ?? null,
             versionCode: data.versionCode == null ? null : Number(data.versionCode),
             minVersionCode: data.minVersionCode == null ? null : Number(data.minVersionCode),
             notes: data.notes == null ? null : (Array.isArray(data.notes) ? data.notes : [data.notes]),
-            apkPath: data?.version ? `/app/dl/steamdeals-${data.version}.apk` : null,
+            apkPath: appApkPathFor(data?.version, frontendDir),
             sha256: data.sha256 ?? null,
             size: data.size == null ? null : Number(data.size),
             releasedAt: data.releasedAt ?? null,
