@@ -196,6 +196,17 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 ### 当前状态（2026-11-16 更新，v2.19.0 已发布：CE 杉果匹配器加固 + CC 多源采集推进）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
+- **v2.22.1 已发布**（tag `v2.22.1` → bb1318b）：CJ 现场回归修复——`/api/app/latest` 的 apkPath 按文件真实存在性三级派生
+  （`data/app`（GitHub 每小时同步）优先 `/app/dl/<ver>.apk`，否则镜像内 `app/<ver>.apk` 存在则回落 `/app/<ver>.apk`，
+  都没有返回 null）；`/app/dl/<file>` 文件不存在时 **302** 兜底到 `/app/<file>`；`/app/dl/` 路由从静态资源分支之后移到之前
+  （原位置为死代码——任何请求都先落到 serveFrontendStatic，是线上 404 的直接原因之一）；`APP_DATA_DIR` 环境变量作测试隔离。
+  回归断言进 `test/serve.test.js`「CJ-回归」用例（data/app 空 → 回落镜像 / 302 兜底 / 有文件走 /app/dl/ 200 / 两边无 → null 四分支）；
+  BS-1/BY-1 断言同步更新。
+  验证：`npm test` 全链绿、`frontend:build` ✓、`scan` ✅。
+  质检：CJ 复检轮 ✅（[QA-CJ-regression.md](QA-CJ-regression.md)，通过 4 / 缺失 0 / 偏差 0 / 需人工确认 1——线上复测）。
+  CI：docker-hub run 44051124638 ✅（test/smoke/publish）；docker-tcr run 44051124347 ✅（test/publish）。
+  **服务器部署待执行**（升级到 `2.22.1`）：部署后按原现场回归路径复核——`/api/app/latest` 的 apkPath 在 data/app 为空时
+  指向 `/app/<ver>.apk` 且浏览器下载成功；`app-sync` 首轮成功后切 `/app/dl/<ver>.apk` 且 200；旧 `/app/dl/` 链接 302 兜底。
 - **v2.22.0 已发布**（tag `v2.22.0`，提交 014ec9b 发版文档 + 53dad6c test 修复后重打 tag）：CA（App Token 认证：`api_tokens` + `/api/auth/token[/revoke]` +
   `/api/app/*` 前缀重写与封禁豁免 + `/api/app/status` + 契约 docs/APP-API.md；CA-5 手机 UA 前台 302 → `/app`
   开关默认关闭 + 微信「在浏览器打开」提示 + /app 页改版为主推原生 App）+ CI（提醒邮件 HTML 化 + 申诉页视觉对齐）+

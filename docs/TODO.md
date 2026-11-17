@@ -1761,10 +1761,10 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ③ `npm test` / `frontend:build` / `scan` 全绿；**不自行构建**。
 - **待确认**：§11 两条（「到期」是否保留独立列；空态文案是否随筛选联动）。
 
-## CJ. ~~开发中：安卓版 App 发版后 /app 页自动更新（站点自托管 + GitHub 兜底）~~ → **已发布 v2.22.0（回归修复 b726af4，质检 ✅）**
+## CJ. ~~开发中：安卓版 App 发版后 /app 页自动更新（站点自托管 + GitHub 兜底）~~ → **已发布 v2.22.1（主体 v2.22.0 + 现场回归修复）**
 
-**状态：质检通过（2026-11-17 主体第 1 轮 ✅ docs/QA-CJ.md，517ffb6，已随 v2.22.0 发布；现场回归复检轮 ✅**
-**docs/QA-CJ-regression.md，b726af4 三处修复，随 v2.22.1 发布）**
+**状态：已发布 v2.22.1（2026-11-17：主体 517ffb6 随 v2.22.0 发布，QA ✅ docs/QA-CJ.md 第 1 轮；现场回归修复 b726af4 质检 ✅**
+**docs/QA-CJ-regression.md，随 v2.22.1 发布；CI 双绿 docker-hub 44051124638 / docker-tcr 44051124347；服务器部署待执行）**
 **依赖：** 无（App 仓库 `app-v2.19.0` Release 已就绪，含 APK + sha256）
 **解锁：** 无
 **规格**：[APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md)
