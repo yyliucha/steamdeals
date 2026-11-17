@@ -55,6 +55,8 @@
     "diagnose": "node src/cli.js diagnose",
     "logs": "node src/cli.js logs",
     "sync:all": "node src/cli.js sync all",
+    "e2e": "node test/e2e/runner.mjs",
+    "e2e:smoke": "node test/e2e/runner.mjs --tag=smoke",
     "frontend:dev": "vite --config frontend/vite.config.js",
     "frontend:build": "vite build --config frontend/vite.config.js",
     "frontend:preview": "vite preview --config frontend/vite.config.js"

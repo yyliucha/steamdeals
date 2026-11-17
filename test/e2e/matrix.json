@@ -1,0 +1,766 @@
+{
+  "version": 1,
+  "comment": "e2e 功能矩阵（CK 批，docs/E2E-SUITE.md §2.1/§4）。新功能必须加行，否则 QA 按覆盖不足打回；--only=id 只跑指定行，--tag=组 按组跑，tag=smoke 是 npm run e2e:smoke 的核心链路（≤5 分钟）。字段：id/name/tag/kind/steps(人工步骤)/assert(断言点)/expect(预期)/run(可执行步骤)。run 步骤类型见 docs/TESTING-E2E.md。",
+  "rows": [
+    {
+      "id": "home",
+      "name": "首页：目录统计与游戏列表",
+      "tag": ["front", "smoke"],
+      "kind": "browser",
+      "steps": ["打开首页", "等待目录统计与卡片渲染"],
+      "assert": ["正文出现「款收录条目」", "出现种子游戏「星露谷物语」卡片", "Console 无 error"],
+      "expect": "首页渲染完整，目录统计与列表可见",
+      "run": [
+        { "goto": "/" },
+        { "waitDom": { "has": "款收录条目" } },
+        { "waitDom": { "has": "星露谷物语" } },
+        { "assertEval": { "expr": "document.querySelectorAll('.game-card').length >= 1", "desc": "桌面卡片列表非空" } },
+        { "screenshot": "home" },
+        { "noConsoleError": {} }
+      ]
+    },
+    {
+      "id": "home-type-filter",
+      "name": "首页：游戏类型筛选（DLC）",
+      "tag": ["front"],
+      "kind": "browser",
+      "steps": ["首页类型下拉选「DLC」", "观察列表只剩 DLC 条目"],
+      "assert": ["列表出现「风之旅人 DLC 试炼包」", "列表不再出现「星露谷物语」"],
+      "expect": "类型筛选真实生效（app_type 口径）",
+      "run": [
+        { "goto": "/" },
+        { "waitDom": { "has": "星露谷物语" } },
+        { "click": { "selector": ".filter-select" } },
+        { "sleep": 400 },
+        { "click": { "text": "DLC", "selector": ".el-select-dropdown__item" } },
+        { "sleep": 600 },
+        { "waitDom": { "has": "风之旅人 DLC 试炼包", "timeoutMs": 8000 } },
+        { "assertEval": { "expr": "!document.body.innerText.includes('星露谷物语')", "desc": "筛选后普通游戏消失" } },
+        { "screenshot": "home-type-filter" }
+      ]
+    },
+    {
+      "id": "search-cn",
+      "name": "搜索：中文关键词",
+      "tag": ["front", "smoke"],
+      "kind": "browser",
+      "steps": ["搜索框输入「星露」回车", "等待结果刷新"],
+      "assert": ["结果包含「星露谷物语」", "结果不包含「求生之路」"],
+      "expect": "中文搜索命中（搜索读模型）",
+      "run": [
+        { "goto": "/" },
+        { "waitDom": { "has": "星露谷物语" } },
+        { "fill": { "selector": ".search input", "value": "星露" } },
+        { "pressEnter": { "selector": ".search input" } },
+        { "sleep": 800 },
+        { "waitDom": { "has": "星露谷物语", "timeoutMs": 8000 } },
+        { "assertEval": { "expr": "!document.body.innerText.includes('求生之路')", "desc": "无关结果不出现" } },
+        { "screenshot": "search-cn" }
+      ]
+    },
+    {
+      "id": "search-en",
+      "name": "搜索：英文关键词",
+      "tag": ["front"],
+      "kind": "browser",
+      "steps": ["搜索框输入「Left」回车"],
+      "assert": ["结果包含「求生之路 2 Left 4 Dead 2」"],
+      "expect": "英文搜索命中",
+      "run": [
+        { "goto": "/" },
+        { "waitDom": { "has": "星露谷物语" } },
+        { "fill": { "selector": ".search input", "value": "Left" } },
+        { "pressEnter": { "selector": ".search input" } },
+        { "sleep": 800 },
+        { "waitDom": { "has": "Left 4 Dead 2", "timeoutMs": 8000 } },
+        { "screenshot": "search-en" }
+      ]
+    },
+    {
+      "id": "game-detail",
+      "name": "游戏详情弹窗：报价/价格历史/复制名",
+      "tag": ["front", "smoke"],
+      "kind": "browser",
+      "steps": ["点开「星露谷物语」卡片", "等待详情弹窗渲染"],
+      "assert": ["出现「各区服与平台报价」", "出现「复制游戏名」按钮", "价格曲线组件渲染"],
+      "expect": "详情弹窗报价、价格历史、复制名齐全",
+      "run": [
+        { "goto": "/" },
+        { "waitDom": { "has": "星露谷物语" } },
+        { "click": { "text": "星露谷物语", "selector": ".game-card" } },
+        { "waitDom": { "has": "各区服与平台报价", "timeoutMs": 8000 } },
+        { "waitDom": { "has": "复制游戏名" } },
+        { "waitDom": { "has": "当前最低" } },
+        { "assertEval": { "expr": "!!document.querySelector('.phr') && document.body.innerText.includes('区间最低')", "desc": "价格历史组件渲染" } },
+        { "screenshot": "game-detail" }
+      ]
+    },
+    {
+      "id": "game-detail-dlc",
+      "name": "游戏详情：DLC 区块",
+      "tag": ["front"],
+      "kind": "browser",
+      "steps": ["点开「星露谷物语」卡片", "滚动详情底部", "等待 DLC 列表加载"],
+      "assert": ["出现「DLC（共 2 个）」区块头", "出现 DLC 名「星露谷物语 OST」", "Steam 跳转链接存在"],
+      "expect": "DLC 区块按分页接口渲染（反向自检目标：删掉该区块此行必须红）",
+      "run": [
+        { "goto": "/" },
+        { "waitDom": { "has": "星露谷物语" } },
+        { "click": { "text": "星露谷物语", "selector": ".game-card" } },
+        { "waitDom": { "has": "各区服与平台报价", "timeoutMs": 8000 } },
+        { "waitDom": { "has": "DLC（共 2 个）", "timeoutMs": 8000 } },
+        { "waitDom": { "has": "星露谷物语 OST", "timeoutMs": 8000 } },
+        { "assertEval": { "expr": "document.querySelectorAll('.dlc-block .dlc-name').length === 2", "desc": "DLC 列表两行" } },
+        { "screenshot": "game-detail-dlc" }
+      ]
+    },
+    {
+      "id": "login-page-render",
+      "name": "登录页：表单与验证码",
+      "tag": ["front", "smoke"],
+      "kind": "browser",
+      "steps": ["打开 /login"],
+      "assert": ["出现「登录 SteamDeals」", "出现用户名/密码/验证码输入", "出现「注册」入口"],
+      "expect": "登录页三种模式与验证码渲染",
+      "run": [
+        { "goto": "/login" },
+        { "waitDom": { "has": "登录 SteamDeals" } },
+        { "assertEval": { "expr": "document.querySelectorAll('.captcha-row input').length === 1", "desc": "验证码输入存在" } },
+        { "assertEval": { "expr": "document.body.innerText.includes('注册')", "desc": "注册入口存在" } },
+        { "screenshot": "login-page" }
+      ]
+    },
+    {
+      "id": "login-wrong-password",
+      "name": "登录：错误密码就地报错",
+      "tag": ["front"],
+      "kind": "browser",
+      "steps": ["打开 /login", "输入存在的用户名 + 错误密码 + 正确验证码", "提交"],
+      "assert": ["出现错误提示（topError）", "不跳转（仍停留登录页）"],
+      "expect": "错误密码被拒并就地提示（行为级断言）",
+      "run": [
+        { "logout": {} },
+        { "goto": "/login" },
+        { "waitDom": { "has": "登录 SteamDeals" } },
+        { "fill": { "selector": ".auth-field input[autocomplete='username']", "value": "admin" } },
+        { "fill": { "selector": ".auth-field input[type='password']", "value": "WrongPass#2026xx" } },
+        { "fillCaptcha": { "selector": ".captcha-row input" } },
+        { "click": { "text": "登录", "selector": ".auth-submit" } },
+        { "waitDom": { "has": "用户名或密码", "timeoutMs": 8000 } },
+        { "assertUrl": { "includes": "/login" } },
+        { "screenshot": "login-wrong-password" }
+      ]
+    },
+    {
+      "id": "register-page-render",
+      "name": "注册页：表单渲染",
+      "tag": ["front"],
+      "kind": "browser",
+      "steps": ["打开 /register"],
+      "assert": ["出现注册表单字段", "出现「已有账号？登录」"],
+      "expect": "注册页渲染",
+      "run": [
+        { "goto": "/register" },
+        { "waitDom": { "has": "注册", "timeoutMs": 8000 } },
+        { "assertEval": { "expr": "document.body.innerText.includes('登录')", "desc": "登录入口存在" } },
+        { "screenshot": "register-page" }
+      ]
+    },
+    {
+      "id": "app-download-page",
+      "name": "App 下载页：版本与下载入口",
+      "tag": ["front"],
+      "kind": "browser",
+      "steps": ["打开 /app"],
+      "assert": ["出现版本号", "出现下载入口", "出现 GitHub 备用链接文案"],
+      "expect": "下载页版本/下载/GitHub 兜底齐全",
+      "run": [
+        { "goto": "/app" },
+        { "waitDom": { "has": "安卓版", "timeoutMs": 8000 } },
+        { "waitDom": { "has": "下载", "timeoutMs": 8000 } },
+        { "assertEval": { "expr": "/2\\.\\d+\\.\\d+/.test(document.body.innerText)", "desc": "版本号（x.y.z）可见" } },
+        { "assertEval": { "expr": "document.body.innerText.includes('GitHub')", "desc": "GitHub 备用入口可见" } },
+        { "screenshot": "app-download-page" }
+      ]
+    },
+    {
+      "id": "app-download-wechat-ua",
+      "name": "App 下载页：微信内置浏览器提示",
+      "tag": ["front"],
+      "kind": "browser",
+      "steps": ["Edge 设微信 UA（MicroMessenger）", "打开 /app"],
+      "assert": ["出现「当前在微信内置浏览器中，无法直接下载安装 APK」", "提示「在浏览器打开」"],
+      "expect": "微信 UA 下给出转浏览器提示（决策 #8：不做微信客户端自动化）",
+      "run": [
+        { "viewport": { "width": 390, "height": 844, "mobile": true, "ua": "Mozilla/5.0 (Linux; Android 13; MI 14 Build/TKQ1.221114.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/121.0 Mobile Safari/537.36 MicroMessenger/8.0.47" } },
+        { "goto": "/app" },
+        { "waitDom": { "has": "当前在微信内置浏览器中", "timeoutMs": 8000 } },
+        { "assertEval": { "expr": "document.body.innerText.includes('在浏览器打开')", "desc": "转浏览器引导可见" } },
+        { "screenshot": "app-download-wechat-ua" },
+        { "resetViewport": {} }
+      ]
+    },
+    {
+      "id": "mobile-no-overflow",
+      "name": "移动端：390px 窄屏无横向溢出",
+      "tag": ["front"],
+      "kind": "browser",
+      "steps": ["Edge 设 390×844 移动视口", "打开首页"],
+      "assert": ["scrollWidth ≤ innerWidth+1", "移动端底部入口渲染（☰ 菜单按钮）"],
+      "expect": "窄屏无横向滚动（v1.10.0 移动端基线）",
+      "run": [
+        { "viewport": { "width": 390, "height": 844, "mobile": true, "ua": "Mozilla/5.0 (Linux; Android 13; MI 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0 Mobile Safari/537.36" } },
+        { "goto": "/" },
+        { "waitDom": { "has": "找到 3 款游戏" } },
+        { "waitDom": { "has": "星露谷物语" } },
+        { "assertEval": { "expr": "document.documentElement.scrollWidth <= window.innerWidth + 1", "desc": "无横向溢出" } },
+        { "screenshot": "mobile-home" },
+        { "resetViewport": {} }
+      ]
+    },
+    {
+      "id": "appeal-page",
+      "name": "申诉页：表单渲染",
+      "tag": ["front", "smoke"],
+      "kind": "browser",
+      "steps": ["打开 /appeal"],
+      "assert": ["出现「申请解除访问限制」或申诉表单", "出现验证码/提交入口"],
+      "expect": "申诉页可渲染（被封用户自救通道）",
+      "run": [
+        { "goto": "/appeal" },
+        { "waitDom": { "has": "申请解除", "timeoutMs": 8000 } },
+        { "screenshot": "appeal-page" },
+        { "noConsoleError": {} }
+      ]
+    },
+    {
+      "id": "banned-guard-redirect",
+      "name": "封禁页守卫：未封禁访问 /banned 回首页",
+      "tag": ["front", "smoke"],
+      "kind": "browser",
+      "steps": ["直接访问 /banned（无封禁状态）"],
+      "assert": ["最终落地首页（URL 不再是 /banned）"],
+      "expect": "守卫 302 生效（v1.14.1 基线）",
+      "run": [
+        { "goto": "/banned" },
+        { "sleep": 1200 },
+        { "assertUrl": { "includes": "/banned", "negate": true } }
+      ]
+    },
+    {
+      "id": "notice-drawer",
+      "name": "通知中心：铃铛抽屉含种子公告",
+      "tag": ["front"],
+      "kind": "browser",
+      "steps": ["点首页铃铛", "等待抽屉"],
+      "assert": ["抽屉出现「欢迎使用 SteamDeals」公告"],
+      "expect": "站点通知抽屉渲染",
+      "run": [
+        { "goto": "/" },
+        { "waitDom": { "has": "星露谷物语" } },
+        { "click": { "selector": ".theme-btn[title='站点通知']" } },
+        { "waitDom": { "has": "欢迎使用 SteamDeals", "timeoutMs": 8000 } },
+        { "screenshot": "notice-drawer" }
+      ]
+    },
+    {
+      "id": "console-anon-redirect",
+      "name": "后台守卫：匿名访问 /console 被弹回",
+      "tag": ["admin", "smoke"],
+      "kind": "browser",
+      "steps": ["匿名直接访问 /console"],
+      "assert": ["落地首页或登录页（无后台内容）"],
+      "expect": "后台非管理员不可见",
+      "run": [
+        { "goto": "/console" },
+        { "sleep": 1500 },
+        { "assertEval": { "expr": "!document.body.innerText.includes('管理控制台')", "desc": "无后台内容" } },
+        { "screenshot": "console-anon-redirect" }
+      ]
+    },
+    {
+      "id": "admin-login",
+      "name": "后台：管理员登录进入控制台",
+      "tag": ["admin", "smoke"],
+      "kind": "browser",
+      "steps": ["/login 以管理员登录（验证码）", "打开 /console"],
+      "assert": ["侧栏出现 13 模块组（内容运营/访问与安全/账号与服务/日志审计/系统）"],
+      "expect": "管理员登录后控制台可用（浏览器真实登录链）",
+      "run": [
+        { "logout": {} },
+        { "goto": "/login" },
+        { "waitDom": { "has": "登录 SteamDeals" } },
+        { "fill": { "selector": ".auth-field input[autocomplete='username']", "value": "admin" } },
+        { "fill": { "selector": ".auth-field input[type='password']", "value": "E2eAdmin#2026$Xy7q" } },
+        { "fillCaptcha": { "selector": ".captcha-row input" } },
+        { "click": { "text": "登录", "selector": ".auth-submit" } },
+        { "waitDom": { "has": "修改密码", "timeoutMs": 10000 } },
+        { "goto": "/console" },
+        { "waitDom": { "has": "内容运营", "timeoutMs": 10000 } },
+        { "waitDom": { "has": "访问与安全" } },
+        { "waitDom": { "has": "账号与服务" } },
+        { "waitDom": { "has": "日志审计" } },
+        { "waitDom": { "has": "系统设置" } },
+        { "screenshot": "admin-console" },
+        { "noConsoleError": {} }
+      ]
+    },
+    {
+      "id": "admin-module-games",
+      "name": "后台模块：游戏管理",
+      "tag": ["admin"],
+      "kind": "browser",
+      "steps": ["管理员进 /console?section=games"],
+      "assert": ["出现「游戏管理」标题", "列表含种子游戏「星露谷物语」"],
+      "expect": "游戏管理列表/筛选可见",
+      "run": [
+        { "goto": "/console?section=games" },
+        { "waitDom": { "has": "游戏管理", "timeoutMs": 10000 } },
+        { "waitDom": { "has": "星露谷物语", "timeoutMs": 10000 } },
+        { "screenshot": "admin-games" }
+      ]
+    },
+    {
+      "id": "admin-module-recycle",
+      "name": "后台模块：回收站",
+      "tag": ["admin"],
+      "kind": "browser",
+      "steps": ["管理员进 /console?section=recycle"],
+      "assert": ["出现回收站视图（空态或列表）"],
+      "expect": "回收站可打开",
+      "run": [
+        { "goto": "/console?section=recycle" },
+        { "waitDom": { "has": "回收站", "timeoutMs": 10000 } },
+        { "screenshot": "admin-recycle" }
+      ]
+    },
+    {
+      "id": "admin-module-announcements",
+      "name": "后台模块：站点通知",
+      "tag": ["admin"],
+      "kind": "browser",
+      "steps": ["管理员进 /console?section=announcements"],
+      "assert": ["出现「站点通知」标题", "列表含种子公告"],
+      "expect": "站点通知列表可见",
+      "run": [
+        { "goto": "/console?section=announcements" },
+        { "waitDom": { "has": "站点通知", "timeoutMs": 10000 } },
+        { "waitDom": { "has": "欢迎使用 SteamDeals", "timeoutMs": 10000 } },
+        { "screenshot": "admin-announcements" }
+      ]
+    },
+    {
+      "id": "admin-module-wishlists",
+      "name": "后台模块：愿望单",
+      "tag": ["admin"],
+      "kind": "browser",
+      "steps": ["管理员进 /console?section=wishlist"],
+      "assert": ["出现「愿望单」标题与列表/空态"],
+      "expect": "愿望单清单可打开",
+      "run": [
+        { "goto": "/console?section=wishlist" },
+        { "waitDom": { "has": "愿望单", "timeoutMs": 10000 } },
+        { "screenshot": "admin-wishlists" }
+      ]
+    },
+    {
+      "id": "admin-module-visitors",
+      "name": "后台模块：访问记录（明细/异常审核/封禁白名单/设备）",
+      "tag": ["admin"],
+      "kind": "browser",
+      "steps": ["管理员进 /console?section=visitors", "看四个子视图切换"],
+      "assert": ["出现「访问记录」", "出现「访问明细」与「异常审核」子入口", "出现「封禁与白名单」"],
+      "expect": "访问记录四视图齐全",
+      "run": [
+        { "goto": "/console?section=visitors" },
+        { "waitDom": { "has": "访问记录", "timeoutMs": 10000 } },
+        { "waitDom": { "has": "访问明细", "timeoutMs": 10000 } },
+        { "waitDom": { "has": "异常审核" } },
+        { "waitDom": { "has": "封禁与白名单" } },
+        { "screenshot": "admin-visitors" }
+      ]
+    },
+    {
+      "id": "admin-module-appeals",
+      "name": "后台模块：申诉管理（分段控件/空态/详情）",
+      "tag": ["admin"],
+      "kind": "browser",
+      "steps": ["管理员进 /console?section=appeals"],
+      "assert": ["出现「申诉管理」", "分段控件或空态渲染"],
+      "expect": "申诉管理页结构完整（CI 批基线）",
+      "run": [
+        { "goto": "/console?section=appeals" },
+        { "waitDom": { "has": "申诉管理", "timeoutMs": 10000 } },
+        { "screenshot": "admin-appeals" },
+        { "noConsoleError": {} }
+      ]
+    },
+    {
+      "id": "admin-module-users",
+      "name": "后台模块：用户管理",
+      "tag": ["admin"],
+      "kind": "browser",
+      "steps": ["管理员进 /console?section=users"],
+      "assert": ["出现「用户管理」", "列表含 admin 账号"],
+      "expect": "用户管理列表可见",
+      "run": [
+        { "goto": "/console?section=users" },
+        { "waitDom": { "has": "用户管理", "timeoutMs": 10000 } },
+        { "waitDom": { "has": "admin", "timeoutMs": 10000 } },
+        { "screenshot": "admin-users" }
+      ]
+    },
+    {
+      "id": "admin-module-steam",
+      "name": "后台模块：Steam 账号",
+      "tag": ["admin"],
+      "kind": "browser",
+      "steps": ["管理员进 /console?section=steam"],
+      "assert": ["出现「绑定的 Steam 账号」", "出现「绑定新账号」按钮"],
+      "expect": "Steam 账号管理视图可见",
+      "run": [
+        { "goto": "/console?section=steam" },
+        { "waitDom": { "has": "绑定的 Steam 账号", "timeoutMs": 10000 } },
+        { "waitDom": { "has": "绑定新账号" } },
+        { "screenshot": "admin-steam" }
+      ]
+    },
+    {
+      "id": "admin-module-sessions",
+      "name": "后台模块：登录会话",
+      "tag": ["admin"],
+      "kind": "browser",
+      "steps": ["管理员进 /console?section=sessions"],
+      "assert": ["出现「登录会话」与当前会话行"],
+      "expect": "会话列表可见（当前管理员会话在内）",
+      "run": [
+        { "goto": "/console?section=sessions" },
+        { "waitDom": { "has": "登录会话", "timeoutMs": 10000 } },
+        { "waitDom": { "has": "admin", "timeoutMs": 10000 } },
+        { "screenshot": "admin-sessions" }
+      ]
+    },
+    {
+      "id": "admin-module-mail",
+      "name": "后台模块：邮件服务",
+      "tag": ["admin"],
+      "kind": "browser",
+      "steps": ["管理员进 /console?section=mail"],
+      "assert": ["出现「邮件服务」或 SMTP 配置表单"],
+      "expect": "邮件服务视图可见",
+      "run": [
+        { "goto": "/console?section=mail" },
+        { "waitDom": { "has": "邮件", "timeoutMs": 10000 } },
+        { "screenshot": "admin-mail" }
+      ]
+    },
+    {
+      "id": "admin-module-oplogs",
+      "name": "后台模块：操作日志（5 tab）",
+      "tag": ["admin"],
+      "kind": "browser",
+      "steps": ["管理员进 /console?section=op-logs"],
+      "assert": ["出现「操作日志」", "出现 用户删除/批量操作/Steam 账号/邮件发送/运行与同步 五个 tab"],
+      "expect": "操作日志五 tab 齐全",
+      "run": [
+        { "goto": "/console?section=op-logs" },
+        { "waitDom": { "has": "操作日志", "timeoutMs": 10000 } },
+        { "waitDom": { "has": "用户删除" } },
+        { "waitDom": { "has": "批量操作" } },
+        { "waitDom": { "has": "Steam 账号" } },
+        { "waitDom": { "has": "邮件发送" } },
+        { "waitDom": { "has": "运行与同步" } },
+        { "screenshot": "admin-oplogs" }
+      ]
+    },
+    {
+      "id": "admin-module-settings",
+      "name": "后台模块：系统设置",
+      "tag": ["admin"],
+      "kind": "browser",
+      "steps": ["管理员进 /console?section=settings"],
+      "assert": ["出现「系统设置」与设置表单"],
+      "expect": "系统设置可打开",
+      "run": [
+        { "goto": "/console?section=settings" },
+        { "waitDom": { "has": "系统设置", "timeoutMs": 10000 } },
+        { "screenshot": "admin-settings" }
+      ]
+    },
+    {
+      "id": "admin-module-stats",
+      "name": "后台模块：数据统计",
+      "tag": ["admin"],
+      "kind": "browser",
+      "steps": ["管理员进 /console?section=stats"],
+      "assert": ["出现「数据统计」与指标块"],
+      "expect": "数据统计可见",
+      "run": [
+        { "goto": "/console?section=stats" },
+        { "waitDom": { "has": "数据统计", "timeoutMs": 10000 } },
+        { "screenshot": "admin-stats" }
+      ]
+    },
+    {
+      "id": "account-orphan-cleanup",
+      "name": "后台账号：开场孤儿清理（只删 e2e_ 前缀）",
+      "tag": ["admin"],
+      "kind": "api",
+      "steps": ["SQL 插入两个 e2e_orphan 用户（模拟上次中断残留）", "跑孤儿清理", "断言 e2e_ 前缀清零且真实用户不受影响"],
+      "assert": ["e2e_orphan* 被彻底删除", "admin 等非前缀账号原样保留"],
+      "expect": "中断后重跑可清孤儿（验收 ③）",
+      "run": [
+        { "adminLogin": { "username": "admin", "password": "E2eAdmin#2026$Xy7q" } },
+        { "sql": { "sql": "insert into users (username, password_hash, role) values ('e2e_orphan_a', 'x', 'user'), ('e2e_orphan_b', 'x', 'user')", "expect": "rowCount===2", "desc": "插入两个模拟孤儿" } },
+        { "cleanupOrphans": {} },
+        { "sql": { "sql": "select count(*)::int as n from users where username like 'e2e_%'", "expect": "rows[0].n===0", "desc": "e2e_ 前缀清零" } },
+        { "sql": { "sql": "select count(*)::int as n from users where username='admin'", "expect": "rows[0].n===1", "desc": "真实管理员未受影响" } }
+      ]
+    },
+    {
+      "id": "account-create-login",
+      "name": "后台账号：新建 e2e_ 用户并登录（验证码）",
+      "tag": ["admin"],
+      "kind": "api",
+      "steps": ["后台 POST /api/admin/users 建 e2e_<时间戳>（强密码）", "GET /api/captcha 拿 token + 库内读答案", "POST /api/login 登录", "GET /api/me 断言"],
+      "assert": ["创建返回 201", "登录 200", "/api/me 用户名一致", "must_change_password=true（后台建号强制改密）"],
+      "expect": "后台建号 → 真实登录链可用（决策 #5）",
+      "run": [
+        { "adminLogin": { "username": "admin", "password": "E2eAdmin#2026$Xy7q" } },
+        { "eval": { "saveAs": "e2eUser", "expr": "ctx.e2eUsername = 'e2e_' + Date.now()" } },
+        { "apiCall": { "method": "POST", "path": "/api/admin/users", "cookie": "admin", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "role": "user" }, "expect": "status===201", "saveAs": "createdUser" } },
+        { "userLogin": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" } },
+        { "apiCall": { "method": "GET", "path": "/api/me", "cookie": "user", "expect": "status===200 && body.user.username==='${e2eUser}' && body.user.mustChangePassword===true", "desc": "身份与强制改密标记" } }
+      ]
+    },
+    {
+      "id": "account-change-password",
+      "name": "后台账号：登录后改密（旧密失效、新密可登）",
+      "tag": ["admin"],
+      "kind": "api",
+      "steps": ["POST /api/user/password 改密", "旧密码再登录 → 401", "新密码登录 → 200"],
+      "assert": ["改密 200", "旧密码登录被拒", "新密码登录成功"],
+      "expect": "改密链路真实生效",
+      "run": [
+        { "adminLogin": { "username": "admin", "password": "E2eAdmin#2026$Xy7q" } },
+        { "eval": { "saveAs": "e2eUser", "expr": "ctx.e2eUsername = 'e2e_' + Date.now()" } },
+        { "apiCall": { "method": "POST", "path": "/api/admin/users", "cookie": "admin", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "role": "user" }, "expect": "status===201" } },
+        { "userLogin": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" } },
+        { "apiCall": { "method": "POST", "path": "/api/user/password", "cookie": "user", "body": { "oldPassword": "E2e#Seed9$Ab7zQ", "newPassword": "E2e#NewPw$Zc8yX" }, "expect": "status===200" } },
+        { "apiCall": { "method": "POST", "path": "/api/login", "cookie": "none", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "captchaToken": "auto", "captchaAnswer": "auto" }, "expect": "status!==200", "desc": "旧密码被拒" } },
+        { "userLogin": { "username": "${e2eUser}", "password": "E2e#NewPw$Zc8yX" } },
+        { "apiCall": { "method": "GET", "path": "/api/me", "cookie": "user", "expect": "status===200 && body.user.username==='${e2eUser}'" } }
+      ]
+    },
+    {
+      "id": "account-wishlist-crud",
+      "name": "后台模块：愿望单完整增删（用户加 → 后台可见 → 删 → 后台不见）",
+      "tag": ["admin"],
+      "kind": "api",
+      "steps": ["用户 POST /api/wishlist 加星露谷物语", "后台 GET /api/admin/wishlists 按用户过滤可见", "用户 DELETE 移除", "后台再查为空"],
+      "assert": ["添加 200", "后台列表 ≥1", "移除 200", "后台列表 0"],
+      "expect": "愿望单四步增删改全链路（决策 #11 四类之一）",
+      "run": [
+        { "adminLogin": { "username": "admin", "password": "E2eAdmin#2026$Xy7q" } },
+        { "eval": { "saveAs": "e2eUser", "expr": "ctx.e2eUsername = 'e2e_' + Date.now()" } },
+        { "apiCall": { "method": "POST", "path": "/api/admin/users", "cookie": "admin", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "role": "user" }, "expect": "status===201", "saveAs": "createdUser" } },
+        { "userLogin": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" } },
+        { "apiCall": { "method": "POST", "path": "/api/user/password", "cookie": "user", "body": { "oldPassword": "E2e#Seed9$Ab7zQ", "newPassword": "E2e#NewPw$Zc8yX" }, "expect": "status===200", "desc": "首登强制改密（后台建号 must_change_password）" } },
+        { "apiCall": { "method": "POST", "path": "/api/wishlist", "cookie": "user", "body": { "appid": 413150 }, "expect": "status===200 && body.ok===true", "desc": "用户加愿望单" } },
+        { "apiCall": { "method": "GET", "path": "/api/admin/wishlists?userId=${createdUser.user.id}", "cookie": "admin", "expect": "status===200 && body.items.length>=1", "desc": "后台可见" } },
+        { "apiCall": { "method": "DELETE", "path": "/api/wishlist/413150", "cookie": "user", "expect": "status===200 && body.ok===true", "desc": "用户移除" } },
+        { "apiCall": { "method": "GET", "path": "/api/admin/wishlists?userId=${createdUser.user.id}", "cookie": "admin", "expect": "status===200 && body.items.length===0", "desc": "后台已不见" } }
+      ]
+    },
+    {
+      "id": "account-announcement-crud",
+      "name": "后台模块：站点通知完整增删改（建 → 前台可见 → 改 → 删 → 不见）",
+      "tag": ["admin"],
+      "kind": "api",
+      "steps": ["后台 POST 建公告", "前台 GET /api/announcements 可见", "后台 PATCH 改标题", "前台见新标题、旧标题消失", "后台 DELETE → 前台不见"],
+      "assert": ["建 200", "前台含标题", "改 200", "前台新标题存在且旧标题不存在", "删 removed=1", "前台不见"],
+      "expect": "站点通知四步增删改全链路（决策 #11 四类之一）",
+      "run": [
+        { "adminLogin": { "username": "admin", "password": "E2eAdmin#2026$Xy7q" } },
+        { "eval": { "saveAs": "ts", "expr": "ctx.ts = Date.now()" } },
+        { "apiCall": { "method": "POST", "path": "/api/admin/announcements", "cookie": "admin", "body": { "title": "e2e 公告 ${ts}", "body": "e2e 全链路公告", "level": "info", "active": true }, "expect": "status===200 && body.announcement.id>0", "saveAs": "ann" } },
+        { "apiCall": { "method": "GET", "path": "/api/announcements", "cookie": "none", "expect": "status===200 && (body.announcements??body.list??[]).some(a=>a.title==='e2e 公告 ${ts}')", "desc": "前台可见" } },
+        { "apiCall": { "method": "PATCH", "path": "/api/admin/announcements/${ann.announcement.id}", "cookie": "admin", "body": { "title": "e2e 公告改 ${ts}", "body": "改过的公告", "level": "info", "active": true }, "expect": "status===200" } },
+        { "apiCall": { "method": "GET", "path": "/api/announcements", "cookie": "none", "expect": "(body.announcements??body.list??[]).some(a=>a.title==='e2e 公告改 ${ts}') && !(body.announcements??body.list??[]).some(a=>a.title==='e2e 公告 ${ts}')", "desc": "新标题在、旧标题无" } },
+        { "apiCall": { "method": "DELETE", "path": "/api/admin/announcements/${ann.announcement.id}", "cookie": "admin", "expect": "status===200 && body.removed===1" } },
+        { "apiCall": { "method": "GET", "path": "/api/announcements", "cookie": "none", "expect": "!(body.announcements??body.list??[]).some(a=>a.title==='e2e 公告改 ${ts}')", "desc": "删除后前台不见" } }
+      ]
+    },
+    {
+      "id": "account-steam-crud",
+      "name": "后台模块：Steam 账号完整增删改（绑定模拟 → 改别名 → 解绑）",
+      "tag": ["admin"],
+      "kind": "api",
+      "steps": ["SQL 绑一条 steam_accounts（OpenID 绑定需真实 Steam，e2e 用同构行模拟）", "PATCH 改别名", "DELETE 解绑", "断言 0 行"],
+      "assert": ["绑定行存在", "别名更新", "解绑 200", "steam_accounts 归零"],
+      "expect": "Steam 账号增删改链路（决策 #11 四类之一；真实 OpenID 属 R2 人工）",
+      "run": [
+        { "adminLogin": { "username": "admin", "password": "E2eAdmin#2026$Xy7q" } },
+        { "eval": { "saveAs": "e2eUser", "expr": "ctx.e2eUsername = 'e2e_' + Date.now()" } },
+        { "apiCall": { "method": "POST", "path": "/api/admin/users", "cookie": "admin", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "role": "user" }, "expect": "status===201", "saveAs": "createdUser" } },
+        { "sql": { "sql": "insert into steam_accounts (steam_id, persona_name, user_id) values ('76561198000009999', 'E2E 测试号', ${createdUser.user.id})", "expect": "rowCount===1", "desc": "模拟 OpenID 绑定（同构数据）" } },
+        { "userLogin": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" } },
+        { "apiCall": { "method": "POST", "path": "/api/user/password", "cookie": "user", "body": { "oldPassword": "E2e#Seed9$Ab7zQ", "newPassword": "E2e#NewPw$Zc8yX" }, "expect": "status===200", "desc": "首登强制改密（后台建号 must_change_password）" } },
+        { "apiCall": { "method": "PATCH", "path": "/api/steam/accounts/76561198000009999", "cookie": "user", "body": { "alias": "我的主号" }, "expect": "status===200 && body.ok===true", "desc": "改别名" } },
+        { "sql": { "sql": "select alias from steam_accounts where steam_id='76561198000009999'", "expect": "rows[0].alias==='我的主号'", "desc": "别名落库" } },
+        { "apiCall": { "method": "DELETE", "path": "/api/steam/accounts/76561198000009999", "cookie": "user", "expect": "status===200", "desc": "解绑" } },
+        { "sql": { "sql": "select count(*)::int as n from steam_accounts where steam_id='76561198000009999'", "expect": "rows[0].n===0", "desc": "解绑后无残留" } }
+      ]
+    },
+    {
+      "id": "account-session-kick",
+      "name": "后台模块：登录会话踢下线（列表 → 踢 → 用户 401）",
+      "tag": ["admin"],
+      "kind": "api",
+      "steps": ["用户登录产生会话", "后台 GET /api/admin/sessions 按用户过滤可见", "DELETE /api/admin/sessions/:id 踢", "用户再 GET /api/me → 401"],
+      "assert": ["会话列表含该用户", "踢 200", "/api/me 401"],
+      "expect": "会话管理与踢下线真实生效",
+      "run": [
+        { "adminLogin": { "username": "admin", "password": "E2eAdmin#2026$Xy7q" } },
+        { "eval": { "saveAs": "e2eUser", "expr": "ctx.e2eUsername = 'e2e_' + Date.now()" } },
+        { "apiCall": { "method": "POST", "path": "/api/admin/users", "cookie": "admin", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "role": "user" }, "expect": "status===201" } },
+        { "userLogin": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" } },
+        { "apiCall": { "method": "POST", "path": "/api/user/password", "cookie": "user", "body": { "oldPassword": "E2e#Seed9$Ab7zQ", "newPassword": "E2e#NewPw$Zc8yX" }, "expect": "status===200", "desc": "首登强制改密（后台建号 must_change_password）" } },
+        { "apiCall": { "method": "GET", "path": "/api/admin/sessions?user=${e2eUser}", "cookie": "admin", "expect": "status===200 && body.sessions.length>=1", "saveAs": "sessList" } },
+        { "apiCall": { "method": "DELETE", "path": "/api/admin/sessions/${sessList.sessions[0].id}", "cookie": "admin", "expect": "status===200 && body.removed===1", "desc": "踢下线" } },
+        { "apiCall": { "method": "GET", "path": "/api/me", "cookie": "user", "expect": "status===401 || body.user===null", "desc": "被踢会话立即失效" } }
+      ]
+    },
+    {
+      "id": "account-delete-assert",
+      "name": "后台账号：彻底删除 + 无残留断言（列表无/登录 401/会话级联 0）",
+      "tag": ["admin"],
+      "kind": "api",
+      "steps": ["后台 DELETE /api/admin/users/:username（confirmUsername 匹配）", "列表断言不存在", "再登录 → 401", "sessions 级联 0", "e2e_ 前缀总数为 0"],
+      "assert": ["删除 200", "列表无该用户", "登录 401", "会话 0", "无 e2e_ 残留"],
+      "expect": "账号生命周期闭环（验收 ③）",
+      "run": [
+        { "adminLogin": { "username": "admin", "password": "E2eAdmin#2026$Xy7q" } },
+        { "eval": { "saveAs": "e2eUser", "expr": "ctx.e2eUsername = 'e2e_' + Date.now()" } },
+        { "apiCall": { "method": "POST", "path": "/api/admin/users", "cookie": "admin", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "role": "user" }, "expect": "status===201", "saveAs": "createdUser" } },
+        { "userLogin": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" } },
+        { "apiCall": { "method": "POST", "path": "/api/user/password", "cookie": "user", "body": { "oldPassword": "E2e#Seed9$Ab7zQ", "newPassword": "E2e#NewPw$Zc8yX" }, "expect": "status===200", "desc": "首登强制改密（后台建号 must_change_password）" } },
+        { "apiCall": { "method": "DELETE", "path": "/api/admin/users/${e2eUser}", "cookie": "admin", "body": { "confirmUsername": "${e2eUser}", "reason": "e2e 收尾" }, "expect": "status===200 && body.ok===true" } },
+        { "apiCall": { "method": "GET", "path": "/api/admin/users", "cookie": "admin", "expect": "!(body.users??[]).some(u=>u.username==='${e2eUser}')", "desc": "列表已无该用户" } },
+        { "apiCall": { "method": "POST", "path": "/api/login", "cookie": "none", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "captchaToken": "auto", "captchaAnswer": "auto" }, "expect": "status!==200", "desc": "已删用户登录被拒" } },
+        { "sql": { "sql": "select count(*)::int as n from sessions where user_id=${createdUser.user.id}", "expect": "rows[0].n===0", "desc": "会话级联清零" } }
+      ]
+    },
+    {
+      "id": "mail-smtp-roundtrip",
+      "name": "邮件服务：SMTP 发测试信 + IMAP 真实收件",
+      "tag": ["admin"],
+      "kind": "api",
+      "steps": ["后台 POST /api/admin/smtp 用 mail.env 配置", "POST /api/admin/smtp/test 发测试信", "IMAP 拉 163 收件箱断言「SteamDeals 测试邮件」"],
+      "assert": ["SMTP 配置保存 200", "smtp/test 200", "IMAP 收到该主题邮件"],
+      "expect": "邮件真实收件闭环（决策 #6；缺 mail.env 时本行按环境不具备 skip）",
+      "skipIf": "mailEnvMissing",
+      "run": [
+        { "adminLogin": { "username": "admin", "password": "E2eAdmin#2026$Xy7q" } },
+        { "apiCall": { "method": "POST", "path": "/api/admin/smtp", "cookie": "admin", "body": { "host": "${mailEnv.smtpHost}", "port": "${mailEnv.smtpPort}", "secure": true, "user": "${mailEnv.user}", "pass": "${mailEnv.pass}", "from": "${mailEnv.user}" }, "expect": "status===200" } },
+        { "apiCall": { "method": "POST", "path": "/api/admin/smtp/test", "cookie": "admin", "body": { "to": "${mailEnv.user}" }, "expect": "status===200 && body.ok===true" } },
+        { "imapWaitSubject": { "contains": "SteamDeals 测试邮件", "timeoutMs": 60000, "saveAs": "mailHit" } }
+      ]
+    },
+    {
+      "id": "app-install",
+      "name": "App：安装 steamdeals-2.19.0.apk",
+      "tag": ["app"],
+      "kind": "adb",
+      "steps": ["adb install frontend/public/app/steamdeals-2.19.0.apk"],
+      "assert": ["安装输出 Success"],
+      "expect": "APK 可安装（同签名包）",
+      "run": [
+        { "adbInstall": { "apk": "frontend/public/app/steamdeals-2.19.0.apk", "reinstall": false } }
+      ]
+    },
+    {
+      "id": "app-cover-install",
+      "name": "App：覆盖安装（数据保留）",
+      "tag": ["app"],
+      "kind": "adb",
+      "steps": ["adb install -r 同包再装一遍"],
+      "assert": ["覆盖安装 Success", "包版本名不变（未被卸载重装）"],
+      "expect": "同签名覆盖安装可用（决策 #12：2.19.0 作旧版包）",
+      "run": [
+        { "adbInstall": { "apk": "frontend/public/app/steamdeals-2.19.0.apk", "reinstall": true } },
+        { "adbPackageVersion": { "expect": "2.19.0", "desc": "覆盖安装后版本仍为 2.19.0（数据保留、未重置）" } }
+      ]
+    },
+    {
+      "id": "app-launch",
+      "name": "App：启动（TWA 前台 + 截图 + UI 树）",
+      "tag": ["app"],
+      "kind": "adb",
+      "steps": ["am start 启动 LauncherActivity", "断言前台 Activity", "截图 + uiautomator dump"],
+      "assert": ["启动 Status: ok", "前台 Activity 是本包", "截图与 UI 树非空"],
+      "expect": "App 可启动不崩溃（站点内容断言依赖外网，无外网时注明 skip）",
+      "run": [
+        { "adbLaunchApp": {} },
+        { "sleep": 5000 },
+        { "adbAssertFocused": { "contains": "cn.yyliucha.steamdeals" } },
+        { "adbScreencap": "app-launch" },
+        { "adbUiDump": { "saveAs": "appUiDump" } },
+        { "assert": { "expr": "ctx.appUiDump && ctx.appUiDump.length > 0", "desc": "UI 树非空" } }
+      ]
+    },
+    {
+      "id": "app-update-check",
+      "name": "App：内置更新检查（自定义 scheme）",
+      "tag": ["app"],
+      "kind": "adb",
+      "steps": ["am start steamdeals://check-update 触发检查", "应用保持前台、未崩溃"],
+      "assert": ["scheme 拉起成功", "应用存活（前台 Activity 仍是本包）"],
+      "expect": "更新检查入口不崩（弹窗内容依赖外网，无外网时注明 skip）",
+      "run": [
+        { "adbUpdateCheck": {} },
+        { "sleep": 4000 },
+        { "adbAssertFocused": { "contains": "cn.yyliucha.steamdeals" } },
+        { "adbScreencap": "app-update-check" }
+      ]
+    },
+    {
+      "id": "app-guest-walk",
+      "name": "App：六屏走查（底部导航点选 + 每屏截图）",
+      "tag": ["app"],
+      "kind": "adb",
+      "steps": ["启动后依 uiautomator 树点底部入口（首页/愿望单/通知/我的）", "每屏截图"],
+      "assert": ["走查全程应用不崩溃", "每屏截图落盘"],
+      "expect": "App 内六屏可达（写操作与真机特性属 R2 人工；无外网时按环境 skip）",
+      "skipIf": "appWalkSkipped",
+      "run": [
+        { "adbLaunchApp": {} },
+        { "sleep": 6000 },
+        { "adbScreencap": "app-screen-1-home" },
+        { "adbTapText": { "text": "愿望单" } },
+        { "sleep": 2500 },
+        { "adbScreencap": "app-screen-2-wishlist" },
+        { "adbTapText": { "text": "我的" } },
+        { "sleep": 2500 },
+        { "adbScreencap": "app-screen-3-mine" },
+        { "adbTapText": { "text": "首页" } },
+        { "sleep": 2500 },
+        { "adbAssertFocused": { "contains": "cn.yyliucha.steamdeals" } },
+        { "adbScreencap": "app-screen-4-home-back" }
+      ]
+    },
+    {
+      "id": "online-checks",
+      "name": "线上：公网只读验收（版本/页面/接口/TTFB）",
+      "tag": ["online"],
+      "kind": "online",
+      "steps": ["--online 部署后跑：/api/site 版本（--expect-version）", "首页 dump-dom + 截图", "关键接口 200 + TTFB", "/app 页下载入口", "后台守卫跳转"],
+      "assert": ["版本匹配期望", "首页关键区块", "关键接口全 200", "TTFB < 5000ms", "/app 下载入口", "后台守卫"],
+      "expect": "部署后公网只读验收全过（不碰服务器/生产库；未带 --online 时本行 skip）",
+      "skipIf": "onlineNotRequested",
+      "run": [
+        { "onlineChecks": {} }
+      ]
+    }
+  ]
+}

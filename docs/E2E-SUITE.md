@@ -1,6 +1,6 @@
-# e2e 测试套件（功能矩阵 + headless Edge + Android 模拟器/真机 + 公网只读 + PDF 报告）（待开发）
+# e2e 测试套件（功能矩阵 + headless Edge + Android 模拟器/真机 + 公网只读 + PDF 报告）（已实现待发版）
 
-> 状态：**已确认待开发（2026-11-17）**。
+> 状态：**已实现待发版（2026-11-17）**。使用说明见 [TESTING-E2E.md](TESTING-E2E.md)。
 > 关联：[gameprice-test](../.dsh/skills/gameprice-test/SKILL.md)（测试方法库与真实测试门槛）、
 > [TODO.md](TODO.md) CK 条目、[HANDOVER.md](HANDOVER.md)（流程与状态词）、[DELIVERY.md](DELIVERY.md)（部署后验证）。
 

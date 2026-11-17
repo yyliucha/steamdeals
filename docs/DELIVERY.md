@@ -65,6 +65,8 @@ cd F:\dsh\gameprice
 # ① 验证
 npm test && npm run frontend:build && npm run scan
 node test/api.test.js          # 若动过 API/权限/标记
+npm run e2e                    # e2e 全量（CK 批门禁：矩阵逐行有结果 + PDF 报告在 F:\dsh\e2e-reports\，见 docs/TESTING-E2E.md）
+                               # 发版前与每轮 QA 必跑；线上行（--online）留到部署后带 --expect-version= 跑
 
 # ② 文档同步（对外描述同步规则）
 #    - CHANGELOG.md 顶部加新版本条目（## [X.Y.Z] - 日期，Keep a Changelog 格式）
