@@ -1865,3 +1865,26 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   站点仓库（仅 CM-5：`/api/app/games` 透传筛选/排序参数）。
 - **验收**：见规格 §4——① 纪元1800 显示 Ubisoft Mainz / Ubisoft（无 JSON）；② DLC 区块分页/价格/跳转/说明；
   ③ 历史区间切换与指标与 Web 一致；④ 复制名成功；⑤ 既有功能不回归；⑥ 模拟器安装新包截图核对；⑦ App 构建同签名可覆盖。
+
+## CN. 待开发（线上事故，建议热修 v2.22.2）：对齐审核查询拖垮站点
+
+**状态：待开发（2026-11-17 线上事故，根因已定位）**
+**依赖：** 无
+**解锁：** 无
+**规格**：[ALIGN-QUERY-PERF.md](ALIGN-QUERY-PERF.md)
+
+- **现象（2026-11-17 线上 v2.22.1）**：后台「游戏管理 → 对齐审核」一直转圈/超时（`align` 请求无响应），
+  同时 `/api/admin/games` 2.1s、`/api/admin/sync/status` 1.7s，最终**站点容器重启**（"镜像被搞挂"）。
+- **根因（代码证据）**：`GET /api/admin/align` 每次请求在 Node 主线程全量重算（`src/server.js:4181-4190`）：
+  取 19.6 万游戏行 + 全量 skus.json + 对每个组调用 `bestMatchMulti`（`src/match.js` 逐候选大分子相似度）
+  = 组数 × 19.6 万次比较；**无缓存、无 single-flight、无时间上限** → 事件循环被占满 → 全站超时 → 健康检查失败重启。
+- **已确认决策（6 项）**：① 改"后台生成 + 缓存读"（TTL 10 分钟，`?refresh=1` 重算）；② 候选预筛（每标题 ≤2000 候选，
+  复用 trigram 索引）；③ single-flight + 20s 时间预算（超时返回 `partial`）；④ 匹配循环分片 `setImmediate`/worker，
+  不独占事件循环；⑤ 接口分页 `page/pageSize=20`；⑥ 不改匹配算法口径（CD/CE 行为不变）。
+- **改动落点**：`src/server.js`（缓存/single-flight/分页/超时）、`src/align.js`（候选索引 + 分片）、
+  `src/match.js`（候选预筛辅助）、`frontend/src/components/AlignAdmin.vue`（生成时间/刷新/partial 提示）、
+  `test/align-perf.test.js`（新增，进主链）。
+- **验收**：见规格 §4——① 缓存命中 ≤200ms；② 计算中并发 `/api/games/count` 与 `/api/site` P95 不受影响；
+  ③ 并发 5 请求只算 1 次；④ 超时返回 partial 不 5xx；⑤ CE 13 条误匹配仍不进自动候选；⑥ 分页/刷新生效；
+  ⑦ `npm test` / `frontend:build` / `scan` 全绿；不自行打 tag（建议 v2.22.2 热修）。
+- **待确认**：缓存 TTL 10 分钟是否合适；`/api/admin/games`、`/sync/status` 的慢是否另开条目（建议另开）。
