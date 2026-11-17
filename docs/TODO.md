@@ -1556,9 +1556,10 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 
 
-## CA. 待开发：原生 Android 的站点侧（Token/API + Web 手机端改造，不含 Android 工程）
+## CA. ~~待开发：原生 Android 的站点侧（Token/API + Web 手机端改造，不含 Android 工程）~~ → **已实现待发版**
 
-**状态：开发中（2026-11-17，ce-dev 认领 CA-1；仅站点侧；六屏效果图已确认；Android 工程见 CG）**
+**状态：已实现待发版（2026-11-17。CA-1：ce-dev，质检 ✅ 放行 docs/QA-CA1.md 第 1 轮；CA-5：本批完成——**
+**手机前台跳转开关（默认关闭）+ 微信「在浏览器打开」提示 + /app 页改版，待 gameprice-qa 质检）**
 **依赖：** 无（CA-5 手机前台跳转开关默认关闭，等 CG 发布后开启；旧 TWA 退场归 CG）
 **解锁：** CG（Android 工程）；**取代**：BS（TWA）、BU/BV/BX（移动 web 重设计）、BY（TWA 内置更新）、BZ（拆 android/）；BW 保留（仅后台手机端）
 **规格**：[APP-NATIVE.md](APP-NATIVE.md)（§3 CA-1 / §5 CA-5）
@@ -1576,7 +1577,11 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **验收（CA）**：见规格 §3/§5——Token 登录/过期/撤销/限流/审计；`/api/app/*` 黑名单/设备封禁豁免但保留基础限流；
   Web 侧手机跳转开关可开/关、微信提示、`/app` 页可下载现有包；桌面/移动 Web 行为符合 §5；`npm test` / `frontend:build` / `scan` 全绿。
 - **进度（2026-11-17）**：**CA-1 已实现待发版**——`api_tokens` 表 + Token 签发/撤销 + `/api/app/*` 前缀重写（例外 latest/status）+ `/api/app/status`；
-  契约 docs/APP-API.md；测试 test/app-token.test.js（主链）+ test/api.test.js（生命周期真跑）。CA-5（Web 手机跳转）未做，条目保持「开发中」。
+  契约 docs/APP-API.md；测试 test/app-token.test.js（主链）+ test/api.test.js（生命周期真跑）；质检 ✅ 放行（docs/QA-CA1.md，第 1 轮，通过 12/缺失 0/偏差 0/需人工确认 1）。
+  **CA-5 已实现待发版**——`src/settings.js`（`app.mobileRedirectEnabled`，默认关闭，等 CG 发布后开启）、`src/server.js`
+  （手机 UA + 前台页面 302 → `/app`，豁免 console/login/register/app/banned/appeal/setup/change-password 与 /api/*，日志 `http.mobile_redirect`）、
+  `frontend/src/pages/AppDownloadPage.vue`（改版为主推原生 App + 微信 UA 显示「右上角 → 在浏览器打开」提示 + 保留现有 APK 下载）、
+  test/serve.test.js（跳转生命周期真跑）+ test/frontend-mobile.test.js（页面静态断言）+ test/settings.test.js（86 项）；旧 TWA 停发归 CG 收尾。
 
 ## CG. ~~依赖阻塞：原生 Android App（CA-2~4，独立仓库 steamdeals-app）~~ → **质检通过**
 
@@ -1733,3 +1738,28 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `src/server.js`（gameSearch score/reviewMin/deck + /api/games/for-you + /api/behavior）、`src/scheduler.js`（steam-discovery 任务 + STEAM_HEAVY）、
   `src/settings.js`（discovery.*/personal.* 8 项）、`frontend/src/pages/Home.vue`（综合评分排序/好评率与 Deck 筛选/徽标/免费角标/为你推荐 tab）。
 - 验收：见规格 §9 七条。
+
+## CI. 待开发：价格提醒邮件 HTML 化 + 申诉管理页视觉对齐
+
+**状态：待开发（2026-11-17，所有者确认 2 项修复；CI-1 / CI-2 可并行）**
+**依赖：** 无（CB 报表 HTML 渲染已发布 v2.18.0；CF 申诉页结构改动已发布 v2.21.0）
+**解锁：** 无
+**规格**：[ALERT-MAIL-APPEAL-UX.md](ALERT-MAIL-APPEAL-UX.md)
+
+- **现象（2026-11-17 所有者截图）**：① 价格提醒邮件是纯文本（「价格提醒（时间，共 N 条）· 名称 ¥89 · 史低 ¥89 · 跌至史低 + Steam 链接」），
+  与 CB 批的 HTML 报表邮件风格不一致；② 申诉管理页（v2.21.0）结构已改（标题区 / 筛选行位置），但视觉未对齐效果图：
+  tab 仍是旧 `module-tabs`、空态是 el-table 默认「暂无数据」黑条、表格多「到期」列、间距与效果图有差异。
+- **已确认决策（3 项）**：① CI-1 复用 CB 报表样式（品牌头 + 卡片列表），webhook/企微仍纯文本、不引新依赖；
+  ② CI-2 按 [效果图](design/admin-ux-security-2026-11-16.png) 逐项对齐（分段控件 / 空态 / 表格列 / 间距），「到期」并入「封禁原因」列；
+  ③ 不改数据模型、不新增调度任务与接口。
+- **改动落点（CI-1）**：新增 `src/alerts-html.js`（`renderAlertsHtml()`：内联 CSS + table + 转义 + 卡片）、
+  `src/cli.js`（提醒路径传 `html`）、`src/alerts.js`（保留文本兜底）、新增 `test/alerts-html.test.js`（进主链）。
+- **改动落点（CI-2）**：`frontend/src/components/AppealsAdmin.vue`（分段控件 / 空态 / 表格列与样式 / 间距）；
+  测试补静态断言（分段控件与空态存在、无「到期」独立列）。
+- **验收**：见规格 §9——① 提醒邮件为 HTML（multipart 两段）且 webhook/企微仍纯文本、动态字段转义、无外部资源；
+  ② 申诉页分段控件主色选中、空态卡片式、列与效果图一致、移动端卡片不变、PC 无回归；
+  ③ `npm test` / `frontend:build` / `scan` 全绿；**不自行构建**。
+- **待确认**：§11 两条（「到期」是否保留独立列；空态文案是否随筛选联动）。
+## CI. 已实现待发版：价格提醒邮件 HTML 化 + 申诉管理页视觉对齐
+**状态：质检通过（2026-11-17 第 1 轮，docs/QA-CI.md）**
+**规格**：[ALERT-MAIL-APPEAL-UX.md](ALERT-MAIL-APPEAL-UX.md)

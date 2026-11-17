@@ -1,6 +1,6 @@
 # 价格提醒邮件 HTML 化 + 申诉管理页视觉对齐（待开发）
 
-> 状态：**已确认待开发（2026-11-17）**。
+> 状态：**已实现待发版（2026-11-17，质检通过）**。
 > 关联：[TODO.md](TODO.md) CI 条目、[PRICE-REPORT-EMAIL.md](PRICE-REPORT-EMAIL.md)（CI-1 复用的样式来源）、
 > [ADMIN-UX-SECURITY.md](ADMIN-UX-SECURITY.md) §2.1（CI-2 效果图口径）、[APPEAL-SYSTEM.md](APPEAL-SYSTEM.md)（申诉状态机）。
 

@@ -916,10 +916,15 @@ async function cmdAlerts() {
 
   let delivered = false;
   if (channels.length) {
+    // CI-1（docs/ALERT-MAIL-APPEAL-UX.md §3）：提醒邮件 HTML 化——deliver 支持 html（email multipart 两段），
+    // webhook/企微仍纯文本（notify.js 契约不变）
+    const { renderAlertsHtml } = await import('./alerts-html.js');
+    const mail = renderAlertsHtml(hits, { now: new Date() });
     const result = await deliver(channels, {
       text: renderDigest(hits, { now: new Date() }),
+      html: mail.html,
       payload: toPayload(hits, { now: new Date() }),
-      subject: `游戏价格提醒：${hits.length} 款到价`,
+      subject: mail.subject,
       logger,
     });
     delivered = result.ok;

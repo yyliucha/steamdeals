@@ -128,7 +128,7 @@ onMounted(() => loadAppeals());
     <div class="module-card">
       <div class="card-heading"><div><h3>申诉管理</h3><p>用户在被封禁时提交的解封申诉。处理动作会联动解封（IP / 设备），结果邮件通知申请人；邮件内一键处理与这里共用同一状态机（先到先得）。</p></div><el-button link type="primary" @click="showMailNote">邮件处理说明</el-button></div>
       <div class="appeal-filter-row">
-        <div class="module-tabs">
+        <div class="module-tabs seg-tabs">
           <button :class="{ on: filter === 'pending' }" @click="filter = 'pending'; loadAppeals(1)">待处理<template v-if="pendingCount">（{{ pendingCount }}）</template></button>
           <button :class="{ on: filter === 'done' }" @click="filter = 'done'; loadAppeals(1)">已处理</button>
           <button :class="{ on: filter === 'all' }" @click="filter = 'all'; loadAppeals(1)">全部</button>
@@ -146,13 +146,13 @@ onMounted(() => loadAppeals());
     </div>
 
     <div v-else class="module-card table-card">
-      <el-table :data="appeals" v-loading="loading" stripe>
+      <el-table :data="appeals" v-loading="loading" stripe><template #empty><div class="appeal-empty-card"><el-empty description="没有申诉记录" /></div></template>
         <el-table-column prop="code" label="编号" width="120"><template #default="{ row }"><span class="mono">{{ row.code }}</span></template></el-table-column>
         <el-table-column prop="created_at" label="提交时间" min-width="150"><template #default="{ row }">{{ dateTime(row.created_at) }}</template></el-table-column>
         <el-table-column prop="ip" label="IP" width="140"><template #default="{ row }"><span class="mono">{{ row.ip || '—' }}</span></template></el-table-column>
         <el-table-column prop="contact" label="联系方式" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="reason" label="封禁原因" width="130"><template #default="{ row }">{{ row.reason || '—' }}</template></el-table-column>
-        <el-table-column label="到期" min-width="150"><template #default="{ row }">{{ row.ban_until ? dateTime(row.ban_until) : '—' }}</template></el-table-column>
+        <el-table-column prop="reason" label="封禁原因" min-width="190"><template #default="{ row }"><span class="appeal-reason">{{ row.reason || '—' }}</span><small v-if="row.ban_until" class="muted">到期 {{ dateTime(row.ban_until) }}</small></template></el-table-column>
+        
         <el-table-column label="状态" width="110"><template #default="{ row }"><el-tag :type="STATUS_TAG[row.status] || 'info'" size="small">{{ STATUS_LABEL[row.status] || row.status }}</el-tag><small v-if="row.handled_via" class="muted">（{{ row.handled_via === 'email' ? '邮件' : '后台' }}）</small></template></el-table-column>
         <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" @click="openDrawer(row)">{{ row.status === 'pending' ? '处理' : '查看' }}</el-button></template></el-table-column>
       </el-table>
@@ -193,6 +193,6 @@ onMounted(() => loadAppeals());
 </template>
 
 <style scoped>
-.appeal-filter-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:2px}.appeal-filter-row .module-tabs{border-bottom:0;padding:0}
+.appeal-filter-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:2px}.appeal-filter-row .module-tabs{border-bottom:0;padding:0}.seg-tabs{display:inline-flex;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--panel-2)}.seg-tabs button{border:0;background:transparent;padding:7px 14px;color:var(--fg-muted);font-size:12px;cursor:pointer}.seg-tabs button.on{background:var(--brand);color:#fff;font-weight:650}.appeal-reason{display:block;font-weight:600}.appeal-reason+small{display:block;margin-top:2px;font-size:10px}.appeal-empty-card{padding:18px;background:var(--panel-2);border-radius:12px;margin:14px}
 .appeal-detail dl{margin:0;border:1px solid var(--border);border-radius:12px;overflow:hidden}.appeal-detail dl div{display:flex;gap:10px;padding:9px 13px;border-bottom:1px solid var(--border);font-size:13px}.appeal-detail dl div:last-child{border-bottom:0}.appeal-detail dt{min-width:76px;color:var(--fg-muted);flex:none}.appeal-detail dd{margin:0;overflow-wrap:anywhere}.appeal-detail a{color:var(--brand);text-decoration:none}.appeal-message{white-space:pre-wrap}.resolve-title{margin:18px 0 10px;font-size:14px}.resolve-actions{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-bottom:12px}.resolve-buttons{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 </style>
