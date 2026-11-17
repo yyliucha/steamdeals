@@ -1938,3 +1938,24 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **验收**：见规格 §4——① 四组 UA 实测（含小米桌面 UA 必须跳）；② 红米真机进入 `/app` 且不循环；③ 豁免路径不跳；
   ④ 微信内显示提示；⑤ PC/平板不跳；⑥ `npm test` / `frontend:build` / `scan` 全绿；不自行打 tag。
 
+## CQ. 待开发：系统设置信息架构重构（平台卡片 + 常用/高级折叠 + 只看非默认）
+
+**状态：待开发（2026-11-17，demo v2 已确认 `design/settings-ia-2026-11-17-v2`）**
+**依赖：** 无
+**解锁：** 无
+**规格**：[SETTINGS-IA.md](SETTINGS-IA.md)
+
+- **痛点（实测）**：`settings.js` 86 个配置项平铺——sources 32、advanced 16、alerts 13、security 10、site 8、auth 4、network 3；
+  「数据源与采集」把开关/间隔/条数/限速/Key 混在一起，`高级` 16 项一屏到底，越加越难维护。
+- **已确认决策（7 项）**：① 数据源按平台卡片（全局/Steam/杉果/ITAD/GOG+Humble/发现与热度）；② 每卡常用 ≤3 项，
+  其余进「高级 N 项」折叠（默认收起，标题行带摘要）；③ 站点与内容常用 4 项 + 「推荐与评分 4 项」折叠；
+  ④ 高级拆 4 折叠组（调度与熔断/备份与日志/缓存与图片/时区与显示）；⑤ 通用能力：只看非默认、来源标注（数据库/环境变量/默认）、
+  恢复默认（单行+分组）、搜索命中自动展开高亮；⑥ **不改任何 key/默认值/语义**，只在 `def()` 加 meta（section/tier/summary）
+  并由 schema 接口下发；⑦ 保存/重新加载/15 秒热加载行为不变。
+- **改动落点**：`src/settings.js`（86 项补 meta）、`src/settings-routes.js`/`src/server.js`（schema 带 meta + `source` + `isDefault`）、
+  `frontend/src/pages/AdminModules.vue`（卡片/折叠/过滤/恢复/搜索展开）、`test/settings.test.js` 扩展。
+- **验收**：见规格 §4——① 6 张平台卡、每卡常用 ≤3；② 折叠默认收起且标题带摘要；③ 站点/高级折叠组符合 demo；
+  ④ 只看非默认生效且刷新保持；⑤ 来源标注三类正确；⑥ 恢复默认（单行/分组）生效；⑦ 搜索命中折叠项自动展开高亮；
+  ⑧ 保存/重载/权限行为不变；⑨ `npm test` / `frontend:build` / `scan` 全绿；移动端单列。
+- **待确认**：§6 三条（折叠摘要字段、恢复默认二次确认、移动端形态）。
+
