@@ -10,6 +10,8 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
 >
 > **技能文件位置**：`.dsh/skills/gameprice-qa/SKILL.md`，**自 2026-11-09 起随仓库提交、推 GitHub**；
 > 本机 DSH 扫描路径 `F:\dsh\.dsh\skills\gameprice-qa` 是指向它的 junction（仅本机环境配置，不入库）。
+> **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/gameprice-skills`；修改后执行
+> `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步（见该仓库 README）。
 > 别的机器 clone 后如需 DSH 发现该技能，按同样方式建 junction；**不要再维护第二份副本**。
 >
 > **分工**：`gameprice-requirements` 出需求与开发描述 → `gameprice-dev` 实现并验证 →
