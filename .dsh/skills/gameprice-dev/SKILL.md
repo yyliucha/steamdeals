@@ -112,6 +112,8 @@ git status --short; git log --oneline -5; node -p "require('./package.json').ver
 - 时间展示统一走 `frontend/src/utils/siteTime.js`（站点时区），别用本地时区直接 `toLocaleString`。
 - 响应式三档断点 900 / 760 / 420；手机与桌面是 `v-if` 双结构，触摸目标 ≥44px。
 - 改完前端必须 `npm run frontend:build`（`frontend/dist/` 不入库）。
+- **按 demo 实现（2026-11-17 起）**：规格附了 `docs/design/*.html` demo 时，页面必须与 demo 对齐
+  （层级 / 间距 / 状态 / 移动端 / 文案）；页面类需求**没有 demo 就不开工**，退回需求会话补。
 - `web/*.html` 是**无构建产物时的旧回退页**，不跟随新接口；只有需求明确要求时才改，改完跑 `node scripts/check-html-syntax.mjs web/index.html web/console.html web/setup.html`。
 
 ## 5. 测试规范
