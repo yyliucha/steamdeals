@@ -339,3 +339,98 @@ export function confidenceLabel(score) {
   if (score >= 0.86) return '待确认';
   return '无候选';
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// CN 批（docs/ALIGN-QUERY-PERF.md §2/§3）：候选预筛——
+// 线上事故根因是「组数 × 19.6 万行」全量比较。预筛先按归一化全等（快路径）
+// 与信息 token（中文全串+前 2 字前缀、英文 ≥3 字单词）把候选收敛到 ≤2000，
+// 再交给 bestMatchMulti 打分。召回策略保守：正确候选共享的 token 全命中，
+// 且「token 共享数降序截断」保证高相似候选不被截掉；CE 的 13 条误匹配
+// 只共享已归一化剥掉的通用词，预筛后直接不进候选集（口径方向与原实现一致）。
+// ─────────────────────────────────────────────────────────────────────
+
+/** 英文通用停用词：作为召回 token 会命中数万行，无区分度且可能挤掉真候选。 */
+const TOKEN_STOP_WORDS = new Set([
+  'the', 'and', 'for', 'with', 'game', 'games', 'edition', 'deluxe', 'standard', 'ultimate',
+  'complete', 'definitive', 'simulator', 'version', 'digital', 'collection', 'bundle', 'demo',
+]);
+
+/**
+ * 归一化名 → 信息 token 集合。
+ * 英文：≥3 字且非停用词的单词；中文：连续汉字串整体 + 前 2 字前缀（提高召回）。
+ */
+export function indexTokens(normalizedName) {
+  const out = new Set();
+  for (const w of String(normalizedName ?? '').split(/\s+/)) {
+    if (/^[a-z0-9]+$/.test(w)) {
+      if (w.length >= 3 && !TOKEN_STOP_WORDS.has(w)) out.add(w);
+    } else if (/^[\u3400-\u9fff]+$/.test(w)) {
+      out.add(w);
+      if (w.length >= 2) out.add(w.slice(0, 2));
+    }
+  }
+  return [...out];
+}
+
+/**
+ * 候选内存索引：归一化名快查表 + token 倒排表（候选 → token 命中数，用于排序截断）。
+ * candidates: [{ name, nameEn }]（19.6 万行量级）；构建一次、多组复用。
+ */
+export function buildCandidateIndex(candidates, { getFields = (c) => [c.name, c.nameEn] } = {}) {
+  const byNorm = new Map(); // 归一化名 → candidates[]
+  const byToken = new Map(); // token → candidates[]
+  const shared = new Map(); // candidate → token 命中数（排序截断用）
+  const list = candidates ?? [];
+  for (const c of list) {
+    const seen = new Set();
+    for (const f of getFields(c)) {
+      if (!f) continue;
+      const n = normalizeName(f);
+      if (!n) continue;
+      if (!byNorm.has(n)) byNorm.set(n, []);
+      byNorm.get(n).push(c);
+      for (const tok of indexTokens(n)) {
+        if (seen.has(tok)) continue;
+        seen.add(tok);
+        if (!byToken.has(tok)) byToken.set(tok, []);
+        byToken.get(tok).push(c);
+        shared.set(c, (shared.get(c) ?? 0) + 1);
+      }
+    }
+  }
+  return { candidates: list, byNorm, byToken, shared, getFields };
+}
+
+/**
+ * 预筛：返回该组用于打分的候选子集（≤ maxCandidates）。
+ * 快路径：任一变体归一化全等命中 → 只返回这些命中（完整相等一定在集合内，口径零损失）。
+ * 慢路径：所有变体的 token 召回并集，按「与标题共享 token 数」降序截断——
+ * 高相似候选共享的 token 多、一定排在前，截断不会漏掉本应命中的候选。
+ */
+export function preselectCandidates(titles, index, { maxCandidates = 2000 } = {}) {
+  if (!index?.candidates?.length || !titles?.length) return [];
+  const normTitles = [...new Set((titles ?? []).map((t) => normalizeName(t)).filter(Boolean))];
+  if (!normTitles.length) return [];
+
+  // 快路径：归一化全等
+  const exact = new Map();
+  for (const t of normTitles) {
+    for (const c of index.byNorm.get(t) ?? []) {
+      if (!exact.has(c)) exact.set(c, true);
+    }
+  }
+  if (exact.size) return [...exact.keys()];
+
+  // 慢路径：token 召回 + 共享数降序截断
+  const scored = new Map();
+  const tokens = new Set();
+  for (const t of normTitles) for (const tok of indexTokens(t)) tokens.add(tok);
+  for (const tok of tokens) {
+    for (const c of index.byToken.get(tok) ?? []) {
+      scored.set(c, (scored.get(c) ?? 0) + 1);
+    }
+  }
+  if (!scored.size) return [];
+  const out = [...scored.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
+  return out.slice(0, maxCandidates);
+}

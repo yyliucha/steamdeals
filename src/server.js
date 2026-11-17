@@ -26,6 +26,8 @@ import { VERSION } from './settings.js';
 import * as settings from './settings.js';
 import { handleSetupRoutes } from './setup-routes.js';
 import { sessionCookie } from './session-cookie.js';
+import { createAlignRunner } from './align-query.js';
+import { buildCandidateIndex } from './match.js';
 import { handleSettingsRoutes } from './settings-routes.js';
 import { appealEmailFrom } from './appeal.js';
 import { appealAdminMail, appealResultMail, appealReplyText, appealActionUrl } from './appeal-mail.js';
@@ -569,6 +571,46 @@ export function createApiServer({
       logger?.warn('abuse.review_failed', { ip, rule, message: String(err.message).slice(0, 120) });
     }
   };
+
+  // ---- CN 批（docs/ALIGN-QUERY-PERF.md）：对齐审核结果缓存 + single-flight + 20s 预算。
+  // 必须定义在请求 handler 之外（实例级）：缓存跨请求共享，否则每次请求新建 runner、缓存失效。
+  const ALIGN_CACHE_TTL_MS = 10 * 60 * 1000;
+  const ALIGN_BUDGET_MS = 20 * 1000;
+  const alignSkuFile = () => process.env.ALIGN_SKU_FILE || resolve(process.cwd(), 'data', 'skus.json');
+  const readAlignSkus = () => {
+    try {
+      if (existsSync(alignSkuFile())) {
+        const parsed = JSON.parse(readFileSync(alignSkuFile(), 'utf8'));
+        return Array.isArray(parsed) ? parsed : [];
+      }
+    } catch {
+      /* 空/坏文件按空处理 */
+    }
+    return [];
+  };
+  // 单次全量计算：候选索引建在计算内（缓存命中时完全不碰库）；匹配循环分片 + 20s 预算。
+  const computeAlignGroups = async () => {
+    const startedAt = Date.now();
+    const align = await import('./align.js');
+    const entries = readAlignSkus();
+    const games = (await q('select id, steam_appid, name, name_en from games where steam_appid is not null')).rows;
+    const orphanRows = await align.loadOrphanSonkwoGames(q);
+    const items = align.loadSonkwoItems(entries, orphanRows);
+    const maps = await db.sourceMapsByProducts(q, 'sonkwo', items.map((i) => String(i.skuId)));
+    const inherit = align.applyMapInheritance(items, maps);
+    const candidateIndex = buildCandidateIndex(games);
+    const { groups, partial } = await align.proposeAlignGroupsBudgeted(inherit.items, games, {
+      candidateIndex,
+      maxCandidates: 2000,
+      budgetMs: ALIGN_BUDGET_MS,
+      startedAt,
+      shouldYield: () => new Promise((r) => setImmediate(r)),
+    });
+    logger?.info('align.computed', { groups: groups.length, partial, ms: Date.now() - startedAt });
+    return { align, entries, games, groups, inherit, partial, generatedAt: Date.now() };
+  };
+  const alignRunner = createAlignRunner({ compute: computeAlignGroups, ttlMs: ALIGN_CACHE_TTL_MS });
+  const buildAlignGroups = ({ refresh = false } = {}) => alignRunner.run({ refresh });
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -4167,33 +4209,16 @@ export function createApiServer({
       }
 
       // ---- CD 批（docs/SONKWO-STEAM-MATCH.md §4.4）：对齐审核——按去重组队列 + 合并预览 + 确认/忽略 + 决定继承 ----
-      const alignSkuFile = () => process.env.ALIGN_SKU_FILE || resolve(process.cwd(), 'data', 'skus.json');
-      const readAlignSkus = () => {
-        try {
-          if (existsSync(alignSkuFile())) {
-            const parsed = JSON.parse(readFileSync(alignSkuFile(), 'utf8'));
-            return Array.isArray(parsed) ? parsed : [];
-          }
-        } catch {
-          /* 空/坏文件按空处理 */
-        }
-        return [];
-      };
-      const buildAlignGroups = async () => {
-        const align = await import('./align.js');
-        const entries = readAlignSkus();
-        const games = (await q('select id, steam_appid, name, name_en from games where steam_appid is not null')).rows;
-        const orphanRows = await align.loadOrphanSonkwoGames(q);
-        const items = align.loadSonkwoItems(entries, orphanRows);
-        const maps = await db.sourceMapsByProducts(q, 'sonkwo', items.map((i) => String(i.skuId)));
-        const inherit = align.applyMapInheritance(items, maps);
-        const groups = align.proposeAlignGroups(inherit.items, games);
-        return { align, entries, games, groups, inherit };
-      };
+      // CN 批（docs/ALIGN-QUERY-PERF.md）：buildAlignGroups/alignRunner 定义在 createApiServer 实例级（见 handler 外），
+      // 缓存跨请求共享；confirm/ignore 修改队列后 alignRunner.invalidate() 失效。
 
       if (path === '/api/admin/align' && req.method === 'GET') {
         if (!requireAdmin()) return;
-        const { groups, inherit } = await buildAlignGroups();
+        const refresh = url.searchParams.get('refresh') === '1';
+        const page = Math.max(1, Number.parseInt(url.searchParams.get('page') ?? '1', 10) || 1);
+        const pageSize = Math.min(50, Math.max(1, Number.parseInt(url.searchParams.get('pageSize') ?? '20', 10) || 20));
+        const result = await buildAlignGroups({ refresh });
+        const { groups, inherit } = result;
         const rows = groups.map((g) => ({
           key: g.key,
           name: g.name,
@@ -4207,7 +4232,17 @@ export function createApiServer({
             ? { name: g.best.candidate.name ?? g.best.matchedField, steamAppid: g.best.candidate.steam_appid }
             : null,
         }));
-        return json(res, 200, { groups: rows, total: rows.length, inherited: inherit.inheritApplied });
+        return json(res, 200, {
+          groups: rows.slice((page - 1) * pageSize, page * pageSize),
+          total: rows.length,
+          page,
+          pageSize,
+          inherited: inherit.inheritApplied,
+          generatedAt: result.generatedAt ?? null,
+          cached: alignRunner.getState().fromCache,
+          computing: false,
+          partial: Boolean(result.partial),
+        });
       }
 
       // 合并预览：该组同归一化名的孤立游戏行（报价/快照数 + 不可撤销提示）
@@ -4276,6 +4311,7 @@ export function createApiServer({
           if (entry) entry.appid = appid;
         }
         writeFileSync(alignSkuFile(), `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
+        alignRunner.invalidate(); // 队列内容已变，下一次 GET 重算（CN 批）
         logger?.info('match.confirmed', { by: user.username, key, appid, skus: group.skuIds, merged });
         return json(res, 200, { ok: true, mapped: outcome.skus, merged: merged.length, appid });
       }
@@ -4289,6 +4325,7 @@ export function createApiServer({
         const group = groups.find((g) => g.key === key);
         if (!group) return json(res, 404, { error: '队列里没有该组（可能已被处理）' });
         const ignored = await align.ignoreGroup({ q, group, reviewedBy: user.id });
+        alignRunner.invalidate(); // 队列内容已变，下一次 GET 重算（CN 批）
         logger?.info('match.ignored', { by: user.username, key, skus: group.skuIds });
         return json(res, 200, { ok: true, ...ignored });
       }

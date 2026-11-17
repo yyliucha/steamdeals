@@ -1876,7 +1876,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CN. 待开发（P0 插队，最高优先）：对齐审核查询拖垮站点
 
-**状态：待开发（P0 破坏性事故，插队；2026-11-17 线上 504 + 容器重启）**
+**状态：已实现待发版（2026-11-17：缓存 + single-flight + 候选预筛 + 20s 预算 + 分页 + 前端状态提示）**
 **优先级：** **P0 —— 其余所有待开发条目（CL/CK/CM/CO）为它让路**；破坏性/线上事故类问题永远最高优先
 **依赖：** 无
 **解锁：** 无
@@ -1897,6 +1897,14 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ③ 并发 5 请求只算 1 次；④ 超时返回 partial 不 5xx；⑤ CE 13 条误匹配仍不进自动候选；⑥ 分页/刷新生效；
   ⑦ `npm test` / `frontend:build` / `scan` 全绿；不自行打 tag（建议 v2.22.2 热修）。
 - **待确认**：缓存 TTL 10 分钟是否合适；`/api/admin/games`、`/sync/status` 的慢是否另开条目（建议另开）。
+- **实现（2026-11-17）**：`src/align-query.js`（新增：createAlignRunner——结果缓存 TTL 10 分钟 + single-flight 并发共享计算 Promise + invalidate）、
+  `src/match.js`（buildCandidateIndex/indexTokens/preselectCandidates——归一化全等快路径 + 信息 token 召回慢路径、共享数降序截断 ≤2000）、
+  `src/align.js`（proposeAlignGroupsBudgeted——候选预筛 + 每 200 组 setImmediate 分片 + 20s 预算超时返回 partial；proposeAlignGroups 保持同步旧签名，CLI 零改动）、
+  `src/server.js`（alignRunner 实例级跨请求共享；`GET /api/admin/align` 分页 page/pageSize=20 + `?refresh=1` + 响应带 generatedAt/cached/partial；
+  confirm/ignore 后 invalidate 失效缓存）、`frontend/src/components/AlignAdmin.vue`（刷新=强制重算、生成时间/缓存状态/partial 警告提示）、
+  `test/align-perf.test.js`（新增 12 项进主链：缓存/单飞/预筛口径（CE 13 条 + 正确样例）/预算 partial/分片/截断；反向自检 2 处变红验证）。
+  验证：npm test 全绿 / frontend:build / scan 干净；HTTP 冒烟（pglite + 真服务）：首次 5 并发只算 1 次、缓存命中 7ms ≤200ms、分页 45 组 20/页、
+  计算期间 /api/games/count 与 /api/site 并发 200 不阻塞、匿名 401。
 
 ## CO. 待开发：设计审计技术债清理（21 项 → 4 批，每日推进）
 

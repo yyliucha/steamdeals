@@ -1,9 +1,11 @@
 <script setup>
 // CD 批（docs/SONKWO-STEAM-MATCH.md §4.4）：对齐审核——去重组队列 + 合并预览 + 确认/忽略/手动搜索。
+// CN 批（docs/ALIGN-QUERY-PERF.md §2/§3）：服务端缓存 + 分页读；本页显示生成时间/缓存状态，partial 时提示。
 import { onMounted, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import PaginationBar from './PaginationBar.vue';
 import { redirectToLogin } from '../utils/session.js';
+import { fmtDateTime } from '../utils/siteTime.js';
 
 function api(path, options = {}) {
   return fetch(path, { credentials: 'same-origin', ...options, headers: { 'content-type': 'application/json', ...(options.headers || {}) } }).then(async (r) => {
@@ -20,18 +22,22 @@ function notifyError(e) { ElMessage.error(e?.message || String(e)); }
 const groups = ref([]);
 const total = ref(0);
 const inherited = ref(0);
+const meta = ref({ generatedAt: null, cached: false, partial: false });
 const loading = ref(false);
+const refreshing = ref(false);
 const page = ref(1);
 const pageSize = ref(20);
 
-async function load() {
-  loading.value = true;
+async function load(opts = {}) {
+  const { refresh = false } = opts;
+  if (refresh) refreshing.value = true; else loading.value = true;
   try {
-    const d = await api('/api/admin/align');
+    const d = await api(`/api/admin/align?page=${page.value}&pageSize=${pageSize.value}${refresh ? '&refresh=1' : ''}`);
     groups.value = d.groups || [];
     total.value = d.total || 0;
     inherited.value = d.inherited || 0;
-  } catch (e) { notifyError(e); } finally { loading.value = false; }
+    meta.value = { generatedAt: d.generatedAt ?? null, cached: d.cached ?? false, partial: d.partial ?? false };
+  } catch (e) { notifyError(e); } finally { loading.value = false; refreshing.value = false; }
 }
 
 const preview = ref({ visible: false, row: null, data: null, loading: false });
@@ -111,9 +117,12 @@ onMounted(() => load());
     <div class="module-card table-card">
       <div class="card-heading padded">
         <div><h3>对齐审核</h3><p>杉果 SKU 按「去重组」排队：同一款游戏的多条 SKU 只出现一行，确认/忽略一次处理整组；已确认/已忽略的决定对同组新 SKU 自动继承。队列计数按组。</p></div>
-        <el-button :loading="loading" @click="load">刷新</el-button>
+        <el-button :loading="refreshing" :disabled="loading" @click="load({ refresh: true })">刷新</el-button>
       </div>
       <p v-if="inherited" class="align-inherit muted">本次自动继承已确认/已忽略映射 {{ inherited }} 条。</p>
+      <el-alert v-if="meta.partial" class="align-partial" type="warning" :closable="false"
+        title="匹配计算超时，当前为部分结果" description="服务端已按 20 秒预算截断计算，稍后点击「刷新」可继续（其余接口不受影响）。" />
+      <p class="align-meta muted">生成于 {{ fmtDateTime(meta.generatedAt) }}（{{ meta.cached ? '缓存' : '本次计算' }}）</p>
       <el-table :data="groups" v-loading="loading" stripe>
         <el-table-column prop="name" label="杉果名（组）" min-width="220" show-overflow-tooltip />
         <el-table-column label="SKU 数" width="80" align="right"><template #default="{ row }">{{ row.skuCount }}</template></el-table-column>
@@ -127,7 +136,7 @@ onMounted(() => load());
           <el-button link type="danger" @click="ignoreGroup(row)">忽略</el-button>
         </template></el-table-column>
       </el-table>
-      <PaginationBar v-model:page="page" v-model:page-size="pageSize" :total="total" @change="load" />
+      <PaginationBar v-model:page="page" v-model:page-size="pageSize" :total="total" @change="load()" />
       <el-empty v-if="!groups.length && !loading" description="没有待对齐的组（新 SKU 会在杉果同步后进入队列）" />
     </div>
 
@@ -156,5 +165,5 @@ onMounted(() => load());
 </template>
 
 <style scoped>
-.align-inherit{margin:0 16px 10px}.align-orphans{margin:8px 0 14px;padding-left:18px}.align-orphans li{margin:4px 0;font-size:12px}.align-search{display:flex;gap:8px}.align-search .el-input{flex:1}.align-results{list-style:none;margin:12px 0 0;padding:0}.align-results li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);font-size:13px}.align-results small{display:block;font-size:11px}
+.align-inherit{margin:0 16px 10px}.align-meta{margin:0 16px 6px;font-size:12px}.align-partial{margin:0 16px 10px}.align-orphans{margin:8px 0 14px;padding-left:18px}.align-orphans li{margin:4px 0;font-size:12px}.align-search{display:flex;gap:8px}.align-search .el-input{flex:1}.align-results{list-style:none;margin:12px 0 0;padding:0}.align-results li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);font-size:13px}.align-results small{display:block;font-size:11px}
 </style>
