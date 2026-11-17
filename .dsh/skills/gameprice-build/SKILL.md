@@ -1,3 +1,8 @@
+---
+name: gameprice-build
+description: SteamDeals/gameprice 的构建发版技能：收到所有者「构建（vX.Y.Z）」指令后加载执行——版本号必须连续递增、禁止跳号（修复 → 小版本 +1，含新功能 → 大版本 +1，主版本 X.0.0 需所有者点名）、构建门禁（只有「质检通过」的条目进版本，存在质检打回/未质检则拒绝）、文档落地（CHANGELOG/README/PROJECT-OVERVIEW/TODO/REQUIREMENTS-INDEX/DELIVERY）、验证（npm test / frontend:build / scan / api.test）、提交推 main、打 annotated tag 推 tag、盯 CI 双绿、按 HANDOVER §3 汇报；不擅自打 tag、不碰服务器、不提前改版本号。
+---
+
 # 构建与发版（SteamDeals / gameprice）
 
 > **路径基准**：下文 `docs/…`、`src/…`、`test/…`、`package.json` 都相对**仓库根** `F:\dsh\gameprice`，
