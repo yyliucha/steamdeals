@@ -567,11 +567,14 @@ test('到价提醒：管理员增删查、appid 解析、普通用户 403、匿�
       body: JSON.stringify({ appid: 413150, targetCents: 3000 }),
     });
     assert.equal(byAppid.status, 200);
+    // CL 批（v2.23.0）：GET 改为全站分页清单 { items, total, page, pageSize, pages }（按提醒 id 管理）
     const list = await (await fetch(`${base}/api/admin/watchlist`, { headers: { cookie: admin.cookie } })).json();
-    assert.equal(list.watches.length, 1);
-    assert.equal(list.watches[0].target_cents, 3000, '按 appid 也能解析成游戏');
+    assert.equal(list.total, 1);
+    assert.equal(list.items.length, 1);
+    assert.equal(list.items[0].target_cents, 3000, '按 appid 也能解析成游戏');
 
-    const gid = list.watches[0].game_id;
+    const gid = list.items[0].game_id;
+    const watchId = list.items[0].id;
     // 留空 = 只跟史低
     await fetch(`${base}/api/admin/watchlist`, {
       method: 'POST',
@@ -579,15 +582,16 @@ test('到价提醒：管理员增删查、appid 解析、普通用户 403、匿�
       body: JSON.stringify({ gameId: gid, targetCents: null }),
     });
     const list2 = await (await fetch(`${base}/api/admin/watchlist`, { headers: { cookie: admin.cookie } })).json();
-    assert.equal(list2.watches[0].target_cents, null, '留空应覆盖成史低提醒');
+    assert.equal(list2.items[0].target_cents, null, '留空应覆盖成史低提醒');
 
     assert.equal((await fetch(`${base}/api/admin/watchlist`, { headers: { cookie: alice.cookie } })).status, 403);
     assert.equal((await fetch(`${base}/api/admin/watchlist`)).status, 401);
 
-    const del = await fetch(`${base}/api/admin/watchlist/${gid}`, { method: 'DELETE', headers: { cookie: admin.cookie } });
+    // CL 批：删除按提醒 id
+    const del = await fetch(`${base}/api/admin/watchlist/${watchId}`, { method: 'DELETE', headers: { cookie: admin.cookie } });
     assert.equal(del.status, 200);
     const list3 = await (await fetch(`${base}/api/admin/watchlist`, { headers: { cookie: admin.cookie } })).json();
-    assert.equal(list3.watches.length, 0);
+    assert.equal(list3.total, 0);
   } finally {
     await srv.close();
     await store.close();

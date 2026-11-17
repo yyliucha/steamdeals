@@ -346,6 +346,8 @@ node src/cli.js chart --db pglite:./data/demo-pgdata --out out
 
 | 命令 | 说明 |
 |---|---|
+| `e2e` | e2e 全量（`npm run e2e`）：功能矩阵 + 建删 `e2e_` 账号 + headless Edge + 模拟器/真机 + PDF 报告（见 docs/TESTING-E2E.md） |
+| `e2e:smoke` | 核心链路冒烟（`npm run e2e:smoke`，≤5 分钟；`--only`/`--tag`/`--device=real`/`--online` 可自定义） |
 | `list` | 主榜：各游戏官方渠道最低价 + 是否史低 |
 | `chart` | 生成静态价格页（曲线图）到 `out/`（`--out`、`--days 90`、`--limit 200`） |
 | `watch add\|rm\|list` | 关注列表：`watch add 1091500 --target 99`（不带 target = 跌到史低才提醒） |
@@ -579,6 +581,10 @@ node src/cli.js logs --run run-20261026025454-nu81  # 单次命令全轨迹
 ## 测试
 
 ```bash
+npm test                     # 主链（95+ 个模块测试，首个失败即中断）
+npm run e2e                  # e2e 全量：功能矩阵 + 后台建删 e2e_ 账号 + headless Edge + Android 模拟器/真机 + PDF 报告
+                             # （发版前与每轮 QA 必跑；报告在 F:\dsh\e2e-reports\，不入库；使用说明 docs/TESTING-E2E.md）
+npm run e2e:smoke            # 核心链路冒烟（≤5 分钟）
 node test/log.test.js        # 7 项：JSONL 格式、脱敏、轮转读取、过滤
 node test/adapters.test.js   # 5 项：Steam 接口构造与解析
 node test/sonkwo.test.js     # 9 项：对着真实页面快照解析（含"别取错版本价"）

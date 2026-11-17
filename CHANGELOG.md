@@ -1,8 +1,19 @@
 # 变更日志
 
-## [2.23.0] - 2026-11-17
+## [2.24.0] - 2026-11-17
 
-CL 批：到价提醒改为用户级（详情三段式 + 已拥有终态 + 「到价提醒」列表 + 后台全站清单）。
+e2e 测试套件（CK）+ App 功能补齐（CM）：把「真实测试 = 上线门槛」落成可重复脚本，并补齐 App 与 Web 的差异项。
+
+### 新增
+
+- **e2e 测试套件（CK）**：`npm run e2e`（全量：功能矩阵 49 行——前台 / 后台 13 模块 / 用户·愿望单·站点通知·Steam 账号四类完整增删改 / App 安装·覆盖安装·启动·六屏走查 / 公网只读）+ `npm run e2e:smoke`（核心链路 ≤5 分钟）。headless Edge 经 DevTools 协议直连（DOM/Console/截图/PDF），**零新增运行时依赖**；Android 默认模拟器 `steamdeals35` 自动拉起/收尾关闭、真机 `--device=real` 无设备立即中断并打印连接步骤；后台从新建 `e2e_<时间戳>` 账号开始（开场清 `e2e_%` 孤儿、收尾断言无残留）；HTML 报告 → PDF 输出 `F:\dsh\e2e-reports\<日期>-<短哈希>.pdf`（仓库外不入库）。矩阵支持 `--only`/`--tag`，**新功能必须加矩阵行**；微信内置浏览器只做 UA 页面级断言；`--online --expect-version=` 部署后公网只读验收（版本/页面/关键接口 200/TTFB，不碰服务器）。验收：全量 42 通过/0 失败/3 环境 skip（186s）、smoke 8/8（38s）、反向自检（删 DLC 区块 → 行红 + 截图留档 → 恢复后绿）。文档 [docs/TESTING-E2E.md](docs/TESTING-E2E.md)，规格 [docs/E2E-SUITE.md](docs/E2E-SUITE.md)。
+- **App 功能补齐（CM，App 仓库 `steamdeals-app` v2.20.0）**：开发商/发行商名称兼容解析（字符串数组 / JSON 对象文本 / 对象数组，统一取 `name`）；详情页 DLC 列表（10 条/页、分页）；价格历史区间切换与指标；游戏名一键复制（中英文两行）。站点侧同步 e2e 矩阵 4 行（实测 3 过 1 按环境跳过：生产 game_dlc 未同步时 DLC 区块行按环境 skip，同步后自动生效）。
+
+### 测试
+
+- `test/e2e/`（matrix.json + runner.mjs + lib/{server,browser,adb,account,mail,report,online,steps}.mjs，约 2800 行）；`npm run e2e` / `npm run e2e:smoke` 脚本；DELIVERY 发版清单加「e2e 全量通过」门禁。
+
+
 
 ### 新增
 

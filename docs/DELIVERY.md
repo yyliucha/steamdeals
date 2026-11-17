@@ -195,9 +195,17 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-16 更新，v2.19.0 已发布：CE 杉果匹配器加固 + CC 多源采集推进）
+### 当前状态（2026-11-17 更新，v2.24.0 已发布：CK e2e 测试套件 + CM App 功能补齐（站点侧））
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
+- **v2.24.0 已发布**（tag `v2.24.0`）：CK 批 e2e 测试套件（`test/e2e/` 功能矩阵 49 行 + runner + 8 个 lib，
+  零新增运行时依赖）+ CM 批 App 功能补齐（站点侧：e2e 矩阵 4 行与文档；App 仓库 `steamdeals-app` v2.20.0
+  独立发布，app-v2.20.0 tag 等所有者指令）。详见 [TESTING-E2E.md](TESTING-E2E.md) / [E2E-SUITE.md](E2E-SUITE.md) / [APP-PARITY.md](APP-PARITY.md)。
+  验证：`npm test` 主链全绿、`frontend:build` ✓、`scan` 干净、`api.test.js` ✓；
+  `npm run e2e` 全量 42 通过/0 失败/3 环境 skip（186s，PDF `F:\dsh\e2e-reports\`）、`npm run e2e:smoke` 8/8（38s）。
+  质检：CK ✅（[QA-E2E-SUITE-CK.md](QA-E2E-SUITE-CK.md) 第 1 轮，通过 6/需人工确认 0）；CM ✅（[QA-CM.md](QA-CM.md) 第 1 轮）。
+  CI：**待确认**（打 tag 后观察 docker-hub / docker-tcr 双绿）。
+  **服务器部署待执行**（升级到 `2.24.0`；e2e 套件的 `--online --expect-version=2.24.0` 公网只读验收在部署后跑）。
 - **v2.23.0 已发布**（tag `v2.23.0`，提交 e196382）：CL 批——到价提醒改为用户级：
   详情页三段式操作区（购买 / 我的标记 chips / 到价提醒区块：参考行 + ¥ 输入 + 「按史低」「减 10%」+ 保存，
   已设置绿色 pill「提醒中 ¥X」+ 取消；移动端折叠一行）+「到价提醒」列表页（桌面 tab + 移动「提醒」，分页 20、取消即移除、空态引导）；

@@ -1,6 +1,6 @@
-# App 功能补齐（CM：与 Web 对齐的差异项）（待开发）
+# App 功能补齐（CM：与 Web 对齐的差异项）（已实现并发布 v2.24.0）
 
-> 状态：**已确认待开发（2026-11-17，模拟器实测后确认）**。
+> 状态：**已实现并发布 v2.24.0（2026-11-17，站点侧随 CK 构建；QA docs/QA-CM.md 第 1 轮 ✅ 放行；App 仓库 `steamdeals-app` e183584 / 2.20.0，App 侧 tag/Release 等所有者指令）**。
 > 关联：[APP-NATIVE.md](APP-NATIVE.md) §4.4（功能对齐矩阵）、[USER-ALERTS.md](USER-ALERTS.md)（已拥有终态规则）、
 > [GAME-DLC.md](GAME-DLC.md)（Web 的 DLC 口径）、[PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md)（Web 价格历史口径）、
 > [APP-API.md](APP-API.md)（App 契约）。
