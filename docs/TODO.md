@@ -1850,7 +1850,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CM. App 功能补齐（与 Web 对齐的差异项）
 
-**状态：已实现待发版（2026-11-17，App 仓库 e183584 已推 main；模拟器 steamdeals35 逐项截图通过，JVM 单测 18 项全绿 + 反向自检变红验证）**
+**状态：质检通过（2026-11-17；QA 报告 docs/QA-CM.md 第 1 轮 ✅ 放行；App 仓库 e183584 / 2.20.0，JVM 单测 18 项 QA 独立重跑全绿 + assembleRelease 同签名复核）**
 **依赖：** 无（DLC 与历史接口已就绪）；CM-5 需站点 `/api/app/games` 扩展、CM-6 需登录态核实
 **解锁：** 无
 **规格**：[APP-PARITY.md](APP-PARITY.md)

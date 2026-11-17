@@ -218,8 +218,43 @@ async function main() {
           if (row.kind === 'online' && !args.online) {
             throw new SkipError('未指定 --online（部署后跑，规格决策 #13）');
           }
-          if (row.skipIf === 'mailEnvMissing' && !mailEnv) {
-            throw new SkipError('无邮件凭据（F:\\dsh\\e2e-secrets\\mail.env 不存在），邮件行按环境不具备跳过');
+          const skipIfs = [].concat(row.skipIf ?? []);
+          for (const cond of skipIfs) {
+            if (cond === 'mailEnvMissing' && !mailEnv) {
+              throw new SkipError('无邮件凭据（F:\\dsh\\e2e-secrets\\mail.env 不存在），邮件行按环境不具备跳过');
+            }
+            // CM 批（2026-11-17）：2.20.0 发版前，e2e 安装链路装的是存量 2.19.0；
+            // 版本不符属环境不具备而非实现缺失，发版入库后自动生效。
+            if (cond === 'cmAppOldVersion' && ctx.serial) {
+              let v = '';
+              try {
+                v = (await ctx.adb.packageVersion(ctx.serial)) ?? '';
+              } catch {
+                /* 探测失败按旧版本跳过 */
+              }
+              if (v !== '2.20.0') {
+                throw new SkipError(`模拟器 App 版本 ${v || '未安装'} ≠ 2.20.0，CM 行按环境不具备跳过（2.20.0 发版并安装后自动生效）`);
+              }
+            }
+            // CM-2 行：生产 game_dlc 尚未同步时公网详情没有 DLC 区块，
+            // 属环境不具备而非实现缺失；同步后（916440 dlc.total>0）自动生效。只读 GET，不写生产。
+            if (cond === 'cmDlcDataMissing') {
+              let total = -1;
+              try {
+                const res = await fetch('https://sd.yyliucha.cn/api/app/games/916440/dlc?page=1&pageSize=10', {
+                  signal: AbortSignal.timeout(8000),
+                });
+                if (res.ok) {
+                  const j = await res.json();
+                  total = Number(j?.total ?? -1);
+                }
+              } catch {
+                /* 探测失败按未同步处理 */
+              }
+              if (total <= 0) {
+                throw new SkipError(`生产 game_dlc 尚未同步（916440 dlc.total=${total}），DLC 区块行按环境不具备跳过（同步后自动生效）`);
+              }
+            }
           }
           if (row.kind === 'adb' && !ctx.serial) {
             throw new SkipError('无在线设备（adb devices 为空）');

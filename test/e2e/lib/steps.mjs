@@ -184,15 +184,16 @@ async function adbTapText(ctx, step) {
   const { uiDump, tap, screencap } = ctx.adb;
   const texts = await uiDump(ctx.serial, join(ctx.reportDir, 'ui-current.xml'));
   const xml = texts.join(' ');
-  const target = resolveTemplate(step.text, ctx);
+  const target = resolveTemplate(step.text ?? step.desc, ctx);
+  const attr = step.desc ? 'content-desc' : 'text';
   if (!texts.includes(target)) {
     // 站点内容没渲染出来（模拟器无外网）→ 按环境不具备跳过，不判失败（规格 §6）
-    throw new SkipError(`uiautomator 树中没有「${target}」（模拟器未能访问站点内容，疑似无外网），六屏走查按环境不具备跳过`);
+    throw new SkipError(`uiautomator 树中没有「${target}」（模拟器未能访问站点内容，疑似无外网），按环境不具备跳过`);
   }
   // 重新读原始 XML 拿 bounds
   const { readFileSync } = await import('node:fs');
   const raw = readFileSync(join(ctx.reportDir, 'ui-current.xml'), 'utf8');
-  const node = raw.match(new RegExp(`<node[^>]*text="${target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*>`));
+  const node = raw.match(new RegExp(`<node[^>]*${attr}="${target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*>`));
   if (!node) throw new SkipError(`「${target}」节点无 bounds，跳过点击`);
   const b = node[0].match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
   if (!b) throw new SkipError(`「${target}」节点无 bounds，跳过点击`);
@@ -365,6 +366,14 @@ export async function executeRow(row, ctx) {
       case 'adbTapText':
         await adbTapText(ctx, s);
         break;
+      case 'adbShell': {
+        // 通用 adb shell（CM 批矩阵行用：pm clear / input text / keyevent / swipe；只执行不解析输出）。
+        // cmd 支持字符串（按空白拆词）或数组；adb.mjs shell() 是按参数 spread，字符串会被按字符拆散。
+        const raw = resolveTemplate(s.cmd, ctx);
+        const parts = Array.isArray(raw) ? raw : String(raw).split(/\s+/).filter(Boolean);
+        await ctx.adb.shell(ctx.serial, parts);
+        break;
+      }
       case 'adbPackageVersion': {
         const v = await ctx.adb.packageVersion(ctx.serial);
         const expect = resolveTemplate(s.expect, ctx);
