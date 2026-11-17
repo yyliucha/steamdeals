@@ -1918,3 +1918,22 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 | **CO-4** | D6 | 覆盖率/性能基线门禁（与 CK 的 e2e 报告联动） | 待开发（依赖 CK） |
 
 > 已被其它条目覆盖、**不重复做**：A1→CN、A2→CL、A4→CJ、C1→CL、D5→CK、D2/D3 已有测试防护、E3 已有规则。
+
+## CP. 待开发（P0）：手机端识别增强（小米浏览器桌面 UA 漏判 → 打不开下载页）
+
+**状态：待开发（2026-11-17 线上实测确认；开关已开但小米浏览器不跳）**
+**优先级：** P0（用户直接看不到下载入口），与 CN 同级插队
+**依赖：** 无（`app.mobileRedirectEnabled` 已在生产打开）
+**解锁：** 无
+**规格**：[MOBILE-DETECT-FIX.md](MOBILE-DETECT-FIX.md)
+
+- **实测（2026-11-17 线上，开关已开）**：iPhone Safari / Android Chrome → **302 `/app`** ✅；
+  **小米浏览器「桌面版网站」模式 → 200 不跳**（UA `X11; Linux x86_64 … MiuiBrowser/17.0`，不含 `mobile`）；PC 200 不跳（正确）。
+- **根因**：`src/server.js:102` `isMobileUa = /mobile/i.test(ua)` 只认 UA 字面量，桌面模式偽装 UA 漏判。
+- **已确认决策（6 项）**：① 三信号判定（UA 特征 / `Sec-CH-UA-Mobile: ?1` / 前端 `screen.width<=640` 兜底）；
+  ② `index.html` 内联兜底脚本（`sessionStorage` 防循环、只跳一次）；③ 豁免列表不变（console/login/register/app/banned/appeal/setup/change-password 与 /api/*）；
+  ④ PC 与宽屏（>640）永不跳；⑤ 微信内跳 `/app` 后显示「在浏览器打开」提示；⑥ 不引入 UA 库。
+- **改动落点**：`src/server.js`（多信号 `isMobileUa` + 日志记录命中信号）、`frontend/index.html`（内联兜底脚本）、
+  `test/frontend-mobile.test.js` / `test/serve.test.js`（静态断言：脚本存在、豁免一致）。
+- **验收**：见规格 §4——① 四组 UA 实测（含小米桌面 UA 必须跳）；② 红米真机进入 `/app` 且不循环；③ 豁免路径不跳；
+  ④ 微信内显示提示；⑤ PC/平板不跳；⑥ `npm test` / `frontend:build` / `scan` 全绿；不自行打 tag。
