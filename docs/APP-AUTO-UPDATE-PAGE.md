@@ -13,6 +13,9 @@
 | 2 | **同步频率**：每小时 1 次（GitHub API 每轮 1 次调用，额度无压力；App 发版后最多 1 小时页面生效）。 |
 | 3 | **App 发布物契约**：App 构建时把 `latest.json`（version / versionCode / minVersionCode / notes / sha256 / size / releasedAt）作为 **Release 资产**上传，与 APK、`.sha256` 同批；站点同步直接取用，不靠人工改文件。 |
 | 4 | 站点仓库**不再要求手工入库**新 APK 与 latest.json（存量 2.19.0 保留作镜像兜底）；发版清单相应简化。 |
+| 5 | **现有 Release 由 CJ 开发会话一次性补齐**：给 `app-v2.19.0` 补传 `latest.json` 资产（`gh release upload --clobber`），
+并把握手约定写进发版清单（DELIVERY / APP-NATIVE §5）：**以后每次 `app-v` 发版必须带 latest.json**——不靠口头传话，CG 会话照清单执行。 |
+| 6 | 已停发的旧 TWA 包 `frontend/public/app/steamdeals-2.16.0.apk` **随本批删除**（只留 2.19.0 作镜像兜底，避免混淆）。 |
 
 ## 2. 现状（代码证据，2026-11-17 核对）
 
@@ -104,14 +107,17 @@
 
 ## 10. 实施顺序
 
+0. **开工首步（一次性补齐，属本批交付）**：给现有 `app-v2.19.0` Release 补传 `latest.json`
+   （`gh release upload app-v2.19.0 frontend\public\app\latest.json --repo yyliucha/steamdeals-app --clobber`），
+   让 CJ 的同步任务第一次运行就有真实数据可拉；同一提交里把「每次 `app-v` 发版必须带 latest.json」写进
+   DELIVERY 发版清单与 APP-NATIVE §5，并删除旧 TWA 包 `frontend/public/app/steamdeals-2.16.0.apk`。
 1. `src/app-release.js` + CLI `app-sync`（先能手动同步成功）；
 2. `/api/app/latest` 优先级 + `/app/dl/` 下载路由；
 3. 定时任务进 `jobsFromEnv` + 测试；
-4. 前端备用链接 + 文档（DELIVERY 发版清单去掉"人工入库 APK/latest.json"步骤；APP-NATIVE §5 同步）；
+4. 前端备用链接 + 文档收尾；
 5. 部署后首次验证：服务器上 `app-sync` 一轮 → `/app` 显示 2.19.0（不依赖重新构建镜像）。
 
 ## 11. 待确认问题
 
-1. App 仓库 Release 是否固定包含 `latest.json` 资产（CG 会话/App CI 负责）——本批按"必须包含"实现，
-   缺失时同步失败并在日志提示（不做 tag 推算兜底）。
-2. 存量旧 TWA 包 `frontend/public/app/steamdeals-2.16.0.apk` 是否顺带删除（已停发；与 2.19.0 并存易混淆）。
+无（原两条已升为决策：§1 #5「现有 Release 一次性补齐 latest.json + 发版清单固化约定」、
+§1 #6「旧 TWA 2.16.0 APK 随本批删除」）。实施时按 §1 与 §10 第 0 步执行即可。
