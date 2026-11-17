@@ -22,7 +22,11 @@ description: SteamDeals/gameprice 项目「只聊需求」工作法：先用代�
 - 不跑 
 pm test` / 
 pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连生产库；
-- 不 `git add/commit/tag/push`，不写 CHANGELOG 版本条目，不承诺版本号或上线时间；
+- **自己的 docs 产出必须 commit + push（2026-11-17 所有者新规）**：规格文档、SKILL 修订、自己写入的
+  TODO/INDEX/DELIVERY 条目，改完就提交推 main——但**只提交自己的文件**（`git add <自己的路径>`，**绝不 `git add -A`**），
+  工作区里其他会话的未提交改动一律不碰、不 stash；提交信息按 [CONTRIBUTING.md](../../../CONTRIBUTING.md) 规范
+  （如 `docs(requirements): <主题>`）；
+- **仍然不打 tag、不触发构建、不写 CHANGELOG 版本条目、不承诺版本号或上线时间**；
 - **不碰服务器（硬规则 4），不触发构建**（硬规则 5：只有所有者明确说"构建 vX.Y.Z"才能打 tag）。
 - **给不给服务器命令，按阶段分**（2026-11-05 所有者确认）：
   - **需求/设计阶段**：不给"请你去服务器执行"的命令。需要线上事实时按顺序退让：① 后台页面能不能看到
@@ -30,7 +34,8 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
   - **排查/诊断阶段**（用户在报故障、已经在查问题，或明确要命令）：**可以直接给只读诊断命令**，
     但要满足 §9 的规范（可复制、只读、带判读）；破坏性/写操作一律先问。
 
-**允许写的文件**：`docs/` 下新增或修订的需求/规格文档，以及 `docs/TODO.md`、`docs/ROADMAP.md` 的条目。
+**允许写的文件**：`docs/` 下新增或修订的需求/规格文档、`docs/TODO.md`、`docs/ROADMAP.md` 的条目，
+以及 `.dsh/skills/` 下四个 gameprice 技能的 SKILL.md（流程修订，随仓库提交）。
 **不写** `README.md`、`docs/PROJECT-OVERVIEW.md` 的功能状态——那是"已实现"的对外描述，由开发阶段在交付时同步（否则会把计划写成已完成）。
 
 用户说"顺便改一下"时：按 [CONTRIBUTING.md](../../../CONTRIBUTING.md) 的会话分工（需求讨论 Flash / 实现 Pro）说明这属于开发阶段，产出第 6 节的开发描述即可。
@@ -186,6 +191,11 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
 3. **本轮回复给开发描述**（上面三行）；
 4. 若需求里有真机/线上证据，写进 TODO 条目或规格（开发本机可能复现不了）。
 5. **不需要同步 README**：2026-11-12 起 README 不再有「开发进度」摘要（只有一条指向 TODO 的链接），也没有 `todo:progress` 命令；进度以 `docs/TODO.md` 为准。
+6. **提交推 main（只提交自己的文件，2026-11-17 起）**：`git add <本次自己的路径>`（绝不 `git add -A`）→
+   `git commit -m "docs(<scope>): <摘要>"` → `git push origin main`；其他会话的未提交改动不碰；
+   push 前 `git fetch origin main` 看领先情况——若 origin/main 领先且工作区有他人未提交改动，
+   **不要 `pull --rebase --autostash`**（会把他人改动 stash 走），停手上报所有者；
+   若领先且工作区只有自己的改动，可 `git pull --rebase`（拉取失败或冲突停手报告，禁止强推）。
 
 **并发写 TODO（2026-11-09 所有者新规）**：建条目 / 加 INDEX 行之前先探测占用
 （`git status --short docs/TODO.md docs/REQUIREMENTS-INDEX.md`、`LastWriteTime` 2 分钟内被改过、`.git/index.lock`）；
@@ -210,7 +220,7 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
 1. 每条结论都有代码/文档依据？没依据的标"待核实"，不写成事实。
 2. 决策是否区分了"所有者已确认"与"我的建议"？
 3. 有没有偷偷承诺版本号、上线时间、构建？——删掉。
-4. 本次是否确实没改任何业务代码、没跑构建、没提交？（回复里明确写这一句）
+4. 本次是否确实没改任何业务代码、没跑构建、没打 tag？自己的 docs 产出是否已 commit/push（只提交自己的文件）？（回复里明确写这一句）
 5. **是否已在 `docs/TODO.md` 建/更新条目**（正文第一行有 `**状态：…**`），并在 `docs/REQUIREMENTS-INDEX.md` 加了一行？
 6. **是否已产出开发描述**（§6 三行：要做的条目 / 规格 / 验收要点）？
 7. **有没有写清依赖关系**：新条目有 `**依赖：**` / `**解锁：**` 两行吗？前置未完成时状态是 `依赖阻塞` 吗？
