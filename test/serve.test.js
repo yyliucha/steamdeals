@@ -190,6 +190,7 @@ test('BY-1：/api/app/latest 新字段缺失时返回 null 不报错（旧清单
     assert.equal(latest.minVersionCode, null, '缺失 minVersionCode → null');
     assert.deepEqual(latest.notes, ['单段说明'], '旧字符串 notes 按单条数组处理');
     assert.equal(latest.sha256, null, '其它缺失字段仍是 null（旧形状不变）');
+    assert.equal(latest.apkPath, '/app/dl/steamdeals-2.16.0.apk', 'apkPath 派生自 version（清单自带 apkPath 字段不再透传，CJ 批语义）');
     // 清单文件不存在也不报错
     await srv.close();
     const srv2 = await startApiServer({ query: q, frontendDir: mkdtempSync(join(tmpdir(), 'gp-frontend-empty-')), port: 0, host: '127.0.0.1' });
