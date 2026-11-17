@@ -1848,9 +1848,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ③ 用户隔离（A 删不掉 B 的）；④ 邮件收件人=用户本人、同用户多游戏合并一封、无邮箱跳过、站点级行为不变；
   ⑤ 后台清单可删且有审计；⑥ 迁移两次不报错、旧数据保留；⑦ `npm test` / `frontend:build` / `scan` 全绿。
 
-## CM. 待开发：App 功能补齐（与 Web 对齐的差异项）
+## CM. App 功能补齐（与 Web 对齐的差异项）
 
-**状态：待开发（2026-11-17，模拟器实测后确认：JSON bug / DLC / 历史区间 / 复制名）**
+**状态：已实现待发版（2026-11-17，App 仓库 e183584 已推 main；模拟器 steamdeals35 逐项截图通过，JVM 单测 18 项全绿 + 反向自检变红验证）**
 **依赖：** 无（DLC 与历史接口已就绪）；CM-5 需站点 `/api/app/games` 扩展、CM-6 需登录态核实
 **解锁：** 无
 **规格**：[APP-PARITY.md](APP-PARITY.md)
@@ -1863,6 +1863,14 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ④ 公告角标 CM-6 待登录态核实；⑤ App 改动在 `steamdeals-app` 仓库、CM-5 服务端改动在站点仓库。
 - **改动落点**：App 仓库（详情页开发者/发行商解析、DLC 区块、价格历史区间与指标、复制名）；
   站点仓库（仅 CM-5：`/api/app/games` 透传筛选/排序参数）。
+- **实现（2026-11-17，App 仓库 e183584，版本 2.20.0/22000）**：`NameListSerializer`（兼容字符串数组 /
+  JSON 对象文本 / 对象数组取 name）、DLC 分页 10（价格/折扣/缺货/Steam 跳转/「Steam 不提供 DLC 拥有数据」，
+  无 DLC 不显示）、`PriceHistoryModel` 纯函数（30/90/全部 + 区间指标，口径对齐 Web §11）+ 史低虚线参考线
+  与全部史低日绿点、标题旁复制按钮（中英两行，缺一回退单行）；JVM 单测 18 项（`gradlew testDebugUnitTest`，
+  生产真实夹具 + 反向自检）；模拟器 e2e：生产只读验证 CM-1/CM-3/CM-4 与多平台报价回归，DLC 区块用
+  debug 包 + 本地 mock（`F:\dsh\cm-e2e\mock-server.mjs`，仓库外）验证分页/缺货/翻页/跳转。
+- **数据侧备注**：生产 `game_dlc` 尚未同步（所有抽查游戏 `dlc.total=0, synced=false`），上线后 DLC 区块
+  随 steam-status/backfill 同步自然出现；App 端逻辑已按规格实现并经 mock 验证。
 - **验收**：见规格 §4——① 纪元1800 显示 Ubisoft Mainz / Ubisoft（无 JSON）；② DLC 区块分页/价格/跳转/说明；
   ③ 历史区间切换与指标与 Web 一致；④ 复制名成功；⑤ 既有功能不回归；⑥ 模拟器安装新包截图核对；⑦ App 构建同签名可覆盖。
 
