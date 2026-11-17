@@ -1,6 +1,6 @@
 # 后台体验与安全策略：申诉布局 / Steam 账号重复渲染 / 指标压缩 / 自动封禁收紧（待开发）
 
-> 状态：**开发中（2026-11-17，ce-dev 认领；所有者确认 6 项）**。编号 **CF**。
+> 状态：**已实现待发版（2026-11-17，31483fb）**。编号 **CF**。
 > 关联：[BAN-AND-SECURITY-FIXES.md](BAN-AND-SECURITY-FIXES.md)（BJ/BR 批：白名单、三振、审核）、
 > [APPEAL-SYSTEM.md](APPEAL-SYSTEM.md)（申诉状态机）、[TODO.md](TODO.md) 的 CF 条目。
 
