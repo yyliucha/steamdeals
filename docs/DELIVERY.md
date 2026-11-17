@@ -202,7 +202,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   验证：`npm test` 92 文件全绿、`frontend:build` ✓、`scan` 干净、`api.test.js` 27/27。
   质检：CF ✅（[QA-CF.md](QA-CF.md)）、CD ✅（[QA-CD.md](QA-CD.md)）、CH ✅（[QA-CH.md](QA-CH.md)）；
   CG（Android App）第 1 轮 ✅（[QA-CG.md](QA-CG.md)，App 按 GitHub Release 独立发布，不进站点镜像）。
-  CI：待记录（见下方 CI 记录提交）。**服务器部署待执行**（升级到 `2.21.0`）；
+  CI：docker-hub run 44021503806 ✅（test/smoke/publish）；docker-tcr run 44021503944 ✅（test/publish）。**服务器部署待执行**（升级到 `2.21.0`）；
   部署后重点：① 观察 `auto_ban.applied` 误封率（CF）；② 对齐审核处理杉果队列、「未探测」下降（CD）；
   ③ steam-discovery 首轮采集后 Deck/好评率覆盖上升、为你推荐可用（CH，§11 四条待实测校准）。
 
