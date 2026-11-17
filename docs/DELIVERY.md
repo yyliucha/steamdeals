@@ -196,14 +196,17 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 ### 当前状态（2026-11-16 更新，v2.19.0 已发布：CE 杉果匹配器加固 + CC 多源采集推进）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
-- **v2.22.0 已发布**（tag `v2.22.0`，提交待补）：CA（App Token 认证：`api_tokens` + `/api/auth/token[/revoke]` +
+- **v2.22.0 已发布**（tag `v2.22.0`，提交 014ec9b 发版文档 + 53dad6c test 修复后重打 tag）：CA（App Token 认证：`api_tokens` + `/api/auth/token[/revoke]` +
   `/api/app/*` 前缀重写与封禁豁免 + `/api/app/status` + 契约 docs/APP-API.md；CA-5 手机 UA 前台 302 → `/app`
   开关默认关闭 + 微信「在浏览器打开」提示 + /app 页改版为主推原生 App）+ CI（提醒邮件 HTML 化 + 申诉页视觉对齐）+
   CG App v2.19.0 APK 入库（versionCode 21900，同 keystore 覆盖旧 TWA）。
   验证：`npm test` 主链全绿、`frontend:build` ✓、`scan` 干净、`api.test.js` 27/27（重跑）。
   质检：CA-1 ✅（[QA-CA1.md](QA-CA1.md)，通过 12）、CA-5 ✅（[QA-CA5.md](QA-CA5.md)，通过 9）、CI ✅（[QA-CI.md](QA-CI.md)）、
   CG ✅（[QA-CG.md](QA-CG.md)，App 按 GitHub Release 独立发布 app-v2.19.0）。
-  CI：docker-hub / docker-tcr run **待记录**。**服务器部署待执行**（升级到 `2.22.0`）；
+  CI：docker-hub run 44037853853 ✅（test/smoke/publish）；docker-tcr run 44037853797 ✅（test/publish）。
+  首次 tag（014ec9b）CI test 红：CJ 批（当时开发中、后已质检通过 docs/QA-CJ.md）随 main 改了 `/api/app/latest`
+  apkPath 语义（派生 `/app/dl/<ver>.apk`），serve.test.js 契约断言未同步——ce-dev 补 BS-1 断言（61e8ec6）、
+  本会话补 BY-1 断言（53dad6c）后重打 tag 双绿。**服务器部署待执行**（升级到 `2.22.0`）；
   部署后：① App Token 登录与 `/api/app/*` 接口真机回归（CA-1）；② 确认 CG 发布后开启
   `app.mobileRedirectEnabled`（手机浏览器前台 → /app，默认关闭）；③ 到价提醒邮件观察 HTML 渲染与纯文本兜底（CI）。
 - **v2.21.0 已发布**（tag `v2.21.0`，提交待补）：CF（strict 自动封禁硬规则 + 阶梯 + 审核四操作 + 布局改版）+
