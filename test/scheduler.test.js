@@ -69,7 +69,7 @@ test('AC11：状态文件带健康面板字段（耗时/结果/失败原因）�
 test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清理、gog / humble / discover / backup / alerts / images / readmodel），各自间隔', () => {
   const jobs = jobsFromEnv({});
   assert.deepEqual(jobs.map((j) => j.name), [
-    'steam-prices', 'heat', 'steam-status', 'rename', 'backfill', 'prune', 'proxy-probe', 'readmodel', 'sonkwo', 'itad', 'gog', 'humble',
+    'steam-prices', 'heat', 'steam-status', 'steam-discovery', 'rename', 'backfill', 'prune', 'proxy-probe', 'readmodel', 'sonkwo', 'itad', 'gog', 'humble',
     'discover', 'backup', 'logs', 'alerts', 'images',
   ]);
   const interval = (name) => jobs.find((j) => j.name === name).intervalMin;
@@ -246,7 +246,7 @@ test('显式禁用或间隔为 0 的任务会被剔除', () => {
     READMODEL_ENABLED: '0',
     PROXY_PROBE_ENABLED: '0',
   });
-  assert.deepEqual(jobs.map((j) => j.name), ['heat', 'rename', 'backfill', 'prune', 'sonkwo', 'alerts']);
+  assert.deepEqual(jobs.map((j) => j.name), ['heat', 'steam-discovery', 'rename', 'backfill', 'prune', 'sonkwo', 'alerts']);
 });
 
 test('从未跑过的任务在 initialDelay 之后才算到点', () => {
@@ -493,4 +493,15 @@ test('AC-2：熔断手动重置——registerCircuitReset 注册钩子，resetCi
   assert.equal(state.openUntil, null);
   off();
   assert.equal(resetCircuit('heat'), false, '注销后不再处理');
+});
+
+// CH 批（docs/DISCOVERY-FOR-YOU.md §6）：steam-discovery 任务默认参数与 STEAM_HEAVY 互斥
+test('CH steam-discovery：默认 100 页/回退 100/1440 分钟，归入 STEAM_HEAVY', () => {
+  const jobs = jobsFromEnv({ STEAM_ENABLED: '1' });
+  const job = jobs.find((j) => j.name === 'steam-discovery');
+  assert.ok(job, 'steam-discovery 任务存在');
+  assert.match(job.args.join(' '), /--pages 100/, '默认 100 页');
+  assert.match(job.args.join(' '), /--fallback 100/, '默认回退 100');
+  assert.equal(job.intervalMin, 1440, '默认每天一轮');
+  assert.ok(STEAM_HEAVY.has('steam-discovery'), '与 Steam 重任务互斥串行');
 });

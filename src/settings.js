@@ -206,6 +206,16 @@ export const SETTINGS = [
     help: '同一天第 1/2/3 次自动封禁时长，第 3 次起封顶 1 天；跨天重置；永不自动永久。',
   }),
 
+  // ---- Deck 认证 + 好评率 + 个性化推荐（CH 批，docs/DISCOVERY-FOR-YOU.md §5）----
+  def('discovery.pages', 'STEAM_DISCOVERY_PAGES', 'sources', 'Steam 发现每轮翻页数', 'int', 100, { min: 1, max: 1000, help: '每页 50 款，100 页 ≈ 5000 款/轮。' }),
+  def('discovery.fallbackLimit', 'STEAM_DISCOVERY_FALLBACK_LIMIT', 'sources', '发现名称回退条数', 'int', 100, { min: 1, max: 2000, advanced: true }),
+  def('discovery.intervalMin', 'STEAM_DISCOVERY_INTERVAL_MIN', 'sources', 'Steam 发现间隔（分钟）', 'int', 1440, { min: 60, max: 10080 }),
+  def('personal.tasteWeight', 'PERSONAL_TASTE_WEIGHT', 'site', '推荐口味权重（0–100）', 'int', 50, { min: 0, max: 100, help: '「为你推荐」口味相似 vs 综合评分的混合比例。' }),
+  def('personal.scoreDiscountWeight', 'PERSONAL_SCORE_DISCOUNT_W', 'site', '综合分折扣权重', 'int', 40, { min: 0, max: 100, advanced: true }),
+  def('personal.scoreReviewWeight', 'PERSONAL_SCORE_REVIEW_W', 'site', '综合分好评权重', 'int', 35, { min: 0, max: 100, advanced: true }),
+  def('personal.scoreHeatWeight', 'PERSONAL_SCORE_HEAT_W', 'site', '综合分热度权重', 'int', 25, { min: 0, max: 100, advanced: true }),
+  def('personal.behaviorLogEnabled', 'PERSONAL_BEHAVIOR_LOG_ENABLED', 'site', '行为学习记录开关', 'bool', true, { help: '关闭后行为上报直接 202 丢弃、不落库；搜索词仅本人画像使用。' }),
+
   // ---- 网络 ----
   def('network.steamProxy', 'STEAM_PROXY', 'network', 'Steam 专用代理', 'secret', '', {
     help: '只作用于 Steam 域名，如 http://127.0.0.1:7890。可配多条（换行分隔、按顺序尝试、最多 10 条），仅支持 http/https。',

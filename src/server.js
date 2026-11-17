@@ -63,7 +63,10 @@ const passwordCheckHits = new Map();
 // BK 批（docs/SESSION-MANAGEMENT.md §3.2）：last_seen_at 写节流——同一 token 5 分钟最多写一次（内存态）
 const sessionSeenAt = new Map();
 // CA-1：Bearer Token 的 last_used_at 5 分钟节流写（与 sessionSeenAt 同款内存节流）
-const apiTokenSeenAt = new Map();// AK-2（docs/AUTH-REDESIGN.md §4.3）：登录 IP 限速（同 IP 15 分钟失败 ≥20 次 → 429，内存计数、重启清零）
+const apiTokenSeenAt = new Map();
+// CH 批：为你推荐 15 分钟实例级缓存 + 行为上报每用户 60 次/分限流
+const forYouCache = new Map();
+const behaviorBuckets = new Map();// AK-2（docs/AUTH-REDESIGN.md §4.3）：登录 IP 限速（同 IP 15 分钟失败 ≥20 次 → 429，内存计数、重启清零）
 const loginIpFails = new Map(); // ip -> { count, windowStart }
 
 /** 测试用：清零登录 IP 限速计数（模块级 Map 跨测试共享）。 */
@@ -1699,9 +1702,62 @@ export function createApiServer({
         return json(res, 200, { ok: true, message: '密码已修改，其它设备已退出登录' });
       }
 
+      // ---- CH 批（docs/DISCOVERY-FOR-YOU.md §3）：个性化推荐 + 行为上报 ----
+      if (path === '/api/games/for-you' && req.method === 'POST') {
+        if (!requireUser()) return;
+        const { computeForYou } = await import('./discovery.js');
+        const key = `foryou:${user.id}`;
+        const cache = forYouCache.get(key);
+        if (cache && Date.now() - cache.at < 15 * 60_000) return json(res, 200, cache.body);
+        const env = process.env;
+        const result = await computeForYou(q, {
+          userId: user.id,
+          region: 'cn',
+          limit: 20,
+          tasteWeight: Number(env.PERSONAL_TASTE_WEIGHT ?? 50),
+          scoreWeights: {
+            discount: Number(env.PERSONAL_SCORE_DISCOUNT_W ?? 40),
+            review: Number(env.PERSONAL_SCORE_REVIEW_W ?? 35),
+            heat: Number(env.PERSONAL_SCORE_HEAT_W ?? 25),
+          },
+          logger,
+        });
+        const body = { profile: result.profile, games: result.games?.map((g) => ({
+          id: Number(g.id), steam_appid: g.steam_appid, name: g.name, name_en: g.name_en,
+          min_price: g.min_price, is_free: g.is_free, because: g.because, review_score: g.review_score,
+          deck_compat: g.deck_compat, steam_status: g.steam_status,
+        })) ?? [] };
+        forYouCache.set(key, { at: Date.now(), body });
+        if (forYouCache.size > 2000) forYouCache.clear();
+        return json(res, 200, body);
+      }
+
+      if (path === '/api/behavior' && req.method === 'POST') {
+        if (!requireUser()) return;
+        const { behaviorActionWeight } = await import('./discovery.js');
+        const body = await readBody(req, 16 * 1024);
+        const action = String(body?.action ?? '');
+        const weight = behaviorActionWeight(action);
+        if (!weight) return json(res, 400, { error: 'action 不在白名单' });
+        // 每用户 60 次/分限流（内存桶）
+        const now = Date.now();
+        const bRec = behaviorBuckets.get(user.id) ?? { at: now, count: 0 };
+        if (now - bRec.at > 60_000) { bRec.at = now; bRec.count = 0; }
+        bRec.count += 1;
+        behaviorBuckets.set(user.id, bRec);
+        if (bRec.count > 60) return json(res, 429, { error: '上报过于频繁' }, { 'retry-after': '60' });
+        if (String(process.env.PERSONAL_BEHAVIOR_LOG_ENABLED ?? '1') === '0') {
+          return json(res, 202, { ok: true, skipped: true });
+        }
+        const gameId = Number(body?.gameId);
+        await db.upsertUserBehavior(q, { userId: user.id, gameId: Number.isInteger(gameId) && gameId > 0 ? gameId : null, action, weight });
+        if (action === 'search' && body?.query) await db.insertUserSearchLog(q, { userId: user.id, query: body.query });
+        logger?.info('behavior.recorded', { userId: user.id, action, gameId: Number.isInteger(gameId) && gameId > 0 ? gameId : null });
+        return json(res, 200, { ok: true });
+      }
+
       // ---- 当前用户与偏好 ----
-      if (path === '/api/me' && req.method === 'GET') {
-        const prefs = user ? await db.getPrefs(q, user.id) : null;
+      if (path === '/api/me' && req.method === 'GET') {        const prefs = user ? await db.getPrefs(q, user.id) : null;
         return json(res, 200, {
           user: user
             ? { id: user.id, username: user.username, role: user.role, mustChangePassword: Boolean(user.must_change_password) }
@@ -1808,9 +1864,12 @@ export function createApiServer({
         const interest = oneOf('interest', ['all', 'on', 'off'], 'all');
         const ownedParam = oneOf('owned', ['exclude', 'only', 'include'], 'exclude');
         const blockedParam = oneOf('blocked', ['exclude', 'only', 'include'], 'exclude');
-        const sort = oneOf('sort', ['discount', 'price', 'name'], 'discount');
+        const sort = oneOf('sort', ['discount', 'price', 'name', 'score'], 'discount');
         const typeFilter = oneOf('type', ['all', 'game', 'dlc'], 'all');
         const released = oneOf('released', ['all', '30d', '1y', '3y'], 'all');
+        // CH 批（docs/DISCOVERY-FOR-YOU.md §3）：好评率与 Deck 筛选（白名单）
+        const reviewMin = Number(getInput('reviewMin') ?? 0);
+        const deck = oneOf('deck', ['all', 'verified', 'playable', 'ok', 'unsupported'], 'all');
         // 成人内容展示策略（docs/STEAM-SYNC-STATUS-AND-RATING.md §5.2）：
         // hide=前台不展示（默认，由系统设置 site.adultDisplay 决定）；badge/show 不过滤
         const adult = oneOf('adult', ['hide', 'badge', 'show'], String(process.env.SITE_ADULT_DISPLAY ?? 'hide'));
@@ -1849,6 +1908,8 @@ export function createApiServer({
           compact,
           guestFlags,
           adult,
+          reviewMin: Number.isFinite(reviewMin) && reviewMin >= 1 && reviewMin <= 9 ? reviewMin : null,
+          deck,
           // 愿望单是登录用户专属维度；游客传入的 wishlist=true 一律无效
           wishlist: Boolean(user && guestSearchPost && body?.wishlist === true),
         });

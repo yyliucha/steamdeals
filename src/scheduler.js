@@ -66,6 +66,15 @@ export function jobsFromEnv(env = process.env) {
       enabled: env.STEAM_ENABLED !== '0',
     },
     {
+      name: 'steam-discovery',
+      // CH 批（docs/DISCOVERY-FOR-YOU.md §6）：每天翻页采集 Deck 认证 + 好评率（search/results，
+      // 与 appdetails 同域共享 200 次/5 分钟配额 → 归入 STEAM_HEAVY 互斥串行）；100 页 ×50 款 ≈ 5 分钟/轮。
+      args: ['steam-discovery', '--pages', String(num(env.STEAM_DISCOVERY_PAGES, 100)), '--fallback', String(num(env.STEAM_DISCOVERY_FALLBACK_LIMIT, 100))],
+      intervalMin: num(env.STEAM_DISCOVERY_INTERVAL_MIN, 1440),
+      initialDelaySec: num(env.STEAM_DISCOVERY_INITIAL_DELAY_SEC, 1800),
+      enabled: env.STEAM_ENABLED !== '0' && env.STEAM_DISCOVERY_ENABLED !== '0',
+    },
+    {
       name: 'rename',
       // 每周重写一次名字：目录导入留下的机器英文名补成中文（英文挪进 name_en），
       // 顺带覆盖"后来才补了简中"的游戏。选择条件自带收敛，没名字可改时秒退。
@@ -304,7 +313,7 @@ const SYNC_LIKE = new Set(['steam', 'sonkwo', 'itad', 'gog', 'humble', 'discover
 // Steam 重任务：与后台手动同步/回填/热度共用配额与槽位，有手动任务在跑时让路。
 // 它们都打 store.steampowered.com/appdetails（200 次/5 分钟配额），必须串行互斥。
 // steam-status 也在其中（X 批）：逐 appid 全量请求，与价格/热度/回填并列重任务槽。
-export const STEAM_HEAVY = new Set(['steam-prices', 'rename', 'backfill', 'heat', 'catalog', 'steam-status']);
+export const STEAM_HEAVY = new Set(['steam-prices', 'rename', 'backfill', 'heat', 'steam-status', 'steam-discovery', 'catalog']);
 
 // 轻任务：目标站与配额都和重任务独立（杉果国内源、GOG/Humble catalog、备份/日志/提醒/图片），
 // 允许在 heat/steam-prices 等长任务运行时并行执行——否则 heat 首轮播种 9 小时会饿死所有其它源。

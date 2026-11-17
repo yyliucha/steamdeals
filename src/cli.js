@@ -601,6 +601,20 @@ async function printSyncPriceReport(sinceMs, limit = 5) {
   }
 }
 
+async function cmdSteamDiscovery() {
+  const { runDiscoveryRound } = await import('./discovery.js');
+  const stats = await withStore((store) =>
+    runDiscoveryRound({
+      q: (sql, p) => store.query(sql, p),
+      pages: Number(flag('pages', 100)),
+      fallbackLimit: Number(flag('fallback', 100)),
+      rateMs: Number(flag('rate', 1200)),
+      logger,
+    }),
+  );
+  console.log(`发现轮完成：翻页命中 ${stats.matched}，回退请求 ${stats.fallbackRequests}（采纳 ${stats.fallbackMatched}），总请求 ${stats.requests}`);
+}
+
 async function cmdSyncSonkwo() {
   const skus = readJson('data/skus.json', []);
   if (!skus.length) throw new Error('data/skus.json 为空，先用 add-sku 加几个 SKU');
@@ -2644,6 +2658,7 @@ const commands = {
   alerts: cmdAlerts,
   discover: cmdDiscover,
   match: cmdMatch,
+  'steam-discovery': cmdSteamDiscovery,
   compare: cmdCompare,
   import: cmdImport,
   serve: cmdServe,
