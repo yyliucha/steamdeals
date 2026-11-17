@@ -1975,5 +1975,28 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ⑧ 保存/重载/权限行为不变；⑨ `npm test` / `frontend:build` / `scan` 全绿；移动端单列。
 - **待确认**：§6 三条（折叠摘要字段、恢复默认二次确认、移动端形态）。
 
+## CR. 待开发：开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + 契约）
+
+**状态：待确认（2026-11-17，所有者 App 截图反馈：详情页显示原始 JSON）**
+**依赖：** 无（App 侧展示兜底 CM-1 已实现待发版）
+**解锁：** 无
+**规格**：[APP-DEV-PUBLISHER-NAMES.md](APP-DEV-PUBLISHER-NAMES.md)
+
+- **现象（2026-11-17 所有者截图）**：App 详情页「黎明杀机」开发商/发行商显示
+  `{"name":"Behaviour Interactive Inc.","creator_clan_account_id":33367148}` 原始 JSON，期望纯名称。
+- **根因（代码证据）**：GetItems 批量商店接口的 `basic_info.developers/publishers` 是**对象数组**，
+  `src/adapters/store-browse.js:90-91` **原样透传**；`writeGames` 写 `text[]` 时 node-pg 把对象元素
+  JSON.stringify 成字符串落库（`src/store/pg.js:3331/3372`）——唯一未归一化的入口。
+  `normalizeOfficial`（appdetails 字符串数组）、`normalizeSteamcmd`（associations[].name）本身干净。
+  站点 Web 详情无开发商/发行商渲染；App 展示由 CM-1 `NameListSerializer` 兜底（2.20.0 起），旧版仍显示原文。
+- **修复（3 项）**：① `mapStoreItem` 归一化 developers/publishers（对象取 name、去空、去重保序、上限 20、
+  单条截断 200）；② 迁移内幂等清洗历史脏元素（`::jsonb ->> 'name'`，无脏行不更新）；③ 接口契约保证
+  `developers`/`publishers` 为字符串数组或 null。
+- **改动落点**：`src/adapters/store-browse.js`（归一化 helper，与 `genres` 同款）、`src/store/pg.js`（ALTERS 末尾清洗 SQL）、
+  `test/dev-publisher-names.test.js`（新增，进主链）。
+- **验收**：见规格 §5——① `mapStoreItem` 对象数组→名称（主链测试）；② 写库读回纯字符串；③ 造脏行→`migrate`
+  归一并幂等；④ 详情接口真跑无 `{`；⑤ `npm test` / `frontend:build` / `scan` 全绿；⑥ 部署后统计脏行归零。
+- **待确认**：§4 五项（Web 是否顺带展示、清洗方式、归一化细节、App 不动、抽查范围）。
+
 
 
