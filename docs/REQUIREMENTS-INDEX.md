@@ -72,7 +72,8 @@
 | **CI** | 价格提醒邮件 HTML 化 + 申诉管理页视觉对齐（分段控件/空态/表格列/间距） | [ALERT-MAIL-APPEAL-UX.md](ALERT-MAIL-APPEAL-UX.md) | 已发布 v2.22.0（2026-11-17，docs/QA-CI.md ✅） | ✅ 本轮已给 |
 | **CJ** | 安卓版 App 发版后 /app 页自动更新（GitHub Release 同步 + 站点自托管 + 兜底） | [APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md) | 已发布 v2.22.0（回归修复 b726af4 随 v2.22.1；质检 ✅） | ✅ 本轮已给 |
 | **CK** | e2e 测试套件（功能矩阵 + headless Edge + Android 模拟器/真机 + 公网只读 + PDF 报告） | [E2E-SUITE.md](E2E-SUITE.md) | 待开发（2026-11-17 已确认 13 项决策） | ✅ 本轮已给 |
-| **CL** | 用户级到价提醒（列表页 + 已拥有隐藏 + 后台全站清单 + 详情页三段式 UI） | [USER-ALERTS.md](USER-ALERTS.md) | 待开发（2026-11-17 已确认 3 项） | ✅ 本轮已给 |
+| **CL** | 用户级到价提醒（列表页 + 已拥有终态隐藏 + 后台全站清单 + 详情页三段式 UI） | [USER-ALERTS.md](USER-ALERTS.md) | 待开发（2026-11-17 已确认 5 项） | ✅ 本轮已给 |
+| **CM** | App 功能补齐（开发商 JSON 修复 / DLC 列表 / 价格历史区间与指标 / 复制名；CM-5 筛选服务端化二期） | [APP-PARITY.md](APP-PARITY.md) | 待开发（2026-11-17 模拟器实测后确认） | ✅ 本轮已给 |
 | **CE** | 杉果匹配器加固 + 误合并数据修复（完整标题计分/片段限制/数字一致性/内容词只进人工/`--apply` 二次确认） | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9 | 已发布 v2.19.0（2026-11-16，12f4f42；QA 报告 docs/QA-CE.md） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |
 | **AC** | 同步不可达的未保证项（AC1–AC11） | [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) | AC-1 已发布 v1.18.0；AC-2/AC-3/AC-4 已发布 v2.1.0（2026-11-09） | ✅ 已在对话给出 |
