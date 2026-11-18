@@ -2,39 +2,53 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>我的资料（Android）demo</title>
+<title>我的资料（Android）demo v2</title>
 <style>
   *{box-sizing:border-box}
-  body{margin:0;background:#1b1b1f;display:flex;justify-content:center;padding:18px;font:14px/1.5 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
-  .phone{width:392px;height:940px;background:#f7f5fb;border-radius:34px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.6);position:relative}
+  body{margin:0;background:#1b1b1f;display:flex;justify-content:center;padding:16px;font:14px/1.5 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+  .phone{width:392px;height:900px;background:#f7f5fb;border-radius:34px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.6);position:relative}
   .status{display:flex;justify-content:space-between;padding:10px 20px 2px;color:#3a3550;font-size:11px}
   .bar{display:flex;align-items:center;gap:14px;padding:8px 16px 10px}
   .back{font-size:20px;color:#3a3550}.bar h1{font-size:17px;margin:0;color:#241f38;font-weight:600}
-  .content{padding:0 16px 92px;height:calc(100% - 74px);overflow:auto}
-  .avatar-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;margin:2px 0 12px}
-  .avatar{width:88px;height:88px;border-radius:50%;background:linear-gradient(135deg,#7b65e8,#5f49d3);display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;color:#fff;border:2px solid #fff;position:relative}
-  .avatar .cam{position:absolute;right:-2px;bottom:-2px;width:27px;height:27px;border-radius:50%;background:#6750d8;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;border:2px solid #f7f5fb}
-  .tip{font-size:10.5px;color:#8a83a3}
-  .card{background:#fff;border-radius:16px;padding:2px 14px;margin-bottom:11px;box-shadow:0 1px 2px rgba(36,31,56,.06)}
-  .row{padding:10px 0;border-bottom:1px solid #efeaf7}
-  .row:last-child{border-bottom:0}
-  .row .k{font-size:11px;color:#8a83a3;margin-bottom:2px}
-  .row .v{font-size:14px;color:#241f38}.row .v.muted{color:#8a83a3}
+  .content{padding:0 16px;height:calc(100% - 74px);overflow:auto;opacity:.4}
+  .avatar-wrap{display:flex;flex-direction:column;align-items:center;gap:5px;margin:2px 0 10px}
+  .avatar{width:82px;height:82px;border-radius:50%;background:linear-gradient(135deg,#7b65e8,#5f49d3);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;border:2px solid #fff;position:relative}
+  .avatar .cam{position:absolute;right:-2px;bottom:-2px;width:25px;height:25px;border-radius:50%;background:#6750d8;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;border:2px solid #f7f5fb}
+  .tip{font-size:10px;color:#8a83a3}
+  .card{background:#fff;border-radius:16px;padding:2px 14px;margin-bottom:10px;box-shadow:0 1px 2px rgba(36,31,56,.06)}
+  .row{padding:9px 0;border-bottom:1px solid #efeaf7}.row:last-child{border-bottom:0}
+  .row .k{font-size:10.5px;color:#8a83a3;margin-bottom:2px}.row .v{font-size:13.5px;color:#241f38}.row .v.muted{color:#8a83a3}
   .req{color:#d05c5c}
-  .sec{font-size:12px;color:#8a83a3;margin:12px 2px 5px;display:flex;align-items:center;gap:7px}
-  .sec .cnt{font-size:10px;border:1px solid #e2daf3;border-radius:999px;padding:0 7px;background:#fff;color:#8a83a3}
-  .acct{background:#fff;border-radius:16px;padding:12px 14px;margin-bottom:10px;box-shadow:0 1px 2px rgba(36,31,56,.06)}
-  .acct-h{display:flex;gap:10px;align-items:center}
-  .acct-h .av{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#7b65e8,#5f49d3);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
-  .acct-h b{font-size:14px;color:#241f38}.acct-h .id{font-size:10.5px;color:#8a83a3}
-  .def{font-size:9.5px;color:#2f7d52;border:1px solid #bfe3cd;background:#eefaf2;border-radius:999px;padding:0 6px;margin-left:5px}
-  .stats{display:flex;gap:14px;padding:9px 0 2px}
-  .stats div{font-size:10.5px;color:#8a83a3}.stats b{display:block;font-size:15px;color:#241f38}
-  .ops{display:flex;gap:6px;flex-wrap:wrap;padding-top:8px;border-top:1px solid #f1edf9;margin-top:8px}
-  .op{font-size:11px;color:#6750d8;padding:4px 9px;border:1px solid #ded4f7;border-radius:8px;background:#fbf9ff}
+  .sec{font-size:11.5px;color:#8a83a3;margin:10px 2px 4px;display:flex;align-items:center;gap:6px}
+  .sec .cnt{font-size:10px;border:1px solid #e2daf3;border-radius:999px;padding:0 6px;background:#fff}
+  .acct{background:#fff;border-radius:16px;padding:11px 14px;margin-bottom:9px;box-shadow:0 1px 2px rgba(36,31,56,.06)}
+  .acct-h{display:flex;gap:9px;align-items:center}
+  .acct-h .av{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#7b65e8,#5f49d3);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+  .acct-h b{font-size:13.5px;color:#241f38}.acct-h .id{font-size:10px;color:#8a83a3}
+  .def{font-size:9px;color:#2f7d52;border:1px solid #bfe3cd;background:#eefaf2;border-radius:999px;padding:0 5px;margin-left:4px}
+  .stats{display:flex;gap:16px;padding:8px 0 2px}
+  .stats div{font-size:10px;color:#8a83a3}.stats b{display:block;font-size:14px;color:#241f38}
+  .ops{display:flex;gap:6px;flex-wrap:wrap;padding-top:7px;border-top:1px solid #f1edf9;margin-top:7px}
+  .op{font-size:10.5px;color:#6750d8;padding:3px 8px;border:1px solid #ded4f7;border-radius:8px;background:#fbf9ff}
   .op.warn{color:#b4433f;border-color:#f2d3d2;background:#fff8f8}
-  .save-bar{position:absolute;left:0;right:0;bottom:0;padding:10px 16px 16px;background:linear-gradient(180deg,rgba(247,245,251,0),#f7f5fb 30%)}
-  .save{width:100%;border:0;border-radius:14px;padding:13px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(180deg,#7b65e8,#5f49d3);box-shadow:0 8px 20px rgba(95,73,211,.3)}
+  .statsline{font-size:12.5px;color:#4a4363;line-height:1.9}
+  /* 底部弹层 */
+  .mask{position:absolute;inset:0;background:rgba(20,16,40,.45)}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:22px 22px 0 0;padding:12px 16px 18px;box-shadow:0 -10px 40px rgba(20,16,40,.25);max-height:82%;display:flex;flex-direction:column}
+  .grab{width:38px;height:4px;border-radius:999px;background:#e2daf3;margin:0 auto 10px}
+  .sh-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .sh-head h3{font-size:15px;margin:0;color:#241f38;flex:1}
+  .sh-head .x{color:#8a83a3;font-size:16px}
+  .tabs{display:flex;gap:6px;margin:4px 0 8px}
+  .tab{font-size:12px;color:#8a83a3;padding:4px 12px;border-radius:999px;background:#f4f0fb}
+  .tab.on{background:#6750d8;color:#fff}
+  .sh-search{background:#faf8ff;border:1px solid #e2daf3;border-radius:10px;padding:7px 11px;font-size:12px;color:#8a83a3;margin-bottom:6px}
+  .grow{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid #f1edf9}
+  .gcover{width:52px;height:24px;border-radius:4px;background:linear-gradient(135deg,#cfc3f5,#8d7bd8);display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;flex:none}
+  .gname{flex:1;min-width:0;font-size:12.5px;color:#241f38}.gname .en{font-size:10px;color:#8a83a3}
+  .gp{font-size:11px;color:#5f49d3;text-align:right}.gp s{display:block;color:#8a83a3;font-size:9.5px}
+  .badge{font-size:9px;color:#2f7d52;border:1px solid #bfe3cd;background:#eefaf2;border-radius:999px;padding:0 5px}
+  .sh-foot{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;color:#8a83a3;padding-top:8px}
 </style>
 </head>
 <body>
@@ -43,33 +57,40 @@
     <div class="bar"><span class="back">←</span><h1>我的资料</h1></div>
     <div class="content">
       <div class="avatar-wrap"><div class="avatar">S<span class="cam">📷</span></div><span class="tip">默认头像可切换（Steam 账号 / 自定义）</span></div>
-
       <div class="card">
         <div class="row"><div class="k">昵称 <span class="req">*</span></div><div class="v">超级管理员</div></div>
         <div class="row"><div class="k">邮箱 <span class="req">*</span> · 已验证</div><div class="v">admin@example.com</div></div>
         <div class="row"><div class="k">用户名</div><div class="v muted">admin（不可修改）</div></div>
       </div>
-
       <div class="sec">简介 <span class="req">*</span></div>
-      <div class="card"><div class="row" style="padding-bottom:6px"><div class="v" style="font-size:13.5px;color:#4a4363">Steam 老玩家，喜欢策略与 RPG。</div></div></div>
-
+      <div class="card"><div class="row" style="padding-bottom:5px"><div class="v" style="font-size:13px;color:#4a4363">Steam 老玩家，喜欢策略与 RPG。</div></div></div>
       <div class="sec">我的游戏库 <span class="cnt">2 个 Steam 账号</span></div>
       <div class="acct">
         <div class="acct-h"><div class="av">s</div><div><b>sunming</b><span class="def">默认</span><div class="id">76561198…1234</div></div></div>
-        <div class="stats"><div>已拥有<b>128</b></div><div>愿望单<b>23</b></div><div>最近同步<b style="font-size:11px;font-weight:500">11-18 12:40</b></div></div>
+        <div class="stats"><div>已拥有<b>128</b></div><div>愿望单<b>23</b></div></div>
         <div class="ops"><span class="op">查看已拥有</span><span class="op">查看愿望单</span><span class="op">设为默认</span><span class="op warn">解绑</span></div>
       </div>
       <div class="acct">
         <div class="acct-h"><div class="av">a</div><div><b>alt_account</b><div class="id">76561198…5678</div></div></div>
-        <div class="stats"><div>已拥有<b>37</b></div><div>愿望单<b>6</b></div><div>最近同步<b style="font-size:11px;font-weight:500">11-18 10:05</b></div></div>
+        <div class="stats"><div>已拥有<b>37</b></div><div>愿望单<b>6</b></div></div>
         <div class="ops"><span class="op">查看已拥有</span><span class="op">查看愿望单</span><span class="op">设为默认</span><span class="op warn">解绑</span></div>
       </div>
-      <p style="font-size:10.5px;color:#8a83a3;margin:2px 2px 10px">两个账号分开统计，不合并；「已拥有」按各账号库存分别计算。</p>
-
       <div class="sec">我的统计</div>
-      <div class="card"><div class="row"><div class="v" style="font-size:13px">已拥有 165 · 愿望单 29 · 本站愿望单 12 · 到价提醒 5</div></div></div>
+      <div class="card"><div class="row"><div class="v" style="font-size:12.5px;line-height:1.9">已拥有 165 · 愿望单 29 · 本站愿望单 12 · 到价提醒 5 · 史低命中 8</div></div></div>
     </div>
-    <div class="save-bar"><button class="save">保存修改</button></div>
+
+    <div class="mask"></div>
+    <div class="sheet">
+      <div class="grab"></div>
+      <div class="sh-head"><h3>sunming · 游戏库</h3><span class="x">✕</span></div>
+      <div class="tabs"><span class="tab on">已拥有 128</span><span class="tab">愿望单 23</span></div>
+      <div class="sh-search">🔍 搜索游戏名 / AppID</div>
+      <div class="grow"><div class="gcover">cover</div><div class="gname">赛博朋克 2077<div class="en">Cyberpunk 2077</div></div><div class="gp">¥298.00<s>史低 ¥149.00</s></div></div>
+      <div class="grow"><div class="gcover">cover</div><div class="gname">神界：原罪2 - 终极版<div class="en">Divinity: Original Sin 2</div></div><div class="gp">¥133.00<s>史低 ¥66.50</s></div></div>
+      <div class="grow"><div class="gcover">cover</div><div class="gname">雾锁王国<div class="en">Enshrouded</div></div><div class="gp">¥138.00<s>史低 ¥124.20</s></div></div>
+      <div class="grow"><div class="gcover">cover</div><div class="gname">Stray<div class="en">Stray</div></div><div class="gp">¥98.00<s>史低 ¥98.00</s></div></div>
+      <div class="sh-foot"><span>共 128 款 · 第 1/13 页</span><span class="badge">仅本人可见</span></div>
+    </div>
   </div>
 </body>
 </html>

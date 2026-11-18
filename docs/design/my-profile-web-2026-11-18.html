@@ -2,50 +2,64 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>我的资料（Web）demo</title>
+<title>我的资料（Web）demo v2</title>
 <style>
   :root{--bg:#0b1020;--panel:#121a30;--panel-2:#0f1728;--border:#243050;--border-2:#2e3d63;--fg:#e8edf9;--fg-muted:#93a0bf;--fg-subtle:#6d7a99;--brand:#6b7dff;--green:#3fbf7f;--green-bg:#12291f;--green-border:#2a6b4a}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--fg);font:13.5px/1.6 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;display:flex;min-height:100vh}
-  .side{width:216px;flex:none;background:#0d1526;border-right:1px solid var(--border);padding:16px 12px}
+  .side{width:212px;flex:none;background:#0d1526;border-right:1px solid var(--border);padding:16px 12px}
   .brand{display:flex;align-items:center;gap:9px;margin-bottom:16px}
   .logo{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#6b7dff,#3e4fd8);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px}
   .nav{color:var(--fg-muted);font-size:12.5px;display:flex;flex-direction:column;gap:2px}
   .nav div{padding:7px 10px;border-radius:8px}.nav div.on{background:#1a2440;color:#fff}
-  .main{flex:1;padding:20px 26px;min-width:0}
+  .main{flex:1;padding:18px 24px;min-width:0}
   .crumb{color:var(--fg-subtle);font-size:11.5px;margin-bottom:5px}
   h1{font-size:19px;margin:0 0 3px}
-  .sub{color:var(--fg-muted);font-size:12px;margin:0 0 14px}
-  .card{background:linear-gradient(180deg,#121b31,#101728);border:1px solid var(--border);border-radius:14px;margin-bottom:13px;overflow:hidden}
-  .card-h{display:flex;align-items:center;gap:8px;padding:11px 15px;border-bottom:1px solid var(--border);background:#0f1729;font-size:13px;font-weight:600}
+  .sub{color:var(--fg-muted);font-size:12px;margin:0 0 12px}
+  .card{background:linear-gradient(180deg,#121b31,#101728);border:1px solid var(--border);border-radius:14px;margin-bottom:12px;overflow:hidden}
+  .card-h{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);background:#0f1729;font-size:13px;font-weight:600}
   .tag{font-size:10.5px;color:#b9c6e6;border:1px solid #2c3a68;background:#16203a;border-radius:999px;padding:1px 8px;font-weight:400}
   .tag.ok{color:#c8f3dd;border-color:var(--green-border);background:var(--green-bg)}
-  .body{padding:14px 15px}
-  .avatar-row{display:flex;gap:16px;align-items:flex-start;padding-bottom:13px;border-bottom:1px dashed #1c2740;margin-bottom:13px}
-  .avatar{width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#6b7dff,#3e4fd8);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;border:2px solid #2e3d63;position:relative;flex:none}
-  .avatar::after{content:'✎';position:absolute;right:-2px;bottom:-2px;width:22px;height:22px;border-radius:50%;background:var(--brand);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;border:2px solid #101728}
-  .btn{border:1px solid var(--border-2);background:var(--panel-2);color:var(--fg);border-radius:9px;padding:6px 12px;font-size:12.5px;cursor:pointer}
+  .body{padding:12px 14px}
+  .avatar-row{display:flex;gap:14px;align-items:flex-start;padding-bottom:12px;border-bottom:1px dashed #1c2740;margin-bottom:12px}
+  .avatar{width:74px;height:74px;border-radius:50%;background:linear-gradient(135deg,#6b7dff,#3e4fd8);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;color:#fff;border:2px solid #2e3d63;position:relative;flex:none}
+  .avatar::after{content:'✎';position:absolute;right:-2px;bottom:-2px;width:21px;height:21px;border-radius:50%;background:var(--brand);color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;border:2px solid #101728}
+  .btn{border:1px solid var(--border-2);background:var(--panel-2);color:var(--fg);border-radius:9px;padding:5px 12px;font-size:12.5px;cursor:pointer}
   .btn-primary{background:linear-gradient(180deg,#7287ff,#5a6bf5);border-color:#6b7dff;color:#fff;font-weight:600}
-  .btn-sm{padding:4px 10px;font-size:11.5px;border-radius:8px}
-  .btn-link{border:0;background:none;color:#9fb4ff;font-size:12px;cursor:pointer;padding:0 4px}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:13px}
-  .field label{display:block;font-size:11.5px;color:var(--fg-muted);margin-bottom:5px}
-  .req{color:#f08a8a;margin-left:2px}
-  .input{background:#0d1526;border:1px solid var(--border-2);border-radius:9px;padding:8px 11px;color:var(--fg);font-size:12.5px;width:100%}
+  .btn-sm{padding:3px 9px;font-size:11.5px;border-radius:8px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .field label{display:block;font-size:11.5px;color:var(--fg-muted);margin-bottom:4px}
+  .req{color:#f08a8a}.input{background:#0d1526;border:1px solid var(--border-2);border-radius:9px;padding:7px 10px;color:var(--fg);font-size:12.5px;width:100%}
   .input.ro{color:var(--fg-subtle);background:#0b1222}
-  .hint{color:var(--fg-subtle);font-size:10.5px;margin-top:4px}
-  textarea.input{min-height:64px;resize:vertical;font-family:inherit}
-  .acct{background:#0f1728;border:1px solid var(--border);border-radius:12px;padding:12px}
-  .acct-h{display:flex;gap:10px;align-items:center;margin-bottom:10px}
-  .acct-h .av{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#6b7dff,#3e4fd8);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff}
-  .acct-h b{font-size:13px}
-  .acct-h .id{color:var(--fg-subtle);font-size:10.5px}
-  .acct-stats{display:flex;gap:18px;padding:8px 0;border-top:1px dashed #1c2740}
-  .acct-stats div{font-size:11.5px;color:var(--fg-subtle)}
-  .acct-stats b{display:block;font-size:16px;color:var(--fg)}
-  .acct-ops{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed #1c2740}
-  .mini{display:flex;gap:10px;color:var(--fg-muted);font-size:11.5px;align-items:center}
-  .foot{display:flex;justify-content:flex-end;gap:10px;position:sticky;bottom:0;background:linear-gradient(180deg,#0b1020cc,#0b1020);padding:12px 0 4px}
+  .hint{color:var(--fg-subtle);font-size:10.5px;margin-top:3px}
+  textarea.input{min-height:56px;resize:vertical;font-family:inherit}
+  .acct{background:#0f1728;border:1px solid var(--border);border-radius:12px;padding:11px}
+  .acct-h{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+  .acct-h .av{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#6b7dff,#3e4fd8);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:13px}
+  .acct-h b{font-size:12.5px}.acct-h .id{color:var(--fg-subtle);font-size:10px}
+  .acct-stats{display:flex;gap:16px;padding:7px 0;border-top:1px dashed #1c2740}
+  .acct-stats div{font-size:11px;color:var(--fg-subtle)}.acct-stats b{display:block;font-size:15px;color:var(--fg)}
+  .acct-ops{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;padding-top:7px;border-top:1px dashed #1c2740}
+  .statsline{display:flex;gap:16px;color:var(--fg-muted);font-size:12px;flex-wrap:wrap}
+  .statsline b{color:#c9d6ff}
+  .foot{display:flex;justify-content:flex-end;gap:10px;padding:8px 0 2px}
+  /* 弹窗 */
+  .overlay{position:fixed;inset:0;background:rgba(4,8,18,.6);display:flex;align-items:center;justify-content:center;padding:18px}
+  .dialog{width:720px;max-width:94vw;background:linear-gradient(180deg,#131c31,#101728);border:1px solid var(--border-2);border-radius:14px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55)}
+  .d-head{display:flex;align-items:center;gap:10px;padding:11px 15px;border-bottom:1px solid var(--border);background:#0f1729}
+  .d-head h3{font-size:14px;margin:0;flex:1}
+  .d-head .x{color:var(--fg-subtle)}
+  .d-tabs{display:flex;gap:4px;padding:8px 14px 0;border-bottom:1px solid var(--border)}
+  .d-tab{padding:6px 12px;font-size:12.5px;color:var(--fg-muted);border-bottom:2px solid transparent;cursor:pointer}
+  .d-tab.on{color:#fff;border-bottom-color:var(--brand);font-weight:600}
+  .d-toolbar{display:flex;gap:8px;padding:10px 14px}
+  .d-toolbar .search{flex:1;background:#0d1526;border:1px solid var(--border-2);border-radius:8px;padding:6px 10px;color:var(--fg-subtle);font-size:11.5px}
+  .grow{display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid #1c2740}
+  .gcover{width:56px;height:26px;border-radius:4px;background:linear-gradient(135deg,#2c3a68,#1b2440);display:flex;align-items:center;justify-content:center;font-size:10px;color:#9fb0d8;flex:none}
+  .gname{flex:1;min-width:0;font-size:12.5px}.gname .en{color:var(--fg-subtle);font-size:10.5px}
+  .gp{font-size:11.5px;color:#c9d6ff;white-space:nowrap}.gp s{color:var(--fg-subtle);margin-left:6px}
+  .d-foot{display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-top:1px solid var(--border);background:#0e1626;color:var(--fg-subtle);font-size:11.5px}
+  .pager{display:flex;gap:5px}.pg{border:1px solid var(--border-2);border-radius:6px;padding:1px 8px}
 </style>
 </head>
 <body>
@@ -56,27 +70,25 @@
   <div class="main">
     <div class="crumb">管理中心 / 账号与服务 / 我的资料</div>
     <h1>我的资料</h1>
-    <p class="sub">仅本人可见 · 数据只来自你自己的账号；管理员同样只能查看/修改自己的资料。</p>
+    <p class="sub">仅本人可见 · 管理员同样只能查看/修改自己的资料。</p>
 
     <div class="card">
-      <div class="card-h">基本信息 <span class="tag">带 <span style="color:#f08a8a">*</span> 为必填</span><span class="tag">管理员昵称/简介可空</span></div>
+      <div class="card-h">基本信息 <span class="tag">带 <span style="color:#f08a8a">*</span> 必填</span><span class="tag">管理员昵称/简介可空</span></div>
       <div class="body">
         <div class="avatar-row">
           <div class="avatar">S</div>
           <div style="flex:1">
             <div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm">更换头像</button><button class="btn btn-sm">移除</button><span class="hint">默认取 Steam 账号头像；可选任一账号或自定义</span></div>
-            <div style="display:flex;gap:8px;margin-top:8px">
-              <span class="tag ok">Steam · sunming（默认）</span><span class="tag">Steam · alt_account</span><span class="tag">自定义</span>
-            </div>
+            <div style="display:flex;gap:8px;margin-top:7px"><span class="tag ok">Steam · sunming（默认）</span><span class="tag">Steam · alt_account</span><span class="tag">自定义</span></div>
           </div>
         </div>
         <div class="grid2">
           <div class="field"><label>昵称<span class="req">*</span></label><div class="input">超级管理员</div><div class="hint">2–20 字</div></div>
-          <div class="field"><label>邮箱<span class="req">*</span></label><div class="input">admin@example.com <span class="tag ok">已验证</span></div><div class="hint">必填；找回密码依赖它（更换邮箱在弹窗里）</div></div>
+          <div class="field"><label>邮箱<span class="req">*</span></label><div class="input">admin@example.com <span class="tag ok">已验证</span></div><div class="hint">必填；找回密码依赖它</div></div>
           <div class="field"><label>用户名（登录名）</label><div class="input ro">admin</div><div class="hint">不可修改</div></div>
           <div class="field"><label>角色 / 注册时间</label><div class="input ro">管理员 · 2026-08-18</div></div>
         </div>
-        <div class="field" style="margin-top:12px"><label>简介<span class="req">*</span></label><textarea class="input">Steam 老玩家，喜欢策略与 RPG。</textarea><div class="hint">1–200 字</div></div>
+        <div class="field" style="margin-top:10px"><label>简介<span class="req">*</span></label><textarea class="input">Steam 老玩家，喜欢策略与 RPG。</textarea><div class="hint">1–200 字</div></div>
       </div>
     </div>
 
@@ -86,28 +98,41 @@
         <div class="grid2">
           <div class="acct">
             <div class="acct-h"><div class="av">s</div><div><b>sunming <span class="tag ok">默认</span></b><div class="id">SteamID 76561198…1234</div></div></div>
-            <div class="acct-stats"><div>已拥有<b>128</b></div><div>愿望单<b>23</b></div><div>最近同步<b style="font-size:12px;font-weight:500">11-18 12:40</b></div></div>
+            <div class="acct-stats"><div>已拥有<b>128</b></div><div>愿望单<b>23</b></div><div>最近同步<b style="font-size:11.5px;font-weight:500">11-18 12:40</b></div></div>
             <div class="acct-ops"><button class="btn btn-sm">查看已拥有</button><button class="btn btn-sm">查看愿望单</button><button class="btn btn-sm">设为默认</button><button class="btn btn-sm">解绑</button></div>
           </div>
           <div class="acct">
             <div class="acct-h"><div class="av">a</div><div><b>alt_account</b><div class="id">SteamID 76561198…5678</div></div></div>
-            <div class="acct-stats"><div>已拥有<b>37</b></div><div>愿望单<b>6</b></div><div>最近同步<b style="font-size:12px;font-weight:500">11-18 10:05</b></div></div>
+            <div class="acct-stats"><div>已拥有<b>37</b></div><div>愿望单<b>6</b></div><div>最近同步<b style="font-size:11.5px;font-weight:500">11-18 10:05</b></div></div>
             <div class="acct-ops"><button class="btn btn-sm">查看已拥有</button><button class="btn btn-sm">查看愿望单</button><button class="btn btn-sm">设为默认</button><button class="btn btn-sm">解绑</button></div>
           </div>
         </div>
-        <p class="hint">两个账号的数据<strong>分开显示、不合并</strong>；"已拥有"按各账号库存分别统计。</p>
+        <p class="hint">两个账号<strong>分开显示、不合并</strong>；「已拥有」按各账号库存分别统计。</p>
       </div>
     </div>
 
     <div class="card">
-      <div class="card-h">我的统计 <span class="tag">仅本人可见</span></div>
+      <div class="card-h">我的统计 <span class="tag ok">仅本人可见</span></div>
       <div class="body">
-        <div class="mini"><span>已拥有合计 <b style="color:#c9d6ff">165</b> 款</span><span>·</span><span>愿望单合计 <b style="color:#c9d6ff">29</b> 款</span><span>·</span><span>本站愿望单 <b style="color:#c9d6ff">12</b> 款</span><span>·</span><span>到价提醒 <b style="color:#c9d6ff">5</b> 条</span></div>
+        <div class="statsline"><span>已拥有合计 <b>165</b></span><span>愿望单合计 <b>29</b></span><span>本站愿望单 <b>12</b></span><span>到价提醒 <b>5</b></span><span>史低命中 <b>8</b></span></div>
       </div>
     </div>
 
     <div class="foot"><button class="btn">取消</button><button class="btn btn-primary">保存修改</button></div>
   </div>
+
+  <!-- 「查看已拥有/愿望单」弹窗 demo -->
+  <div class="overlay">
+    <div class="dialog">
+      <div class="d-head"><h3>sunming · 游戏库</h3><span class="tag">SteamID 76561198…1234</span><span class="x">✕</span></div>
+      <div class="d-tabs"><div class="d-tab on">已拥有 128</div><div class="d-tab">愿望单 23</div></div>
+      <div class="d-toolbar"><div class="search">🔍 搜索游戏名 / AppID</div><span class="tag">仅本人可见</span></div>
+      <div class="grow"><div class="gcover">cover</div><div class="gname">赛博朋克 2077<div class="en">Cyberpunk 2077</div></div><div class="gp">¥298.00<s>史低 ¥149.00</s></div><span class="tag">已拥有</span></div>
+      <div class="grow"><div class="gcover">cover</div><div class="gname">神界：原罪2 - 终极版<div class="en">Divinity: Original Sin 2</div></div><div class="gp">¥133.00<s>史低 ¥66.50</s></div><span class="tag">已拥有</span></div>
+      <div class="grow"><div class="gcover">cover</div><div class="gname">雾锁王国<div class="en">Enshrouded</div></div><div class="gp">¥138.00<s>史低 ¥124.20</s></div><span class="tag">已拥有</span></div>
+      <div class="grow"><div class="gcover">cover</div><div class="gname">Stray<div class="en">Stray</div></div><div class="gp">¥98.00<s>史低 ¥98.00</s></div><span class="tag">已拥有</span></div>
+      <div class="d-foot"><span>共 128 款 · 第 1/13 页</span><div class="pager"><span class="pg">上一页</span><span class="pg" style="background:#1a2440;color:#fff">1</span><span class="pg">2</span><span class="pg">3</span><span class="pg">下一页</span></div></div>
+    </div>
+  </div>
 </body>
 </html>
-
