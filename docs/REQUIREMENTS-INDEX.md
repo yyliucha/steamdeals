@@ -116,6 +116,7 @@
 | **F** | Steam 价格同步优化（缩量 / 热点优先） | 计划写在 [TODO.md](TODO.md) F 段 | 已发布 v2.2.1（f32e2b9） | ✅ 按 F 段方案实现 |
 | **C1** | heat 逐 appid 全 `success:false` | 无独立规格（[TODO.md](TODO.md) C 段定案） | 已发布 v2.2.0（2026-11-09，b01aaf8 修复） | ✅ 已在对话给出 |
 | **DJ** | 发版测试报告独立会话 + e2e 整轮总预算 | [E2E-SUITE.md](E2E-SUITE.md) | 已发布 v2.24.5（2026-11-18，c87dfe0；QA docs/QA-DJ.md 第 1 轮 ✅） | ✅ 本轮已给 |
+| **DK** | App 检查更新失败：apkPath 缺 GitHub 直链兜底 + App 提示区分 | 本条目 + [APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md) | 待开发（2026-11-19 线上取证定位） | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
 

@@ -244,6 +244,31 @@
   ⑤ `npm test` / `frontend:build` / `scan` 全绿。
 - **已确认（2026-11-18）**：补写=**自动**（计算时补写 + 日志 align.map_backfilled）；恢复已忽略=**需要二次确认**。
 
+## DK. 待开发（修 bug）：App 检查更新失败——apkPath 缺 GitHub 直链兜底
+
+**状态：待开发（2026-11-19 线上取证定位）**
+**优先级：** P1 —— App 更新链路不可用（有新版但提示失败）
+**依赖：** 无（CJ/BY 内置更新契约已发布）
+**解锁：** 无
+**涉及 App 仓库**：是（App 端提示分支）
+**规格**：本条目 + [APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md)（CJ 契约）+ [APP-NATIVE.md](APP-NATIVE.md)（内置更新）
+
+- **现象（2026-11-19 01:54 手机实测）**：「我的 → 检查更新」弹「检查更新失败，请稍后再试」；
+  线上 `GET https://sd.yyliucha.cn/api/app/latest` 返回 200：`version=2.20.0`、`versionCode=22000`、
+  `sha256`/`size` 与 GitHub Release 一致，但 **`apkPath: null`**。
+- **根因（代码证据）**：① `src/app-release.js:146-166` APK 下载失败只记 `release_failed`（reason=apk_download）、
+  latest.json 照常落盘 → 服务器 `data/app` 有元数据、无 APK（国内服务器拉 GitHub 资产域名超时是已知风险）；
+  ② 站点 `/api/app/latest` 的 apkPath 按文件存在性派生（CJ 回归修复），无本地 APK 且镜像无该版本 → `null`；
+  ③ App `UpdateManager.kt:75` `resolveApkUrl(latest.apkPath) ?: return CheckResult.Failed` → 报「检查更新失败」。
+- **修复**：A **服务端兜底**：apkPath 为 null 时返回 GitHub Release 直链
+  `https://github.com/yyliucha/steamdeals-app/releases/download/app-v<version>/steamdeals-<version>.apk`
+  （App 白名单已含 github.com / githubusercontent.com，见 `UpdateManager.kt:107`）；
+  B **App 端体验**：apkPath 缺失分支区分提示「新版下载地址暂不可用，请到站点 /app 页下载」，不再笼统报失败；
+  C 观测：`apk_download` 失败在后台任务健康可见（A5 已具备，部署后核对）。
+- **验收**：① 模拟 apkPath 缺失（data/app 无 APK、镜像无该版本）→ 接口返回 GitHub 直链（形如
+  `/releases/download/app-v…/steamdeals-…apk`）且不为 null；② App 该分支提示新文案且不报「失败」（单测）；
+  ③ 正常同步场景（data/app 有 APK）不回归；④ `npm test`（分段）+ `npm run scan` 全绿。
+
 
 
 
