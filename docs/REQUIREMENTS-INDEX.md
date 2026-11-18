@@ -79,7 +79,7 @@
 | **CP** | 手机端识别增强（Sec-CH-UA-Mobile + 前端 screen.width 兜底，修小米浏览器桌面 UA 漏判） | [MOBILE-DETECT-FIX.md](MOBILE-DETECT-FIX.md) | 待开发（2026-11-17 实测确认；P1，边缘场景） | ✅ 本轮已给 |
 | **CQ** | 系统设置信息架构重构（平台卡片 + 常用/高级折叠 + 只看非默认/来源/恢复默认） | [SETTINGS-IA.md](SETTINGS-IA.md) | 待开发（2026-11-17 demo v2 已确认） | ✅ 本轮已给 |
 | **CS** | 对齐审核二次修复（事件循环阻塞观测 + 首屏后台化；补齐 CN 未进镜像问题；DB 侧已验证 91ms 无需索引） | [ALIGN-DB-SLOW.md](ALIGN-DB-SLOW.md) | 待开发（2026-11-18 复核修正；P0） | ✅ 本轮已给 |
-| **CT** | app-release-sync 404（私有仓库 + 无 token → 支持 GITHUB_TOKEN） | [APP-SYNC-404.md](APP-SYNC-404.md) | 待开发（2026-11-18 线上日志；P1） | ✅ 本轮已给 |
+| **CT** | app-release-sync 404 → 改用 releases 列表接口取最新（仓库已公开，无需 token；日志区分失败原因） | [APP-SYNC-404.md](APP-SYNC-404.md) | 待开发（2026-11-18 公开后复核；P1） | ✅ 本轮已给 |
 | **CU** | 到价提醒治理（无报价标记 / 站点级按 Steam 愿望单反查并迁移 / 史低抽检 / Steam 刷新频率评估） | [USER-ALERTS-GOVERNANCE.md](USER-ALERTS-GOVERNANCE.md) | 待开发（2026-11-18 实测后合并立项） | ✅ 本轮已给 |
 | **CV** | 所有查询不再排除已拥有（列表+搜索 owned=include；已拥有显示账号与终态按钮；App 对齐） | [APP-SEARCH-OWNED.md](APP-SEARCH-OWNED.md) | 待开发（2026-11-18 实测定位；P0） | ✅ 本轮已给 |
 | **CW** | 后台「游戏目录」点游戏名弹详情（Steam 已同步数据 + 封面/发售/开发商 + 底部 Steam 商店跳转） | [ADMIN-GAME-POPUP.md](ADMIN-GAME-POPUP.md) | 待开发（2026-11-18 需求 + demo） | ✅ 本轮已给 |

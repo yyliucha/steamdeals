@@ -1999,45 +1999,26 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **验收**：见规格 §3——部署后不再 504、首次 ≤20s 内完成、二次刷新 ≤1s、计算期间其它接口不受影响、
   连续刷新只算 1 次、`npm test` / `frontend:build` / `scan` 全绿。
 
-## CT. 待开发：app-release-sync 404（私有仓库 + 无 token）
+## CT. 待开发：app-release-sync 404 → 改用 releases 列表接口（仓库已公开，不再需要 token）
 
-**状态：待开发（2026-11-18 线上日志：`github_http_404`）**
-**优先级：** P1（影响 App 自动同步，apkPath 已回落镜像兜底，页面不致死链）
+**状态：待开发（2026-11-18 仓库公开后二次验证：清单接口 200，但 `/releases/latest` 仍 404）**
+**优先级：** P1（影响 App 自动同步；下载链路已有镜像兜底，用户可下载）
 **依赖：** CJ（已发布 v2.22.1）
 **解锁：** 无
 **规格**：[APP-SYNC-404.md](APP-SYNC-404.md)
 
-- **现象**：`scheduler.job_done job=app-release-sync` 后输出「未同步：github_http_404」，`data/app` 一直为空。
-- **根因**：`steamdeals-app` 是**私有仓库**，而 `src/app-release.js` 请求 GitHub API **未带认证头** → 匿名 404。
-- **修复（建议 A）**：支持 `GITHUB_TOKEN`（认证头 + 无 token 时记 `app.sync_no_token` 并跳过）；或把仓库改公开；
-  或站点 CI 构建期拉取（与 CJ 的构建期兜底一致，可并存）。
-- **验收**：见规格 §3——配置 token 后 `app-sync` 成功落盘；无 token 时日志明确原因；`/api/app/latest` 的 `/app/dl/…` 200；
-  token 只在容器 env、`npm run scan` 干净；`npm test` 全绿。
-
-## CR. ~~待开发：开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + 契约）~~ → **已发布 v2.24.1（2026-11-18，5673ee9 + 2b5f88b）**
-
-**状态：已发布 v2.24.1（2026-11-18，5673ee9；QA 报告 docs/QA-CR.md 第 1 轮 ✅ 放行——通过 7 / 需人工确认 2：部署后脏行统计归零 + 抽查 3 款）**；**现场回归修复已发布 v2.24.2（9dd508e，QA ✅ docs/QA-CR-fix.md）**：迁移清洗 `::jsonb` 解析遇生产占位符元素（`{CRYTIME}` 等）抛 22P02 崩 bootstrap——改纯正则提取 `"name":"…"`（永不抛错）+ WHERE 收紧为 `"name":` 特征（幂等稳定）
-**依赖：** 无（App 侧展示兜底 CM-1 已实现待发版）
-**解锁：** 无
-**规格**：[APP-DEV-PUBLISHER-NAMES.md](APP-DEV-PUBLISHER-NAMES.md)
-
-- **现象（2026-11-17 所有者截图）**：App 详情页「黎明杀机」开发商/发行商显示
-  `{"name":"Behaviour Interactive Inc.","creator_clan_account_id":33367148}` 原始 JSON，期望纯名称。
-- **根因（代码证据）**：GetItems 批量商店接口的 `basic_info.developers/publishers` 是**对象数组**，
-  `src/adapters/store-browse.js:90-91` **原样透传**；`writeGames` 写 `text[]` 时 node-pg 把对象元素
-  JSON.stringify 成字符串落库（`src/store/pg.js:3331/3372`）——唯一未归一化的入口。
-  `normalizeOfficial`（appdetails 字符串数组）、`normalizeSteamcmd`（associations[].name）本身干净。
-  站点 Web 详情无开发商/发行商渲染；App 展示由 CM-1 `NameListSerializer` 兜底（2.20.0 起），旧版仍显示原文。
-- **修复（3 项）**：① `mapStoreItem` 归一化 developers/publishers（对象取 name、去空、去重保序、上限 20、
-  单条截断 200）；② 迁移内幂等清洗历史脏元素（`::jsonb ->> 'name'`，无脏行不更新）；③ 接口契约保证
-  `developers`/`publishers` 为字符串数组或 null。
-- **改动落点**：`src/adapters/store-browse.js`（归一化 helper，与 `genres` 同款）、`src/store/pg.js`（ALTERS 末尾清洗 SQL）、
-  `test/dev-publisher-names.test.js`（新增，进主链）。
-- **验收**：见规格 §5——① `mapStoreItem` 对象数组→名称（主链测试）；② 写库读回纯字符串；③ 造脏行→`migrate`
-  归一并幂等；④ 详情接口真跑无 `{`；⑤ `npm test` / `frontend:build` / `scan` 全绿；⑥ 部署后统计脏行归零。
-- **待确认**：§4 五项（Web 是否顺带展示、清洗方式、归一化细节、App 不动、抽查范围）。
-
-
+- **现象**：`app-release-sync` 输出「未同步：github_http_404」，`data/app` 一直为空。
+- **根因（2026-11-18 复核）**：① 仓库原为私有 → 匿名 404（**已由所有者改公开**）；
+  ② `src/app-release.js` 只调 `/releases/latest`，而 GitHub 对该 release 的 **latest 端点返回 404**（`/releases` 列表 200 正常）
+  → 即使公开仍会失败。
+- **验证**：匿名 `GET /releases` → 200（`app-v2.19.0`，assets=latest.json/apk/sha256）；`/releases/latest` → 404；
+  站点 `/api/app/latest` 200（`apkPath=/app/steamdeals-2.19.0.apk`）；`/app/dl/…` → 302 → 站点自托管 **200**。
+- **修复**：① 改为 `GET /releases?per_page=10` 取**第一条非 draft/prerelease**（latest 仅兜底）；② **不依赖 token**
+  （公开仓库匿名可用，保留可选 `GITHUB_TOKEN` 认证头）；③ 日志区分 `app.sync_http_404 / no_release / no_assets`；
+  ④ 同步产物 `data/app/<apk> + latest.json`。
+- **验收**：见规格 §3——`app-sync` 成功落盘、`/api/app/latest` 与 latest.json 一致、模拟 404 不崩、无 token 正常、
+  `npm test`（新增 `test/app-release.test.js`）/ `scan` 全绿。
+- **待确认**：仓库公开后是否保留 token 支持（建议保留，代码量小）。
 
 ## CU. 待开发：到价提醒治理（无报价标记 / 站点级迁移 / 史低抽检 / 刷新频率评估）
 
