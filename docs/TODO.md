@@ -264,7 +264,10 @@
   `https://github.com/yyliucha/steamdeals-app/releases/download/app-v<version>/steamdeals-<version>.apk`
   （App 白名单已含 github.com / githubusercontent.com，见 `UpdateManager.kt:107`）；
   B **App 端体验**：apkPath 缺失分支区分提示「新版下载地址暂不可用，请到站点 /app 页下载」，不再笼统报失败；
-  C 观测：`apk_download` 失败在后台任务健康可见（A5 已具备，部署后核对）。
+  C 观测：`apk_download` 失败在后台任务健康可见（A5 已具备，部署后核对）；
+  **D 同步自愈（2026-11-19 追加，代码证据 `src/app-release.js:116-124`）**：`same_version` 跳过判断必须
+  加 APK 文件存在性检查——本地 latest.json 同版本但 `steamdeals-<version>.apk` 缺失时**不得跳过**、应重新下载；
+  否则一旦某轮 APK 下载失败（如本次），每小时调度会永远 same_version 跳过、APK 永不补齐。
 - **验收**：① 模拟 apkPath 缺失（data/app 无 APK、镜像无该版本）→ 接口返回 GitHub 直链（形如
   `/releases/download/app-v…/steamdeals-…apk`）且不为 null；② App 该分支提示新文案且不报「失败」（单测）；
   ③ 正常同步场景（data/app 有 APK）不回归；④ `npm test`（分段）+ `npm run scan` 全绿。
