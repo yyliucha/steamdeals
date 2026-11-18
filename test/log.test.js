@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createLogger, readLogs, redactObject, redactUrl, serializeError, tsInZone, failFields, EVENT_DOMAINS } from '../src/log.js';
+import { createLogger, readLogs, redactObject, redactUrl, serializeError, tsInZone } from '../src/log.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'gp-log-'));
 // 日志文件按站点时区（默认 Asia/Shanghai）分片，与 logger 内部口径一致
@@ -64,26 +64,6 @@ test('redactUrl 只抹掉敏感查询参数', () => {
   assert.match(out, /key=\*\*\*/);
   assert.match(out, /country=CN/);
   assert.ok(!out.includes('SECRET'));
-});
-
-test('E4 failFields：HTTP 状态码优先，url 自动脱敏', () => {
-  const err = Object.assign(new Error('HTTP 502'), { status: 502, body: 'upstream' });
-  const out = failFields(err, { url: 'https://api.steampowered.com/IStoreBrowseService/GetItems/v1/?key=SECRET&input_json=x' });
-  assert.deepEqual(out, { reason: 'http_502', status: 502, url: 'https://api.steampowered.com/IStoreBrowseService/GetItems/v1/?key=***&input_json=x' });
-});
-
-test('E4 failFields：无状态码时取错误 code，无 code 显式 unknown', () => {
-  const netErr = Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
-  assert.deepEqual(failFields(netErr), { reason: 'ECONNRESET', status: null });
-
-  const bare = new Error('boom');
-  assert.deepEqual(failFields(bare), { reason: 'unknown', status: null });
-
-  assert.deepEqual(failFields(bare, { reason: 'shape_priceCents' }), { reason: 'shape_priceCents', status: null }, '显式 reason 优先');
-});
-
-test('E4 EVENT_DOMAINS：域白名单不变（事件名规范依据）', () => {
-  assert.deepEqual(EVENT_DOMAINS, ['http', 'db', 'adapter', 'ingest', 'sync', 'scheduler', 'diagnose', 'process']);
 });
 
 test('redactObject 对深层嵌套和数组生效', () => {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, registerCircuitReset, resetCircuit, applyRetry, syncRunModeFor, jobFailureError, jobFailedReason } from '../src/scheduler.js';
+import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, registerCircuitReset, resetCircuit, applyRetry, syncRunModeFor, jobFailureError } from '../src/scheduler.js';
 
 test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），默认 3，非法回落默认', () => {
   assert.equal(lightConcurrency({}), 3);
@@ -328,13 +328,6 @@ test('熔断窗口到期后自动恢复', () => {
   const state = { failures: CIRCUIT.threshold, openUntil: t0 + CIRCUIT.cooldownMs };
   assert.equal(isCircuited(state, t0 + CIRCUIT.cooldownMs - 1), true);
   assert.equal(isCircuited(state, t0 + CIRCUIT.cooldownMs), false);
-});
-
-test('E4 日志 schema：jobFailedReason 稳定短码（75 软退出 / 真实原因 / 回退退出码）', () => {
-  assert.equal(jobFailedReason(75, null), 'http_429_soft_exit');
-  assert.equal(jobFailedReason(1, 'HTTP 502 Bad Gateway'), 'HTTP 502 Bad Gateway');
-  assert.equal(jobFailedReason(1, null), 'exit_1', '取不到 sync_runs 原因时回退退出码');
-  assert.equal(jobFailedReason(-1, null), 'exit_-1');
 });
 
 test('采集成功后自动重建曲线页：失败不触发、非采集任务不触发、可关闭', () => {

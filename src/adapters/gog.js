@@ -137,7 +137,7 @@ export async function searchOffer(
 
   const offer = toOffer(picked, { title, steamAppid, region });
   if (!offer) {
-    logger?.warn('adapter.gog.no_price', { reason: 'no_price', title: picked.title, id: picked.id });
+    logger?.warn('adapter.gog.no_price', { title: picked.title, id: picked.id });
     return { offer: null, candidates: products.length };
   }
   logger?.debug('adapter.gog.matched', {
@@ -162,12 +162,12 @@ export async function fetchById(
   const { json } = await fetchJson(url, { logger, label: 'gog.product_by_id', fetchImpl, timeoutMs: 30000 });
   const product = json?.products?.[0];
   if (!product) {
-    logger?.warn('adapter.gog.no_product_by_id', { reason: 'product_not_found', id: productId, region });
+    logger?.warn('adapter.gog.no_product_by_id', { id: productId, region });
     return { offer: null };
   }
   const offer = toOffer(product, { title: product.title, steamAppid, region });
   if (!offer) {
-    logger?.warn('adapter.gog.no_price_by_id', { reason: 'no_price', id: product.id, region });
+    logger?.warn('adapter.gog.no_price_by_id', { id: product.id, region });
     return { offer: null };
   }
   logger?.debug('adapter.gog.refresh_by_id', { id: product.id, priceCents: offer.priceCents });

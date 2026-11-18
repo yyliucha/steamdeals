@@ -9,7 +9,6 @@
 // 代价是命中率取决于 slug 命名（实测 8 个里命中 4 个），
 // 但绝不会把 A 游戏的价格记到 B 头上。
 import { fetchText } from '../http.js';
-import { redactUrl, failFields } from '../log.js';
 import { normalizeTitle } from './gog.js';
 
 export const descriptor = {
@@ -95,7 +94,7 @@ export async function fetchBySlug(slug, { logger = null, fetchImpl, steamAppid =
   const ld = parseProductLd(html);
   const offer = toOffer(ld, { slug: String(slug), steamAppid });
   if (!offer) {
-    logger?.warn('adapter.humble.no_offer_by_slug', { slug, reason: 'no_jsonld_offer', url: redactUrl(url) });
+    logger?.warn('adapter.humble.no_offer_by_slug', { slug });
     return { offer: null };
   }
   logger?.debug('adapter.humble.refresh_by_slug', { slug, priceCents: offer.priceCents });
@@ -147,8 +146,7 @@ export async function searchOffer(title, { logger = null, fetchImpl, steamAppid 
       // 404 属正常（这家店没这款游戏），不值得记 error
       const status = err.status ?? null;
       tried.push({ slug, status, note: status === 404 ? 'not_found' : 'error' });
-      if (status !== 404)
-        logger?.warn('adapter.humble.slug_failed', { slug, ...failFields(err, { url }), message: String(err.message).slice(0, 120) });
+      if (status !== 404) logger?.warn('adapter.humble.slug_failed', { slug, status, message: String(err.message).slice(0, 120) });
     }
   }
 

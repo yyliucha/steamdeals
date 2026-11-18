@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { createLogger, serializeError, failFields } from './log.js';
+import { createLogger, serializeError } from './log.js';
 import { hasNotifier, deliver, jobFailureEmailChannel, buildJobFailureMail } from './notify.js';
 import { openStore } from './store/index.js';
 import * as db from './store/pg.js';
@@ -290,15 +290,6 @@ export function jobFailureError(code, runReason) {
   if (code === 0) return null;
   if (code === 75) return 'HTTP 429/403 提前收尾（进度已保留，1 小时后重排）';
   return String(runReason || `exit code ${code}`);
-}
-
-/**
- * E4 批（docs/LOGGING-SCHEMA.md §4）：`scheduler.job_failed` 的 reason 稳定短码。
- * 75 = 429/403 软退出；其余优先用 sync_runs 里的真实原因（截断），取不到回退 `exit_<code>`。
- */
-export function jobFailedReason(code, runReason) {
-  if (code === 75) return 'http_429_soft_exit';
-  return String(runReason || `exit_${code}`).slice(0, 160);
 }
 
 // ---------------------------------------------------------------- BL-2：429 软退出后的 1 小时重排（docs/BACKFILL-THROUGHPUT.md §3.2）
@@ -657,22 +648,15 @@ export async function main() {
       children.set(job.name, child);
       child.on('error', (err) => {
         children.delete(job.name);
-        logger.error('scheduler.job_spawn_failed', { job: job.name, ...failFields(err), err: serializeError(err) });
-        resolve({ code: -1, spawnFailed: true });
+        logger.error('scheduler.job_spawn_failed', { job: job.name, err: serializeError(err) });
+        resolve({ code: -1 });
       });
       child.on('exit', (code, signal) => {
         children.delete(job.name);
         const elapsedMs = Date.now() - startedAt;
         if (code === 0) logger.info('scheduler.job_done', { job: job.name, code, elapsedMs });
-        // 失败/软退出的 error/warn 在 completeJob 里记（那里才拿得到 sync_runs 里的真实原因）
-        else if (code === 75)
-          logger.warn('scheduler.job_partial', {
-            job: job.name,
-            code,
-            elapsedMs,
-            reason: jobFailedReason(code, null),
-            message: 'HTTP 429/403 软退出：本轮收尾，1 小时后重排',
-          });
+        else if (code === 75) logger.warn('scheduler.job_partial', { job: job.name, code, elapsedMs, message: 'HTTP 429/403 软退出：本轮收尾，1 小时后重排' });
+        else logger.error('scheduler.job_failed', { job: job.name, code, signal, elapsedMs });
         resolve({ code: code ?? -1 });
       });
     });
@@ -712,7 +696,7 @@ export async function main() {
       for (const [name, ms] of lastRunMsFromRows(rows)) lastRunMs.set(name, ms);
       if (lastRunMs.size) logger.info('scheduler.lastrun_restored', { jobs: [...lastRunMs.keys()] });
     } catch (err) {
-      logger.warn('scheduler.lastrun_restore_failed', { ...failFields(err), err: serializeError(err) });
+      logger.warn('scheduler.lastrun_restore_failed', { err: serializeError(err) });
     }
     const health = new Map(); // job.name -> { failures, openUntil }
     // AC-4/AC2：熔断手动重置钩子（后台按钮 → resetCircuit → 清零该任务熔断）
@@ -736,8 +720,7 @@ export async function main() {
     let followUpChain = Promise.resolve();
 
     // 任务收尾（并行任务各自完成时调用）：记录时间/健康度、状态文件、串行触发后续 chart
-    const completeJob = async (job, result) => {
-      const { code, spawnFailed = false } = result ?? {};
+    const completeJob = async (job, code) => {
       running.delete(job.name);
       lastRunMs.set(job.name, Date.now());
       const started = startedAt.get(job.name) ?? Date.now();
@@ -748,7 +731,7 @@ export async function main() {
         try {
           runReason = await db.lastFailedSyncRun(q, syncRunModeFor(job));
         } catch (err) {
-          logger.warn('scheduler.failure_reason_failed', { job: job.name, ...failFields(err), err: serializeError(err) });
+          logger.warn('scheduler.failure_reason_failed', { job: job.name, err: serializeError(err) });
         }
       }
       const outcome = {
@@ -758,19 +741,10 @@ export async function main() {
         error: jobFailureError(code, runReason),
       };
       lastOutcome.set(job.name, outcome);
-      // E4 批（docs/LOGGING-SCHEMA.md §4）：job_failed 带 reason 稳定短码（job_spawn_failed 已单独记过，不重复）
-      if (outcome.result === 'failed' && !spawnFailed) {
-        logger.error('scheduler.job_failed', {
-          job: job.name,
-          code,
-          elapsedMs: outcome.elapsedMs,
-          reason: jobFailedReason(code, runReason),
-        });
-      }
       // CO-1/A5：失败邮件告警（开关 settings alerts.jobFailureEmail，默认关；收件人走告警回退链）
       if (outcome.result === 'failed') {
         await alertJobFailure(job, code, outcome.error).catch((err) =>
-          logger.warn('scheduler.failure_alert_failed', { job: job.name, ...failFields(err), err: serializeError(err) }),
+          logger.warn('scheduler.failure_alert_failed', { job: job.name, err: serializeError(err) }),
         );
       }
       retryState = applyRetry(retryState, { job: job.name, code, nowMs: Date.now() });
@@ -782,17 +756,8 @@ export async function main() {
         followUpChain = followUpChain
           .then(async () => {
             if (stopping) return;
-            const chartName = `${job.name}:chart`;
             logger.info('scheduler.followup', { job: job.name, args: followUp.join(' ') });
-            const res = await runJob({ name: chartName, args: followUp });
-            // chart 任务是直调 runJob、不过 completeJob——失败同样记 scheduler.job_failed（带 reason 稳定短码）
-            if (res.code !== 0 && res.code !== 75 && !res.spawnFailed) {
-              logger.error('scheduler.job_failed', {
-                job: chartName,
-                code: res.code,
-                reason: jobFailedReason(res.code, null),
-              });
-            }
+            await runJob({ name: `${job.name}:chart`, args: followUp });
           })
           .catch(() => {});
       }
@@ -808,8 +773,6 @@ export async function main() {
         logger.error('scheduler.circuit_tripped', {
           job: job.name,
           failures: next.failures,
-          threshold: circuitThreshold,
-          cooldownMin: Math.round(circuitCooldownMs / 60_000),
           openUntil: new Date(next.openUntil).toISOString(),
         });
       } else if (code === 0 && (state.failures ?? 0) > 0) {
@@ -836,8 +799,6 @@ export async function main() {
         logger.warn('scheduler.circuit_skip', {
           job: job.name,
           failures: state.failures,
-          threshold: circuitThreshold,
-          cooldownMin: Math.round(circuitCooldownMs / 60_000),
           openUntil: new Date(state.openUntil).toISOString(),
         });
         lastRunMs.set(job.name, now);
@@ -846,10 +807,10 @@ export async function main() {
       running.add(job.name);
       startedAt.set(job.name, Date.now());
       runJob(job)
-        .then((result) => completeJob(job, result))
+        .then(({ code }) => completeJob(job, code))
         .catch((err) => {
-          logger.error('scheduler.job_unexpected', { job: job.name, ...failFields(err), err: serializeError(err) });
-          completeJob(job, { code: -1, spawnFailed: true });
+          logger.error('scheduler.job_unexpected', { job: job.name, err: serializeError(err) });
+          completeJob(job, -1);
         });
     };
 
@@ -868,10 +829,10 @@ export async function main() {
         logger.info('scheduler.job_wait_end', { job: job.name, waitedMs: Date.now() - waiting.at, occupiedBy: waiting.occupiedBy });
       }
       runJob(job)
-        .then((result) => completeJob(job, result))
+        .then(({ code }) => completeJob(job, code))
         .catch((err) => {
-          logger.error('scheduler.job_unexpected', { job: job.name, ...failFields(err), err: serializeError(err) });
-          completeJob(job, { code: -1, spawnFailed: true });
+          logger.error('scheduler.job_unexpected', { job: job.name, err: serializeError(err) });
+          completeJob(job, -1);
         })
         .finally(() => {
           heavySlot = null;
@@ -949,8 +910,6 @@ export async function main() {
           logger.warn('scheduler.circuit_skip', {
             job: job.name,
             failures: state.failures,
-            threshold: circuitThreshold,
-            cooldownMin: Math.round(circuitCooldownMs / 60_000),
             openUntil: new Date(state.openUntil).toISOString(),
           });
           lastRunMs.set(job.name, now);
@@ -975,7 +934,7 @@ export async function main() {
 const invokedDirectly = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;if (invokedDirectly) {
   main().catch((err) => {
     const logger = createLogger({ prefix: 'scheduler' });
-    logger.fatal('scheduler.crash', { ...failFields(err), err: serializeError(err) });
+    logger.fatal('scheduler.crash', { err: serializeError(err) });
     process.exit(1);
   });
 }

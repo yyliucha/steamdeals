@@ -4,7 +4,6 @@
 // 全量目录 19.6 万款逐个请求要 2~3 天；GetItems 一次最多 100 个，能压到 2 小时内。
 // 需要 STEAM_API_KEY（数据源里配）。
 import { fetchJson } from '../http.js';
-import { redactUrl, failFields } from '../log.js';
 
 const ENDPOINT = 'https://api.steampowered.com/IStoreBrowseService/GetItems/v1/';
 export const CHUNK = 100;
@@ -169,8 +168,7 @@ export async function fetchStoreItems(appids, { key, country = 'CN', language = 
         key,
         input_json: JSON.stringify(buildBody(chunk, { country, language })),
       });
-      const reqUrl = ENDPOINT + '?' + qs.toString();
-      const res = await fetchJson(reqUrl, {
+      const res = await fetchJson(ENDPOINT + '?' + qs.toString(), {
         method: 'GET',
         logger,
         label: 'steam.store_browse',
@@ -188,7 +186,6 @@ export async function fetchStoreItems(appids, { key, country = 'CN', language = 
           if (!loggedShape && logger && !mapped.priceOverview) {
             loggedShape = true;
             logger.warn('store_browse.no_price_shape', {
-              reason: 'no_price_overview',
               appid: mapped.steamAppid,
               keys: Object.keys(raw).slice(0, 24).join(','),
               hasBest: Boolean(raw.best_purchase_option ?? raw.bestPurchaseOption),
@@ -203,7 +200,7 @@ export async function fetchStoreItems(appids, { key, country = 'CN', language = 
       }
       for (const id of chunk) if (!got.has(id)) failed.push(id);
     } catch (err) {
-      logger?.warn('store_browse.batch_failed', { size: chunk.length, ...failFields(err, { url: reqUrl }), message: String(err.message).slice(0, 160) });
+      logger?.warn('store_browse.batch_failed', { size: chunk.length, message: String(err.message).slice(0, 160) });
       if (throwOnFatal && FATAL_STATUSES.has(err.status)) throw err;
       failed.push(...chunk);
     }

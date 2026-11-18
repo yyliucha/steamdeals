@@ -123,26 +123,6 @@ export function serializeError(err) {
   return out;
 }
 
-/**
- * E4 批（docs/LOGGING-SCHEMA.md §3）：失败事件统一字段——从错误对象提取
- * `{ reason, status, url }`，试点域（scheduler/adapter/ingest）的失败日志一律经它拼字段。
- *   reason = 稳定短码，取第一个命中的：http_<状态码> → 错误自身 code → 显式传入的 reason → 'unknown'
- *   status = HTTP 状态码（无响应时为 null）；url = 本次失败的外部请求地址（自动脱敏）。
- * err 无 code/status 又没传 reason 时，reason 落在 'unknown'——宁可显式 unknown，也不许失败事件没有原因。
- */
-export function failFields(err, { url = null, reason = null } = {}) {
-  const status = err?.status ?? null;
-  const code = err?.code ?? err?.cause?.code ?? null;
-  const resolved =
-    reason ?? (status != null ? `http_${status}` : code ? String(code) : null) ?? 'unknown';
-  const fields = { reason: String(resolved).slice(0, 120), status };
-  if (url) fields.url = redactUrl(String(url));
-  return fields;
-}
-
-/** E4 批（docs/LOGGING-SCHEMA.md §2）：事件名白名单域。`adapter` 域下还必须带平台段（adapter.<平台>.<动作>）。 */
-export const EVENT_DOMAINS = ['http', 'db', 'adapter', 'ingest', 'sync', 'scheduler', 'diagnose', 'process'];
-
 function fmtValue(v) {
   if (v == null) return String(v);
   if (typeof v === 'string') return v.includes(' ') ? JSON.stringify(v) : v;

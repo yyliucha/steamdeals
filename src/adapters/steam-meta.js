@@ -9,7 +9,6 @@
 //
 // `backend: 'auto'` 会先探官方（短超时），失败再回落镜像，并把实际用的后端记进日志。
 import { fetchJson } from '../http.js';
-import { failFields } from '../log.js';
 import { formatDayUtc } from '../format.js';
 
 // Steam 官方分类 id → 中文名。只收录确定的那几个，未知 id 原样保留为 genre:<id>，
@@ -217,7 +216,7 @@ async function fetchOfficial(appids, { logger, fetchImpl }) {
         logger?.warn('steam.meta.missing', { appid, backend: 'official' });
       }
     } catch (err) {
-      logger?.warn('steam.meta.failed', { appid, backend: 'official', ...failFields(err, { url }), message: String(err.message).slice(0, 120) });
+      logger?.warn('steam.meta.failed', { appid, backend: 'official', message: String(err.message).slice(0, 120) });
     }
   }
   return items;
@@ -234,7 +233,7 @@ async function fetchSteamcmd(appids, { logger, fetchImpl }) {
       if (item) items.push(item);
       else logger?.warn('steam.meta.missing', { appid, backend: 'steamcmd', status: json?.status });
     } catch (err) {
-      logger?.warn('steam.meta.failed', { appid, backend: 'steamcmd', ...failFields(err, { url }), message: String(err.message).slice(0, 120) });
+      logger?.warn('steam.meta.failed', { appid, backend: 'steamcmd', message: String(err.message).slice(0, 120) });
     }
   }
   return items;

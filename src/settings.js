@@ -173,18 +173,6 @@ export const SETTINGS = [
   def('alerts.jobFailureEmail', 'ALERTS_JOB_FAILURE_EMAIL', 'alerts', '任务失败邮件告警', 'bool', false, {
     help: '调度任务失败时向告警收件人发信（收件人回退链：申诉邮箱 → 邮件收件人 → 发件人 → SMTP 账号）；需已配置 SMTP，否则失败只记录不发信。',
   }),
-  // CO-4/E4（docs/LOGGING-SCHEMA.md §4）：入库聚合告警阈值——单轮 shape_mismatch / offer_failed
-  // 达到 max(最少条数, ⌈总数×占比%⌉) 时记 error 级聚合事件（ingest.shape_threshold / ingest.failure_threshold）
-  def('alerts.ingestAlertMin', 'ALERTS_INGEST_ALERT_MIN', 'alerts', '入库告警最少条数', 'int', 5, {
-    min: 1,
-    max: 100000,
-    help: '单轮入库失败/字段缺失达到该条数且占比达标时触发聚合告警日志。',
-  }),
-  def('alerts.ingestAlertPct', 'ALERTS_INGEST_ALERT_PCT', 'alerts', '入库告警占比（%）', 'int', 50, {
-    min: 1,
-    max: 100,
-    help: '单轮入库失败/字段缺失占本轮总数的百分比线（与「最少条数」同时满足才告警）。',
-  }),
 
   // ---- 账号与登录（AK-3，docs/AUTH-REDESIGN.md §4.6）----
   def('auth.registrationEnabled', 'AUTH_REGISTRATION_ENABLED', 'auth', '开放用户注册', 'bool', true, {

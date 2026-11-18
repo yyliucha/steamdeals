@@ -116,7 +116,7 @@ export function parseSkuPage(html, { skuId, logger = null } = {}) {
   const wanted = Number(skuId);
   const context = extractRemixContext(html);
   if (!context) {
-    logger?.warn('adapter.sonkwo.no_remix_context', { skuId, reason: 'no_remix_context', htmlBytes: html.length });
+    logger?.warn('adapter.sonkwo.no_remix_context', { skuId, htmlBytes: html.length });
   }
 
   const candidates = context ? findSkuObjects(context) : [];
@@ -141,7 +141,7 @@ export function parseSkuPage(html, { skuId, logger = null } = {}) {
         // 空壳页：该 id 没有对应商品（未上架/已下架），属于正常结果
         logger?.debug('adapter.sonkwo.not_a_product', { skuId, htmlBytes: html.length });
       } else {
-        logger?.error('adapter.sonkwo.no_price', { skuId, reason: 'parse_no_price', htmlBytes: html.length, title });
+        logger?.error('adapter.sonkwo.no_price', { skuId, htmlBytes: html.length, title });
       }
       return null;
     }
@@ -160,7 +160,7 @@ export function parseSkuPage(html, { skuId, logger = null } = {}) {
 
   const salePriceCents = toCents(picked.sale_price ?? picked.activity_price);
   if (salePriceCents == null) {
-    logger?.error('adapter.sonkwo.bad_price', { skuId, reason: 'parse_bad_price', raw: picked.sale_price });
+    logger?.error('adapter.sonkwo.bad_price', { skuId, raw: picked.sale_price });
     return null;
   }
   const listPriceCents = toCents(picked.list_price);
