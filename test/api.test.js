@@ -1219,11 +1219,13 @@ test('CD 对齐审核：去重组队列、确认写映射、忽略与决定继�
     ], null, 2));
     process.env.ALIGN_SKU_FILE = tmpFile;
     const cookie = (await login(base, 'admin', 'admin123456')).cookie;
-    // CS 批：冷缓存返回 202 {generating}，轮询直到 200 返回 groups
+    // CS 批：冷缓存返回 202 {generating}，轮询直到 200 返回 groups；首请求硬锁 202 契约
+    let firstAlignStatus = 0;
     const getQueue = async () => {
       for (let i = 0; i < 40; i += 1) {
         const res = await fetch(`${base}/api/admin/align`, { headers: { cookie } });
         const body = await res.json();
+        if (i === 0) firstAlignStatus = res.status;
         if (res.status === 200) return body.groups;
         assert.equal(res.status, 202, `冷缓存应返回 202 generating，实际 ${res.status}`);
         await new Promise((r) => setTimeout(r, 150));
@@ -1232,6 +1234,7 @@ test('CD 对齐审核：去重组队列、确认写映射、忽略与决定继�
     };
 
     const first = await getQueue();
+    assert.equal(firstAlignStatus, 202, 'CS 契约：冷缓存首次响应 202（后台生成模型）');
     const kernel = first.find((g) => g.name === '内核之心');
     assert.ok(kernel, '内核之心组存在');
     assert.equal(kernel.skuCount, 2, '同归一化名多 SKU 归一组、只出一行');
