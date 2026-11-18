@@ -91,6 +91,7 @@
 | **DC** | CM-6：App 公告角标（先核实登录态） | [APP-PARITY.md](APP-PARITY.md) §65 | 待开发（2026-11-18 立项；待核实） | ⏳ 待沟通 |
 | **DE** | 对齐审核页改版（统计卡/进度条/搜索筛选/批量/空态互斥） | [ALIGN-REVIEW-UI.md](ALIGN-REVIEW-UI.md) | 待开发（2026-11-18 需求 + demo） | ✅ 本轮已给 |
 | **DF** | 到价提醒手动推送（每行「推送」；强制推送/更新去重时间/频控/审计） | [ALERT-MANUAL-PUSH.md](ALERT-MANUAL-PUSH.md) | 待开发（2026-11-18 需求 + demo；4 口径待定） | ✅ 本轮已给 |
+| **DG** | 对齐匹配修复（副标题/别名低分 → 无候选；索引补 name_en + 副标题感知） | —（TODO DG 条目） | 待开发（2026-11-18 服务器取证确认） | ✅ 本轮已给 |
 | **CR** | 开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + API 契约字符串数组） | [APP-DEV-PUBLISHER-NAMES.md](APP-DEV-PUBLISHER-NAMES.md) | 已发布 v2.24.1（2026-11-18，5673ee9；QA ✅ docs/QA-CR.md） | ✅ 本轮已给 |
 | **CE** | 杉果匹配器加固 + 误合并数据修复（完整标题计分/片段限制/数字一致性/内容词只进人工/`--apply` 二次确认） | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9 | 已发布 v2.19.0（2026-11-16，12f4f42；QA 报告 docs/QA-CE.md） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |
@@ -133,4 +134,5 @@
 9. **AO**（后台游戏列 + 链接抽屉改版）2026-11-09 入 TODO，规格 [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md)；单批，纯前端；
 10. **AP**（价格历史报表）2026-11-09 入 TODO，规格 [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md)；单批，纯前端；
 11. **AQ / AR**（后台列表排序 / 按 IP 合并）2026-11-09 入 TODO，规格 [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md)；AR 依赖 AQ、下一期开发。
+
 
