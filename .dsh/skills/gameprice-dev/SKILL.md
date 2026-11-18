@@ -1,6 +1,6 @@
 ---
 name: gameprice-dev
-description: F:\dsh\gameprice（SteamDeals 跨平台游戏比价）的开发规范：排期与状态唯一来源是 docs/TODO.md（开工先认领编号、完工把条目状态改成"已实现待发版"），完整流程见 docs/HANDOVER.md；职责只到"代码改动 + 测试用例"，不碰服务器、不碰生产数据、不擅自发版；任何改动必须真跑 npm test / frontend:build / scan 并贴输出，且同步更新 docs/PROJECT-OVERVIEW.md，最后等"构建 vX.Y.Z"人工指令；提交推 main 后直接调用 gameprice-qa 质检（不必等所有者发话，需核对它的「功能清单」表），打回项补齐才算交付；每次结束必须汇报"已做哪些 TODO 编号 / 未做哪些及原因"；TODO 被其他会话占用时按 §1.1 立即停手并上报所有者，不自行等待/覆盖。动 gameprice 代码前必读。
+description: F:\dsh\gameprice（SteamDeals 跨平台游戏比价）的开发规范：排期与状态唯一来源是 docs/TODO.md（开工先认领编号、完工把条目状态改成"已实现待发版"），完整流程见 docs/HANDOVER.md；职责只到"代码改动 + 测试用例"，不碰服务器、不碰生产数据、不擅自发版；任何改动必须真跑改动相关测试 / frontend:build / scan 并贴输出（主链全量按需、由 CI 自动兜底），且同步更新 docs/PROJECT-OVERVIEW.md，最后等"构建 vX.Y.Z"人工指令；提交推 main 后直接调用 gameprice-qa 质检（不必等所有者发话，需核对它的「功能清单」表），打回项补齐才算交付；每次结束必须汇报"已做哪些 TODO 编号 / 未做哪些及原因"；TODO 被其他会话占用时按 §1.1 立即停手并上报所有者，不自行等待/覆盖。动 gameprice 代码前必读。
 ---
 
 # gameprice 开发规范（职责范围：只做开发）
@@ -146,7 +146,8 @@ git status --short; git log --oneline -5; node -p "require('./package.json').ver
 ```powershell
 cd F:\dsh\gameprice
 node test/<最相关的>.test.js    # 先跑单文件，秒级定位
-npm test                        # 主链全绿才算完成
+node test/<相关>.test.js ...    # 改动相关的测试文件全部跑绿才算完成（相关优先，2026-11-18 起）
+npm test                        # 主链全量：按需——改动触及 store/pg.js、match.js、server.js 等共享底层 / 发版前兜底；不再每次必跑（CI 自动全量）
 npm run frontend:build          # 动过 frontend/ 必跑
 npm run scan                    # 提交前凭据自检
 node --check src/xxx.js         # 新增/大改文件先过语法

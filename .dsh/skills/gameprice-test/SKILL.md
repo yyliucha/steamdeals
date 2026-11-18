@@ -128,13 +128,16 @@ description: SteamDeals/gameprice 的测试方法库与真实测试门槛：分�
 ```powershell
 cd F:\dsh\gameprice
 node test/<最相关>.test.js     # 先单文件秒级定位
-npm test                        # 主链（95 个文件）全绿
+node test/<相关>.test.js ...   # 改动相关的测试文件全部跑绿（日常门槛，2026-11-18 起）
+npm test                        # 主链全量：按需——改动触及共享底层（store/pg.js、match.js、server.js 等）/发版前想兜底/QA 存疑；不再每次必跑（CI 自动跑全量）
 npm run e2e:smoke               # 日常核心链路
 npm run e2e                     # 全量（发版前/QA 轮）+ PDF 报告
 npm run frontend:build          # 改过前端必跑
 npm run scan                    # 凭据自检
 ```
 
+- **相关优先（2026-11-18 所有者调整）**：优先保证「改动的功能正常」，跑与改动直接相关的测试文件即可；
+  主链全量不是每次门槛——它由 CI 在每次推送时自动跑，本机只在改动面广/触及共享底层/发版前兜底时全量。
 - 主链首个失败即中断：按报错文件单独跑定位。
 - 新增测试**必须加进 `package.json` 的 test 链**（主链）或 e2e 矩阵（全量），否则等于没写。
 - 本地无 Docker、无 Steam 出口：采集类网络失败属预期，报告里注明"未做真实抓取"。

@@ -87,7 +87,8 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
 6. **亲自重跑验证**（以 `gameprice-dev` §7 为准）：
    ```powershell
    cd F:\dsh\gameprice
-   npm test                # 主链全绿
+   node test/<本批相关>.test.js  # 本批相关测试文件重跑（相关优先，2026-11-18 起）
+   npm test                # 主链全量：改动触及共享底层（store/pg.js、match.js、server.js 等）或覆盖存疑时兜底；日常不强制
    npm run frontend:build  # diff 动过 frontend/ 必跑
    npm run scan            # 必跑
    ```

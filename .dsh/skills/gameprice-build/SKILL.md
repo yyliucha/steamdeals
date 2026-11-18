@@ -1,6 +1,6 @@
 ---
 name: gameprice-build
-description: SteamDeals/gameprice 的构建发版技能：收到所有者「构建（vX.Y.Z）」指令后加载执行——版本号必须连续递增、禁止跳号（修复 → 小版本 +1，含新功能 → 大版本 +1，主版本 X.0.0 需所有者点名）、构建门禁（只有「质检通过」的条目进版本，存在质检打回/未质检则拒绝）、文档落地（CHANGELOG/README/PROJECT-OVERVIEW/TODO/REQUIREMENTS-INDEX/DELIVERY）、验证（npm test / frontend:build / scan / api.test）、提交推 main、打 annotated tag 推 tag、盯 CI 双绿、按 HANDOVER §3 汇报；不擅自打 tag、不碰服务器、不提前改版本号。
+description: SteamDeals/gameprice 的构建发版技能：收到所有者「构建（vX.Y.Z）」指令后加载执行——版本号必须连续递增、禁止跳号（修复 → 小版本 +1，含新功能 → 大版本 +1，主版本 X.0.0 需所有者点名）、构建门禁（只有「质检通过」的条目进版本，存在质检打回/未质检则拒绝）、文档落地（CHANGELOG/README/PROJECT-OVERVIEW/TODO/REQUIREMENTS-INDEX/DELIVERY）、验证（本批相关测试 + frontend:build / scan / api.test；全量主链由 CI 自动兜底）、提交推 main、打 annotated tag 推 tag、盯 CI 双绿、按 HANDOVER §3 汇报；不擅自打 tag、不碰服务器、不提前改版本号。
 ---
 
 # 构建与发版（SteamDeals / gameprice）
@@ -105,10 +105,10 @@ git status --short                 # 其它会话的未提交改动，记录下�
 ### 3.3 验证（全绿才继续，失败就修）
 
 ```powershell
-npm test                    # 主链全绿
-npm run frontend:build      # 改过 frontend/ 必跑（保险起见每次都跑）
-npm run scan                # 凭据自检
-node test/api.test.js       # 动过 API/权限/标记必跑
+node test/<本批相关>.test.js   # 本批改动相关的测试文件全绿（相关优先，2026-11-18 起；全量主链由 CI 自动跑，本机不再每次全量）
+npm run frontend:build          # 改过 frontend/ 必跑（保险起见每次都跑）
+npm run scan                    # 凭据自检
+node test/api.test.js           # 动过 API/权限/标记必跑
 ```
 
 ### 3.4 提交推 main
@@ -143,7 +143,7 @@ gh auth switch --user boxiang-sun_shortcut          # 切回默认账号
 📦 版本：vX.Y.Z（package.json / package-lock.json 已改）
 🎯 推算：本次发布范围 <TODO 编号列表>（N 个新功能条目 / 修复批 → 档位：小版本 / 大版本；指定版本则写「所有者指定」）
 🔖 tag：vX.Y.Z 已推送，main 已同步（<release 短哈希> + CI 记录 <短哈希>）
-✅ 验证：npm test 全绿（N 个文件）/ frontend:build / scan 干净 / api.test.js N 项
+✅ 验证：本批相关测试全绿（<文件列表>）/ frontend:build / scan 干净 / api.test.js N 项（动过 API 时）
 🚀 CI：docker-hub <run-id>（test/smoke/publish 全绿）；docker-tcr <run-id>（test/publish 全绿）
 🖥 服务器：待部署人员按 docs/DELIVERY.md 升级到 X.Y.Z（开发侧不执行）
 ⚠️ 未发布/未纳入：<编号> —— 原因：<质检打回 / 未质检 / 不在本批>

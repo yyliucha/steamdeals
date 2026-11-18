@@ -201,7 +201,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 - **v2.24.2 已发布**（tag `v2.24.2`，提交 9dd508e）：v2.24.1 升级后线上 bootstrap 崩溃重启循环（`invalid input syntax for type json`）。
   根因：CR 清洗迁移用 `::jsonb` 解析 `{` 开头元素，生产存在 `{CRYTIME}`/`{COMPANY_NAME_GOES_HERE}`/`{uni}` 等占位符非 JSON 元素。
   修复：纯正则提取 `"name":"…"`（永不抛错）+ WHERE 收紧为 `"name":` 特征（幂等稳定）；回归用例锁定事故形态 + 反向自检。
-  QA：✅ [QA-CR-fix.md](QA-CR-fix.md) 第 1 轮。CI：待确认（tag 推送后记录）。
+  QA：✅ [QA-CR-fix.md](QA-CR-fix.md) 第 1 轮。CI：docker-hub run 44230529201 ✅（test/smoke/publish 全绿，10m6s）；docker-tcr run 44230529276 ✅（test/publish 全绿，16m40s）。
   **服务器部署待执行**（升级到 `2.24.2`；若站点仍在崩溃循环先回滚 v2.24.0 止血）；部署后：容器启动 migrate 不报错、
   启动后站点正常；CR 清洗在首次 migrate 已完成（生产 `"name":` 元素已 0），残留占位符 4 个元素按设计保留（App 端兜底不显示）。
 - **v2.24.1 已发布**（tag `v2.24.1`）：CN 批 P0 热修——对齐审核查询拖垮站点（线上 504 + 容器重启）：
