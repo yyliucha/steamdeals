@@ -131,17 +131,9 @@ description: SteamDeals/gameprice 的测试方法库与真实测试门槛：分�
 
 ## 7. 运行与判读
 
-```powershell
-cd F:\dsh\gameprice
-node test/<最相关>.test.js     # 先单文件秒级定位
-node test/<相关>.test.js ...   # 改动相关的测试文件全部跑绿（日常门槛，2026-11-18 起）
-npm test                        # 主链全量：按需——改动触及共享底层（store/pg.js、match.js、server.js 等）/发版前想兜底/QA 存疑；不再每次必跑（CI 自动跑全量）
-npm run test:N                  # 主链已分段 test:1~test:4 串行（DI 批）：中断从失败段续跑（N=1..4），不用从头重跑
-npm run e2e:smoke               # 日常核心链路
-npm run e2e                     # 全量（发版前/QA 轮）+ PDF 报告
-npm run frontend:build          # 改过前端必跑
-npm run scan                    # 凭据自检
-```
+> 验证命令以 `steamdeals-dev` §7 为**唯一版本**（本技能不重复贴命令，避免两处漂移）。
+> 测试侧要点：主链已分段 `test:1~test:4` 串行（DI 批），中断从失败段续跑（`npm run test:N`）；
+> `npm run e2e:smoke` 日常核心链路；`npm run e2e` 全量 + PDF 报告由**发版后独立报告会话**执行（见 §2.3）。
 
 - **相关优先（2026-11-18 所有者调整）**：优先保证「改动的功能正常」，跑与改动直接相关的测试文件即可；
   主链全量不是每次门槛——它由 CI 在每次推送时自动跑，本机只在改动面广/触及共享底层/发版前兜底时全量。
