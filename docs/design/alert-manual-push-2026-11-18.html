@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>到价提醒手动推送 demo</title>
+<style>
+  :root{--bg:#0b1020;--panel:#121a30;--panel-2:#0f1728;--border:#243050;--border-2:#2e3d63;--fg:#e8edf9;--fg-muted:#93a0bf;--fg-subtle:#6d7a99;--brand:#6b7dff;--green:#3fbf7f;--green-bg:#12291f;--green-border:#2a6b4a;--amber:#e0a23c;--amber-bg:#2a2113;--amber-border:#5a4520}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:13.5px/1.65 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;padding:18px 22px}
+  .crumb{color:var(--fg-subtle);font-size:11.5px;margin-bottom:5px}
+  h1{font-size:19px;margin:0 0 3px}
+  .sub{color:var(--fg-muted);font-size:12px;margin:0 0 14px}
+  .card{background:linear-gradient(180deg,#121b31,#101728);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:12px}
+  .card h3{font-size:13px;margin:0 0 6px}
+  .hint{color:var(--fg-subtle);font-size:11px;margin:4px 0 0}
+  .search{display:flex;gap:9px;margin-bottom:12px}
+  .search .box{flex:1;background:#0d1526;border:1px solid var(--border-2);border-radius:9px;padding:8px 12px;color:var(--fg-subtle);font-size:12.5px}
+  .btn{border:1px solid var(--border-2);background:var(--panel-2);color:var(--fg);border-radius:9px;padding:6px 13px;font-size:12.5px;cursor:pointer}
+  .btn-primary{background:linear-gradient(180deg,#7287ff,#5a6bf5);border-color:#6b7dff;color:#fff;font-weight:600}
+  .btn-sm{padding:4px 10px;font-size:11.5px;border-radius:8px}
+  .btn-link{border:0;background:none;color:#9fb4ff;font-size:12px;cursor:pointer;padding:0 4px}
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;font-size:12.5px}
+  th{background:#0f1729;color:var(--fg-subtle);font-weight:500;font-size:11.5px;text-align:left;padding:9px 12px}
+  td{padding:9px 12px;border-top:1px solid #1c2740}
+  .tag{font-size:10.5px;color:#b9c6e6;border:1px solid #2c3a68;background:#16203a;border-radius:999px;padding:1px 8px}
+  .tag.ok{color:#c8f3dd;border-color:var(--green-border);background:var(--green-bg)}
+  .overlay{position:fixed;inset:0;background:rgba(4,8,18,.6);display:flex;align-items:center;justify-content:center;padding:20px}
+  .dialog{width:520px;background:linear-gradient(180deg,#131c31,#101728);border:1px solid var(--border-2);border-radius:14px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55)}
+  .d-head{padding:12px 16px;border-bottom:1px solid var(--border);background:#0f1729;font-weight:600;font-size:14px;display:flex}
+  .d-head span{margin-left:auto;color:var(--fg-subtle);font-weight:400}
+  .d-body{padding:14px 16px}
+  .line{display:flex;gap:10px;padding:6px 0;font-size:12.5px}
+  .line b{width:86px;color:var(--fg-subtle);font-weight:500}
+  .opt{display:flex;align-items:flex-start;gap:8px;margin-top:10px;font-size:12px;color:var(--fg-muted)}
+  .opt input{margin-top:3px}
+  .notice{background:var(--amber-bg);border:1px solid var(--amber-border);color:#ffe3b8;border-radius:9px;padding:8px 10px;font-size:11.5px;margin-top:12px}
+  .d-foot{display:flex;justify-content:flex-end;gap:10px;padding:12px 16px;border-top:1px solid var(--border);background:#0e1626}
+</style>
+</head>
+<body>
+  <div class="crumb">管理中心 / 内容运营 / 到价提醒</div>
+  <h1>到价提醒</h1>
+  <p class="sub">全站到价提醒清单（用户级 + 站点级）；新增请走前台详情页，后台提供查看、推送与清理。</p>
+  <div class="card">
+    <h3>全站到价提醒</h3>
+    <div class="search"><div class="box">搜索用户名</div><button class="btn btn-primary">搜索</button><span style="align-self:center;color:var(--fg-subtle);font-size:11.5px">共 15 条</span></div>
+  </div>
+  <table>
+    <thead><tr><th>用户</th><th>游戏</th><th>目标价</th><th>当前价</th><th>史低</th><th>最近提醒</th><th>操作</th></tr></thead>
+    <tbody>
+      <tr><td>站点级</td><td><b>深岩银河：异动核心</b> <span class="tag">2605790</span></td><td>史低</td><td>¥86.00</td><td>¥77.40</td><td>—</td>
+        <td><button class="btn btn-sm" style="border-color:#3a4c86;color:#c9d6ff">推送</button>&nbsp;<button class="btn-link" style="color:#f08a8a">删除</button></td></tr>
+      <tr><td>站点级</td><td><b>部落幸存者</b> <span class="tag">1509510</span></td><td>史低</td><td>¥72.00</td><td>¥20.25</td><td>—</td>
+        <td><button class="btn btn-sm" style="border-color:#3a4c86;color:#c9d6ff">推送</button>&nbsp;<button class="btn-link" style="color:#f08a8a">删除</button></td></tr>
+      <tr><td>站点级</td><td><b>雾锁王国 (Enshrouded)</b> <span class="tag">1203620</span></td><td>史低</td><td>¥138.00</td><td>¥124.20</td><td>—</td>
+        <td><button class="btn btn-sm" style="border-color:#3a4c86;color:#c9d6ff">推送</button>&nbsp;<button class="btn-link" style="color:#f08a8a">删除</button></td></tr>
+      <tr><td>站点级</td><td><b>Stray</b> <span class="tag">1332010</span></td><td>史低</td><td>¥98.00</td><td>¥98.00</td><td>2026/11/13 11:09:55</td>
+        <td><button class="btn btn-sm" style="border-color:#3a4c86;color:#c9d6ff">推送</button>&nbsp;<button class="btn-link" style="color:#f08a8a">删除</button></td></tr>
+    </tbody>
+  </table>
+  <p class="hint">demo：每行新增「推送」按钮 → 打开确认框（可选择"强制推送"与"更新去重时间"），发送结果在页面提示。</p>
+
+  <div class="overlay">
+    <div class="dialog">
+      <div class="d-head">推送提醒 <span>✕</span></div>
+      <div class="d-body">
+        <div class="line"><b>游戏</b><span>深岩银河：异动核心 <span class="tag">appid 2605790</span></span></div>
+        <div class="line"><b>用户</b><span>站点级（发到站点负责人邮箱）</span></div>
+        <div class="line"><b>当前 / 史低</b><span>¥86.00 / ¥77.40</span></div>
+        <div class="line"><b>上次提醒</b><span>—（从未提醒）</span></div>
+        <div class="line"><b>发送渠道</b><span>邮件（已配置）· Webhook（未配置）</span></div>
+        <label class="opt"><input type="checkbox"> <span><b>强制推送</b>：即使当前价未达目标价/史低也发送（用于测试或补发）</span></label>
+        <label class="opt"><input type="checkbox" checked> <b>更新最近提醒时间</b>：写入 last_notified 后，自动任务不会对同价格重复提醒</label>
+        <div class="notice">这会立即向收件人发送一封「到价提醒」邮件，发送后不可撤回。</div>
+      </div>
+      <div class="d-foot"><button class="btn">取消</button><button class="btn btn-primary">确认推送</button></div>
+    </div>
+  </div>
+</body>
+</html>
