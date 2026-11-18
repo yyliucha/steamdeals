@@ -2104,8 +2104,8 @@ export async function listUserWatches(q, { userId, region = 'cn' } = {}) {
   return r.rows;
 }
 
-/** 管理员：全站提醒清单（含用户名；分页 + 可选用户名筛选 + CU-1「无报价」筛选）。 */
-export async function listAllWatchesAdmin(q, { region = 'cn', page = 1, pageSize = 20, username = null, noPriceOnly = false } = {}) {
+/** 管理员：全站提醒清单（含用户名；分页 + 可选用户名筛选）。 */
+export async function listAllWatchesAdmin(q, { region = 'cn', page = 1, pageSize = 20, username = null } = {}) {
   const size = Math.min(Math.max(Number(pageSize) || 20, 1), 200);
   const pg = Math.max(1, Number(page) || 1);
   const offset = (pg - 1) * size;
@@ -2115,15 +2115,9 @@ export async function listAllWatchesAdmin(q, { region = 'cn', page = 1, pageSize
     params.push(`%${String(username).trim()}%`);
     where += ` and u.username ilike $${params.length}`;
   }
-  // CU-1（docs/USER-ALERTS-GOVERNANCE.md §2）：「无报价」= 该游戏无任何在售报价
-  // （口径与 CL 批一致：官方+授权渠道、CN 区、在售——即 current_cents 同口径的 EXISTS 判定）。
-  if (noPriceOnly) {
-    where += ` and not exists (select 1 from offers o2 join platforms p2 on p2.code = o2.platform_code
-                 where o2.game_id = g.id and o2.region = $1 and o2.in_stock and p2.kind in ${OFFICIAL_KINDS})`;
-  }
   const total = Number(
     (await q(
-      `select count(*)::int as n from watchlist w left join users u on u.id = w.user_id join games g on g.id = w.game_id where ${where}`,
+      `select count(*)::int as n from watchlist w left join users u on u.id = w.user_id where ${where}`,
       params,
     )).rows[0]?.n ?? 0,
   );
@@ -2138,11 +2132,7 @@ export async function listAllWatchesAdmin(q, { region = 'cn', page = 1, pageSize
             (select min(d.min_price_cents) from daily_prices d
                join platforms p on p.code = d.platform_code
               where d.game_id = g.id and d.region = $1
-                and p.kind in ${OFFICIAL_KINDS}) as hist_low,
-            exists (select 1 from offers o
-               join platforms p on p.code = o.platform_code
-              where o.game_id = g.id and o.region = $1 and o.in_stock
-                and p.kind in ${OFFICIAL_KINDS}) as has_price
+                and p.kind in ${OFFICIAL_KINDS}) as hist_low
        from watchlist w
        join games g on g.id = w.game_id
        left join users u on u.id = w.user_id
