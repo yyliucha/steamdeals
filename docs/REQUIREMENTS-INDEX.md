@@ -75,11 +75,11 @@
 | **CL** | 用户级到价提醒（列表页 + 已拥有终态隐藏 + 后台全站清单 + 详情页三段式 UI） | [USER-ALERTS.md](USER-ALERTS.md) | 已发布 v2.23.0（2026-11-17，e196382；QA ✅ docs/QA-CL.md） | ✅ 本轮已给 |
 | **CM** | App 功能补齐（开发商 JSON 修复 / DLC 列表 / 价格历史区间与指标 / 复制名；CM-5 筛选服务端化二期） | [APP-PARITY.md](APP-PARITY.md) | 已发布 v2.24.0（站点侧，2026-11-17；QA docs/QA-CM.md ✅；App 侧 app-v2.20.0 待指令） | ✅ 本轮已给 |
 | **CN** | 对齐审核查询拖垮站点（缓存 + 候选预筛 + 单飞 + 时间预算 + 分页） | [ALIGN-QUERY-PERF.md](ALIGN-QUERY-PERF.md) | 已发布 v2.24.1（2026-11-17，5c723aa + 2060586；QA ✅ docs/QA-CN.md） | ✅ 本轮已给 |
-| **CO** | 设计审计技术债清理（15 项 → CO-1~CO-4 四批，每日至少推进 1 条） | [DESIGN-AUDIT.md](DESIGN-AUDIT.md) | 待开发（2026-11-17 建条目；每批一次会话） | ✅ 本轮已给 |
-| **CP** | 手机端识别增强（Sec-CH-UA-Mobile + 前端 screen.width 兜底，修小米浏览器桌面 UA 漏判） | [MOBILE-DETECT-FIX.md](MOBILE-DETECT-FIX.md) | 待开发（2026-11-17 实测确认；P1，边缘场景） | ✅ 本轮已给 |
+| **CO** | 设计审计技术债清理（15 项 → CO-1~CO-4 四批，每日至少推进 1 条） | [DESIGN-AUDIT.md](DESIGN-AUDIT.md) | 已实现待发版（2026-11-18，75a7e7f：B1 统一超时+并发闸、B2 admin 列表提速；其余批次待开发） | ✅ 本轮已给 |
+| **CP** | 手机端识别增强（Sec-CH-UA-Mobile + 前端 screen.width 兜底，修小米浏览器桌面 UA 漏判） | [MOBILE-DETECT-FIX.md](MOBILE-DETECT-FIX.md) | 已实现待发版（2026-11-18，75a7e7f） | ✅ 本轮已给 |
 | **CQ** | 系统设置信息架构重构（平台卡片 + 常用/高级折叠 + 只看非默认/来源/恢复默认） | [SETTINGS-IA.md](SETTINGS-IA.md) | 待开发（2026-11-17 demo v2 已确认） | ✅ 本轮已给 |
 | **CS** | 对齐审核二次修复（事件循环阻塞观测 + 首屏后台化；补齐 CN 未进镜像问题；DB 侧已验证 91ms 无需索引） | [ALIGN-DB-SLOW.md](ALIGN-DB-SLOW.md) | 已发布 v2.24.3（2026-11-18，2a03188；QA ✅ docs/QA-CS-CV.md） | ✅ 本轮已给 |
-| **CT** | app-release-sync 404 → 改用 releases 列表接口取最新（仓库已公开，无需 token；日志区分失败原因） | [APP-SYNC-404.md](APP-SYNC-404.md) | 待开发（2026-11-18 公开后复核；P1） | ✅ 本轮已给 |
+| **CT** | app-release-sync 404 → 改用 releases 列表接口取最新（仓库已公开，无需 token；日志区分失败原因） | [APP-SYNC-404.md](APP-SYNC-404.md) | 已实现待发版（2026-11-18，9312054） | ✅ 本轮已给 |
 | **CU** | 到价提醒治理（无报价标记 / 站点级按 Steam 愿望单反查并迁移 / 史低抽检 / Steam 刷新频率评估） | [USER-ALERTS-GOVERNANCE.md](USER-ALERTS-GOVERNANCE.md) | 待开发（2026-11-18 实测后合并立项） | ✅ 本轮已给 |
 | **CV** | 所有查询不再排除已拥有（列表+搜索 owned=include；已拥有显示账号与终态按钮；App 对齐） | [APP-SEARCH-OWNED.md](APP-SEARCH-OWNED.md) | 已发布 v2.24.3（2026-11-18，站点 2a03188 + App 0945006；QA ✅ docs/QA-CS-CV.md） | ✅ 本轮已给 |
 | **CW** | 后台「游戏目录」点游戏名弹详情（Steam 已同步数据 + 封面/发售/开发商 + 底部 Steam 商店跳转） | [ADMIN-GAME-POPUP.md](ADMIN-GAME-POPUP.md) | 待开发（2026-11-18 需求 + demo） | ✅ 本轮已给 |
