@@ -202,7 +202,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   CS：对齐审核后台生成（冷缓存 202 {generating,processed,total} + 前端 3s 轮询，完成后自动展示；预算只约束匹配循环、
   后台算完为止不再 partial 空结果；slow_query 增 eventLoopLagMs）；CV：所有查询不排除已拥有（Web/App 列表与搜索
   owned=include、已拥有账号名徽标与详情终态、App 详情账号列全）。QA ✅ [QA-CS-CV.md](QA-CS-CV.md) 两轮（通过 12/需人工确认 2）。
-  CI：待确认（tag 推送后记录）。
+  CI：docker-hub run 44250653459 ✅（test/smoke/publish 全绿，10m57s）；docker-tcr run 44250653465 ✅（test/publish 全绿，23m50s）。
   **服务器部署待执行**（升级到 `2.24.3`）；部署后：① 打开「对齐审核」应显示「后台生成中（已处理 X/Y 组）」，完成后完整队列（不再暂无数据）；
   ② 计算期间观察其它接口不卡顿；③ 登录已拥有账号验证 Web/App 列表与搜索可见已拥有游戏、详情只留「去 Steam 商店」+ 账号名；④ App 真机目视徽标/终态。
 - **v2.24.2 已发布**（tag `v2.24.2`，提交 9dd508e）：v2.24.1 升级后线上 bootstrap 崩溃重启循环（`invalid input syntax for type json`）。
