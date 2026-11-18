@@ -697,6 +697,7 @@ export function createApiServer({
       maxCandidates: 2000,
       budgetMs: Infinity, // CS 批：后台生成算完为止（partial 兜底仅防 future 回归）
       startedAt: Date.now(), // 预算只约束匹配循环，前处理不计入（CS #2）
+      onGrouped: (total) => onProgress?.(0, total), // DE 批：分组完成立即上报总数（进度不出现 0/0）
       shouldYield: async (processed, totalGroups) => {
         onProgress?.(processed, totalGroups);
         await new Promise((r) => setImmediate(r));
@@ -707,6 +708,65 @@ export function createApiServer({
   };
   const alignRunner = createAlignRunner({ compute: computeAlignGroups, ttlMs: ALIGN_CACHE_TTL_MS });
   const buildAlignGroups = ({ refresh = false } = {}) => alignRunner.run({ refresh });
+
+  // DE 批（docs/ALIGN-REVIEW-UI.md §2/§3）：对齐组 → 接口行映射（链接字段 + top-N 候选明细 + 英文名）。
+  const alignSteamUrl = (appid) => (appid != null ? `https://store.steampowered.com/app/${appid}/` : null);
+  const mapAlignRows = (groups) => groups.map((g) => {
+    const best = g.best;
+    const candidate = best?.candidate ?? null;
+    return {
+      key: g.key,
+      name: g.name,
+      nameEn: (g.items ?? []).flatMap((i) => (i.titles ?? []).slice(1)).find(Boolean) ?? null,
+      skuCount: g.skuIds.length,
+      skuIds: g.skuIds,
+      skuUrls: g.skuIds.map((id) => `https://www.sonkwo.hk/sku/${id}`),
+      auto: g.auto,
+      score: best?.score ?? null,
+      method: best?.method ?? null,
+      matchedField: best?.matchedField ?? null,
+      contentWord: Boolean(best?.contentWord),
+      reasons: best?.reasons ?? [],
+      candidate: candidate
+        ? { name: candidate.name ?? best.matchedField, steamAppid: candidate.steam_appid, steamUrl: alignSteamUrl(candidate.steam_appid) }
+        : null,
+      candidates: (g.topCandidates ?? []).map((t) => ({
+        name: t.candidate.name ?? t.matchedField,
+        steamAppid: t.candidate.steam_appid,
+        steamUrl: alignSteamUrl(t.candidate.steam_appid),
+        score: t.score,
+        method: t.method,
+        matchedField: t.matchedField,
+        reasons: t.reasons,
+        auto: t.auto,
+      })),
+    };
+  });
+
+  // DE 批（docs/ALIGN-REVIEW-UI.md §5）：单组确认的内部步骤——合并孤立行 + 映射落库；
+  // 单条与批量确认共用，返回 { mapped, merged }。
+  const confirmAlignKey = async ({ q, align, group, appid, games, user, method = 'manual' }) => {
+    const target = games.find((g) => Number(g.steam_appid) === appid);
+    if (!target) throw new Error(`库里没有 appid ${appid}`);
+    const merged = [];
+    for (const skuId of group.skuIds) {
+      const alias = (await q('select game_id from game_aliases where platform_code = $1 and platform_product_id = $2', ['sonkwo', String(skuId)])).rows[0];
+      if (alias) {
+        const fromId = Number(alias.game_id);
+        if (fromId !== Number(target.id)) {
+          const source = (await q('select steam_appid from games where id = $1', [fromId])).rows[0];
+          if (source && source.steam_appid == null) {
+            const res = await db.mergeGames(q, { fromGameId: fromId, toGameId: Number(target.id), logger });
+            merged.push({ fromId, moved: res.moved ?? 0, dropped: res.dropped ?? 0, merged: Boolean(res.merged) });
+          } else {
+            logger?.warn('match.skip_merge', { skuId, fromId, reason: 'source_has_appid' });
+          }
+        }
+      }
+    }
+    const outcome = await align.confirmGroup({ store, q, group, appid, steamGames: games, reviewedBy: user.id, method, confidence: group.best?.score ?? 1, mergeGame: () => ({ merged: false }) });
+    return { mapped: outcome.skus, merged };
+  };
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -4373,37 +4433,45 @@ export function createApiServer({
         const { page, pageSize } = parseAlignPage(url.searchParams);
         // CS 批（docs/ALIGN-DB-SLOW.md §2 #3）：后台生成——冷缓存触发后台计算并 202，
         // 前端 3s 轮询直到就绪；缓存命中直接分页响应（≤1s）。
+        // DE 批（docs/ALIGN-REVIEW-UI.md §3）：202 带上一轮缓存分页（stale）与失败态；
+        // total 在分组完成后立即上报（progress 不再出现 0/0）。
         const bg = alignRunner.background({ refresh });
         if (bg.generating) {
-          return json(res, 202, {
+          const stale = bg.stale;
+          const body = {
             generating: true,
             processed: bg.processed ?? 0,
             total: bg.total ?? 0,
             page,
             pageSize,
-          });
+          };
+          if (bg.failed) {
+            body.failed = true;
+            body.error = bg.error;
+          }
+          if (stale?.groups) {
+            const rows = mapAlignRows(stale.groups);
+            body.stale = true;
+            body.cachedRows = rows.slice((page - 1) * pageSize, page * pageSize);
+            body.cachedTotal = rows.length;
+            body.cachedCounts = stale.align.alignGroupCounts(stale.groups, stale.inherit);
+            body.cachedGeneratedAt = stale.generatedAt ?? null;
+          } else {
+            body.stale = false;
+          }
+          return json(res, 202, body);
         }
         const result = await buildAlignGroups({ refresh });
         const { groups, inherit } = result;
-        const rows = groups.map((g) => ({
-          key: g.key,
-          name: g.name,
-          skuCount: g.skuIds.length,
-          skuIds: g.skuIds,
-          auto: g.auto,
-          score: g.best?.score ?? null,
-          method: g.best?.method ?? null,
-          reasons: g.best?.reasons ?? [],
-          candidate: g.best?.candidate
-            ? { name: g.best.candidate.name ?? g.best.matchedField, steamAppid: g.best.candidate.steam_appid }
-            : null,
-        }));
+        const rows = mapAlignRows(groups);
+        const counts = result.align.alignGroupCounts(groups, inherit);
         return json(res, 200, {
           groups: rows.slice((page - 1) * pageSize, page * pageSize),
           total: rows.length,
           page,
           pageSize,
-          inherited: inherit.inheritApplied,
+          counts, // DE 批：{ groups, skus, auto, manual, noCandidate, inherited, ignored }
+          inherited: inherit.inheritApplied, // 兼容旧前端
           generatedAt: result.generatedAt ?? null,
           cached: alignRunner.getState().fromCache,
           computing: false,
@@ -4413,88 +4481,166 @@ export function createApiServer({
       }
 
       // 合并预览：该组同归一化名的孤立游戏行（报价/快照数 + 不可撤销提示）
+      // DE 批：支持 ?keys=a,b 批量预览（批量确认弹窗显示「将合并 M 条孤儿行」）。
       const alignPreviewMatch = path.match(/^\/api\/admin\/align\/preview$/);
       if (alignPreviewMatch && req.method === 'GET') {
         if (!requireAdmin()) return;
-        const key = String(url.searchParams.get('key') ?? '');
-        if (!key) return json(res, 400, { error: '缺少 key' });
+        const key = String(url.searchParams.get('key') ?? '').trim();
+        const keysParam = String(url.searchParams.get('keys') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
         const { groups } = await buildAlignGroups();
-        const group = groups.find((g) => g.key === key);
-        if (!group) return json(res, 404, { error: '队列里没有该组' });
-        const target = group.best?.candidate?.steam_appid;
-        if (!target) return json(res, 400, { error: '该组没有候选，请手动搜索指定目标' });
-        const orphans = [];
-        for (const name of [...new Set(group.items.map((i) => i.name))]) {
-          const rows = (await q(
-            `select g.id, g.name, (select count(*)::int from offers o where o.game_id = g.id) as offers,
-                    (select count(*)::int from price_snapshots s join offers o2 on o2.id = s.offer_id where o2.game_id = g.id) as snapshots
-               from games g
-              where g.steam_appid is null and g.name = $1 and not g.deleted`,
-            [name],
-          )).rows;
-          orphans.push(...rows.map((r) => ({ id: Number(r.id), name: r.name, offers: Number(r.offers), snapshots: Number(r.snapshots) })));
+        const orphanRowsFor = async (group) => {
+          const orphans = [];
+          for (const name of [...new Set(group.items.map((i) => i.name))]) {
+            const rows = (await q(
+              `select g.id, g.name, (select count(*)::int from offers o where o.game_id = g.id) as offers,
+                      (select count(*)::int from price_snapshots s join offers o2 on o2.id = s.offer_id where o2.game_id = g.id) as snapshots
+                 from games g
+                where g.steam_appid is null and g.name = $1 and not g.deleted`,
+              [name],
+            )).rows;
+            orphans.push(...rows.map((r) => ({ id: Number(r.id), name: r.name, offers: Number(r.offers), snapshots: Number(r.snapshots) })));
+          }
+          return orphans;
+        };
+        if (key) {
+          const group = groups.find((g) => g.key === key);
+          if (!group) return json(res, 404, { error: '队列里没有该组' });
+          const target = group.best?.candidate?.steam_appid;
+          if (!target) return json(res, 400, { error: '该组没有候选，请手动搜索指定目标' });
+          return json(res, 200, {
+            key,
+            target: { name: group.best.candidate.name ?? group.best.matchedField, steamAppid: target },
+            skuIds: group.skuIds,
+            orphans: await orphanRowsFor(group),
+            irreversible: true,
+          });
         }
-        return json(res, 200, {
-          key,
-          target: { name: group.best.candidate.name ?? group.best.matchedField, steamAppid: target },
-          skuIds: group.skuIds,
-          orphans,
-          irreversible: true,
-        });
+        if (keysParam.length) {
+          if (keysParam.length > 200) return json(res, 400, { error: '单次批量预览最多 200 组' });
+          const found = new Map(groups.map((g) => [g.key, g]));
+          const missing = keysParam.filter((k) => !found.has(k));
+          if (missing.length) return json(res, 404, { error: `队列里没有该组：${missing.join('、')}` });
+          const previews = [];
+          for (const k of keysParam) {
+            const group = found.get(k);
+            const target = group.best?.candidate?.steam_appid;
+            if (!target) {
+              previews.push({ key: k, error: '该组没有候选，请手动搜索指定目标' });
+              continue;
+            }
+            previews.push({
+              key: k,
+              name: group.name,
+              skuCount: group.skuIds.length,
+              target: { name: group.best.candidate.name ?? group.best.matchedField, steamAppid: target },
+              skuIds: group.skuIds,
+              orphans: await orphanRowsFor(group),
+              irreversible: true,
+            });
+          }
+          return json(res, 200, { keys: keysParam, previews });
+        }
+        return json(res, 400, { error: '缺少 key / keys' });
       }
 
       if (path === '/api/admin/align/confirm' && req.method === 'POST') {
         if (!requireAdmin()) return;
         const body = await readBody(req);
-        const key = String(body?.key ?? '');
-        const appid = Number(body?.appid);
-        if (!key || !Number.isFinite(appid)) return json(res, 400, { error: '参数不合法（key + appid）' });
-        const { align, entries, games, groups } = await buildAlignGroups();
-        const group = groups.find((g) => g.key === key);
-        if (!group) return json(res, 404, { error: '队列里没有该组（可能已被处理）' });
-        const target = games.find((g) => Number(g.steam_appid) === appid);
-        if (!target) return json(res, 404, { error: `库里没有 appid ${appid}` });
-        // 合并孤立行（只合并无 appid 的源行；有 appid 冲突跳过）——不可自动撤销
-        const merged = [];
-        for (const skuId of group.skuIds) {
-          const alias = (await q('select game_id from game_aliases where platform_code = $1 and platform_product_id = $2', ['sonkwo', String(skuId)])).rows[0];
-          if (alias) {
-            const fromId = Number(alias.game_id);
-            if (fromId !== Number(target.id)) {
-              const source = (await q('select steam_appid from games where id = $1', [fromId])).rows[0];
-              if (source && source.steam_appid == null) {
-                const res = await db.mergeGames(q, { fromGameId: fromId, toGameId: Number(target.id), logger });
-                merged.push({ fromId, moved: res.moved ?? 0, dropped: res.dropped ?? 0, merged: Boolean(res.merged) });
-              } else {
-                logger?.warn('match.skip_merge', { skuId, fromId, reason: 'source_has_appid' });
-              }
+        const singleKey = String(body?.key ?? '').trim();
+        const keys = Array.isArray(body?.keys) ? body.keys.map((k) => String(k ?? '')).filter(Boolean) : [];
+        const method = body?.method || 'manual';
+        // DE 批（docs/ALIGN-REVIEW-UI.md §2/§5）：批量确认——body.keys 用各组当前候选，
+        // 每组独立回执；写回 skus.json 与失效缓存合并到批尾一次完成。
+        if (keys.length) {
+          if (keys.length > 200) return json(res, 400, { error: '单次批量确认最多 200 组' });
+          const { align, entries, games, groups } = await buildAlignGroups();
+          const results = [];
+          let totalMapped = 0;
+          let totalMerged = 0;
+          for (const k of keys) {
+            const group = groups.find((g) => g.key === k);
+            if (!group) { results.push({ key: k, error: '队列里没有该组（可能已被处理）' }); continue; }
+            const appid = group.best?.candidate?.steam_appid;
+            if (appid == null) { results.push({ key: k, error: '该组没有候选' }); continue; }
+            try {
+              const r = await confirmAlignKey({ q, align, group, appid, games, user, method });
+              totalMapped += r.mapped;
+              totalMerged += r.merged.length;
+              results.push({ key: k, appid, mapped: r.mapped, merged: r.merged.length });
+            } catch (err) {
+              results.push({ key: k, error: String(err?.message ?? err) });
             }
           }
+          // 写回 skus.json（兼容回落）：只回写执行成功的组
+          const okAppids = new Map(results.filter((r) => r.appid != null).map((r) => [r.key, r.appid]));
+          for (const [k, appid] of okAppids) {
+            const group = groups.find((g) => g.key === k);
+            if (!group) continue;
+            for (const skuId of group.skuIds) {
+              const entry = entries.find((e) => Number(e.skuId) === skuId);
+              if (entry) entry.appid = appid;
+            }
+          }
+          writeFileSync(alignSkuFile(), `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
+          alignRunner.invalidate(); // 队列内容已变，下一次 GET 重算（CN 批）
+          logger?.info('match.batch_confirmed', { by: user.username, keys, results });
+          return json(res, 200, { ok: true, results, totalMapped, totalMerged });
         }
-        const outcome = await align.confirmGroup({ store, q, group, appid, steamGames: games, reviewedBy: user.id, method: body.method || 'manual', confidence: group.best?.score ?? 1, mergeGame: () => ({ merged: false }) });
-        // 写回 skus.json（兼容回落）
-        for (const skuId of group.skuIds) {
-          const entry = entries.find((e) => Number(e.skuId) === skuId);
-          if (entry) entry.appid = appid;
+        if (singleKey) {
+          const appid = Number(body?.appid);
+          if (!Number.isFinite(appid)) return json(res, 400, { error: '参数不合法（key + appid）' });
+          const { align, entries, games, groups } = await buildAlignGroups();
+          const group = groups.find((g) => g.key === singleKey);
+          if (!group) return json(res, 404, { error: '队列里没有该组（可能已被处理）' });
+          const target = games.find((g) => Number(g.steam_appid) === appid);
+          if (!target) return json(res, 404, { error: `库里没有 appid ${appid}` });
+          // 合并孤立行（只合并无 appid 的源行；有 appid 冲突跳过）——不可自动撤销
+          const { mapped, merged } = await confirmAlignKey({ q, align, group, appid, games, user, method });
+          // 写回 skus.json（兼容回落）
+          for (const skuId of group.skuIds) {
+            const entry = entries.find((e) => Number(e.skuId) === skuId);
+            if (entry) entry.appid = appid;
+          }
+          writeFileSync(alignSkuFile(), `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
+          alignRunner.invalidate(); // 队列内容已变，下一次 GET 重算（CN 批）
+          logger?.info('match.confirmed', { by: user.username, key: singleKey, appid, skus: group.skuIds, merged });
+          return json(res, 200, { ok: true, mapped, merged: merged.length, appid });
         }
-        writeFileSync(alignSkuFile(), `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
-        alignRunner.invalidate(); // 队列内容已变，下一次 GET 重算（CN 批）
-        logger?.info('match.confirmed', { by: user.username, key, appid, skus: group.skuIds, merged });
-        return json(res, 200, { ok: true, mapped: outcome.skus, merged: merged.length, appid });
+        return json(res, 400, { error: '参数不合法（key + appid 或 keys）' });
       }
 
       if (path === '/api/admin/align/ignore' && req.method === 'POST') {
         if (!requireAdmin()) return;
         const body = await readBody(req);
-        const key = String(body?.key ?? '');
-        if (!key) return json(res, 400, { error: '缺少 key' });
-        const { align, groups } = await buildAlignGroups();
-        const group = groups.find((g) => g.key === key);
-        if (!group) return json(res, 404, { error: '队列里没有该组（可能已被处理）' });
-        const ignored = await align.ignoreGroup({ q, group, reviewedBy: user.id });
-        alignRunner.invalidate(); // 队列内容已变，下一次 GET 重算（CN 批）
-        logger?.info('match.ignored', { by: user.username, key, skus: group.skuIds });
-        return json(res, 200, { ok: true, ...ignored });
+        const singleKey = String(body?.key ?? '').trim();
+        const keys = Array.isArray(body?.keys) ? body.keys.map((k) => String(k ?? '')).filter(Boolean) : [];
+        // DE 批：批量忽略——每组独立回执，批尾统一失效缓存。
+        if (keys.length) {
+          if (keys.length > 200) return json(res, 400, { error: '单次批量忽略最多 200 组' });
+          const { align, groups } = await buildAlignGroups();
+          const results = [];
+          let totalIgnored = 0;
+          for (const k of keys) {
+            const group = groups.find((g) => g.key === k);
+            if (!group) { results.push({ key: k, error: '队列里没有该组（可能已被处理）' }); continue; }
+            const ignored = await align.ignoreGroup({ q, group, reviewedBy: user.id });
+            totalIgnored += ignored.ignored;
+            results.push({ key: k, ignored: ignored.ignored });
+          }
+          alignRunner.invalidate(); // 队列内容已变，下一次 GET 重算（CN 批）
+          logger?.info('match.batch_ignored', { by: user.username, keys, results });
+          return json(res, 200, { ok: true, results, ignored: totalIgnored });
+        }
+        if (singleKey) {
+          const { align, groups } = await buildAlignGroups();
+          const group = groups.find((g) => g.key === singleKey);
+          if (!group) return json(res, 404, { error: '队列里没有该组（可能已被处理）' });
+          const ignored = await align.ignoreGroup({ q, group, reviewedBy: user.id });
+          alignRunner.invalidate(); // 队列内容已变，下一次 GET 重算（CN 批）
+          logger?.info('match.ignored', { by: user.username, key: singleKey, skus: group.skuIds });
+          return json(res, 200, { ok: true, ...ignored });
+        }
+        return json(res, 400, { error: '缺少 key 或 keys' });
       }
 
       if (path === '/api/admin/align/search' && req.method === 'GET') {

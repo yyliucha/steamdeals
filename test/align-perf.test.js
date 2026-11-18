@@ -2,14 +2,17 @@
 // 守的约束：① 缓存 + single-flight（并发只算一次）；② 候选预筛不改匹配口径
 // （CE 13 条误匹配仍不进提案、正确样例仍命中）；③ 20s 预算返回 partial 不 5xx；
 // ④ 匹配循环分片（yield 被调用）。全部纯逻辑/纯函数，无网络、无 pglite。
+// DE 批（docs/ALIGN-REVIEW-UI.md §3/§4）：⑤ 重算期间保留 stale 旧结果、生成中不再命中旧缓存；
+// ⑥ 计算失败上报 failed/error 且自动重试；⑦ 分组完成立即上报总数（进度不出现 0/0）；
+// ⑧ top-N 候选（明细面板）与 counts 统计口径、ignoredGroups 计数。
 // 反向自检：① 删 align-query.js 的「computing 复用」分支 → single-flight 用例红；
 //           ② 删 match.js preselectCandidates 的快路径 → 「快路径只含精确候选」用例红；
 //           ③ 删 proposeAlignGroupsBudgeted 的预算检查 → partial 用例红。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAlignRunner, parseAlignPage } from '../src/align-query.js';
-import { buildCandidateIndex, preselectCandidates, bestMatch, evaluatePair } from '../src/match.js';
-import { proposeAlignGroupsBudgeted, loadSonkwoItems } from '../src/align.js';
+import { buildCandidateIndex, preselectCandidates, bestMatch, bestMatchMulti, evaluatePair } from '../src/match.js';
+import { proposeAlignGroupsBudgeted, loadSonkwoItems, alignGroupCounts, applyMapInheritance } from '../src/align.js';
 
 // ── 一、缓存 + single-flight（align-query.js）──────────────────────────
 
@@ -312,4 +315,141 @@ test('CN：组去重与 skuIds 保持（预筛路径不改变组结构）', asyn
   assert.equal(groups.length, 2);
   const anno = groups.find((g) => g.skuIds.length === 2);
   assert.ok(anno, '愚者不灭/豪华版同组（skuIds=2）');
+});
+
+// ── 五、DE 批（docs/ALIGN-REVIEW-UI.md）：stale 旧结果 / 失败态 / 分组即报总数 / top-N 明细 / counts ──
+
+test('DE：重算期间保留 stale 旧结果，生成中非 refresh 不再命中旧缓存', async () => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  let computes = 0;
+  const runner = createAlignRunner({
+    compute: async () => {
+      computes += 1;
+      if (computes > 1) await gate; // 第二次计算挂住，逼出生成窗口
+      return { n: computes, generatedAt: Date.now() };
+    },
+    ttlMs: 60_000,
+  });
+  const r1 = await runner.run();
+  assert.equal(r1.n, 1, '首轮完成、缓存就绪');
+
+  const bg1 = runner.background({ refresh: true });
+  assert.equal(bg1.generating, true, 'refresh 触发后台重算');
+  assert.equal(bg1.stale?.n, 1, '重算期间 background 携带上一轮旧结果');
+
+  const bg2 = runner.background(); // 非 refresh——生成中不得命中旧缓存当 ready（否则前端会误判"已生成"）
+  assert.equal(bg2.generating, true, '生成中非 refresh 也返回 generating（不再是旧缓存的 ready）');
+  assert.equal(bg2.stale?.n, 1, 'stale 旧结果持续可用');
+  assert.equal(runner.getState().fromCache, false);
+
+  release();
+  const r2 = await runner.run();
+  assert.equal(r2.n, 2, '重算完成后返回新结果');
+  assert.equal(runner.getState().stale, null, '完成后 stale 清空');
+  const bg3 = runner.background();
+  assert.equal(bg3.ready, true, '新缓存就绪后 background 返回 ready');
+});
+
+test('DE：计算失败上报 failed/error，background 自动重试，成功后 failed 清除', async () => {
+  let attempts = 0;
+  const runner = createAlignRunner({
+    compute: async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('候选表读取失败');
+      return { ok: true, generatedAt: Date.now() };
+    },
+    ttlMs: 60_000,
+  });
+  const s1 = runner.background();
+  assert.equal(s1.generating, true);
+  await assert.rejects(runner.run(), /候选表读取失败/, 'run() 调用方仍能看到失败');
+  assert.equal(attempts, 1, '首次失败不重复计算');
+  assert.equal(runner.getState().failed, true, '失败态进入观测状态');
+  assert.equal(runner.getState().error, '候选表读取失败');
+
+  // 失败后 computing 已清空：下一次 background 自动重启计算（成功路径）
+  const s2 = runner.background();
+  assert.equal(s2.generating, true, '失败后 background 自动重试');
+  const r = await runner.run();
+  assert.equal(r.ok, true, '重试成功');
+  assert.equal(attempts, 2, '只重试一次');
+  assert.equal(runner.getState().failed, false, '成功后 failed 清除');
+  assert.equal(runner.getState().error, null);
+});
+
+test('DE：分组完成立即上报总数——onGrouped 先于匹配循环，进度 total 不出现 0/0', async () => {
+  const names = [];
+  for (let i = 0; i < 30; i += 1) names.push(`无关游戏 ${i}`);
+  const items = mkItems(names);
+  const seen = [];
+  await proposeAlignGroupsBudgeted(items, STEAM_GAMES, {
+    budgetMs: 60_000,
+    yieldEvery: 10,
+    onGrouped: (total) => seen.push(['grouped', total]),
+    shouldYield: async (processed, totalGroups) => seen.push(['yield', processed, totalGroups]),
+  });
+  assert.deepEqual(seen[0], ['grouped', 30], '分组完成即回调总数 30（在第一次 yield 之前）');
+  assert.ok(seen.slice(1).every((e) => e[0] === 'yield'), '之后才是匹配进度');
+});
+
+test('DE：topCandidates——top-1 与 bestMatchMulti 同口径、按分数降序、低于阈值候选也在明细里', async () => {
+  const games = [
+    { id: 1, steam_appid: 111, name: '塔拉萨号', name_en: 'The Thalassa' },
+    { id: 2, steam_appid: 222, name: '塔拉萨号 豪华版', name_en: 'The Thalassa Deluxe' },
+    { id: 3, steam_appid: 333, name: '无关游戏甲', name_en: null },
+  ];
+  const items = mkItems(['塔拉萨号']);
+  const { groups } = await proposeAlignGroupsBudgeted(items, games, { budgetMs: 60_000, topN: 5 });
+  const g = groups[0];
+  assert.ok(g.topCandidates.length >= 2, '明细面板有多个候选');
+  const scores = g.topCandidates.map((t) => t.score);
+  const sorted = [...scores].sort((a, b) => b - a);
+  assert.deepEqual(scores, sorted, 'topCandidates 按分数降序');
+  const viaMulti = bestMatchMulti(['塔拉萨号'], games, { minScore: 0.86, getFields: (c) => [c.name, c.name_en ?? c.nameEn] });
+  assert.equal(g.best?.candidate?.steam_appid, viaMulti?.candidate?.steam_appid, 'top-1 与 bestMatchMulti 同口径');
+  assert.equal(g.best?.score, viaMulti?.score);
+  assert.equal(g.topCandidates[0].score, g.best.score, 'best 即 topCandidates[0]');
+
+  // 低于 0.86 的候选：best=null（不进提案），但 topCandidates 仍列出（明细可见低分候选）
+  const lowItems = mkItems(['代号：探戈']);
+  const lowGames = [{ id: 9, steam_appid: 999, name: '代号：文字生存', name_en: null }];
+  const low = (await proposeAlignGroupsBudgeted(lowItems, lowGames, { budgetMs: 60_000, topN: 5 })).groups[0];
+  assert.equal(low.best, null, '低于阈值不进提案');
+  assert.ok(low.topCandidates.length >= 1 && low.topCandidates[0].score < 0.86, '低分候选进 topCandidates（明细面板）');
+});
+
+test('DE：alignGroupCounts——auto≥0.94 / manual 0.86–0.94 / noCandidate / skus / inherited / ignored', () => {
+  const groups = [
+    { skuIds: [1, 2], best: { score: 0.97 } },
+    { skuIds: [3], best: { score: 0.90 } },
+    { skuIds: [4], best: null },
+  ];
+  const counts = alignGroupCounts(groups, { inheritApplied: 68, ignoredGroups: 2 });
+  assert.deepEqual(counts, {
+    groups: 3,
+    skus: 4,
+    auto: 1,
+    manual: 1,
+    noCandidate: 1,
+    inherited: 68,
+    ignored: 2,
+  }, '5 统计卡与「已忽略」chip 的计数口径');
+});
+
+test('DE：applyMapInheritance 返回 ignoredGroups（按去重组计数）', () => {
+  const items = [
+    { skuId: 1, name: '断箭', titles: ['断箭'] },
+    { skuId: 2, name: '断箭', titles: ['断箭'] },
+    { skuId: 3, name: '愚者不灭', titles: ['愚者不灭'] },
+  ];
+  const maps = new Map([
+    ['1', { decision: 'ignored' }],
+    ['2', { decision: 'ignored' }],
+    ['3', { decision: 'ignored' }],
+  ]);
+  const { items: rest, inheritApplied, ignoredGroups } = applyMapInheritance(items, maps);
+  assert.equal(rest.length, 0);
+  assert.equal(inheritApplied, 0);
+  assert.equal(ignoredGroups, 2, '两条同名 SKU 只算 1 个已忽略组');
 });

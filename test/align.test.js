@@ -108,6 +108,36 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   assert.match(cli, /MATCH_ON_SONKWO/, '收尾开关');
   assert.match(cli, /resolveDealSteamAppid/, 'ITAD 跳转反解接入');
   assert.match(admin, /对齐审核/, '游戏管理新 tab');
-  assert.match(alignAdmin, /不可自动撤销/, '合并预览不可撤销提示');
+  assert.match(alignAdmin, /不可自动撤销/, '确认不可撤销提示');
   assert.match(alignAdmin, /api\/admin\/align\/ignore/, '忽略接线');
+
+  // ── DE 批（docs/ALIGN-REVIEW-UI.md §3/§4）：接口契约与页面结构 ──
+  // 接口：202 带 stale 旧结果分页；200 带 counts 5 项；批量确认/忽略；预览 keys
+  assert.match(server, /cachedRows/, '202 返回上一轮缓存分页（stale 旧结果）');
+  assert.match(server, /body\.stale = true/, '202 stale 标记');
+  assert.match(server, /alignGroupCounts\(groups, inherit\)/, '完成响应带 counts 5 项统计');
+  assert.match(server, /match\.batch_confirmed/, '批量确认审计');
+  assert.match(server, /match\.batch_ignored/, '批量忽略审计');
+  assert.match(server, /align\/preview\?keys=|keysParam/, '批量合并预览（批量确认弹窗用）');
+  assert.match(server, /onGrouped/, '分组完成立即上报总数（进度不出现 0/0）');
+  assert.match(server, /store\.steampowered\.com\/app/, 'Steam 链接字段');
+  assert.match(server, /sonkwo\.hk\/sku/, '杉果链接字段');
+  // 页面：状态徽标 / 5 统计卡 / 进度条 / 筛选 chip / 批量按钮 / 明细 / 空态互斥
+  assert.match(alignAdmin, /生成中/, '头部状态徽标（生成中）');
+  assert.match(alignAdmin, /生成失败/, '头部状态徽标（生成失败）');
+  assert.match(alignAdmin, /已生成/, '头部状态徽标（已生成）');
+  assert.match(alignAdmin, /自动匹配（≥0\.94）/, '统计卡：自动匹配');
+  assert.match(alignAdmin, /需人工（0\.86–0\.94）/, '统计卡：需人工');
+  assert.match(alignAdmin, /本次自动继承/, '统计卡：本次自动继承');
+  assert.match(alignAdmin, /高置信/, '筛选 chip：高置信');
+  assert.match(alignAdmin, /无候选/, '筛选 chip：无候选');
+  assert.match(alignAdmin, /已忽略/, '筛选 chip：已忽略');
+  assert.match(alignAdmin, /批量确认/, '批量确认按钮');
+  assert.match(alignAdmin, /批量忽略/, '批量忽略按钮');
+  assert.match(alignAdmin, /明细/, '明细面板入口');
+  assert.match(alignAdmin, /没有待对齐的组（新 SKU 会在杉果同步后进入队列）/, '空态文案');
+  assert.match(alignAdmin, /生成中不显示|!generating\.active && !loading && displayedRows/, '空态互斥（生成中不显示空态）');
+  assert.match(alignAdmin, /疑似本体/, '候选疑似本体提示');
+  assert.match(alignAdmin, /api\/admin\/align\/confirm/, '确认接线');
+  assert.match(alignAdmin, /api\/admin\/align\/preview/, '单组合并预览接线');
 });

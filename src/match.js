@@ -327,6 +327,45 @@ export function bestMatchMulti(titles, candidates, { minScore = 0.86, getFields 
   return best;
 }
 
+/**
+ * DE 批（docs/ALIGN-REVIEW-UI.md §3「明细数据」）：按分数降序返回 top-N 候选，
+ * 供「明细」面板渲染（名称/AppID/分数/reasons/来源）。口径与 bestMatchMulti 一致：
+ * 同一候选取（标题 × 字段）里最高分的一条，top-1 就是 bestMatchMulti 的结果。
+ * 不设 minScore 下限——低于阈值的候选也要进明细（管理员可看到"低分候选"再人工判定）。
+ */
+export function topMatches(titles, candidates, { getFields = (c) => [c.name, c.nameEn], autoScore = 0.94, topN = 5 } = {}) {
+  const byCandidate = new Map();
+  for (const title of titles ?? []) {
+    if (!title) continue;
+    const method = /[\u3400-\u9fff]/.test(title) ? 'name_zh' : 'name_en';
+    for (const candidate of candidates ?? []) {
+      let best = null;
+      for (const field of getFields(candidate)) {
+        if (!field) continue;
+        const ev = evaluatePair(title, field, { autoScore });
+        if (!best || ev.score > best.score) best = { ev, field };
+      }
+      if (!best) continue;
+      const entry = {
+        candidate,
+        score: best.ev.score,
+        matchedField: best.field,
+        matchedTitle: title,
+        method,
+        fullScore: best.ev.fullScore,
+        equal: best.ev.equal,
+        auto: best.ev.auto,
+        numbersOk: best.ev.numbersOk,
+        contentWord: best.ev.contentWord,
+        reasons: best.ev.reasons,
+      };
+      const prev = byCandidate.get(candidate);
+      if (!prev || entry.score > prev.score) byCandidate.set(candidate, entry);
+    }
+  }
+  return [...byCandidate.values()].sort((a, b) => b.score - a.score).slice(0, topN);
+}
+
 /** CD 批：审核队列去重组的稳定键 = platform + normalizeName(杉果名)。 */
 export function alignGroupKey(platformCode, title) {
   const normalized = normalizeName(title).replace(/\s+/g, '');

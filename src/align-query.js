@@ -26,14 +26,17 @@ export function parseAlignPage(query) {
 
 export function createAlignRunner({ compute, ttlMs = 10 * 60 * 1000, log = () => {} }) {
   let cache = null;
+  let staleCache = null; // 上一轮完整结果：重算期间仍可分页读取（DE 批「可先用旧结果」）
   let cachedAt = 0;
   let computing = null;
   let lastFromCache = false;
+  let lastError = null; // 最近一次计算失败原因（DE 批「生成失败」状态）
   let progress = null; // { processed, total, startedAt }
 
   const startCompute = () => {
     const startedAt = Date.now();
     progress = { processed: 0, total: 0, startedAt };
+    staleCache = cache; // 保留上一轮结果供生成期间分页
     computing = (async () => {
       try {
         const result = await compute({
@@ -43,18 +46,26 @@ export function createAlignRunner({ compute, ttlMs = 10 * 60 * 1000, log = () =>
         });
         cache = result;
         cachedAt = Date.now();
+        staleCache = null;
+        lastError = null;
         return result;
+      } catch (err) {
+        lastError = String(err?.message ?? err).slice(0, 200);
+        log('align.compute_failed', { error: lastError });
+        throw err; // run() 调用方（confirm/ignore/preview）仍能看到失败
       } finally {
         computing = null;
         progress = null;
       }
     })();
+    computing.catch(() => {}); // 无 await 方时避免 unhandled rejection（background 不等待）
     log('align.compute_started', { startedAt });
     return computing;
   };
 
+  // DE 批：计算期间不再把上一轮缓存当"就绪"——生成中应返回 generating + stale 旧结果。
   const hitCache = ({ refresh = false } = {}) =>
-    !refresh && cache && Date.now() - cachedAt < ttlMs;
+    !refresh && !computing && cache && Date.now() - cachedAt < ttlMs;
 
   return {
     /** 同步等待结果：缓存命中立即返回；冷缓存等待计算完成（与并发请求共享同一 Promise）。 */
@@ -74,7 +85,8 @@ export function createAlignRunner({ compute, ttlMs = 10 * 60 * 1000, log = () =>
 
     /**
      * 后台生成（CS 批）：冷缓存时启动计算但**不等待**，立即返回状态；
-     * 缓存就绪返回 { ready:true }；计算中/刚触发返回 { generating:true, processed, total }。
+     * 缓存就绪返回 { ready:true }；计算中/刚触发返回
+     * { generating:true, processed, total, failed, error, stale }（DE 批新增 failed/stale）。
      * 连续调用共享同一个计算 Promise（single-flight），不会叠加计算。
      */
     background({ refresh = false } = {}) {
@@ -84,17 +96,33 @@ export function createAlignRunner({ compute, ttlMs = 10 * 60 * 1000, log = () =>
         return { ready: true };
       }
       if (computing) {
-        return { generating: true, processed: progress?.processed ?? 0, total: progress?.total ?? 0 };
+        return {
+          generating: true,
+          processed: progress?.processed ?? 0,
+          total: progress?.total ?? 0,
+          failed: lastError != null,
+          error: lastError,
+          stale: staleCache ?? null,
+        };
       }
       lastFromCache = false;
-      startCompute();
-      return { generating: true, processed: 0, total: 0 };
+      startCompute(); // 上次失败后每次 background 都会重试
+      return {
+        generating: true,
+        processed: 0,
+        total: 0,
+        failed: lastError != null,
+        error: lastError,
+        stale: staleCache ?? null,
+      };
     },
 
     /** 队列内容变化（confirm/ignore）后调用，下一次 run/background 重新计算。 */
     invalidate() {
       cache = null;
+      staleCache = null;
       cachedAt = 0;
+      lastError = null;
     },
 
     /** 观测状态（测试/日志用）：cached 有缓存、computing 计算中、fromCache 最近一次 run 是否命中缓存、progress 进度。 */
@@ -106,6 +134,9 @@ export function createAlignRunner({ compute, ttlMs = 10 * 60 * 1000, log = () =>
         fromCache: lastFromCache,
         processed: progress?.processed ?? 0,
         total: progress?.total ?? 0,
+        stale: staleCache ?? null,
+        failed: lastError != null,
+        error: lastError,
       };
     },
   };
