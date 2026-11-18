@@ -85,7 +85,7 @@
 | **CW** | 后台「游戏目录」点游戏名弹详情（Steam 已同步数据 + 封面/发售/开发商 + 底部 Steam 商店跳转） | [ADMIN-GAME-POPUP.md](ADMIN-GAME-POPUP.md) | 质检通过（2026-11-19，实现随 b9811f8 入 main；QA docs/QA-CW.md ✅） | ✅ 本轮已给 |
 | **CX** | 个人资料编辑（Web + App；头像存库、双 Steam 账号默认头像、设为默认/解绑/新增换绑） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) | 已实现待发版（2026-11-18 决策确认 + 双 demo） | ✅ 本轮已给 |
 | **CY** | 数据隔离（用户私有数据管理员只读；越权 403 + 审计；站点级/账号安全/申诉保留可写） | [DATA-ISOLATION.md](DATA-ISOLATION.md) | 质检通过（2026-11-19，QA docs/QA-CY.md 第 1 轮 ✅；实现 3351f9f） | ✅ 本轮已给 |
-| **CZ** | 更换登录邮箱（邮箱体系收尾；验证码登录/忘记密码已实现，只做换邮箱+加固） | [EMAIL-CHANGE.md](EMAIL-CHANGE.md) | 已实现待发版（2026-11-19 凌晨完成；站点 ac52955 + App 仓库随本批） | ✅ 本轮已给 |
+| **CZ** | 更换登录邮箱（邮箱体系收尾；验证码登录/忘记密码已实现，只做换邮箱+加固） | [EMAIL-CHANGE.md](EMAIL-CHANGE.md) | 质检通过（2026-11-19，QA docs/QA-CZ.md 第 1 轮 ✅；站点 ac52955 + App 7c01820） | ✅ 本轮已给 |
 | **DA** | CM-5：App 筛选/排序服务端化（折扣/史低/免费/未发售全库筛；站点 + App 方案 A） | [APP-FILTER-SERVER-SIDE.md](APP-FILTER-SERVER-SIDE.md) | 质检通过（2026-11-18，QA docs/QA-DA.md 第 1 轮 ✅；实现站点 b46669a + App 4334823） | ✅ 本轮已给 |
 | **DB** | ~~个人主页（公开资料页）~~ → **已过时**：合并进 CX（仅本人可见的「我的资料」） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) | 已过时（2026-11-18 取消公开页） | — |
 | **DC** | CM-6：App 公告角标与公告列表（铃铛入口/全量未读/游客本地已读） | —（TODO DC 条目） | 待开发（2026-11-18 沟通完成） | ✅ 本轮已给 |

@@ -146,9 +146,9 @@
   ④ 账号安全/申诉/审核回归通过；⑤ 管理员查看 Steam 绑定只读；⑥ `npm test` / `frontend:build` / `scan` 全绿。
 
 
-## CZ. 已实现待发版：更换登录邮箱（邮箱体系收尾；验证码登录/忘记密码已实现）
+## CZ. 质检通过：更换登录邮箱（邮箱体系收尾；验证码登录/忘记密码已实现）
 
-**状态：已实现待发版（2026-11-19 凌晨完成；站点 ac52955 + App 仓库随本批；管理员重置邮箱审计随 CY 提交 3351f9f 入 main，PROJECT-OVERVIEW 行随 CO-2 提交 7a324b0 入 main）**
+**状态：质检通过（2026-11-19，QA docs/QA-CZ.md 第 1 轮 ✅ 放行：通过 11/缺失 0/偏差 0/需人工确认 2——App 重登目视、demo 像素目视；站点 ac52955 + App 7c01820；管理员重置邮箱审计随 CY 提交 3351f9f 入 main，PROJECT-OVERVIEW 行随 CO-2 提交 7a324b0 入 main）**
 **来源：** [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) §5、[APP-NATIVE.md](APP-NATIVE.md) §6 第 4 条
 **依赖：** CX（个人资料页）、现有邮件服务（SMTP 已配置）
 **涉及 App 仓库**：是（app-vX.Y.Z 随本批）
