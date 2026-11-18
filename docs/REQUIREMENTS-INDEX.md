@@ -88,7 +88,7 @@
 | **CZ** | 更换登录邮箱（邮箱体系收尾；验证码登录/忘记密码已实现，只做换邮箱+加固） | [EMAIL-CHANGE.md](EMAIL-CHANGE.md) | 待开发（2026-11-18 沟通完成 + demo） | ✅ 本轮已给 |
 | **DA** | CM-5：App 筛选/排序服务端化（折扣/史低/免费/未发售全库筛；站点 + App 方案 A） | [APP-FILTER-SERVER-SIDE.md](APP-FILTER-SERVER-SIDE.md) | 待开发（2026-11-18 方案 A 确认；规格已出） | ✅ 本轮已给 |
 | **DB** | 个人主页（公开资料页 `/u/:username`） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) §5 | 待开发（2026-11-18 立项；等沟通） | ⏳ 待沟通 |
-| **DC** | CM-6：App 公告角标（先核实登录态） | [APP-PARITY.md](APP-PARITY.md) §65 | 待开发（2026-11-18 立项；待核实） | ⏳ 待沟通 |
+| **DC** | CM-6：App 公告角标与公告列表（铃铛入口/全量未读/游客本地已读） | —（TODO DC 条目） | 待开发（2026-11-18 沟通完成） | ✅ 本轮已给 |
 | **DE** | 对齐审核页改版（统计卡/进度条/搜索筛选/批量/空态互斥） | [ALIGN-REVIEW-UI.md](ALIGN-REVIEW-UI.md) | 待开发（2026-11-18 需求 + demo） | ✅ 本轮已给 |
 | **DF** | 到价提醒手动推送（每行「推送」；强制推送/更新去重时间/频控/审计） | [ALERT-MANUAL-PUSH.md](ALERT-MANUAL-PUSH.md) | 待开发（2026-11-18 需求 + demo；4 口径待定） | ✅ 本轮已给 |
 | **DG** | 对齐匹配修复（副标题/别名低分 → 无候选；索引补 name_en + 副标题感知） | —（TODO DG 条目） | 待开发（2026-11-18 服务器取证确认） | ✅ 本轮已给 |
@@ -134,5 +134,6 @@
 9. **AO**（后台游戏列 + 链接抽屉改版）2026-11-09 入 TODO，规格 [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md)；单批，纯前端；
 10. **AP**（价格历史报表）2026-11-09 入 TODO，规格 [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md)；单批，纯前端；
 11. **AQ / AR**（后台列表排序 / 按 IP 合并）2026-11-09 入 TODO，规格 [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md)；AR 依赖 AQ、下一期开发。
+
 
 
