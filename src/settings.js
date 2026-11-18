@@ -32,6 +32,95 @@ export const SETTINGS_REVISION_KEY = 'settings.revision';
 export const GOG_REGION_CODES = ['cn', 'hk', 'tw', 'us', 'jp', 'ru', 'tr', 'ar'];
 export const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error'];
 
+// ---------------------------------------------------------------- CQ 批（docs/SETTINGS-IA.md §2.6）
+// 渲染 meta：section（卡/折叠组 id）/ tier（primary 常用 | advanced 进折叠）/ sum（折叠标题行摘要模板，{v}=当前值）。
+// 只加展示元数据，不改任何 key / 默认值 / env / 语义。
+const SETTINGS_META = {
+  // 数据源与采集——按平台卡片（全局/Steam/杉果/ITAD/GOG+Humble/发现与热度）
+  'sources.steam.enabled': { section: 'steam', tier: 'primary' },
+  'sources.steam.priceIntervalMin': { section: 'steam', tier: 'primary' },
+  'sources.steam.apiKey': { section: 'steam', tier: 'primary' },
+  'sources.steam.initialDelaySec': { section: 'global', tier: 'primary', sum: 'Steam 首轮 {v} 秒' },
+  'steamStatus.rateMs': { section: 'steam', tier: 'advanced', sum: '状态判定 {v}ms' },
+  'steamStatus.limit': { section: 'steam', tier: 'advanced', sum: '状态判定 {v} 条' },
+  'steamStatus.intervalMin': { section: 'steam', tier: 'advanced', sum: '每 {v} 分' },
+  'steamStatus.initialDelaySec': { section: 'steam', tier: 'advanced', sum: '首轮 {v} 秒' },
+  'sources.sonkwo.enabled': { section: 'sonkwo', tier: 'primary' },
+  'sources.sonkwo.intervalMin': { section: 'sonkwo', tier: 'primary' },
+  'sources.discover.enabled': { section: 'sonkwo', tier: 'primary' },
+  'sources.sonkwo.limit': { section: 'sonkwo', tier: 'advanced', sum: '每轮 {v} 条' },
+  'sources.sonkwo.initialDelaySec': { section: 'global', tier: 'primary', sum: '杉果首轮 {v} 秒' },
+  'sources.discover.intervalMin': { section: 'sonkwo', tier: 'advanced', sum: 'SKU 发现 {v} 分' },
+  'sources.discover.initialDelaySec': { section: 'global', tier: 'primary', sum: '发现首轮 {v} 秒' },
+  'sources.itad.enabled': { section: 'itad', tier: 'primary' },
+  'sources.itad.apiKey': { section: 'itad', tier: 'primary' },
+  'sources.itad.intervalMin': { section: 'itad', tier: 'primary' },
+  'sources.itad.limit': { section: 'itad', tier: 'advanced', sum: '每轮 {v} 条' },
+  'sources.itad.initialDelaySec': { section: 'global', tier: 'primary', sum: 'ITAD 首轮 {v} 秒' },
+  'sources.gog.enabled': { section: 'gog-humble', tier: 'primary' },
+  'sources.gog.intervalMin': { section: 'gog-humble', tier: 'primary' },
+  'sources.gog.limit': { section: 'gog-humble', tier: 'primary' },
+  'sources.gog.initialDelaySec': { section: 'global', tier: 'primary', sum: 'GOG 首轮 {v} 秒' },
+  'sources.gog.regions': { section: 'gog-humble', tier: 'advanced', sum: 'GOG 区服 {v}' },
+  'sources.humble.enabled': { section: 'gog-humble', tier: 'primary' },
+  'sources.humble.intervalMin': { section: 'gog-humble', tier: 'primary' },
+  'sources.humble.limit': { section: 'gog-humble', tier: 'primary' },
+  'sources.humble.initialDelaySec': { section: 'global', tier: 'primary', sum: 'Humble 首轮 {v} 秒' },
+  'discovery.pages': { section: 'discovery', tier: 'primary' },
+  'discovery.fallbackLimit': { section: 'discovery', tier: 'primary' },
+  'discovery.intervalMin': { section: 'discovery', tier: 'primary' },
+  // 站点与内容——常用 4 项 + 推荐与评分折叠
+  'site.adultDisplay': { section: 'site', tier: 'primary' },
+  'site.publicUrl': { section: 'site', tier: 'primary' },
+  'app.mobileRedirectEnabled': { section: 'site', tier: 'primary' },
+  'system.timezone': { section: 'site', tier: 'primary' },
+  'app.deviceRateMax': { section: 'recommend', tier: 'advanced', sum: '设备限流 {v}' },
+  'app.deviceRateWindowSec': { section: 'recommend', tier: 'advanced', sum: '窗口 {v} 秒' },
+  'personal.tasteWeight': { section: 'recommend', tier: 'primary' },
+  'personal.scoreDiscountWeight': { section: 'recommend', tier: 'advanced', sum: '折扣 {v}' },
+  'personal.scoreReviewWeight': { section: 'recommend', tier: 'advanced', sum: '好评 {v}' },
+  'personal.scoreHeatWeight': { section: 'recommend', tier: 'advanced', sum: '热度 {v}' },
+  'personal.behaviorLogEnabled': { section: 'recommend', tier: 'advanced' },
+  // 高级——4 个折叠组
+  'system.circuitThreshold': { section: 'schedule', tier: 'advanced' },
+  'system.circuitCooldownMin': { section: 'schedule', tier: 'advanced', sum: '熔断 {v} 分' },
+  'system.chartOnSync': { section: 'schedule', tier: 'advanced' },
+  'system.backupEnabled': { section: 'schedule', tier: 'advanced', sum: '备份 {v}' },
+  'system.backupIntervalMin': { section: 'backup', tier: 'advanced', sum: '间隔 {v}' },
+  'system.backupInitialDelaySec': { section: 'backup', tier: 'advanced', sum: '轮延迟 {v}' },
+  'system.logsPruneEnabled': { section: 'backup', tier: 'advanced', sum: '清理 {v}' },
+  'system.logsPruneDays': { section: 'backup', tier: 'advanced', sum: '保留 {v} 天' },
+  'system.logLevel': { section: 'backup', tier: 'advanced', sum: '{v}' },
+  'images.enabled': { section: 'cache', tier: 'advanced', sum: '缓存 {v}' },
+  'images.intervalMin': { section: 'cache', tier: 'advanced', sum: '补图 {v}' },
+  'images.initialDelaySec': { section: 'cache', tier: 'advanced', sum: '首轮 {v}' },
+  'images.limit': { section: 'cache', tier: 'advanced', sum: '每轮 {v}' },
+  'images.sleepMs': { section: 'cache', tier: 'advanced' },
+  'images.maxBytes': { section: 'cache', tier: 'advanced' },
+};
+
+/**
+ * CQ 批：分区（卡/折叠组）注册表——每个 group 下的渲染顺序、标题、图标与固定 keys。
+ * keys 显式列出（可跨 group 引用，如 site 常用里的 system.timezone）；未列 keys 的分区由 SETTINGS_META.section 推导。
+ */
+export const SETTINGS_SECTIONS = [
+  { group: 'sources', id: 'global', title: '全局', icon: '⚙️', hint: '各源首轮延迟', compact: 2 },
+  { group: 'sources', id: 'steam', title: 'Steam', icon: '🎮', foldTitle: '高级' },
+  { group: 'sources', id: 'sonkwo', title: '杉果', icon: '🛒', foldTitle: '高级' },
+  { group: 'sources', id: 'itad', title: 'ITAD', icon: '🔗', foldTitle: '高级' },
+  { group: 'sources', id: 'gog-humble', title: 'GOG / Humble', icon: '🕹️', hint: '两个平台', compact: 3, foldTitle: '高级' },
+  { group: 'sources', id: 'discovery', title: '发现与热度', icon: '📈', hint: 'steam-discovery', foldTitle: '高级' },
+  { group: 'site', id: 'site', title: '站点与内容', icon: '🌐', keys: ['site.adultDisplay', 'site.publicUrl', 'app.mobileRedirectEnabled', 'system.timezone'] },
+  { group: 'site', id: 'recommend', title: '推荐与评分', icon: '⭐', foldTitle: '推荐与评分' },
+  { group: 'advanced', id: 'schedule', title: '调度与熔断', icon: '🔧', foldTitle: '调度与熔断' },
+  { group: 'advanced', id: 'backup', title: '备份与日志', icon: '🗄️', foldTitle: '备份与日志' },
+  { group: 'advanced', id: 'cache', title: '缓存与图片', icon: '🖼️', foldTitle: '缓存与图片' },
+  { group: 'advanced', id: 'timezone', title: '时区与显示', icon: '🧭', foldTitle: '时区与显示', keys: ['system.timezone'] },
+];
+
+// CQ 批：分组内其余（alerts/auth/security/network）保持平铺，分区回退到分组本身。
+export const PLAIN_GROUPS = new Set(['alerts', 'auth', 'security', 'network']);
+
 const def = (key, env, group, label, type, defaultValue, extra = {}) => ({
   key,
   env,
@@ -40,6 +129,10 @@ const def = (key, env, group, label, type, defaultValue, extra = {}) => ({
   type,
   default: defaultValue,
   secret: type === 'secret',
+  // CQ 批：渲染 meta（SETTINGS_META 只加展示信息；不设的项 section=null 走平铺）
+  section: SETTINGS_META[key]?.section ?? null,
+  tier: SETTINGS_META[key]?.tier ?? 'primary',
+  sum: SETTINGS_META[key]?.sum ?? null,
   ...extra,
 });
 
@@ -316,6 +409,10 @@ export function publicFields() {
     default: d.default,
     secret: Boolean(d.secret),
     advanced: Boolean(d.advanced),
+    // CQ 批（docs/SETTINGS-IA.md §2.6）：渲染 meta 随 schema 下发
+    section: d.section ?? null,
+    tier: d.tier ?? 'primary',
+    sum: d.sum ?? null,
     min: d.min,
     max: d.max,
     options: d.options,
@@ -623,6 +720,15 @@ export async function getPublicSettings(q, opts = {}) {
       values[d.key] = read.values[d.key];
     }
   }
+  // CQ 批：isDefault——当前值是否等于默认（只看非默认过滤的依据；类型敏感比较）
+  const isDefault = {};
+  for (const d of SETTINGS) {
+    if (d.secret) {
+      isDefault[d.key] = !Boolean(read.values[d.key]);
+    } else {
+      isDefault[d.key] = isDefaultValue(d, read.values[d.key]);
+    }
+  }
   return {
     version: VERSION,
     groups: GROUPS,
@@ -632,7 +738,31 @@ export async function getPublicSettings(q, opts = {}) {
     sources: read.sources,
     revision: await getRevision(q),
     setup: await setupInfo(q),
+    // CQ 批：分区注册表 + 平铺分组（前端按它渲染卡片/折叠）
+    sections: SETTINGS_SECTIONS,
+    plainGroups: [...PLAIN_GROUPS],
+    isDefault,
   };
+}
+
+/** CQ 批：值是否等于默认（int/enum/bool/string 统一比较；null/undefined 视作默认）。 */
+export function isDefaultValue(d, value) {
+  const cur = value == null ? d.default : value;
+  if (d.type === 'int') return Number(cur) === Number(d.default);
+  if (d.type === 'bool') return Boolean(cur) === Boolean(d.default);
+  return String(cur) === String(d.default);
+}
+
+/**
+ * CQ 批（docs/SETTINGS-IA.md §2.5）：恢复默认——删除指定 key 的库覆盖行，
+ * 值与来源回落 env→default；修订号 +1（15 秒热加载照常生效）。返回 { restored, revision }。
+ */
+export async function restoreSettings(q, keys, { updatedBy = null } = {}) {
+  const known = [...new Set((keys ?? []).filter((k) => SETTING_MAP.has(k)))];
+  if (!known.length) return { restored: 0, revision: await getRevision(q) };
+  await q('delete from app_settings where key = any($1::text[])', [known]);
+  await bumpRevision(q, updatedBy);
+  return { restored: known.length, revision: await getRevision(q) };
 }
 
 async function upsertSetting(q, d, { plain, encrypted, updatedBy, clear = false }) {

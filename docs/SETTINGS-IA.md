@@ -1,6 +1,6 @@
 # 系统设置信息架构重构（平台卡片 + 常用/高级折叠 + 只看非默认）（待开发）
 
-> 状态：**已确认待开发（2026-11-17；demo 已确认：[design/settings-ia-2026-11-17-v2.html](design/settings-ia-2026-11-17-v2.html)）**。
+> 状态：**已实现待发版（2026-11-19；demo 已确认：[design/settings-ia-2026-11-17-v2.html](design/settings-ia-2026-11-17-v2.html)；§6 三条已拍板：折叠带摘要/恢复默认二次确认/移动端单列卡片）**。
 > 关联：[TODO.md](TODO.md) CQ 条目、[WEB.md](WEB.md)（后台页面与 API）、[ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md)（AT 批设置页 tab 化先例）。
 
 ## 1. 现状与痛点（2026-11-17 实测）

@@ -1,6 +1,7 @@
 // 设置层：默认值、密钥加密、env 兜底/导入、初始化状态、事务。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import * as settings from '../src/settings.js';
@@ -265,4 +266,106 @@ test('事务：回调抛错时整体回滚', async () => {
   } finally {
     await store.close();
   }
+});
+
+// ---------------------------------------------------------------- CQ 批（docs/SETTINGS-IA.md）
+
+test('CQ meta：sources/site/advanced 全有 section+tier；6 张平台卡每卡常用 ≤3；高级 4 折叠组', () => {
+  const byGroup = {};
+  for (const d of settings.SETTINGS) (byGroup[d.group] = byGroup[d.group] || []).push(d);
+  for (const g of ['sources', 'site', 'advanced']) {
+    for (const d of byGroup[g]) {
+      assert.ok(d.section, `${d.key} 缺 section`);
+      assert.ok(['primary', 'advanced'].includes(d.tier), `${d.key} tier 非法`);
+    }
+  }
+  const sections = settings.SETTINGS_SECTIONS;
+  const src = sections.filter((s) => s.group === 'sources');
+  assert.equal(src.length, 6, '6 张平台卡');
+  assert.deepEqual(src.map((s) => s.id), ['global', 'steam', 'sonkwo', 'itad', 'gog-humble', 'discovery'], '卡序（全局/Steam/杉果/ITAD/GOG+Humble/发现与热度）');
+  for (const s of src) {
+    const prim = byGroup.sources.filter((d) => d.section === s.id && d.tier !== 'advanced');
+    const rows = s.compact ? Math.ceil(prim.length / s.compact) : prim.length;
+    assert.ok(rows <= 3, `${s.id} 常用 ${rows} 行 > 3（验收：每卡常用 ≤3 项）`);
+  }
+  const adv = sections.filter((s) => s.group === 'advanced');
+  assert.equal(adv.length, 4, '高级 4 折叠组');
+  assert.deepEqual(adv.map((s) => s.id), ['schedule', 'backup', 'cache', 'timezone'], '调度与熔断/备份与日志/缓存与图片/时区与显示');
+  const site = sections.find((s) => s.group === 'site' && s.id === 'site');
+  assert.equal(site.keys.length, 4, '站点常用 4 项');
+  assert.ok(site.keys.includes('system.timezone'), '时区在站点常用（§2.3）');
+  const recommend = sections.find((s) => s.group === 'site' && s.id === 'recommend');
+  assert.ok(recommend, '推荐与评分折叠存在');
+});
+
+test('CQ isDefaultValue：int/bool/enum/string 类型敏感比较，null 视作默认', () => {
+  const intD = settings.SETTING_MAP.get('sources.steam.priceIntervalMin');
+  assert.equal(settings.isDefaultValue(intD, 1440), true);
+  assert.equal(settings.isDefaultValue(intD, '1440'), true, '字符串数字与默认相等');
+  assert.equal(settings.isDefaultValue(intD, 720), false);
+  const boolD = settings.SETTING_MAP.get('sources.steam.enabled');
+  assert.equal(settings.isDefaultValue(boolD, true), true);
+  assert.equal(settings.isDefaultValue(boolD, null), true, 'null 视作默认');
+  const enumD = settings.SETTING_MAP.get('site.adultDisplay');
+  assert.equal(settings.isDefaultValue(enumD, 'hide'), true);
+  assert.equal(settings.isDefaultValue(enumD, 'show'), false);
+});
+
+test('CQ schema 下发：sections/plainGroups/isDefault 随 /api/admin/settings 视图返回', async () => {
+  const { store, q } = await fresh();
+  try {
+    await settings.saveSettings(q, { 'sources.steam.priceIntervalMin': 720, 'sources.gog.regions': 'us' }, { env: {}, secretKey: SECRET });
+    const view = await settings.getPublicSettings(q, { secretKey: SECRET });
+    assert.ok(Array.isArray(view.sections) && view.sections.length >= 12, '分区注册表下发');
+    assert.ok(Array.isArray(view.plainGroups) && view.plainGroups.includes('alerts'), '平铺分组下发');
+    assert.equal(view.isDefault['sources.steam.priceIntervalMin'], false, '改过的项非默认');
+    assert.equal(view.isDefault['sources.gog.regions'], false, '改过的项非默认');
+    assert.equal(view.isDefault['sources.sonkwo.intervalMin'], true, '未改过的项是默认');
+    for (const f of view.fields) {
+      assert.ok(f.section === null || typeof f.section === 'string', `${f.key} section 形状`);
+      assert.ok(['primary', 'advanced'].includes(f.tier), `${f.key} tier 形状`);
+    }
+    const steamKey = view.fields.find((f) => f.key === 'sources.steam.apiKey');
+    assert.equal(steamKey.section, 'steam');
+    assert.equal(steamKey.tier, 'primary');
+  } finally {
+    await store.close();
+  }
+});
+
+test('CQ 恢复默认：删库覆盖行后值=默认、来源回落 default（无 env 时）；修订号 +1', async () => {
+  const { store, q } = await fresh();
+  try {
+    await settings.saveSettings(q, { 'sources.steam.priceIntervalMin': 720, 'site.adultDisplay': 'show' }, { env: {}, secretKey: SECRET });
+    const before = await settings.readSettings(q, { env: {}, secretKey: SECRET });
+    assert.equal(before.sources['sources.steam.priceIntervalMin'], 'database');
+    const revBefore = await settings.getRevision(q);
+    const r = await settings.restoreSettings(q, ['sources.steam.priceIntervalMin'], { updatedBy: 'tester' });
+    assert.equal(r.restored, 1);
+    const after = await settings.readSettings(q, { env: {}, secretKey: SECRET });
+    assert.equal(after.values['sources.steam.priceIntervalMin'], 1440, '恢复后值=默认');
+    assert.equal(after.sources['sources.steam.priceIntervalMin'], 'default', '来源回落默认');
+    assert.equal(after.values['site.adultDisplay'], 'show', '未恢复的项不动');
+    assert.ok(r.revision >= revBefore + 1, '修订号递增');
+  } finally {
+    await store.close();
+  }
+});
+
+test('CQ 前端接线（静态）：只看非默认/折叠/恢复本组默认/卡头/搜索高亮都在 AdminModules.vue', () => {
+  const admin = readFileSync(new URL('../frontend/src/pages/AdminModules.vue', import.meta.url), 'utf8');
+  assert.match(admin, /只看非默认/, '只看非默认开关');
+  assert.match(admin, /settings-only-changed/, '只看非默认 localStorage 记忆');
+  assert.match(admin, /settings-fold-/, '折叠状态 localStorage 记忆');
+  assert.match(admin, /恢复本组默认/, '分组级恢复默认');
+  assert.match(admin, /恢复默认/, '行级恢复默认');
+  assert.match(admin, /settings-card-head/, '平台卡头');
+  assert.match(admin, /settings-fold/, '折叠行');
+  assert.match(admin, /foldAutoOpen/, '搜索命中折叠项自动展开');
+  assert.match(admin, /fieldHit/, '搜索命中高亮');
+  assert.match(admin, /api\/admin\/settings\/restore/, '恢复默认接口接线（二次确认在 restoreField/restoreSection）');
+  assert.match(admin, /ElMessageBox\.confirm/, '恢复默认二次确认');
+  const server = readFileSync(new URL('../src/settings-routes.js', import.meta.url), 'utf8');
+  assert.match(server, /api\/admin\/settings\/restore/, '恢复接口路由');
+  assert.match(server, /settings\.restored/, '恢复审计');
 });

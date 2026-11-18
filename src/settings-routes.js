@@ -54,6 +54,23 @@ export async function handleSettingsRoutes({ path, req, res, q, store, logger = 
       return json(res, 200, { key, value: read.values[key] ?? '', source: read.sources[key] ?? null }), true;
     }
 
+    // CQ 批（docs/SETTINGS-IA.md §2.5）：恢复默认（单行/分组共用）——删库覆盖行，来源回落 env→default
+    if (path === '/api/admin/settings/restore' && req.method === 'POST') {
+      const body = (await readBody(req)) ?? {};
+      const keys = Array.isArray(body?.keys) ? body.keys.map((k) => String(k ?? '')).filter(Boolean) : [];
+      if (!keys.length) return json(res, 400, { error: 'keys 必须是非空数组' }), true;
+      if (keys.length > 200) return json(res, 400, { error: '单次最多恢复 200 项' }), true;
+      const res1 = await settings.restoreSettings(q, keys, { updatedBy: user?.username ?? null });
+      if (store) {
+        await settings.hydrateSettings({ store, logger });
+        await store.setTimezone?.(process.env.TZ);
+        await afterHydrate?.();
+      }
+      logger?.info('settings.restored', { by: user?.username ?? null, keys, restored: res1.restored, revision: res1.revision });
+      const view = await settings.getPublicSettings(q);
+      return json(res, 200, { ok: true, restored: res1.restored, ...view }), true;
+    }
+
     return json(res, 404, { error: 'not found' }), true;
   } catch (err) {
     const message = String(err.message ?? '');
