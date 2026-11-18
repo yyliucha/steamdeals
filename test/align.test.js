@@ -136,7 +136,9 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   assert.match(alignAdmin, /批量忽略/, '批量忽略按钮');
   assert.match(alignAdmin, /明细/, '明细面板入口');
   assert.match(alignAdmin, /没有待对齐的组（新 SKU 会在杉果同步后进入队列）/, '空态文案');
-  assert.match(alignAdmin, /生成中不显示|!generating\.active && !loading && displayedRows/, '空态互斥（生成中不显示空态）');
+  // 锁真实代码（不是注释）：空态只在「已完成且 0 组」显示——生成中/加载中/加载失败都不显示
+  assert.match(alignAdmin, /!generating\.active && !loading && !loadError && displayedRows\.length === 0/, '空态互斥条件');
+  assert.match(alignAdmin, /队列加载失败，请点「刷新」重试/, '加载失败提示（与空态互斥）');
   assert.match(alignAdmin, /疑似本体/, '候选疑似本体提示');
   assert.match(alignAdmin, /api\/admin\/align\/confirm/, '确认接线');
   assert.match(alignAdmin, /api\/admin\/align\/preview/, '单组合并预览接线');

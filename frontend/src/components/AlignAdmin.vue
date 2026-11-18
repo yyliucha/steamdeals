@@ -61,6 +61,7 @@ const partial = ref(false);
 const generating = reactive({ active: false, processed: 0, total: 0, failed: false, error: '' });
 const loading = ref(false);
 const refreshing = ref(false);
+const loadError = ref(false); // 最近一次加载是否失败（失败时空态不得显示「没有待对齐的组」）
 
 const displayedRows = computed(() => (usingStale.value ? staleRows.value : allRows.value));
 const shownCounts = computed(() => (usingStale.value ? staleCounts.value : counts.value));
@@ -132,6 +133,7 @@ async function load(opts = {}) {
   const { refresh = false } = opts;
   if (refresh) refreshing.value = true; else loading.value = true;
   try {
+    loadError.value = false; // 拿到任何合法响应（200 / 202）都不算失败
     const collected = await collectAll(refresh);
     if (collected.fresh) {
       allRows.value = collected.rows;
@@ -157,7 +159,9 @@ async function load(opts = {}) {
       schedulePoll();
     }
   } catch (e) {
+    loadError.value = true;
     notifyError(e);
+    if (generating.active) schedulePoll(); // 生成中轮询失败继续重试
   } finally {
     loading.value = false;
     refreshing.value = false;
@@ -526,14 +530,17 @@ onUnmounted(() => clearTimeout(pollTimer));
       <!-- 分页（前端分页：翻页保留筛选） -->
       <PaginationBar v-if="displayedRows.length > 0" v-model:page="page" v-model:page-size="pageSize" :total="filteredRows.length" />
 
-      <!-- 空态互斥：仅在「已完成且 0 组」时显示；生成中不显示空态；筛选无命中给轻提示 -->
-      <el-empty v-if="!generating.active && displayedRows.length === 0"
+      <!-- 空态互斥：仅「已完成且 0 组」显示；生成中/加载中/加载失败不显示；筛选无命中给轻提示 -->
+      <el-empty v-if="!generating.active && !loading && !loadError && displayedRows.length === 0"
         description="没有待对齐的组（新 SKU 会在杉果同步后进入队列）" />
       <p v-else-if="displayedRows.length > 0 && filteredRows.length === 0" class="align-filter-empty muted">
         没有符合当前筛选的组（{{ filter === 'ignored' ? '已忽略的组不在待对齐队列中' : '可调整搜索或筛选条件' }}）。
       </p>
       <p v-else-if="generating.active && displayedRows.length === 0" class="align-filter-empty muted">
         后台生成中，完成后自动展示队列…
+      </p>
+      <p v-else-if="loadError && displayedRows.length === 0" class="align-filter-empty muted">
+        队列加载失败，请点「刷新」重试。
       </p>
     </div>
 
