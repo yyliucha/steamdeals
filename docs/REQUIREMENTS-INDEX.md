@@ -78,6 +78,8 @@
 | **CO** | 设计审计技术债清理（15 项 → CO-1~CO-4 四批，每日至少推进 1 条） | [DESIGN-AUDIT.md](DESIGN-AUDIT.md) | 待开发（2026-11-17 建条目；每批一次会话） | ✅ 本轮已给 |
 | **CP** | 手机端识别增强（Sec-CH-UA-Mobile + 前端 screen.width 兜底，修小米浏览器桌面 UA 漏判） | [MOBILE-DETECT-FIX.md](MOBILE-DETECT-FIX.md) | 待开发（2026-11-17 实测确认；P1，边缘场景） | ✅ 本轮已给 |
 | **CQ** | 系统设置信息架构重构（平台卡片 + 常用/高级折叠 + 只看非默认/来源/恢复默认） | [SETTINGS-IA.md](SETTINGS-IA.md) | 待开发（2026-11-17 demo v2 已确认） | ✅ 本轮已给 |
+| **CS** | 对齐审核二次修复（事件循环阻塞观测 + 首屏后台化；补齐 CN 未进镜像问题；DB 侧已验证 91ms 无需索引） | [ALIGN-DB-SLOW.md](ALIGN-DB-SLOW.md) | 待开发（2026-11-18 复核修正；P0） | ✅ 本轮已给 |
+| **CT** | app-release-sync 404（私有仓库 + 无 token → 支持 GITHUB_TOKEN） | [APP-SYNC-404.md](APP-SYNC-404.md) | 待开发（2026-11-18 线上日志；P1） | ✅ 本轮已给 |
 | **CR** | 开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + API 契约字符串数组） | [APP-DEV-PUBLISHER-NAMES.md](APP-DEV-PUBLISHER-NAMES.md) | 待确认（2026-11-17 所有者截图反馈） | ✅ 本轮已给 |
 | **CE** | 杉果匹配器加固 + 误合并数据修复（完整标题计分/片段限制/数字一致性/内容词只进人工/`--apply` 二次确认） | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9 | 已发布 v2.19.0（2026-11-16，12f4f42；QA 报告 docs/QA-CE.md） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |
@@ -120,6 +122,7 @@
 9. **AO**（后台游戏列 + 链接抽屉改版）2026-11-09 入 TODO，规格 [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md)；单批，纯前端；
 10. **AP**（价格历史报表）2026-11-09 入 TODO，规格 [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md)；单批，纯前端；
 11. **AQ / AR**（后台列表排序 / 按 IP 合并）2026-11-09 入 TODO，规格 [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md)；AR 依赖 AQ、下一期开发。
+
 
 
 

@@ -1975,6 +1975,41 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ⑧ 保存/重载/权限行为不变；⑨ `npm test` / `frontend:build` / `scan` 全绿；移动端单列。
 - **待确认**：§6 三条（折叠摘要字段、恢复默认二次确认、移动端形态）。
 
+## CS. 待开发（P0 事故追加）：对齐审核事件循环阻塞与首屏体验
+
+**状态：待开发（2026-11-18；EXPLAIN 复核后修正：DB 侧 91ms，瓶颈在应用事件循环）**
+**优先级：** P0 —— 与 CN 同源事故；**先完成 v2.24.1 发版**，再做本条的观测与体验增强
+**依赖：** CN（实现已在仓库 `5c723aa`+`2060586`，但 `v2.24.1` tag 尚未打出）
+**解锁：** 无
+**规格**：[ALIGN-DB-SLOW.md](ALIGN-DB-SLOW.md)
+
+- **现象（2026-11-18 线上 v2.24.0）**：「对齐审核」504；日志 `db.slow_query` 显示全表 select 30.5s。
+- **EXPLAIN 复核（2026-11-18）**：同一条 SQL **执行仅 91ms**（Seq Scan 200,495 行，`n_dead_tup=38,694` 属正常）
+  → **DB 不慢、不需要建索引/VACUUM**。30s 是**应用事件循环被占满**（老代码全量匹配无 yield）导致
+  `db.slow_query` 把阻塞时间算进了查询耗时。
+- **根因**：CN（缓存/单飞/预筛 ≤2000/20s 预算/分片）**未进入 v2.24.0 镜像**（tag 内无 `src/align-query.js`；
+  v2.24.0 = CK+CM，且 `package.json` 已是 2.24.1 但 tag 未打 → 发版中途停滞）。
+- **修复**：① **完成 v2.24.1 发版**（打 tag 前确认 `align-query.js` 在 tag 内）→ 部署；② `db.slow_query` 区分
+  DB 执行时间与事件循环阻塞（或同时记录 event-loop lag），防止再次误判；③ （可选）计算后台化：冷缓存返回
+  `202 {generating}` + 前端轮询，首屏不等待；④ （可选）候选索引按 games 变更节流刷新。
+- **验收**：见规格 §3——部署后不再 504、首次 ≤20s 内完成、二次刷新 ≤1s、计算期间其它接口不受影响、
+  连续刷新只算 1 次、`npm test` / `frontend:build` / `scan` 全绿。
+
+## CT. 待开发：app-release-sync 404（私有仓库 + 无 token）
+
+**状态：待开发（2026-11-18 线上日志：`github_http_404`）**
+**优先级：** P1（影响 App 自动同步，apkPath 已回落镜像兜底，页面不致死链）
+**依赖：** CJ（已发布 v2.22.1）
+**解锁：** 无
+**规格**：[APP-SYNC-404.md](APP-SYNC-404.md)
+
+- **现象**：`scheduler.job_done job=app-release-sync` 后输出「未同步：github_http_404」，`data/app` 一直为空。
+- **根因**：`steamdeals-app` 是**私有仓库**，而 `src/app-release.js` 请求 GitHub API **未带认证头** → 匿名 404。
+- **修复（建议 A）**：支持 `GITHUB_TOKEN`（认证头 + 无 token 时记 `app.sync_no_token` 并跳过）；或把仓库改公开；
+  或站点 CI 构建期拉取（与 CJ 的构建期兜底一致，可并存）。
+- **验收**：见规格 §3——配置 token 后 `app-sync` 成功落盘；无 token 时日志明确原因；`/api/app/latest` 的 `/app/dl/…` 200；
+  token 只在容器 env、`npm run scan` 干净；`npm test` 全绿。
+
 ## CR. 待开发：开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + 契约）
 
 **状态：已实现待发版（2026-11-17，lead 实现；5 项决策已确认；测试 test/dev-publisher-names.test.js 5 项进主链）**
