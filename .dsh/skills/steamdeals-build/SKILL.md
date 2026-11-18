@@ -114,11 +114,12 @@ git status --short                 # 其它会话的未提交改动，记录下�
 ```powershell
 node test/<本批相关>.test.js   # 本批改动相关的测试文件全绿（相关优先，2026-11-18 起；全量主链由 CI 自动跑，本机不再每次全量）
 npm run test:N                  # 主链已分段 test:1~test:4 串行（DI 批）：本机兜底 / 失败段续跑（N=1..4）
-npm run e2e                    # 发版门禁必跑全量矩阵（含 e2e_ 账号建删），输出 PDF 报告到仓库外
 npm run frontend:build          # 改过 frontend/ 必跑（保险起见每次都跑）
 npm run scan                    # 凭据自检
 node test/api.test.js           # 动过 API/权限/标记必跑
 ```
+**e2e 全量与测试报告不在本会话跑**（2026-11-18 所有者新规：报告独立、不阻塞构建）——发版完成后由所有者开
+**独立报告会话**跑 `npm run e2e` 全量并出 PDF（流程见 `steamdeals-test` §2.3 与 TODO DJ 条目）。
 
 ### 3.4 提交推 main
 
@@ -153,7 +154,7 @@ gh auth switch --user boxiang-sun_shortcut          # 切回默认账号
 🎯 推算：本次发布范围 <TODO 编号列表>（N 个新功能条目 / 修复批 → 档位：小版本 / 大版本；指定版本则写「所有者指定」）
 🔖 tag：vX.Y.Z 已推送，main 已同步（<release 短哈希> + CI 记录 <短哈希>）
 ✅ 验证：本批相关测试全绿（<文件列表>）/ frontend:build / scan 干净 / api.test.js N 项（动过 API 时）
-🧪 测试报告：F:\dsh\e2e-reports\<日期>-<短哈希>.pdf（e2e 全量 X 通过 / Y 失败 / Z skip；本机仓库外，不入库）
+🧪 测试报告：本会话不跑——发版后由独立报告会话执行（e2e 全量 + PDF 到 F:\dsh\e2e-reports\），见 TODO DJ
 🚀 CI：docker-hub <run-id>（test/smoke/publish 全绿）；docker-tcr <run-id>（test/publish 全绿）
 🖥 服务器：待部署人员按 docs/DELIVERY.md 升级到 X.Y.Z（开发侧不执行）
 ⚠️ 未发布/未纳入：<编号> —— 原因：<质检打回 / 未质检 / 不在本批>
