@@ -2055,20 +2055,23 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ④ 抽检 SQL 结论；⑤ npm test / frontend:build / scan 全绿；⑥ CU-4 只出建议不改配置。
 - **待确认**：无（2026-11-18 已定：迁移目标=按 Steam 愿望单反查的用户，多个全列；抽检=全部异常样本；CU-4=只出配额数字）。
 
-## CV. 待开发（P0 体验）：App/Web 搜索排除已拥有 → 搜不到自己的游戏；数据量偏少
+## CV. 待开发（P0 体验）：所有查询不再排除已拥有（列表 + 搜索；App 对齐）
 
-**状态：待开发（2026-11-18 实测定位：服务端搜索正常，根因是 owned=exclude）**
+**状态：待开发（2026-11-18 实测定位 + 所有者口径确认）**
 **优先级：** P0 —— 用户搜不到自己的游戏（App 体验事故）
-**依赖：** 无
+**依赖：** CL（详情终态已发布 v2.23.0）
 **解锁：** 无
 **规格**：[APP-SEARCH-OWNED.md](APP-SEARCH-OWNED.md)
 
 - **现象**：安卓 App 搜索「赛博朋克2077」→「暂无数据」；Web 能搜到；App 数据感觉很少。
-- **实测**：用 App 相同参数/UA 请求 `/api/app/games?q=赛博朋克2077…` → **total=1**（服务端正常）；
-  **根因**：App 搜索未带 `owned` → 服务端默认 `owned='exclude'`（`pg.js:1553`）→ 登录用户的已拥有游戏被排除；
-  Web 当时未登录（游客不过滤）所以能搜到。"数据少"同源（已拥有整批排除 + 每页 50 + 本地筛选）。
-- **修复**：① App 搜索带 `owned=include` 并标「已拥有」；② Web 搜索同口径（两端一致）；③ 列表页签仍保持排除；
-  ④ 补测试（搜索 owned 参数 / App JVM 单测）。
-- **验收**：见规格 §3——登录且拥有时 App/Web 搜索都能出结果并标「已拥有」；未登录不标；列表仍排除；分页正常；
-  `npm test` / `frontend:build` / `scan` 全绿。
+- **实测**：用 App 相同参数/UA 请求 → 服务端 `total=1`（搜索正常）；**根因是 `owned='exclude'` 默认**
+  （`Home.vue:238` 列表与搜索都排除已拥有；App 未传 owned → 服务端默认排除）。
+- **已确认口径（6 项）**：① **所有查询不排除已拥有**（全部/感兴趣/不感兴趣 + 搜索都 `owned=include`）；
+  ② 「已拥有」页签保留为筛选（only）；③ 已拥有游戏显示**对应 Steam 账号**（列表徽标已有，详情列全）；
+  ④ 已拥有详情**按钮不同（终态）**：只留「去 Steam 商店」——Web 已实现，App 对齐；⑤ 服务端默认值不变（前端显式传）；
+  ⑥ App 列表/搜索带 `owned=include`，详情按终态显示；App 账号名需站点补 `owned_by` 字段（待确认）。
+- **改动落点**：`frontend/src/pages/Home.vue`（owned include）、App `SearchScreen/HomeScreen`（owned include + 徽标/终态）、
+  `src/server.js` 的 `/api/app/games/:appid` 补 `owned_by`（若确认）、测试（api.test 断言 + App JVM 单测）。
+- **验收**：见规格 §4——① 登录已拥有时 Web/App 列表与搜索都能看到并标账号；② 详情只留 Steam 商店 + 账号名；
+  ③ 未登录行为不变；④ 「已拥有」页签仍只显示已拥有；⑤ 服务端默认值未变；⑥ `npm test` / `frontend:build` / `scan` 全绿。
 
