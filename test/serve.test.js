@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveFilePath, contentTypeFor, startStaticServer } from '../src/serve.js';
@@ -18,6 +18,26 @@ function makeSite() {
   writeFileSync(join(root, 'sub', 'index.html'), '<h1>子目录</h1>');
   writeFileSync(join(root, 'styles.css'), 'body{}');
   return root;
+}
+
+// DI 批（docs/TEST-ENV-ISOLATION.md §3A）：凡会触发 /api/app/latest 派生 apkPath 的用例，
+// 一律注入 APP_DATA_DIR 临时目录（src/server.js 已支持该变量，无需改服务端），隔离工作区
+// data/app 的运行时同步产物——app-sync 会把真实 latest.json 写进工作区，不注入时 BS-1/BY-1/CJ
+// 全会红（CO-3 会话实测：手工移走 data/app 才绿）。用例结束恢复环境变量并清理临时目录。
+// 反向自检（DI 验收 §4.1，2026-11-18 已做）：临时去掉本 helper 的注入 + 在工作区 data/app 放
+// steamdeals-2.16.0.apk → 用例红；放回注入 → 绿。
+function withAppDataDir() {
+  const dataDir = mkdtempSync(join(tmpdir(), 'gp-appdata-'));
+  const prev = process.env.APP_DATA_DIR;
+  process.env.APP_DATA_DIR = dataDir;
+  return {
+    dataDir,
+    restore: () => {
+      if (prev === undefined) delete process.env.APP_DATA_DIR;
+      else process.env.APP_DATA_DIR = prev;
+      rmSync(dataDir, { recursive: true, force: true });
+    },
+  };
 }
 
 test('路径解析：目录内正常，穿越和非法编码一律拒绝', () => {
@@ -150,6 +170,7 @@ test('BS-1：/.well-known/assetlinks.json、/sw.js、/app/*.apk 返回 200 + 正
   const store = await openStore('pglite:', {});
   await db.migrate(store);
   const q = (sql, p) => store.query(sql, p);
+  const { restore: restoreAppData } = withAppDataDir(); // DI：隔离工作区 data/app 同步产物
   const srv = await startApiServer({ query: q, frontendDir: frontend, port: 0, host: '127.0.0.1' });
   const base = `http://127.0.0.1:${srv.port}`;
   try {
@@ -170,6 +191,7 @@ test('BS-1：/.well-known/assetlinks.json、/sw.js、/app/*.apk 返回 200 + 正
     const latest = await (await fetch(`${base}/api/app/latest`)).json();
     assert.deepEqual(latest, { version: '2.16.0', versionCode: 21600, minVersionCode: 21600, notes: ['修复 A', '新增 B'], apkPath: '/app/steamdeals-2.16.0.apk', sha256: 'abc123', size: 42, releasedAt: '2026-11-14' }, '清单字段齐全（CJ 回归修复：data/app 为空时 apkPath 回落镜像路径）');
   } finally {
+    restoreAppData();
     await srv.close();
     await store.close();
   }
@@ -184,6 +206,7 @@ test('BY-1：/api/app/latest 新字段缺失时返回 null 不报错（旧清单
   const store = await openStore('pglite:', {});
   await db.migrate(store);
   const q = (sql, p) => store.query(sql, p);
+  const { restore: restoreAppData } = withAppDataDir(); // DI：隔离工作区 data/app 同步产物
   const srv = await startApiServer({ query: q, frontendDir: frontend, port: 0, host: '127.0.0.1' });
   const base = `http://127.0.0.1:${srv.port}`;
   try {
@@ -206,6 +229,7 @@ test('BY-1：/api/app/latest 新字段缺失时返回 null 不报错（旧清单
       await srv2.close();
     }
   } finally {
+    restoreAppData();
     await store.close();
   }
 });
@@ -338,7 +362,6 @@ test('CP：小米桌面 UA / 客户端提示跳转，纯桌面 UA 不跳', async
 // 文件真实存在性派生——data/app（GitHub 每小时同步）优先 /app/dl/<ver>.apk，否则镜像内 /app/<ver>.apk 存在
 // 时回落镜像路径（不能无条件 /app/dl/ 造成死链）；/app/dl/<file> 缺失时 302 兜底到 /app/<file>。
 test('CJ-回归：apkPath 按 data/app 存在性回落镜像；/app/dl/<file> 缺失 302 到 /app/<file>', async () => {
-  const dataDir = mkdtempSync(join(tmpdir(), 'gp-appdata-'));
   const frontend = mkdtempSync(join(tmpdir(), 'gp-frontend-'));
   writeFileSync(join(frontend, 'index.html'), '<!doctype html><html><body>ok</body></html>');
   mkdirSync(join(frontend, 'app'));
@@ -347,9 +370,9 @@ test('CJ-回归：apkPath 按 data/app 存在性回落镜像；/app/dl/<file> �
   const store = await openStore('pglite:', {});
   await db.migrate(store);
   const q = (sql, p) => store.query(sql, p);
-  const prevDataDir = process.env.APP_DATA_DIR;
-  // 空目录 = 同步任务首轮未跑/失败（现场回归场景：data/app 为空）
-  process.env.APP_DATA_DIR = dataDir;
+  // DI（docs/TEST-ENV-ISOLATION.md §3A）：注入临时目录隔离工作区 data/app；临时目录为空 =
+  // 同步任务首轮未跑/失败（现场回归场景：data/app 为空）。反向自检见 withAppDataDir 注释。
+  const appData = withAppDataDir();
   const srv = await startApiServer({ query: q, frontendDir: frontend, port: 0, host: '127.0.0.1' });
   const base = `http://127.0.0.1:${srv.port}`;
   try {
@@ -368,7 +391,7 @@ test('CJ-回归：apkPath 按 data/app 存在性回落镜像；/app/dl/<file> �
     assert.equal(mirror.status, 200, '镜像 /app/<ver>.apk 200 可下载');
 
     // ③ data/app 有文件 → apkPath 用 /app/dl/ 且该路由 200
-    writeFileSync(join(dataDir, 'steamdeals-2.16.0.apk'), 'synced-apk-bytes');
+    writeFileSync(join(appData.dataDir, 'steamdeals-2.16.0.apk'), 'synced-apk-bytes');
     const latest2 = await (await fetch(`${base}/api/app/latest`)).json();
     assert.equal(latest2.apkPath, '/app/dl/steamdeals-2.16.0.apk', 'data/app 有文件 → /app/dl/ 路径');
     const dl2 = await fetch(`${base}/app/dl/steamdeals-2.16.0.apk`);
@@ -380,8 +403,7 @@ test('CJ-回归：apkPath 按 data/app 存在性回落镜像；/app/dl/<file> �
     const latest3 = await (await fetch(`${base}/api/app/latest`)).json();
     assert.equal(latest3.apkPath, null, '镜像与 data/app 都没有该版本 → apkPath null');
   } finally {
-    if (prevDataDir === undefined) delete process.env.APP_DATA_DIR;
-    else process.env.APP_DATA_DIR = prevDataDir;
+    appData.restore(); // 恢复 APP_DATA_DIR 并清理临时目录（DI：用例结束不留临时目录）
     await srv.close();
     await store.close();
   }

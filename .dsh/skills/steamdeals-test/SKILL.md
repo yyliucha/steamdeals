@@ -136,6 +136,7 @@ cd F:\dsh\gameprice
 node test/<最相关>.test.js     # 先单文件秒级定位
 node test/<相关>.test.js ...   # 改动相关的测试文件全部跑绿（日常门槛，2026-11-18 起）
 npm test                        # 主链全量：按需——改动触及共享底层（store/pg.js、match.js、server.js 等）/发版前想兜底/QA 存疑；不再每次必跑（CI 自动跑全量）
+npm run test:N                  # 主链已分段 test:1~test:4 串行（DI 批）：中断从失败段续跑（N=1..4），不用从头重跑
 npm run e2e:smoke               # 日常核心链路
 npm run e2e                     # 全量（发版前/QA 轮）+ PDF 报告
 npm run frontend:build          # 改过前端必跑

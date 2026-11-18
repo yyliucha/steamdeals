@@ -85,8 +85,15 @@ test('BM-4：心跳——5 分钟 + 切回前台探测 /api/me，全局单例，
 });
 
 test('BM-4：前端静态断言已接入 npm test 主链', () => {
-  assert.ok(pkg.scripts.test.includes('node test/session-heartbeat.test.js'), 'session-heartbeat 进主链');
-  assert.ok(pkg.scripts.test.includes('node test/serve.test.js'), 'serve 进主链');
+  // DI 批（docs/TEST-ENV-ISOLATION.md §3B）：主链已拆成 test:1~test:4 四段、逐段串行——
+  // 守卫改为「文件必须被某一段恰好包含一次」，拆段后仍能抓住「掉出主链 / 重复执行」的漂移；
+  // 顶层 test 只编排四段、不再直接列文件（防拆段后双写漂移）。
+  const chain = ['test:1', 'test:2', 'test:3', 'test:4'].map((k) => pkg.scripts[k] ?? '').join(' && ');
+  for (const file of ['node test/session-heartbeat.test.js', 'node test/serve.test.js']) {
+    const hits = chain.split(file).length - 1;
+    assert.equal(hits, 1, `${file} 在主链四段中恰好出现一次（实际 ${hits} 次）`);
+  }
+  assert.ok(!pkg.scripts.test.includes('node test/'), '顶层 test 只编排四段，不再直接列文件');
 });
 
 
