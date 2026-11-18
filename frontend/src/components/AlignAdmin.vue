@@ -339,6 +339,7 @@ async function submitBatchIgnore() {
     else ElMessage.success(`已忽略 ${r.results?.length ?? rows.length} 组（${r.ignored ?? ignoreSkuTotal.value} 个 SKU）`);
     batchIgnoreDlg.visible = false;
     await load();
+    await loadIgnored(); // DH 批：已忽略 chip 计数同步刷新
   } catch (e) {
     notifyError(e);
   } finally {
@@ -357,6 +358,7 @@ async function ignoreGroup(row) {
     await api('/api/admin/align/ignore', { method: 'POST', body: JSON.stringify({ key: row.key }) });
     ElMessage.success('已忽略整组');
     await load();
+    await loadIgnored(); // DH 批：已忽略 chip 计数同步刷新
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') notifyError(e);
   }
@@ -613,8 +615,11 @@ onUnmounted(() => clearTimeout(pollTimer));
         <el-table-column label="操作人" width="110">
           <template #default="{ row }"><span class="muted">{{ row.ignoredBy || '系统' }}</span></template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
-          <template #default="{ row }"><el-button link type="primary" @click="restoreIgnored(row)">恢复</el-button></template>
+        <el-table-column label="操作" width="152" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="restoreIgnored(row)">恢复</el-button>
+            <el-button link @click="openHistory(row)">记录</el-button>
+          </template>
         </el-table-column>
       </el-table>
 
@@ -706,7 +711,7 @@ onUnmounted(() => clearTimeout(pollTimer));
     <el-drawer v-model="history.visible" title="审阅记录" size="min(480px, 92vw)">
       <div v-if="history.loading" class="muted">加载中…</div>
       <div v-else class="history-list">
-        <div v-if="history.row" class="align-dlg-line"><b>组</b><span>{{ history.row.name }}（{{ history.row.skuCount }} 个 SKU）</span></div>
+        <div v-if="history.row" class="align-dlg-line"><b>组</b><span>{{ history.row.name }}（{{ history.row.skuCount ?? (history.row.skus ? history.row.skus.length : 0) }} 个 SKU）</span></div>
         <el-empty v-if="!history.records.length" description="暂无处理记录" :image-size="48" />
         <div v-for="r in history.records" :key="`${r.product_id}-${r.reviewed_at ?? 'null'}-${r.decision}`" class="history-item">
           <el-tag :type="r.decision === 'ignored' ? 'danger' : r.decision === 'pending' ? 'warning' : 'success'" size="small">{{ ACTION_TEXT[r.decision] || r.decision }}</el-tag>

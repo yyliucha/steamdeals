@@ -1280,10 +1280,11 @@ test('DH 对齐数据完整性：skus.json 带 appid 自动补写不入队；已
   const { store, q, srv, base } = await setup();
   const tmpFile = join(tmpdir(), `align-dh-${Date.now()}.json`);
   try {
-    // 6001 断箭类：skus.json 已带 appid、库无映射；6002 普通待处理 SKU
+    // 6001 断箭类：skus.json 已带 appid、库无映射；6002/6003 普通待处理 SKU
     writeFileSync(tmpFile, JSON.stringify([
       { skuId: 6001, appid: 413150, name: '断箭' },
       { skuId: 6002, appid: null, name: '愚者不灭' },
+      { skuId: 6003, appid: null, name: '内核之心' },
     ], null, 2));
     process.env.ALIGN_SKU_FILE = tmpFile;
     const cookie = (await login(base, 'admin', 'admin123456')).cookie;
@@ -1307,6 +1308,21 @@ test('DH 对齐数据完整性：skus.json 带 appid 自动补写不入队；已
     assert.equal(back.decision, 'confirmed', '补写为 confirmed');
     assert.equal(back.match_method, 'skus_backfill', '补写方式 skus_backfill');
     assert.ok(Number.isFinite(Number(back.game_id)), '补写指向 games.id');
+
+    // C1 补（质检打回项）：确认「内核之心」→ 审阅记录可查 confirmed 动作 + 操作人
+    const kernel = first.find((g) => g.name === '内核之心');
+    assert.ok(kernel, '内核之心在队列');
+    const confirmKernel = await fetch(`${base}/api/admin/align/confirm`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ key: kernel.key, appid: 413150, method: 'manual' }),
+    });
+    assert.equal(confirmKernel.status, 200, JSON.stringify(await confirmKernel.json()));
+    const kernelHist = await (await fetch(`${base}/api/admin/align/history?key=${encodeURIComponent(kernel.key)}`, { headers: { cookie } })).json();
+    const confirmedRecord = kernelHist.records.find((r) => r.decision === 'confirmed');
+    assert.ok(confirmedRecord, '确认后审阅记录可查 confirmed 动作');
+    assert.equal(confirmedRecord.username, 'admin', '确认记录带操作人');
+    assert.ok(confirmedRecord.reviewed_at, '确认记录带时间');
 
     // B1：忽略「愚者不灭」→ 出现在已忽略视图（组名/SKU/操作人/时间）；恢复后重新入队
     const fool = first.find((g) => g.name === '愚者不灭');

@@ -18,7 +18,7 @@
 | 项 | 内容 |
 |---|---|
 | A1 | 继承规则扩展：`applyMapInheritance` 除 `game_source_map` 外，**同时参考 item 自带的 `appid`**（来自 skus.json）→ 有 appid 即视为已解决、不入队；对账时若两边不一致（skus.json 有 appid、库无映射）→ 补写映射并记日志 `align.map_backfilled`。 |
-| A2 | 后台队列对"已映射但未同步"的组显示徽标「已映射（待同步）」，可一键"补写映射"。 |
+| A2 | 后台队列对"已映射但未同步"的组显示徽标「已映射（待同步）」，可一键"补写映射"。（**已被 §5.1 拍板取代**：计算时自动补写，不设人工按钮/徽标。） |
 | B1 | 新增「已忽略」视图（tab 或筛选）：列出 `decision='ignored'` 的组（组名/时间/操作人），支持**恢复为待处理**（删除映射行或改回 pending）。 |
 | C1 | 每个组显示「最近处理」：操作人 + 时间 + 动作（确认/忽略/恢复）；对齐审核页加"审阅记录"抽屉。 |
 | D1 | 确认弹窗提示："该组包含 1 条孤儿游戏行，确认后将合并到目标游戏"。 |
@@ -30,7 +30,7 @@
 | `GET /api/admin/align/ignored` | 已忽略列表（分页、搜索组名），返回 `{key,name,skus,ignoredAt,reviewedBy}`。 |
 | `POST /api/admin/align/restore` | body `{ key }` → 删除该组 ignored 映射，恢复为待处理；审计 `align.restored`。 |
 | `GET /api/admin/align/history?key=` | 某组的处理记录（可选，或直接在列表返回 `lastReviewed`）。 |
-| `POST /api/admin/align/map` | 补写 skus.json appid → game_source_map（A2 的"补写映射"）；审计。 |
+| `POST /api/admin/align/map` | 补写 skus.json appid → game_source_map（A2 的"补写映射"）；审计。（**已由 A1 计算时自动补写取代**，未实现；补写审计见日志 `align.map_backfilled`。） |
 
 ## 4. 验收
 
