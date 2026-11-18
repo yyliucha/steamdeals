@@ -198,6 +198,12 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 ### 当前状态（2026-11-18 更新，v2.24.3 已发布：CS 对齐审核后台生成 + CV 查询不排除已拥有）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
+- **CP + CT + CO-2（B1/B2）批次：质检通过待发版**（2026-11-18，提交 9312054 / 75a7e7f / a54be76；QA ✅ [QA-CP-CT-CO2.md](QA-CP-CT-CO2.md) 第 1 轮——通过 15/需人工确认 2）：
+  CP 手机端识别三信号（UA 品牌特征 + `Sec-CH-UA-Mobile` + index.html `screen.width<=640` 兜底，小米桌面 UA 不再漏判）；
+  CT app-release-sync 改 releases 列表接口（第一条非 draft/prerelease、latest 兜底、匿名可用、失败日志区分）；
+  CO-2/B1 统一 15s 请求超时（长连接白名单豁免）+ 重型接口并发闸（admin 游戏列表/对齐 ≤1、公开搜索共用 ≤2，排队满/超时 503）；
+  CO-2/B2 admin 列表提速（`idx_games_updated`/`idx_games_live`/`idx_fetch_runs_platform_started` 三索引 + 两端点 3s 短缓存与写失效，契约不变；
+  压测列表 SQL -92%）。部署后待所有者确认：红米真机 CP 验收、线上四组 UA 复测、B1 超时白名单范围、B2 生产 PG 同口径复核。
 - **v2.24.3 已发布**（tag `v2.24.3`，站点 2a03188/cbb3a02 + App 仓库 0945006/65eaa5d）：P0 双修——
   CS：对齐审核后台生成（冷缓存 202 {generating,processed,total} + 前端 3s 轮询，完成后自动展示；预算只约束匹配循环、
   后台算完为止不再 partial 空结果；slow_query 增 eventLoopLagMs）；CV：所有查询不排除已拥有（Web/App 列表与搜索
