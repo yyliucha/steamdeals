@@ -75,7 +75,7 @@
 | **CL** | 用户级到价提醒（列表页 + 已拥有终态隐藏 + 后台全站清单 + 详情页三段式 UI） | [USER-ALERTS.md](USER-ALERTS.md) | 已发布 v2.23.0（2026-11-17，e196382；QA ✅ docs/QA-CL.md） | ✅ 本轮已给 |
 | **CM** | App 功能补齐（开发商 JSON 修复 / DLC 列表 / 价格历史区间与指标 / 复制名；CM-5 筛选服务端化二期） | [APP-PARITY.md](APP-PARITY.md) | 已发布 v2.24.0（站点侧，2026-11-17；QA docs/QA-CM.md ✅；App 侧 app-v2.20.0 待指令） | ✅ 本轮已给 |
 | **CN** | 对齐审核查询拖垮站点（缓存 + 候选预筛 + 单飞 + 时间预算 + 分页） | [ALIGN-QUERY-PERF.md](ALIGN-QUERY-PERF.md) | 已发布 v2.24.1（2026-11-17，5c723aa + 2060586；QA ✅ docs/QA-CN.md） | ✅ 本轮已给 |
-| **CO** | 设计审计技术债清理（15 项 → CO-1~CO-4 四批，每日至少推进 1 条） | [DESIGN-AUDIT.md](DESIGN-AUDIT.md) | CO-2 已发布 v2.24.4（2026-11-18，75a7e7f，QA docs/QA-CP-CT-CO2.md：B1 统一超时+并发闸、B2 admin 列表提速）；CO-3 已发布 v2.24.4（2026-11-18，89c8dfd，QA docs/QA-CO3.md：C2 设备限流、C4 日期金额 helper、C5 契约校验）；其余批次待开发 | ✅ 本轮已给 |
+| **CO** | 设计审计技术债清理（15 项 → CO-1~CO-4 四批，每日至少推进 1 条） | [DESIGN-AUDIT.md](DESIGN-AUDIT.md) | CO-2 已发布 v2.24.4（2026-11-18，75a7e7f，QA docs/QA-CP-CT-CO2.md：B1 统一超时+并发闸、B2 admin 列表提速）；CO-3 已发布 v2.24.4（2026-11-18，89c8dfd，QA docs/QA-CO3.md：C2 设备限流、C4 日期金额 helper、C5 契约校验）；CO-1/A5 已实现待发版（2026-11-18：任务失败健康条显红 + 失败原因可见 + 可选邮件告警）；CO-2/B5 开发中；其余批次待开发 | ✅ 本轮已给 |
 | **CP** | 手机端识别增强（Sec-CH-UA-Mobile + 前端 screen.width 兜底，修小米浏览器桌面 UA 漏判） | [MOBILE-DETECT-FIX.md](MOBILE-DETECT-FIX.md) | 已发布 v2.24.4（2026-11-18，75a7e7f；QA docs/QA-CP-CT-CO2.md 第 1 轮） | ✅ 本轮已给 |
 | **CQ** | 系统设置信息架构重构（平台卡片 + 常用/高级折叠 + 只看非默认/来源/恢复默认） | [SETTINGS-IA.md](SETTINGS-IA.md) | 待开发（2026-11-17 demo v2 已确认） | ✅ 本轮已给 |
 | **CS** | 对齐审核二次修复（事件循环阻塞观测 + 首屏后台化；补齐 CN 未进镜像问题；DB 侧已验证 91ms 无需索引） | [ALIGN-DB-SLOW.md](ALIGN-DB-SLOW.md) | 已发布 v2.24.3（2026-11-18，2a03188；QA ✅ docs/QA-CS-CV.md） | ✅ 本轮已给 |
@@ -93,7 +93,7 @@
 | **DF** | 到价提醒手动推送（每行「推送」；强制推送/更新去重时间/频控/审计） | [ALERT-MANUAL-PUSH.md](ALERT-MANUAL-PUSH.md) | 待开发（2026-11-18 需求 + demo；4 口径待定） | ✅ 本轮已给 |
 | **DG** | 对齐匹配修复（副标题/别名低分 → 无候选；索引补 name_en + 副标题感知） | —（TODO DG 条目） | 质检通过（2026-11-18，QA docs/QA-DG.md 第 1 轮 ✅） | ✅ 本轮已给 |
 | **DH** | 对齐审核数据完整性（继承缺口/已忽略撤销/审阅痕迹/孤儿行合并提示） | [ALIGN-INTEGRITY.md](ALIGN-INTEGRITY.md) | 待开发（2026-11-18 已立） | ✅ 本轮已给 |
-| **DI** | 测试环境隔离与主链分段（A 测试隔离 / B 四段主链 / C 环境复位脚本） | [TEST-ENV-ISOLATION.md](TEST-ENV-ISOLATION.md) | 待开发（2026-11-18 方案确认） | ✅ 本轮已给 |
+| **DI** | 测试环境隔离与主链分段（A 测试隔离 / B 四段主链 / C 环境复位脚本） | [TEST-ENV-ISOLATION.md](TEST-ENV-ISOLATION.md) | 质检通过（2026-11-18，3acd1b8，QA docs/QA-DI.md ✅） | ✅ 本轮已给 |
 | **CR** | 开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + API 契约字符串数组） | [APP-DEV-PUBLISHER-NAMES.md](APP-DEV-PUBLISHER-NAMES.md) | 已发布 v2.24.1（2026-11-18，5673ee9；QA ✅ docs/QA-CR.md） | ✅ 本轮已给 |
 | **CE** | 杉果匹配器加固 + 误合并数据修复（完整标题计分/片段限制/数字一致性/内容词只进人工/`--apply` 二次确认） | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9 | 已发布 v2.19.0（2026-11-16，12f4f42；QA 报告 docs/QA-CE.md） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |
@@ -115,6 +115,7 @@
 | **AS** | README 开发进度摘要（自动生成） | [TODO-PROGRESS.md](TODO-PROGRESS.md) | 已发布 v2.3.0（de71311）；**2026-11-12 已下线**（方案 B：删生成块/脚本/CI/测试） | ✅ 规格自包含 |
 | **F** | Steam 价格同步优化（缩量 / 热点优先） | 计划写在 [TODO.md](TODO.md) F 段 | 已发布 v2.2.1（f32e2b9） | ✅ 按 F 段方案实现 |
 | **C1** | heat 逐 appid 全 `success:false` | 无独立规格（[TODO.md](TODO.md) C 段定案） | 已发布 v2.2.0（2026-11-09，b01aaf8 修复） | ✅ 已在对话给出 |
+| **DJ** | 发版测试报告独立会话 + e2e 整轮总预算 | [E2E-SUITE.md](E2E-SUITE.md) | 待开发（2026-11-18 拍板） | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
 
