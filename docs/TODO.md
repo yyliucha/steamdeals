@@ -81,7 +81,7 @@
 
 ## CW. 待开发：后台「游戏目录」点游戏名弹详情（Steam 数据 + 商店跳转）
 
-**状态：已实现待发版（2026-11-19，实现随 b9811f8 入 main：GAME_SELECT 补 header_image/release_date/heat_reviews + GameDetailDialog 弹窗 + 回收站复用）**
+**状态：质检通过（2026-11-19，实现随 b9811f8 入 main；QA docs/QA-CW.md 第 1 轮 ✅ 放行 11/0/0/2）**
 **依赖：** 无
 **解锁：** 无
 **规格**：[ADMIN-GAME-POPUP.md](ADMIN-GAME-POPUP.md)（含 demo 状态↔断言表）
