@@ -2012,7 +2012,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## CR. 待开发：开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + 契约）
 
-**状态：已实现待发版（2026-11-17，lead 实现；5 项决策已确认；测试 test/dev-publisher-names.test.js 5 项进主链）**
+**状态：质检通过（2026-11-17，5673ee9，lead 实现；QA ✅ docs/QA-CR.md 第 1 轮——通过 7 / 需人工确认 2：部署后脏行统计归零 + 抽查 3 款）**
 **依赖：** 无（App 侧展示兜底 CM-1 已实现待发版）
 **解锁：** 无
 **规格**：[APP-DEV-PUBLISHER-NAMES.md](APP-DEV-PUBLISHER-NAMES.md)
@@ -2032,4 +2032,5 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **验收**：见规格 §5——① `mapStoreItem` 对象数组→名称（主链测试）；② 写库读回纯字符串；③ 造脏行→`migrate`
   归一并幂等；④ 详情接口真跑无 `{`；⑤ `npm test` / `frontend:build` / `scan` 全绿；⑥ 部署后统计脏行归零。
 - **待确认**：§4 五项（Web 是否顺带展示、清洗方式、归一化细节、App 不动、抽查范围）。
+
 
