@@ -50,9 +50,10 @@
             <label>邮箱<span class="req">*</span></label>
             <div class="ro-input">
               <span>{{ me?.email || '未绑定' }}</span>
-              <el-tag v-if="me?.email" :type="me?.emailVerified ? 'success' : 'warning'" size="small" class="tag-gap">已验证</el-tag>
+              <el-tag v-if="me?.email" :type="me?.emailVerified ? 'success' : 'warning'" size="small" class="tag-gap">{{ me?.emailVerified ? '已验证' : '未验证' }}</el-tag>
+              <el-button v-if="me?.email" size="small" class="mail-op" @click="openEmailDialog">更换邮箱</el-button>
             </div>
-            <div class="hint">只读；更换邮箱（二期）需验证码</div>
+            <div class="hint">验证码发到新邮箱 · 每天最多更换 1 次</div>
           </div>
           <div class="field">
             <label>用户名（登录名）</label>
@@ -225,6 +226,58 @@
         />
       </div>
     </el-dialog>
+    <!-- 更换登录邮箱（CZ，docs/EMAIL-CHANGE.md；对齐 design/email-change-2026-11-18.html） -->
+    <el-dialog
+      v-model="emailDialog.open"
+      title="更换登录邮箱"
+      width="520px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      class="mail-dialog"
+      @closed="clearEmailTimer"
+    >
+      <div class="mail-step">
+        <span class="mdot">1</span>验证新邮箱 <span class="msep">——</span>
+        <span class="mdot" :class="{ off: emailDialog.step < 2 }">2</span>确认完成
+      </div>
+      <div class="mail-warn">更换成功后，<b>所有设备会退出登录</b>，需要用新邮箱重新登录；旧邮箱会收到安全通知。</div>
+      <div class="mail-field">
+        <label>当前邮箱</label>
+        <div class="mail-box ro">{{ me?.email || '—' }}</div>
+      </div>
+      <div class="mail-field">
+        <label>新邮箱</label>
+        <div class="mail-line">
+          <el-input v-model="emailDialog.newEmail" placeholder="new-mail@example.com" :disabled="emailDialog.sending || emailDialog.verifying" @keyup.enter="sendEmailCode" />
+          <el-button :disabled="emailDialog.sending || emailDialog.verifying || emailDialog.countdown > 0" @click="sendEmailCode">
+            {{ emailDialog.sending ? '发送中…' : '发送验证码' }}
+          </el-button>
+        </div>
+        <div class="hint">验证码发送后 10 分钟内有效；每天最多更换 1 次</div>
+      </div>
+      <div class="mail-field">
+        <label>验证码</label>
+        <div class="mail-line">
+          <el-input
+            v-model="emailDialog.code"
+            maxlength="6"
+            placeholder="6 位验证码"
+            :disabled="emailDialog.sending || emailDialog.verifying"
+            @input="emailDialog.code = String(emailDialog.code || '').replace(/\D/g, '').slice(0, 6)"
+            @keyup.enter="confirmEmailChange"
+          />
+          <el-button v-if="emailDialog.sentTo" :disabled="emailDialog.sending || emailDialog.verifying || emailDialog.countdown > 0" @click="sendEmailCode">
+            重新发送（{{ emailDialog.countdown }}s）
+          </el-button>
+        </div>
+        <div v-if="emailDialog.sentTo" class="hint">已发送到 {{ emailDialog.sentTo }}，5 次尝试机会</div>
+      </div>
+      <div v-if="emailDialog.error" class="mail-error">{{ emailDialog.error }}</div>
+      <template #footer>
+        <el-button :disabled="emailDialog.verifying" @click="closeEmailDialog">取消</el-button>
+        <el-button type="primary" :loading="emailDialog.verifying" @click="confirmEmailChange">确认更换</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -236,6 +289,8 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { fmtDateTime, fmtDay } from '../utils/siteTime.js';
 import { formatMoney } from '../utils/money.js';
 import { registerUnsavedSource } from '../composables/useUnsavedGuard.js';
+import { markSessionLoggedOut } from '../composables/useSessionHeartbeat.js';
+import { openLogin } from '../utils/login-entry.js';
 
 const emit = defineEmits(['profile-updated']);
 
@@ -452,6 +507,120 @@ function bindNew() {
   window.location.href = '/api/auth/steam/start?back=profile';
 }
 
+// ---- 更换登录邮箱（CZ，docs/EMAIL-CHANGE.md §3） ----
+// 两步：① 新邮箱 + 发验证码（10 分钟有效、每天最多 1 次）→ ② 验证码通过才提示占用（409）；
+// 成功 → 服务端已删全部会话（含当前）→ 整页跳登录页，提示「用新邮箱重新登录」。
+const emailDialog = reactive({
+  open: false,
+  step: 1,
+  newEmail: '',
+  code: '',
+  sentTo: '',
+  sending: false,
+  verifying: false,
+  countdown: 0,
+  error: '',
+});
+let emailCountdownTimer = null;
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function clearEmailTimer() {
+  if (emailCountdownTimer) {
+    clearInterval(emailCountdownTimer);
+    emailCountdownTimer = null;
+  }
+}
+
+function openEmailDialog() {
+  Object.assign(emailDialog, {
+    open: true,
+    step: 1,
+    newEmail: '',
+    code: '',
+    sentTo: '',
+    sending: false,
+    verifying: false,
+    countdown: 0,
+    error: '',
+  });
+  clearEmailTimer();
+}
+
+function closeEmailDialog() {
+  emailDialog.open = false;
+  clearEmailTimer();
+}
+
+function startEmailCountdown() {
+  emailDialog.countdown = 60;
+  clearEmailTimer();
+  emailCountdownTimer = setInterval(() => {
+    emailDialog.countdown -= 1;
+    if (emailDialog.countdown <= 0) clearEmailTimer();
+  }, 1000);
+}
+
+async function sendEmailCode() {
+  const newEmail = emailDialog.newEmail.trim();
+  if (!EMAIL_RE.test(newEmail)) {
+    emailDialog.error = '邮箱格式不正确';
+    return;
+  }
+  emailDialog.sending = true;
+  emailDialog.error = '';
+  try {
+    const res = await fetch('/api/me/email/request', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ newEmail }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    emailDialog.sentTo = newEmail;
+    startEmailCountdown();
+  } catch (e) {
+    emailDialog.error = e.message || '发送失败';
+  } finally {
+    emailDialog.sending = false;
+  }
+}
+
+async function confirmEmailChange() {
+  const newEmail = emailDialog.newEmail.trim();
+  const code = String(emailDialog.code || '').trim();
+  if (!EMAIL_RE.test(newEmail)) {
+    emailDialog.error = '邮箱格式不正确';
+    return;
+  }
+  if (!/^\d{6}$/.test(code)) {
+    emailDialog.error = '请输入 6 位验证码';
+    return;
+  }
+  emailDialog.verifying = true;
+  emailDialog.error = '';
+  try {
+    const res = await fetch('/api/me/email/verify', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ newEmail, code }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    // 成功：会话已被服务端删除——标记主动下线（心跳不误判），整页跳登录并提示
+    emailDialog.step = 2;
+    markSessionLoggedOut();
+    closeEmailDialog();
+    openLogin({ reason: 'email-changed', next: '/' });
+  } catch (e) {
+    emailDialog.error = e.message || '更换失败';
+  } finally {
+    emailDialog.verifying = false;
+  }
+}
+
 // ---- 查看已拥有/愿望单弹窗 ----
 const dialog = reactive({ open: false, steamId: '', name: '', owned: 0, wishlist: 0, tab: 'library', q: '', items: [], total: 0, page: 1, pageSize: 10, pages: 1, loading: false });
 
@@ -504,7 +673,10 @@ const unregister = registerUnsavedSource({
     load();
   },
 });
-onBeforeUnmount(unregister);
+onBeforeUnmount(() => {
+  unregister();
+  clearEmailTimer();
+});
 
 onMounted(load);
 </script>
@@ -850,6 +1022,81 @@ onMounted(load);
   font-size: var(--font-11);
   gap: var(--space-10);
   flex-wrap: wrap;
+}
+/* 更换登录邮箱对话框（CZ，对齐 demo：步骤指示 + 警告条 + 当前邮箱只读 + 新邮箱/验证码两行） */
+.mail-op {
+  margin-left: auto;
+}
+.mail-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  font-size: var(--font-12);
+  color: var(--fg-subtle);
+  margin-bottom: var(--space-12);
+}
+.mail-step .mdot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+  font-size: var(--font-11);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.mail-step .mdot.off {
+  background: var(--panel-3, #26334f);
+  color: var(--fg-muted);
+}
+.mail-step .msep {
+  color: var(--fg-subtle);
+}
+.mail-warn {
+  background: var(--warn-bg, #2a2113);
+  border: 1px solid var(--warn-border, #5a4520);
+  color: var(--warn-fg, #ffe3b8);
+  border-radius: var(--radius-9);
+  padding: var(--space-8) var(--space-10);
+  font-size: var(--font-12);
+  margin-bottom: var(--space-12);
+}
+.mail-field {
+  margin-bottom: var(--space-12);
+}
+.mail-field label {
+  display: block;
+  font-size: var(--font-12);
+  color: var(--fg-muted);
+  margin-bottom: var(--space-6);
+}
+.mail-line {
+  display: flex;
+  gap: var(--space-8);
+}
+.mail-line .el-input {
+  flex: 1;
+}
+.mail-box {
+  background: var(--panel-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-9);
+  padding: 8px 11px;
+  font-size: var(--font-13);
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+}
+.mail-box.ro {
+  color: var(--fg-subtle);
+  background: var(--panel-2);
+}
+.mail-error {
+  color: var(--danger);
+  font-size: var(--font-12);
+  margin-top: var(--space-4);
 }
 /* 移动端（demo：单列、卡片吸底保存条） */
 @media (max-width: 768px) {

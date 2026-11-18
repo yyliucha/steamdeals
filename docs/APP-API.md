@@ -253,6 +253,19 @@ App 把 `svg` 渲染成位图显示；登录时回传 `token` 与用户输入。
   附 `total/page/pageSize` 分页；
 - **新增绑定**：App 在系统浏览器打开 `<站点>/console/steam`（绑定流程复用站点会话），返回 App 后刷新列表。
 
+### 8.5 更换登录邮箱（CZ，docs/EMAIL-CHANGE.md）
+
+Web 与 App 共用同一套接口（App 走 `/api/app/me/email/*` 前缀，服务端去前缀后命中 `/api/me/email/*`）。
+
+- `POST /api/app/me/email/request`（Bearer）：`{ "newEmail": "…" }`——验证码发到**新邮箱**
+  （10 分钟有效、5 次尝试；**不泄露占用**：已占用也回同样成功文案 `{ "ok": true, "hint": "…" }`）；
+  格式错 400；24 小时内第二次换 429（带 `retryAfterSec`）；发码限流 429/每日上限 429 同登录发码；
+- `POST /api/app/me/email/verify`（Bearer）：`{ "newEmail": "…", "code": "6 位验证码" }`——
+  码错 400、过期 400、超次数 429；**验证码通过后**新邮箱已被他人占用 → 409 `{ "error": "该邮箱不可用" }`；
+  成功 200 `{ "ok": true, "message": "邮箱已更新，请用新邮箱重新登录" }`——此时服务端已删除该用户**全部会话**
+  （含当前 Bearer token），App 必须**清本地 token 并跳登录页**；旧邮箱收「登录邮箱已变更」安全通知、
+  新邮箱收「绑定成功」（异步队列，失败不影响换邮箱结果）。
+
 ## 9. 待确认（不阻塞）
 
 1. 注册/邮箱验证码是否在 App 第一期开放（接口先预留）；
