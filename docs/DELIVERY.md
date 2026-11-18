@@ -210,7 +210,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   验证（本机发版门禁）：本批相关测试全绿（frontend-mobile / serve / app-release / app-release-sync / http-guard / admin-cache /
   app-device-ratelimit / format / money-format 全过，align-perf 22/22、align 6/6、settings 8/8、setup 4/4、app-contract 2/2、
   api.test.js 31/31）；`frontend:build` ✓（1.59s）；`scan` 干净。
-  CI 待确认（tag 推送后补 run id）。
+  CI：docker-hub run 44281749460 ✅（test 7m40s / smoke 34s / publish 1m56s 全绿）；docker-tcr run 44281749459 ✅（test 6m10s / publish 6m3s 全绿）。
   **服务器部署待执行**（升级到 `2.24.4`）；部署后待所有者确认：① 红米真机 CP 验收 + 线上四组 UA 复测；② DE 移动端与 demo 整体视觉一致性目视、线上首刷 202 stale 与失败重试闭环；③ B1 超时白名单范围、B2 生产 PG 同口径复核。
 - **v2.24.3 已发布**（tag `v2.24.3`，站点 2a03188/cbb3a02 + App 仓库 0945006/65eaa5d）：P0 双修——
   CS：对齐审核后台生成（冷缓存 202 {generating,processed,total} + 前端 3s 轮询，完成后自动展示；预算只约束匹配循环、
