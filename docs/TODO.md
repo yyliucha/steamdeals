@@ -2189,8 +2189,8 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 ## DE. 待开发：对齐审核页改版（布局重做 + 进度/空态修正）
 
-**状态：待开发（2026-11-18 所有者要求重做布局；demo 已出）**
-**依赖：** CS（后台生成已实现）
+**状态：待开发（2026-11-18 所有者要求重做布局；demo 已出；3 项待确认已拍板：保留继承卡 / 不加来源平台列 / 不做批量手动搜索）**
+**依赖：** CS（已发布 v2.24.3 ✅，后台生成已实现）
 **解锁：** 无
 **规格**：[ALIGN-REVIEW-UI.md](ALIGN-REVIEW-UI.md)
 **Demo**：[design/align-review-redesign-2026-11-18.html](design/align-review-redesign-2026-11-18.html)（页面改版）+
@@ -2205,7 +2205,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   同时可返回上一轮缓存分页数据）；完成返回 `counts {groups, skus, auto, manual, noCandidate, inherited}` + `generatedAt`。
 - **验收**：见规格 §4 的 9 行「demo 状态 ↔ 断言」——头部状态/统计数值/进度不出现 0/0/搜索筛选/表格色条与徽标/批量操作/
   空态互斥/分页/移动端；`npm test` / `frontend:build` / `scan` 全绿。
-- **待确认**：是否保留「本次自动继承」卡；表格是否加「候选来源平台」；是否需要「批量手动搜索」。
+- **已确认（2026-11-18）**：保留「本次自动继承」卡；不加「候选来源平台」列；本批不做「批量手动搜索」（二期）。
 
 ## DF. 待开发：到价提醒手动推送（重发按钮）
 
