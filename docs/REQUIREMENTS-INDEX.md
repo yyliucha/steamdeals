@@ -86,7 +86,7 @@
 | **CX** | 个人资料编辑（Web + App；头像存库、双 Steam 账号默认头像、设为默认/解绑/新增换绑） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) | 待开发（2026-11-18 决策确认 + 双 demo） | ✅ 本轮已给 |
 | **CY** | 数据隔离（用户私有数据管理员只读；越权 403 + 审计；站点级/账号安全/申诉保留可写） | [DATA-ISOLATION.md](DATA-ISOLATION.md) | 待开发（2026-11-18 边界确认；P1） | ✅ 本轮已给 |
 | **CZ** | 二期：邮箱体系（更换邮箱验证码 + 邮箱验证码登录 + 忘记密码） | —（TODO CZ 条目） | 待开发（2026-11-18 立项；等沟通启动） | ⏳ 待沟通 |
-| **DA** | CM-5：App 筛选/排序服务端化（折扣/史低/免费/未发售全库筛） | [APP-PARITY.md](APP-PARITY.md) §57 | 待开发（2026-11-18 立项；等沟通） | ⏳ 待沟通 |
+| **DA** | CM-5：App 筛选/排序服务端化（折扣/史低/免费/未发售全库筛；站点 + App 方案 A） | [APP-FILTER-SERVER-SIDE.md](APP-FILTER-SERVER-SIDE.md) | 待开发（2026-11-18 方案 A 确认；规格已出） | ✅ 本轮已给 |
 | **DB** | 个人主页（公开资料页 `/u/:username`） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) §5 | 待开发（2026-11-18 立项；等沟通） | ⏳ 待沟通 |
 | **DC** | CM-6：App 公告角标（先核实登录态） | [APP-PARITY.md](APP-PARITY.md) §65 | 待开发（2026-11-18 立项；待核实） | ⏳ 待沟通 |
 | **CR** | 开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + API 契约字符串数组） | [APP-DEV-PUBLISHER-NAMES.md](APP-DEV-PUBLISHER-NAMES.md) | 已发布 v2.24.1（2026-11-18，5673ee9；QA ✅ docs/QA-CR.md） | ✅ 本轮已给 |
