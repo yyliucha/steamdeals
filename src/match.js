@@ -294,15 +294,16 @@ function subtitleHit(titleA, titleB, normA, normB) {
 }
 
 /**
- * 一对标题的完整判定（CE 加固核心）。
+ * 一对标题的完整判定（CE 加固核心；DG 批加副标题感知）。
  * 返回：
- *  - score       提案展示分（数字冲突为 0；完整分 ≥0.8 时允许合格片段加分）
+ *  - score       提案展示分（数字冲突为 0；完整分 ≥0.8 时允许合格片段加分；
+ *                副标题命中（DG 批）为 0.90–0.93，覆盖片段加分、保证落需人工区）
  *  - fullScore   完整归一化标题的相似度（自动判定只看它）
  *  - equal       完整归一化标题是否相等
  *  - numbersOk   数字/序数/罗马数字集合是否一致
  *  - contentWord 任一侧是否含内容词（命中只进人工审核）
  *  - auto        是否允许自动映射（完整相等，或完整 Dice ≥0.94 且无内容词、数字一致、长度 ≥4）
- *  - reasons     不自动的原因（number_conflict/content_word/score_below_auto/title_too_short）
+ *  - reasons     不自动的原因（number_conflict/content_word/score_below_auto/title_too_short/subtitle）
  */
 export function evaluatePair(titleA, titleB, { autoScore = 0.94, fragmentFloor = 0.8 } = {}) {
   const numsA = extractNumbers(titleA);
