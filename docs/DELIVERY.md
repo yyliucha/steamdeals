@@ -195,9 +195,10 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-18 更新，v2.24.5 已发布：DG + DI + DJ + CO-1/A5 + CO-2/B5 + CO-4/D1）
+### 当前状态（2026-11-19 更新，v2.24.5 已发布：DG + DI + DJ + CO-1/A5 + CO-2/B5 + CO-4/D1）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
+- **DK 质检通过（修 bug）**（站点 d65542f + App 仓库 8fb6328；QA ✅ [QA-DK.md](QA-DK.md) 第 1 轮 6/0/0/2）：App 检查更新失败修复——`/api/app/latest` 的 apkPath 在本地/镜像都无 APK 时兜底 GitHub Release 直链（不再 null）；App 端下载地址不可用单独提示「新版下载地址暂不可用，请到站点 /app 页下载」、不再笼统报失败（`UpdateManager.decideUpdate` → Unavailable）；apk_download 失败在任务健康条显红（apkFailed 标记 + cmdAppSync 抛错，A5 接线）+ same_version 跳过加 APK 存在性检查（APK 缺失自动重下补齐，每小时自愈）；等「构建」指令（修复 → 小版本 +1）。
 - **CW 已实现待发版**（实现随 b9811f8 入 main；QA ✅ [QA-CW.md](QA-CW.md) 第 1 轮 11/0/0/2）：后台「游戏目录」点游戏名弹 640px 详情弹窗（封面/中英名/AppID/徽标/元信息/价格条/简介 4 行可展开/DLC 数/评测数 + 底部 Steam 商店跳转；未同步/无 appid/回收站三态兜底；移动端 100%）。数据只用站内已同步 Steam 数据；等「构建」指令（含新功能 → 大版本 +1）。
 - **CY 已实现待发版**（实现 3351f9f + 16d7d72 + 0b8e506；QA ✅ [QA-CY.md](QA-CY.md) 第 1 轮 6/0/0/0）：数据隔离——用户私有数据（提醒/愿望单/访问记录/Steam 绑定）管理员只读（越权写 403 + `audit_logs` 审计 `admin.forbidden_write`；站点级提醒/账号安全/会话/申诉/审核/未归属认领保留可写）；等「构建」指令（含新功能面 → 大版本 +1）。
 - **CZ 已实现待发版**（站点 ac52955 + d72d933 + App 仓库 7c01820；QA ✅ [QA-CZ.md](QA-CZ.md) 第 1 轮 11/0/0/2）：更换登录邮箱——`POST /api/me/email/request|verify`（不泄露占用/验证码通过后才 409/换成功删全部会话并撤销全部 App token/审计 `auth.email_changed`/双邮件）；验证码 10 分钟/5 次、24h 最多 1 次、未验证也能换（换完变已验证）；管理员重置邮箱保留（审计 `admin.email_reset` 随 CY 提交 3351f9f 入 main）；Web 资料页两步对话框 + App 底部弹层两步（模拟器走通：发码→验证→清 token 跳登录）；test/email-change.test.js 7 项进主链；等「构建」指令（含新功能面 → 大版本 +1）。
