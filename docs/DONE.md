@@ -2125,3 +2125,64 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 | **CO-3** | C2 | `/api/app/*` 保持豁免但加**设备维度限流** + 审计 | 已发布 v2.24.4（89c8dfd） |
 | **CO-3** | C4 | 日期/金额统一 helper（后端格式化 + 前端 money util），替换散落 `/100` | 已发布 v2.24.4（89c8dfd） |
 | **CO-3** | C5 | 契约漂移校验（APP-API ↔ 代码字段一致性测试，仿 `serve.test.js` 白名单断言） | 已发布 v2.24.4（89c8dfd） |
+| **CO-1** | A5 | 同步任务失败可见（后台「任务健康」标红 + 可选邮件告警；`app-release-sync` 失败不再静默） | 已发布 v2.24.5（c4e2695；QA docs/QA-CO1-A5.md 第 1 轮 ✅） |
+| **CO-2** | B5 | 读模型双写一致性守卫（入库唯一入口 + 对账任务增强） | 已发布 v2.24.5（5b1cbfb；QA docs/QA-B5.md 第 1 轮 ✅） |
+| **CO-4** | D1 | 样式 token 收敛（`main.css` 46 行 vs 组件内联超长 CSS） | 已发布 v2.24.5（2ee09af；QA docs/QA-D1.md 第 1 轮 ✅） |
+
+
+## DG. ~~质检通过：对齐匹配修复（副标题/别名导致低分 → 无候选）~~ → **已发布 v2.24.5（2026-11-18，afc5a91 + 12a6de7）**
+
+**状态：已发布 v2.24.5（2026-11-18，afc5a91 + JSDoc 12a6de7；QA 报告 docs/QA-DG.md 第 1 轮 ✅ 放行）**
+**依赖：** DE（对齐页改版，共用同一接口）
+**解锁：** 无
+
+- **取证（2026-11-18 服务器实查）**：`skus.json` 的 SKU 111465 已映射（`appid=1604270`，会被继承、不入队列）；
+  队列里那条是**孤儿游戏行** `games.id=1545848`（无 appid，`name='断箭: 俄罗斯国民近卫军'`，`name_en='Broken Arrow: Russian Guard'`）；
+  候选存在：`games.id=53038`（appid 1604270，`name='断箭'`，`name_en='Broken Arrow'`）→ **候选没漏，是分数低于 0.86 被丢弃**。
+- **根因**：匹配按整串标题打分，副标题（"俄罗斯国民近卫军"/"Russian Guard"）拉低相似度；`buildCandidateIndex` 还漏了 `name_en`
+  （`server.js` 调 `buildCandidateIndex(games)` 用默认 `c.nameEn`，DB 行是 `name_en`）。
+- **修复**：① 索引 getFields 改为 `[c.name, c.name_en]`（一处）；② **副标题感知**：按 `：: - — /` 切主标题，主标题精确/包含命中时
+  给 0.90–0.93 的分数 + 理由 `subtitle`（落在"需人工"区，不自动确认）；③ 内容词（季票/DLC）仍不自动确认；
+  ④ 单元测试覆盖：带副标题、带英文副标题、带版本词、纯中文命中。
+- **验收**：断箭组显示候选（分数 0.90–0.93，标"副标题"理由）；季票组仍提示内容词；`npm test` / `frontend:build` / `scan` 全绿。
+
+
+## DI. ~~质检通过：测试环境隔离与主链分段（A 隔离 + B 分段 + C 复位）~~ → **已发布 v2.24.5（2026-11-18，3acd1b8）**
+
+**状态：已发布 v2.24.5（2026-11-18，3acd1b8；QA 报告 docs/QA-DI.md 第 1 轮 ✅ 放行，通过 4/缺失 0）**
+**依赖：** 无（2026-11-18 CO-3 会话两次全量测试被环境干扰，本条目把应对措施固化）
+**解锁：** 无
+**规格**：[TEST-ENV-ISOLATION.md](TEST-ENV-ISOLATION.md)
+
+- **背景（CO-3 会话实测）**：① 本机 `data/app/latest.json` 同步产物让 `serve.test.js` CJ-回归用例红
+  （测试读真实工作区 `data/`，手工移到 `F:\dsh\data-app-co3-bak` 才绿）；② 主链 100+ 文件单条 `&&` 链
+  （8–15 分钟）中途被中断需从头重跑（手工 4 段串行后通过）。
+- **A 测试隔离**：`test/serve.test.js` CJ-回归用例改用 `APP_DATA_DIR` 临时目录注入（`src/server.js:163` 已支持，
+  无需改服务端）+ 反向自检（不注入 + 放假产物必须红）。
+- **B 主链分段**：`package.json` 拆 `test:1`~`test:4` 四段，`test` 逐段串行；中断从失败段续跑；同步
+  dev/test/qa/build 四个技能的验证命令说明。
+- **C 环境复位**：`scripts/test-env-reset.mjs`（`npm run test:reset`）白名单精确移走运行时产物到仓库外
+  `F:\dsh\test-env-bak\<时间戳>\`（默认 dry-run，`--apply` 执行，`--restore` 可恢复）；**绝不整删 `data/`**——
+  `skus.json`/`games.json`/`secret.key` 源数据与 `*pgdata*` 调试库永不入选。
+- **验收**：见规格 §4——A：data/app 有产物时 serve.test.js 仍全绿 + 反向自检红；B：四段互不依赖、失败段可续跑；
+  C：dry-run 只打印、--apply 后源数据完好、幂等；`npm test` 全绿 + `scan` 干净。
+
+
+## DJ. ~~质检通过：发版测试报告（独立会话）+ e2e 整轮总预算~~ → **已发布 v2.24.5（2026-11-18，c87dfe0）**
+
+**状态：已发布 v2.24.5（2026-11-18，c87dfe0；QA 报告 docs/QA-DJ.md 第 1 轮 ✅ 放行，通过 6/缺失 0/需人工确认 2）**
+**依赖：** CK（已发布 v2.24.0）
+**解锁：** 无
+**规格**：[E2E-SUITE.md](E2E-SUITE.md)
+
+- **背景**：e2e 全量已移出构建门禁（build 技能 7e4c8fa 已改）——发版完成后由所有者开**独立报告会话**跑全量出 PDF；
+  整轮需要总预算兜底，到点强制收尾，避免跑不完拖住后续轮次。
+- **范围**：① `test/e2e/runner.mjs` 整轮总预算（默认 20 分钟 deadline，`E2E_BUDGET_MS` / `--budget-ms=` 可调，测试可缩短），
+  到点**强制收尾**——剩余未跑项标「预算截断」、照常生成 HTML/PDF 报告、退出码三态（0 全绿 / 1 有失败 / 2 预算截断）；
+  ② 补 runner 预算单测（`test/e2e/budget.test.js`：缩短预算到点截断 + 正常轮不截断 + 退出码三态，进主链 test:4）；
+  ③ `steamdeals-test` 技能新增 §2.3「发版测试报告（独立会话）」流程（发版后所有者开独立会话 → 加载 steamdeals-test →
+  跑 `npm run e2e` 全量 → PDF 落 `F:\dsh\e2e-reports\<日期>-<短哈希>.pdf` → 汇报 X 通过 / Y 失败 / Z skip / W 预算截断 →
+  失败项转 QA/开发按反模式清单处理）+ §2.2 表「发版前必跑」同步为「发版后由独立报告会话跑」；④ 本条目 + INDEX 行。
+- **不做**：build 技能（已改好）、任何 e2e 矩阵行增删、服务器/生产数据。
+- **验收**：① 模拟慢轮（缩短预算）到点强制收尾、剩余项标「预算截断」、PDF 照常生成；② 正常全量在预算内不截断；
+  ③ 按 §2.3 描述的流程能跑通（至少命令链路验证，PDF 落 `F:\dsh\e2e-reports\`）；④ `npm test`（主链相关段）+ `npm run scan` 全绿。

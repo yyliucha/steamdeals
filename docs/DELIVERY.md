@@ -195,9 +195,20 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-18 更新，v2.24.4 已发布：CP + CT + CO-2 + CO-3 + DE）
+### 当前状态（2026-11-18 更新，v2.24.5 已发布：DG + DI + DJ + CO-1/A5 + CO-2/B5 + CO-4/D1）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
+- **v2.24.5 已发布**（tag `v2.24.5`，实现 afc5a91 + 12a6de7 / 3acd1b8 / c87dfe0 / 5b1cbfb / c4e2695 / 2ee09af）：DG + DI + DJ + CO-1/A5 + CO-2/B5 + CO-4/D1 合并发版（无新功能面 → 小版本）。
+  DG 对齐匹配修复（候选索引补 `name_en` + 副标题感知——主标题命中 0.90–0.93 + 「副标题」理由、只进人工，断箭组恢复候选）；
+  DI 测试环境隔离与主链分段（`APP_DATA_DIR` 注入隔离 + `test:1`~`test:4` 四段 + `test:reset` 白名单复位）；
+  DJ e2e 整轮 20 分钟总预算（到点「预算截断」照常出报告、退出码三态）+ 发版测试报告独立会话流程（steamdeals-test §2.3）；
+  CO-1/A5 同步任务失败可见（健康条显红 + 失败原因 + 可选邮件告警，`app-release-sync` 真失败不再静默）；
+  CO-2/B5 读模型双写一致性守卫（唯一写入网关 + 增量对账 + 每日自动修复）；
+  CO-4/D1 设计 token 收敛（四族 CSS 变量 + 三个最重组件按 token 引用，视觉零变化）。
+  QA：DG ✅ [QA-DG.md](QA-DG.md) 第 1 轮 / DI ✅ [QA-DI.md](QA-DI.md) 第 1 轮 / DJ ✅ [QA-DJ.md](QA-DJ.md) 第 1 轮 / A5 ✅ [QA-CO1-A5.md](QA-CO1-A5.md) 第 1 轮 / B5 ✅ [QA-B5.md](QA-B5.md) 第 1 轮 / D1 ✅ [QA-D1.md](QA-D1.md) 第 1 轮。
+  验证（本机发版门禁，干净 worktree @ 271f65a）：主链四段全绿（test:1 212 / test:2 271 / test:3 210 / test:4 208，共 901 通过 0 失败）+ `node test/api.test.js` 31/31 + `frontend:build` ✓（2.89s）+ `scan` 干净；本批针对性测试全绿（match 47 / align 6 / serve 12 / budget 7 / scheduler 32 / game-search-read-model 12 / read-model-guard 2 / style-tokens 3）。
+  CI：待确认（tag 推送后盯 docker-hub / docker-tcr 双绿）。
+  **服务器部署待执行**（升级到 `2.24.5`）；发版后 e2e 全量由独立报告会话按 steamdeals-test §2.3 执行（PDF 落 `F:\dsh\e2e-reports\`），不在本会话跑。
 - **v2.24.4 已发布**（tag `v2.24.4`，实现 9312054 / 75a7e7f / a54be76 / 89c8dfd / 318e678 + 729d0e9）：CP + CT + CO-2（B1/B2）+ CO-3（C2/C4/C5）+ DE 合并发版。
   CP 手机端识别三信号（UA 品牌特征 + `Sec-CH-UA-Mobile` + index.html `screen.width<=640` 兜底，小米桌面 UA 不再漏判）；
   CT app-release-sync 改 releases 列表接口（第一条非 draft/prerelease、latest 兜底、匿名可用、失败日志区分）；
