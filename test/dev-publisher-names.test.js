@@ -56,6 +56,43 @@ test('CR-2：migrate 清洗历史脏元素（幂等，二次运行无变化）',
   await store.close();
 });
 
+test('CR-2 修复：生产非法 JSON 元素不抛 22P02，清洗幂等稳定（v2.24.2 线上事故回归）', async () => {
+  // 守的约束：① 截断/无引号键/空对象等非法 JSON 元素一律不抛错（旧 ::jsonb 实现会 22P02 崩 bootstrap）；
+  //           ② 第一轮清洗出的 name 值本身以 `{` 开头时，第二轮不再被当 JSON 二次解析（否则仍 22P02）；
+  //           ③ 纯文本元素原样保留。反向自检：把迁移里的 substring 提取换回 `::jsonb ->> 'name'` →
+  //             本用例与 CR-2 用例必红（pglite 抛 invalid input syntax for type json）。
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  await q("insert into games (steam_appid, name) values (900002, '脏数据回归')");
+  await q(
+    `update games set developers = array[
+       '{"name":"Behaviour Interactive Inc.","creator_clan_account_id":33367148}',
+       '{"name":"截断形态',
+       '{name: "无引号键"}',
+       '{}',
+       '{"name":"{ 花括号名 }"}',
+       '纯文本 Studio',
+       '{"name":"Esc \\"Q\\" Name"}'
+     ]`,
+  );
+
+  await db.migrate(store); // 第一轮清洗：任何元素都不抛错
+  let row = (await q('select developers from games where steam_appid = 900002')).rows[0];
+  // 设计口径：含 `"name":` 特征的元素 → 提取（提取不出则丢弃）；不含特征的元素（纯文本 / 无引号键 / 空对象）
+  // → 原样保留，第二轮不再命中（幂等稳定），App 端 NameListSerializer 对无法解析的 `{` 文本兜底丢弃。
+  assert.deepEqual(
+    row.developers,
+    ['Behaviour Interactive Inc.', '{name: "无引号键"}', '{}', '{ 花括号名 }', '纯文本 Studio', 'Esc \\"Q\\" Name'],
+    '合法 JSON 提取 name；截断 JSON 丢弃；无 name 特征元素保留原文（幂等稳定）；name 含花括号正确提取；转义符按原样保留',
+  );
+
+  await db.migrate(store); // 第二轮：`{ 花括号名 }` 不含 "name": 特征，不再被二次解析
+  const again = (await q('select developers from games where steam_appid = 900002')).rows[0];
+  assert.deepEqual(again, row, '二次迁移结果不变（清洗产物不会被二次误解析）');
+  await store.close();
+});
+
 test('CR-3：upsertGameMeta 写库后读回为纯字符串数组（无对象残留）', async () => {
   const store = await openStore('pglite:', {});
   await db.migrate(store);

@@ -566,16 +566,21 @@ create index if not exists idx_user_search_logs_user on user_search_logs (user_i
   // CR 批（docs/APP-DEV-PUBLISHER-NAMES.md §3 CR-2）：历史脏元素清洗（幂等）——
   // GetItems 旧实现把对象数组原样写进 text[]，元素成了 `{"name":…,"creator_clan_account_id":…}` 文本；
   // 这里解析取 name，去空/去重保序/上限 20/单条截断 200（与 store-browse.namesFromList 同口径）。无脏行不更新。
+  // ⚠️ v2.24.2 修复（线上 22P02 事故）：不再用 `::jsonb` 解析——生产存在非法 JSON 元素（截断/无引号键），
+  // cast 失败会让整条 UPDATE 抛错、bootstrap 崩溃重启循环；且第一轮清洗出的 name 值本身可能以 `{` 开头，
+  // 按「以 { 开头」判定会被二次误解析。现改为：
+  //  ① 纯正则提取 `"name":"…"` 的值（不做任何 JSON 解析，永不抛错；非法/无匹配 → 丢弃该元素）；
+  //  ② WHERE 收紧为「元素含 `"name":` 特征」——清洗产物不再被二次命中，幂等稳定。
   for (const col of ['developers', 'publishers']) {
     await store.query(
       `update games set ${col} = (
          select array_agg(n order by first_ord) from (
            select n, min(ord) as first_ord from (
-             select left(case when left(btrim(e), 1) = '{' then nullif(btrim(btrim(e)::jsonb ->> 'name'), '') else nullif(btrim(e), '') end, 200) as n, ord
+             select left(case when e ~ '"name"\\s*:' then nullif(btrim(substring(e from '"name"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"')), '') else nullif(btrim(e), '') end, 200) as n, ord
                from unnest(${col}) with ordinality as t(e, ord)
            ) x where n is not null group by n order by min(ord) limit 20
          ) y
-       ) where ${col} is not null and exists (select 1 from unnest(${col}) e where left(btrim(e), 1) = '{')`,
+       ) where ${col} is not null and exists (select 1 from unnest(${col}) e where e ~ '"name"\\s*:')`,
     );
   }
   await store.query(
