@@ -2048,8 +2048,8 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **四项（合并交付）**：CU-1 列表「无报价」徽标+筛选；CU-2 站点级批量**迁移到用户/删除**（审计）；
   CU-3 史低抽检（部落幸存者等异常样本，只读 SQL，脏数据才修）；CU-4 Steam 刷新频率评估（默认不改，只出配额数字与建议）。
 - **改动落点**：src/store/pg.js（hasPrice + 迁移/批量删）、src/server.js（/api/admin/watchlist 扩展 +
-  /migrate + 批量删除 + 审计）、rontend/src/pages/AdminModules.vue（徽标/筛选/多选/迁移）、测试。
+  /migrate + 批量删除 + 审计）frontend/src/pages/AdminModules.vue（徽标/筛选/多选/迁移）、测试。
 - **验收**：见规格 §4——① 无报价两行有徽标且可筛选；② 迁移后 user_id/收件人变化；③ 批量删除+审计；
-  ④ 抽检 SQL 结论；⑤ 
-pm test / rontend:build / scan 全绿；⑥ CU-4 只出建议不改配置。
+  ④ 抽检 SQL 结论；⑤ npm test / frontend:build / scan 全绿；⑥ CU-4 只出建议不改配置。
 - **待确认**：迁移目标用户；抽检范围（仅部落幸存者 vs 全部异常）；CU-4 是否要具体数字。
+
