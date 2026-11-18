@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>无开关：默认可用 + 二次确认 demo</title>
+<style>
+  :root{--bg:#0b1020;--panel:#121a30;--panel-2:#0f1728;--border:#243050;--border-2:#2e3d63;--fg:#e8edf9;--fg-muted:#93a0bf;--fg-subtle:#6d7a99;--brand:#6b7dff;--green:#3fbf7f;--green-bg:#12291f;--green-border:#2a6b4a;--amber:#e0a23c;--amber-bg:#2a2113;--amber-border:#5a4520;--red:#e05c5c}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.6 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;padding:16px 18px}
+  h1{font-size:16px;margin:0 0 2px}
+  .sub{color:var(--fg-muted);font-size:11.5px;margin:0 0 12px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .pane{background:#0d1526;border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;min-height:600px}
+  .pane h2{font-size:13.5px;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+  .tag{font-size:10px;border:1px solid #2c3a68;background:#16203a;border-radius:999px;padding:0 7px;color:#b9c6e6;font-weight:400}
+  .tag.ok{color:#c8f3dd;border-color:var(--green-border);background:var(--green-bg)}
+  .tag.warn{color:#ffe3b8;border-color:var(--amber-border);background:var(--amber-bg)}
+  .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .search{flex:1;background:#0d1526;border:1px solid var(--border-2);border-radius:8px;padding:6px 10px;color:var(--fg-subtle);font-size:11.5px}
+  .btn{border:1px solid var(--border-2);background:var(--panel-2);color:var(--fg);border-radius:8px;padding:5px 11px;font-size:11.5px;cursor:pointer}
+  .btn-primary{background:linear-gradient(180deg,#7287ff,#5a6bf5);border-color:#6b7dff;color:#fff;font-weight:600}
+  .btn-sm{padding:3px 8px;font-size:10.5px}
+  .btn-link{border:0;background:none;color:#9fb4ff;font-size:11px;cursor:pointer;padding:0 3px}
+  .btn-link.red{color:#f08a8a}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{background:#0f1729;color:var(--fg-subtle);font-weight:500;text-align:left;padding:6px 8px;font-size:10.5px}
+  td{padding:6px 8px;border-top:1px solid #1c2740}
+  .cb{width:13px;height:13px;border-radius:3px;border:1px solid #3a4c86;display:inline-block}
+  .cb.on{background:var(--brand);border-color:var(--brand);position:relative}
+  .cb.on::after{content:'✓';position:absolute;inset:0;font-size:9px;color:#fff;display:flex;align-items:center;justify-content:center}
+  .overlay{position:absolute;inset:0;background:rgba(4,8,18,.55);display:flex;align-items:center;justify-content:center;padding:14px 10px;z-index:2}
+  .dialog{width:100%;max-width:470px;background:linear-gradient(180deg,#131c31,#101728);border:1px solid var(--border-2);border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,.5);overflow:hidden}
+  .d-head{padding:9px 13px;border-bottom:1px solid var(--border);background:#0f1729;font-weight:600;font-size:12.5px;display:flex}
+  .d-head span{margin-left:auto;color:var(--fg-subtle);font-weight:400}
+  .d-body{padding:10px 13px;font-size:11.5px}
+  .line{display:flex;gap:8px;padding:4px 0}
+  .line b{width:74px;color:var(--fg-subtle);font-weight:500;flex:none}
+  .list{background:#0b1222;border:1px solid var(--border);border-radius:8px;padding:6px 9px;margin:6px 0}
+  .list div{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
+  .list .n{color:#c9d6ff}
+  .opt{display:flex;gap:7px;margin-top:6px;color:var(--fg-muted);font-size:11px}
+  .notice{background:var(--amber-bg);border:1px solid var(--amber-border);color:#ffe3b8;border-radius:8px;padding:6px 9px;font-size:10.5px;margin-top:8px}
+  .d-foot{display:flex;justify-content:flex-end;gap:8px;padding:9px 13px;border-top:1px solid var(--border);background:#0e1626}
+  .hint{color:var(--fg-subtle);font-size:10.5px;margin-top:8px}
+</style>
+</head>
+<body>
+  <h1>无开关：管理员默认可用 + 二次确认</h1>
+  <p class="sub">danger 操作点第一次只弹确认框、不执行；确认后才发送/写库，并记审计。左边=到价提醒批量推送确认，右边=对齐审核批量确认。</p>
+
+  <div class="cols">
+    <!-- 左：到价提醒批量推送 -->
+    <div class="pane">
+      <h2>到价提醒 <span class="tag">全站清单</span><span class="tag ok">管理员默认可用</span></h2>
+      <div class="toolbar"><div class="search">搜索用户名</div><button class="btn btn-sm">推送选中（2）</button><span style="color:var(--fg-subtle);font-size:10.5px">共 15 条</span></div>
+      <table>
+        <thead><tr><th></th><th>用户</th><th>游戏</th><th>当前价</th><th>史低</th><th>最近提醒</th><th>操作</th></tr></thead>
+        <tbody>
+          <tr><td><span class="cb on"></span></td><td>站点级</td><td>深岩银河：异动核心 <span class="tag">2605790</span></td><td>¥86.00</td><td>¥77.40</td><td>—</td><td><button class="btn-link">推送</button><button class="btn-link red">删除</button></td></tr>
+          <tr><td><span class="cb on"></span></td><td>站点级</td><td>雾锁王国 (Enshrouded) <span class="tag">1203620</span></td><td>¥138.00</td><td>¥124.20</td><td>—</td><td><button class="btn-link">推送</button><button class="btn-link red">删除</button></td></tr>
+          <tr><td><span class="cb"></span></td><td>站点级</td><td>Stray <span class="tag">1332010</span></td><td>¥98.00</td><td>¥98.00</td><td>11/13 11:09</td><td><button class="btn-link">推送</button><button class="btn-link red">删除</button></td></tr>
+        </tbody>
+      </table>
+      <div class="hint">每行「推送」也弹同样的确认框（单条）。</div>
+
+      <div class="overlay">
+        <div class="dialog">
+          <div class="d-head">批量推送 2 条提醒 <span>✕</span></div>
+          <div class="d-body">
+            <div class="line"><b>收件人</b><span>站点负责人邮箱（alerts@…）· 已配置</span></div>
+            <div class="list">
+              <div><span class="n">深岩银河：异动核心</span><span>当前 ¥86.00 / 史低 ¥77.40</span></div>
+              <div><span class="n">雾锁王国 (Enshrouded)</span><span>当前 ¥138.00 / 史低 ¥124.20</span></div>
+            </div>
+            <div class="line"><b>发送方式</b><span><b>合并为 1 封邮件</b>（正文列出以上 2 款）</span></div>
+            <label class="opt"><input type="checkbox"> 强制推送：未达目标价/史低也发送</label>
+            <label class="opt"><input type="checkbox" checked> 更新最近提醒时间（写入后自动任务不重复提醒同价格）</label>
+            <div class="notice">确认后会立即发送，不可撤回；本次操作将记入审计日志。</div>
+          </div>
+          <div class="d-foot"><button class="btn">取消</button><button class="btn btn-primary">确认推送</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右：对齐审核批量确认 -->
+    <div class="pane">
+      <h2>对齐审核 <span class="tag">待对齐 24 组</span><span class="tag ok">管理员默认可用</span></h2>
+      <div class="toolbar"><div class="search">搜索杉果 SKU / 候选</div><button class="btn btn-sm">批量确认（2）</button><button class="btn btn-sm">批量忽略</button><span style="color:var(--fg-subtle);font-size:10.5px">第 1/3 页</span></div>
+      <table>
+        <thead><tr><th></th><th>杉果名（组）</th><th>候选</th><th>分数</th><th>建议</th><th>操作</th></tr></thead>
+        <tbody>
+          <tr><td><span class="cb on"></span></td><td>神界：原罪2 - 终极版</td><td>Divinity: Original Sin 2 - Definitive Edition <span class="tag">435150</span></td><td>0.97</td><td><span class="tag ok">高置信</span></td><td><button class="btn-link">确认</button><button class="btn-link">忽略</button></td></tr>
+          <tr><td><span class="cb on"></span></td><td>断箭: 俄罗斯国民近卫军</td><td>断箭 <span class="tag">1604270</span></td><td>0.92</td><td><span class="tag warn">副标题</span></td><td><button class="btn-link">确认</button><button class="btn-link">忽略</button></td></tr>
+          <tr><td><span class="cb"></span></td><td>巴士模拟器 27 - 第1年季票</td><td>巴士模拟器 27 <span class="tag">2397320</span></td><td>1.00</td><td><span class="tag warn">内容词</span></td><td><button class="btn-link">确认</button><button class="btn-link">忽略</button></td></tr>
+        </tbody>
+      </table>
+      <div class="hint">「已忽略」在筛选中可查看并恢复（恢复需确认）。</div>
+
+      <div class="overlay">
+        <div class="dialog">
+          <div class="d-head">批量确认 2 组 <span>✕</span></div>
+          <div class="d-body">
+            <div class="list">
+              <div><span class="n">神界：原罪2 - 终极版 → 435150</span><span>3 SKU</span></div>
+              <div><span class="n">断箭: 俄罗斯国民近卫军 → 1604270</span><span>1 SKU · 副标题匹配</span></div>
+            </div>
+            <div class="line"><b>将合并</b><span>孤儿游戏行 1 条（断箭: 俄罗斯国民近卫军）</span></div>
+            <div class="line"><b>落地</b><span>写 skus.json + game_source_map（confirmed），同组新 SKU 自动继承</span></div>
+            <div class="notice">确认后不可撤销（如需反悔，可在「已忽略」里恢复后再处理）；本次操作记入审计。</div>
+          </div>
+          <div class="d-foot"><button class="btn">取消</button><button class="btn btn-primary">确认 2 组</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+
