@@ -8,12 +8,34 @@
 // 而长事务反而容易把连接池占死。失败的那一条会留在日志里（db.query_failed）。
 import { createHash } from 'node:crypto';
 import * as db from './store/pg.js';
-import { serializeError } from './log.js';
+import { serializeError, failFields } from './log.js';
 
 /** 报价"实质内容"的指纹：只比价格/折扣/库存，忽略 buy_url 这类无关变动。 */
 export function offerHash(offer) {
   const payload = [offer.priceCents, offer.originalCents ?? 0, offer.discountPct ?? 0, offer.inStock ? 1 : 0].join('|');
   return createHash('sha1').update(payload).digest('hex').slice(0, 16);
+}
+
+/**
+ * E4 批（docs/LOGGING-SCHEMA.md §4）：单轮入库聚合告警阈值。
+ * 默认最少 5 条、且占本轮总数 ≥50%；settings `alerts.ingestAlertMin` / `alerts.ingestAlertPct`
+ * 热加载后可调（水合进 env 后本函数直接读到）。
+ */
+export const INGEST_ALERT_DEFAULTS = { min: 5, pct: 50 };
+
+export function ingestAlertThresholds(env = process.env) {
+  const min = Number(env.ALERTS_INGEST_ALERT_MIN);
+  const pct = Number(env.ALERTS_INGEST_ALERT_PCT);
+  return {
+    min: Number.isFinite(min) && min >= 1 ? Math.floor(min) : INGEST_ALERT_DEFAULTS.min,
+    pct: Number.isFinite(pct) && pct >= 1 && pct <= 100 ? Math.floor(pct) : INGEST_ALERT_DEFAULTS.pct,
+  };
+}
+
+/** 纯函数：单轮失败数是否越过告警线 max(min, ⌈total×pct%⌉)。shape 与 DB 失败分开判。 */
+export function ingestAlertBreaches({ total = 0, shapeMismatch = 0, failed = 0 }, { min = INGEST_ALERT_DEFAULTS.min, pct = INGEST_ALERT_DEFAULTS.pct } = {}) {
+  const line = Math.max(min, Math.ceil(total * pct / 100));
+  return { shape: shapeMismatch >= line, failed: failed >= line, line };
 }
 
 /**
@@ -27,9 +49,10 @@ export function rawOfferShapeIssue(offer) {
   return null;
 }
 
-export async function ingestOffers(store, { platform, offers, logger = null }) {
+export async function ingestOffers(store, { platform, offers, logger = null, thresholds = null }) {
   const q = (sql, params) => store.query(sql, params);
-  const stats = { total: offers.length, inserted: 0, updated: 0, snapshots: 0, unchanged: 0, skipped: 0, noAppId: 0, shapeMismatch: 0 };
+  const alert = thresholds ?? ingestAlertThresholds();
+  const stats = { total: offers.length, inserted: 0, updated: 0, snapshots: 0, unchanged: 0, skipped: 0, noAppId: 0, shapeMismatch: 0, failed: 0 };
   const platformCache = new Set();
 
   for (const offer of offers) {
@@ -44,7 +67,11 @@ export async function ingestOffers(store, { platform, offers, logger = null }) {
     if (shapeIssue) {
       stats.skipped += 1;
       stats.shapeMismatch += 1;
-      logger?.warn(`adapter.${plat.code}.shape_mismatch`, { field: shapeIssue, title: String(offer?.title ?? '').slice(0, 120) });
+      logger?.warn(`adapter.${plat.code}.shape_mismatch`, {
+        field: shapeIssue,
+        reason: `shape_${shapeIssue}`,
+        title: String(offer?.title ?? '').slice(0, 120),
+      });
       continue;
     }
     try {
@@ -52,6 +79,7 @@ export async function ingestOffers(store, { platform, offers, logger = null }) {
       // 这是最容易写错的地方，所以显式告警而不是默默按 platform 参数处理。
       if (offer.platformCode && plat.code && offer.platformCode !== plat.code) {
         logger?.warn('ingest.platform_mismatch', {
+          reason: 'platform_mismatch',
           title: offer.title,
           offerPlatform: offer.platformCode,
           usedPlatform: plat.code,
@@ -143,13 +171,37 @@ export async function ingestOffers(store, { platform, offers, logger = null }) {
       });
     } catch (err) {
       stats.skipped += 1;
+      stats.failed += 1;
       logger?.error('ingest.offer_failed', {
         platform: plat?.code,
         title: offer.title,
         productId: offer.platformProductId,
+        ...failFields(err),
         err: serializeError(err),
       });
     }
+  }
+
+  // E4 批（docs/LOGGING-SCHEMA.md §4）：单轮聚合告警——批量解析失败（站点改版）与批量入库失败（DB/连接）
+  // 各按 max(min, ⌈total×pct%⌉) 判线；日常单条失败只落上面的事件，不刷 error 级聚合。
+  const breaches = ingestAlertBreaches(stats, alert);
+  if (breaches.shape) {
+    logger?.error('ingest.shape_threshold', {
+      total: stats.total,
+      shapeMismatch: stats.shapeMismatch,
+      thresholdMin: alert.min,
+      thresholdPct: alert.pct,
+      hint: '本轮大批报价字段缺失（疑似站点改版/适配器契约漂移），检查 adapter.*.shape_mismatch 明细',
+    });
+  }
+  if (breaches.failed) {
+    logger?.error('ingest.failure_threshold', {
+      total: stats.total,
+      failed: stats.failed,
+      thresholdMin: alert.min,
+      thresholdPct: alert.pct,
+      hint: '本轮大批报价入库失败（疑似数据库/连接问题），检查 ingest.offer_failed 明细',
+    });
   }
 
   logger?.info('ingest.summary', stats);

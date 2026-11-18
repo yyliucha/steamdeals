@@ -6,6 +6,7 @@
 // 需要的环境变量：ITAD_API_KEY
 // 未配置时不报错，只记一条 warn 并跳过——避免整条流水线因为一个可选源挂掉。
 import { fetchJson } from '../http.js';
+import { redactUrl, failFields } from '../log.js';
 
 export const descriptor = {
   code: 'itad',
@@ -40,7 +41,7 @@ export async function searchGame(title, { apiKey, logger, country = 'CN' }) {
   const url = `${BASE}/games/search/v1?title=${encodeURIComponent(title)}&key=${apiKey}`;
   const { json } = await fetchJson(url, { logger, label: 'itad.search' });
   if (!Array.isArray(json)) {
-    logger?.error('adapter.itad.shape_mismatch', { step: 'search', keys: Object.keys(json ?? {}).slice(0, 10) });
+    logger?.error('adapter.itad.shape_mismatch', { step: 'search', reason: 'response_not_array', keys: Object.keys(json ?? {}).slice(0, 10) });
     return [];
   }
   return json;
@@ -62,6 +63,7 @@ export async function fetchPrices(gameIds, { apiKey, logger, country = 'CN' }) {
   if (!Array.isArray(json)) {
     logger?.error('adapter.itad.shape_mismatch', {
       step: 'prices',
+      reason: 'response_not_array',
       keys: Object.keys(json ?? {}).slice(0, 10),
       bodySnippet: JSON.stringify(json).slice(0, 300),
     });
@@ -90,7 +92,7 @@ export async function resolveDealSteamAppid(dealUrl, { fetchImpl = null, logger 
     logger?.warn?.('adapter.itad.url_no_appid', { dealUrl: url.slice(0, 120), finalUrl: finalUrl.slice(0, 120) });
     return null;
   } catch (err) {
-    logger?.warn?.('adapter.itad.url_failed', { dealUrl: url.slice(0, 120), message: String(err?.message ?? err).slice(0, 120) });
+    logger?.warn?.('adapter.itad.url_failed', { ...failFields(err, { url }), message: String(err?.message ?? err).slice(0, 120) });
     return null;
   }
 }
