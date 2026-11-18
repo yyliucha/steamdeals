@@ -634,6 +634,11 @@ async function cmdAppSync() {
     // 不再静默退出 0；「同版本跳过 / 无新 Release」属正常，不算失败。
     throw new Error(`App Release 同步失败：${result.reason}${result.version ? `（${result.version}）` : ''}`);
   }
+  // DK 批（docs/TODO.md DK C）：APK 下载失败（latest 已更新但本地 APK 缺失）同样抛错——
+  // 健康条显红 + 原因可见；站点自托管缺 APK 时用户在走 GitHub 直链，运维据此手动重拉。
+  if (result.apkFailed) {
+    throw new Error(`App Release 同步失败：${result.apkFailed}（${result.version}）`);
+  }
   console.log(result.synced ? `已同步 app ${result.version}（APK ${result.apk ?? '无'}）` : `未同步：${result.reason}${result.version ? `（${result.version}）` : ''}`);
 }
 async function cmdSteamDiscovery() {

@@ -7,6 +7,8 @@
 // /releases/latest 对部分 release 返回 404（线上实测），只作兜底（列表 404/网络失败/无合格项时再试）。
 // 配置了 GITHUB_TOKEN 才带 authorization 头，未配置走匿名。失败原因日志区分
 // app.sync_http_404 / app.sync_no_release / app.sync_no_assets，不再只有笼统的 github_http_404。
+// DK 批（docs/TODO.md DK）：apk_download 失败带 apkFailed 标记（cmdAppSync 抛错 → 任务健康条显红）；
+// 新增 githubApkUrl——本地与镜像都无 APK 时 /api/app/latest 的 apkPath 兜底 GitHub Release 直链。
 import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync, readdirSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -113,12 +115,17 @@ export async function syncAppRelease({
     return { synced: false, reason: 'no_assets', version };
   }
 
-  // 版本比较：本地已有同版本且非 force → 跳过
+  // 版本比较：本地已有同版本且非 force → 跳过。
+  // DK 批 D（docs/TODO.md DK D）：同版本跳过前必须检查 APK 文件存在性——latest.json 同版本但
+  // `steamdeals-<version>.apk` 缺失（上一轮 apk_download 失败）时不得跳过，重新走下载补齐；
+  // 否则每小时调度永远 same_version 跳过、APK 永不自动补齐。
+  // Release 没有 APK 资产时无 APK 可下，按原语义跳过。
   let localVersion = null;
   try {
     localVersion = JSON.parse(readFileSync(latestFile, 'utf8'))?.version ?? null;
   } catch { /* 无本地文件 */ }
-  if (!force && localVersion === version) {
+  const localApk = join(root, `steamdeals-${version}.apk`);
+  if (!force && localVersion === version && (!apkAsset || existsSync(localApk))) {
     log('release_skipped', { version });
     return { synced: false, reason: 'same_version', version };
   }
@@ -161,7 +168,10 @@ export async function syncAppRelease({
       pruneApks(root, keep, version);
     } catch (err) {
       log('release_failed', { reason: 'apk_download', message: String(err?.message ?? err).slice(0, 120) });
-      // 失败不删旧文件：latest 已更新但 APK 用旧的兜底（不 5xx）
+      // 失败不删旧文件：latest 已更新但 APK 用旧的兜底（不 5xx）。
+      // DK 批（docs/TODO.md DK C）：带 apkFailed 标记——cmdAppSync 据此抛错，
+      // 后台任务健康条显红 + 原因可见（A5 接线；站点自托管缺 APK 时用户在走 GitHub 直链）。
+      return { synced: true, version, apk: null, apkFailed: 'apk_download' };
     }
   }
 
@@ -191,4 +201,14 @@ export function readLatestMeta(dir = 'data/app', fallbackFile = null) {
     try { return { source: 'image', data: JSON.parse(readFileSync(fallbackFile, 'utf8')) }; } catch { /* 忽略 */ }
   }
   return { source: 'none', data: null };
+}
+
+/**
+ * DK 批（docs/TODO.md DK A）：apkPath 兜底——本地 data/app 与镜像都没有该版本 APK 时，
+ * /api/app/latest 返回 GitHub Release 直链（App 白名单已含 github.com / githubusercontent.com），
+ * 不再返回 null。版本不合法仍返回 null（BY 契约：缺失字段不报错）。
+ */
+export function githubApkUrl(version, repo = 'yyliucha/steamdeals-app') {
+  if (!version || !/^\d+\.\d+\.\d+$/.test(version)) return null;
+  return `https://github.com/${repo}/releases/download/app-v${version}/steamdeals-${version}.apk`;
 }

@@ -85,6 +85,78 @@ test('CJ 接线：cli 命令/调度默认参数/下载路由白名单/GitHub 兜
   assert.match(page, /steamdeals-app\/releases/, 'GitHub 兜底指向 steamdeals-app');
 });
 
+// DK 批（docs/TODO.md DK）：apk_download 失败——latest.json 已更新、APK 缺失时带 apkFailed 标记
+// （cmdAppSync 据此抛错让健康条显红），同时不删旧文件、不 5xx；GitHub 直链兜底 URL 拼装。
+test('DK：APK 下载失败带 apkFailed 标记且 latest 已更新；githubApkUrl 直链拼装', async () => {
+  const dir = tmp();
+  const latestJson = JSON.stringify({ version: '2.20.0', versionCode: 22000, notes: ['a'] });
+  const handlers = {
+    'https://api.github.com/repos/yyliucha/steamdeals-app/releases?per_page=10': { json: [fakeRelease('2.20.0', [
+      { name: 'latest.json', url: 'x-latest' },
+      { name: 'steamdeals-2.20.0.apk', url: 'x-apk' },
+    ])] },
+    'x-latest': { buf: Buffer.from(latestJson) },
+    'x-apk': { error: new Error('assets timeout') },
+  };
+  const r = await syncAppRelease({ dir, fetchImpl: fakeFetch(handlers), logger: { info() {} } });
+  assert.equal(r.synced, true, 'latest 已更新仍算同步完成');
+  assert.equal(r.apkFailed, 'apk_download', 'APK 下载失败带 apkFailed 标记（健康条可见）');
+  assert.equal(r.apk, null);
+  assert.equal(JSON.parse(readFileSync(join(dir, 'latest.json'), 'utf8')).version, '2.20.0', 'latest.json 已更新（接口可公告新版本）');
+  // 直链拼装：合法版本 → GitHub Release 下载 URL；空/非法 → null
+  const { githubApkUrl } = await import('../src/app-release.js');
+  assert.equal(githubApkUrl('2.20.0'), 'https://github.com/yyliucha/steamdeals-app/releases/download/app-v2.20.0/steamdeals-2.20.0.apk');
+  assert.equal(githubApkUrl(null), null, 'version 缺失 → null');
+  assert.equal(githubApkUrl('v2.20.0'), null, '非法版本格式 → null（防注入）');
+  assert.equal(githubApkUrl('2.20.0', 'other/repo'), 'https://github.com/other/repo/releases/download/app-v2.20.0/steamdeals-2.20.0.apk', 'repo 可注入');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// DK 批 D（docs/TODO.md DK D）：同版本但本地 APK 缺失 → 不得 same_version 跳过，重新下载补齐；
+// Release 无 APK 资产时同版本仍跳过（原语义）。反向自检：把跳过条件里的 existsSync 检查删掉 →
+// 「APK 缺失重新补齐」用例红（返回 same_version）。
+test('DK D：同版本但 APK 缺失重新下载补齐；无 APK 资产仍跳过', async () => {
+  const dir = tmp();
+  const latestJson = JSON.stringify({ version: '2.20.0', versionCode: 22000, notes: ['a'] });
+  const apk = Buffer.from('fake-apk');
+  const { createHash } = await import('node:crypto');
+  const sha = createHash('sha256').update(apk).digest('hex');
+  const handlers = {
+    'https://api.github.com/repos/yyliucha/steamdeals-app/releases?per_page=10': { json: [fakeRelease('2.20.0', [
+      { name: 'latest.json', url: 'x-latest' },
+      { name: 'steamdeals-2.20.0.apk', url: 'x-apk' },
+      { name: 'steamdeals-2.20.0.apk.sha256', url: 'x-sha' },
+    ])] },
+    'x-latest': { buf: Buffer.from(latestJson) },
+    'x-apk': { buf: apk },
+    'x-sha': { buf: Buffer.from(sha) },
+  };
+  // 首轮：完整同步（latest + APK 落盘）
+  const r1 = await syncAppRelease({ dir, fetchImpl: fakeFetch(handlers), logger: { info() {} } });
+  assert.equal(r1.synced, true);
+  assert.ok(existsSync(join(dir, 'steamdeals-2.20.0.apk')));
+  // 同版本 + APK 在 → 跳过（原语义不回归）
+  const r2 = await syncAppRelease({ dir, fetchImpl: fakeFetch(handlers) });
+  assert.equal(r2.reason, 'same_version', '同版本 + APK 在 → 跳过');
+  // 模拟上轮 apk_download 失败：删掉 APK 但保留 latest.json → 不得跳过，重新下载补齐
+  rmSync(join(dir, 'steamdeals-2.20.0.apk'));
+  const r3 = await syncAppRelease({ dir, fetchImpl: fakeFetch(handlers), logger: { info() {} } });
+  assert.equal(r3.synced, true, '同版本但 APK 缺失 → 不跳过');
+  assert.equal(r3.apk, 'steamdeals-2.20.0.apk');
+  assert.ok(existsSync(join(dir, 'steamdeals-2.20.0.apk')), 'APK 重新下载补齐（同步自愈）');
+  // Release 无 APK 资产 + 同版本 → 仍跳过（无 APK 可下，不空转）
+  const noApkHandlers = {
+    'https://api.github.com/repos/yyliucha/steamdeals-app/releases?per_page=10': { json: [fakeRelease('2.20.0', [
+      { name: 'latest.json', url: 'x-latest' },
+    ])] },
+    'x-latest': { buf: Buffer.from(latestJson) },
+  };
+  rmSync(join(dir, 'steamdeals-2.20.0.apk'));
+  const r4 = await syncAppRelease({ dir, fetchImpl: fakeFetch(noApkHandlers) });
+  assert.equal(r4.reason, 'same_version', 'Release 无 APK 资产 + 同版本 → 仍跳过');
+  rmSync(dir, { recursive: true, force: true });
+});
+
 // CO-1/A5（docs/DESIGN-AUDIT.md A5）：app-release-sync 失败不再静默——入 TRACKED_COMMANDS 写 sync_runs，
 // 真正的失败（网络/接口/资产缺失）抛错让调度任务显红；同版本跳过/无新 Release 属正常不算失败。
 test('CO-1/A5：app-sync 失败可见——写 sync_runs 且真失败抛错，正常跳过不抛', () => {
@@ -95,6 +167,7 @@ test('CO-1/A5：app-sync 失败可见——写 sync_runs 且真失败抛错，�
   assert.match(cli, /'steam-discovery': cmdSteamDiscovery/, 'steam-discovery 同样入 TRACKED_COMMANDS');
   assert.match(cli, /App Release 同步失败/, 'cmdAppSync 对真失败抛错');
   assert.match(cli, /result\.reason !== 'same_version' && result\.reason !== 'no_release'/, '同版本/无新 Release 不算失败');
+  assert.match(cli, /result\.apkFailed/, 'DK：apk_download 失败（apkFailed 标记）同样抛错 → 健康条显红');
   assert.match(sched, /lastFailedSyncRun/, '调度器从 sync_runs 取失败原因');
   assert.match(sched, /jobFailureEmailChannel/, '调度器按开关构建告警邮件通道');
   assert.match(sched, /scheduler\.failure_alert/, '告警发送留日志');

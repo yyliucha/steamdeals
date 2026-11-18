@@ -215,7 +215,8 @@ test('BY-1：/api/app/latest 新字段缺失时返回 null 不报错（旧清单
     assert.equal(latest.minVersionCode, null, '缺失 minVersionCode → null');
     assert.deepEqual(latest.notes, ['单段说明'], '旧字符串 notes 按单条数组处理');
     assert.equal(latest.sha256, null, '其它缺失字段仍是 null（旧形状不变）');
-    assert.equal(latest.apkPath, null, '镜像内无对应 APK 文件 → apkPath null（CJ 回归修复：不再无条件 /app/dl/）');
+    // DK 批（docs/TODO.md DK A）：本地与镜像都没有 APK → apkPath 兜底 GitHub Release 直链，不再 null
+    assert.equal(latest.apkPath, 'https://github.com/yyliucha/steamdeals-app/releases/download/app-v2.16.0/steamdeals-2.16.0.apk', '镜像内无对应 APK 文件 → apkPath 兜底 GitHub 直链（DK）');
     // 清单文件不存在也不报错
     await srv.close();
     const srv2 = await startApiServer({ query: q, frontendDir: mkdtempSync(join(tmpdir(), 'gp-frontend-empty-')), port: 0, host: '127.0.0.1' });
@@ -398,10 +399,14 @@ test('CJ-回归：apkPath 按 data/app 存在性回落镜像；/app/dl/<file> �
     assert.equal(dl2.status, 200, 'data/app 有文件 → /app/dl/ 200');
     assert.match(dl2.headers.get('content-type') || '', /vnd\.android\.package-archive/, '/app/dl/ Content-Type');
 
-    // ④ 两边都没有 → null（BY 契约：缺失字段不报错）
+    // ④ 两边都没有 → GitHub Release 直链兜底（DK 批：不再 null；BY 契约缺失字段不报错）
     writeFileSync(join(frontend, 'app', 'latest.json'), JSON.stringify({ version: '2.17.0' }));
     const latest3 = await (await fetch(`${base}/api/app/latest`)).json();
-    assert.equal(latest3.apkPath, null, '镜像与 data/app 都没有该版本 → apkPath null');
+    assert.equal(latest3.apkPath, 'https://github.com/yyliucha/steamdeals-app/releases/download/app-v2.17.0/steamdeals-2.17.0.apk', '镜像与 data/app 都没有该版本 → apkPath 兜底 GitHub 直链（DK）');
+    // 版本缺失/非法 → 仍 null（BY 契约：缺失字段不报错）
+    writeFileSync(join(frontend, 'app', 'latest.json'), JSON.stringify({ version: null }));
+    const latest4 = await (await fetch(`${base}/api/app/latest`)).json();
+    assert.equal(latest4.apkPath, null, 'version 缺失 → apkPath 仍 null');
   } finally {
     appData.restore(); // 恢复 APP_DATA_DIR 并清理临时目录（DI：用例结束不留临时目录）
     await srv.close();

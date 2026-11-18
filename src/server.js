@@ -2350,19 +2350,20 @@ export function createApiServer({
       // + 60 秒进程内缓存；READ_MODEL=legacy 保留旧查询。catalog 口径不变。
       // ---- CJ 批（docs/APP-AUTO-UPDATE-PAGE.md §3）：优先读 data/app/latest.json（每小时同步），缺失回落镜像文件 ----
       if (path === '/api/app/latest' && req.method === 'GET') {
-        const { readLatestMeta } = await import('./app-release.js');
+        const { readLatestMeta, githubApkUrl } = await import('./app-release.js');
         const file = process.env.APP_LATEST_FILE ?? resolve(frontendDir ?? 'frontend/dist', 'app', 'latest.json');
         const { data } = readLatestMeta(process.env.APP_DATA_DIR ?? 'data/app', file);
         try {
           // BY 批（docs/MOBILE-APP-UPDATE.md §3）：versionCode/minVersionCode/notes 透传，
           // 缺失时返回 null 不报错（旧清单/旧客户端不受影响）；notes 兼容旧字符串格式（按单条处理）。
           // CJ 现场回归修复：apkPath 按文件真实存在性派生（data/app → 镜像 → null），不再无条件 /app/dl/。
+          // DK 批（docs/TODO.md DK A）：本地与镜像都没有 → GitHub Release 直链兜底（不再 null）。
           return json(res, 200, {
             version: data.version ?? null,
             versionCode: data.versionCode == null ? null : Number(data.versionCode),
             minVersionCode: data.minVersionCode == null ? null : Number(data.minVersionCode),
             notes: data.notes == null ? null : (Array.isArray(data.notes) ? data.notes : [data.notes]),
-            apkPath: appApkPathFor(data?.version, frontendDir),
+            apkPath: appApkPathFor(data?.version, frontendDir) ?? githubApkUrl(data?.version),
             sha256: data.sha256 ?? null,
             size: data.size == null ? null : Number(data.size),
             releasedAt: data.releasedAt ?? null,
