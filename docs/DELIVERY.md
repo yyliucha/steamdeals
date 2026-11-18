@@ -195,9 +195,23 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-17 更新，v2.24.0 已发布：CK e2e 测试套件 + CM App 功能补齐（站点侧））
+### 当前状态（2026-11-17 更新，v2.24.1 已发布：CN 对齐审核查询性能热修）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
+- **v2.24.1 已发布**（tag `v2.24.1`）：CN 批 P0 热修——对齐审核查询拖垮站点（线上 504 + 容器重启）：
+  `GET /api/admin/align` 改为「后台计算 + 缓存读」——结果缓存 TTL 10 分钟（`src/align-query.js` createAlignRunner，
+  实例级跨请求共享）+ single-flight（并发只算一次）+ `?refresh=1` 强制重算 + confirm/ignore 后失效；
+  候选预筛（`src/match.js` 归一化全等快路径 + 信息 token 召回、共享数降序截断 ≤2000，口径零变化）；
+  匹配循环每 200 组 `setImmediate` 分片 + 20s 预算（超时返回 `partial:true` 不 5xx）；
+  接口分页 `page/pageSize=20`（`parseAlignPage` 回落）+ 前端生成时间/缓存状态/partial 提示、刷新强制重算。
+  详见 [ALIGN-QUERY-PERF.md](ALIGN-QUERY-PERF.md)。
+  验证：`npm test` 主链全绿（97 文件 815 用例，新增 test/align-perf.test.js 13 项进主链，反向自检 2 处）、
+  `frontend:build` ✓、`scan` 干净；HTTP 冒烟：缓存命中 7ms ≤200ms、45 组分页、计算期间 `/api/games/count` 与 `/api/site` 并发 200。
+  质检：CN ✅（[QA-CN.md](QA-CN.md) 第 1 轮，通过 7 / 需人工确认 4：部署后 P95 观察 / 零 token 标题边界抽查 /
+  confirm-ignore HTTP 级复验 / 前端页面目视）。
+  CI：待确认（tag 推送后记录 run id）。
+  **服务器部署待执行**（升级到 `2.24.1`）；部署后：① 打开「对齐审核」两次，第二次应 ≤200ms 且显示「缓存」；
+  ② 点「刷新」观察重算与 partial 提示；③ 计算期间观察其它页面/接口不卡顿、容器不再重启。
 - **v2.24.0 已发布**（tag `v2.24.0`）：CK 批 e2e 测试套件（`test/e2e/` 功能矩阵 49 行 + runner + 8 个 lib，
   零新增运行时依赖）+ CM 批 App 功能补齐（站点侧：e2e 矩阵 4 行与文档；App 仓库 `steamdeals-app` v2.20.0
   独立发布，app-v2.20.0 tag 等所有者指令）。详见 [TESTING-E2E.md](TESTING-E2E.md) / [E2E-SUITE.md](E2E-SUITE.md) / [APP-PARITY.md](APP-PARITY.md)。

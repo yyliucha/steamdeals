@@ -1,5 +1,20 @@
 # 变更日志
 
+## [2.24.1] - 2026-11-17
+
+对齐审核查询拖垮站点（CN）：P0 事故热修——把「每次请求全量重算 19.6 万行」改为「后台计算 + 缓存读」。
+
+### 修复
+
+- **对齐审核结果缓存（TTL 10 分钟）+ single-flight**：`src/align-query.js`（新增 `createAlignRunner`）——并发请求共享同一个计算 Promise（并发 5 次只算 1 次）；`?refresh=1` 强制重算；confirm/ignore 修改队列后自动失效。缓存命中实测 7ms（验收 ≤200ms）；runner 定义在 `createApiServer` 实例级（跨请求共享）。
+- **候选预筛**：`src/match.js`（`buildCandidateIndex`/`indexTokens`/`preselectCandidates`）——归一化全等快路径 + 信息 token 召回、共享数降序截断 ≤2000；「组数 × 19.6 万」降到「组数 × ≤2000」。口径零变化：CE 13 条误匹配仍不进提案、正确样例仍命中（与 `test/match.test.js` 同源锁定）。
+- **匹配循环分片 + 20s 时间预算**：`src/align.js`（`proposeAlignGroupsBudgeted`）每 200 组 `setImmediate` 让出事件循环（计算期间 `/api/games/count`、`/api/site` 不被阻塞）；超时返回 `partial:true` 与已算部分，不 5xx。`proposeAlignGroups` 保持同步旧签名，CLI 零改动。
+- **接口分页 + 前端状态**：`GET /api/admin/align?page&pageSize=20&refresh=1`（非法参数回落 1..50，`parseAlignPage` 纯函数）；响应带 `generatedAt/cached/partial`；后台「对齐审核」显示生成时间/缓存状态、partial 黄色警告、刷新按钮强制重算（计算中禁点防叠加）。
+
+### 测试
+
+- `test/align-perf.test.js`（新增 13 项进主链）：缓存/单飞/预筛口径（CE 回归 + 正确样例）/预算 partial/分片/截断/分页边界；反向自检 2 处（改坏实现 → 测试变红后恢复）。HTTP 冒烟（pglite + 真服务）：缓存命中 7ms、45 组分页、计算期间 count/site 并发 200。
+
 ## [2.24.0] - 2026-11-17
 
 e2e 测试套件（CK）+ App 功能补齐（CM）：把「真实测试 = 上线门槛」落成可重复脚本，并补齐 App 与 Web 的差异项。

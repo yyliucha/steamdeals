@@ -1,6 +1,6 @@
-# 对齐审核查询拖垮站点（CN：缓存 + 候选预筛 + 单飞 + 时间预算）（已实现待发版）
+# 对齐审核查询拖垮站点（CN：缓存 + 候选预筛 + 单飞 + 时间预算）（已实现并发布 v2.24.1）
 
-> 状态：**已实现待发版（2026-11-17，5c723aa；QA 报告 docs/QA-CN.md 第 1 轮 ✅ 放行）**。
+> 状态：**已实现并发布 v2.24.1（2026-11-17，5c723aa + 收尾 2060586；QA 报告 docs/QA-CN.md 第 1 轮 ✅ 放行）**。
 > 关联：[TODO.md](TODO.md) CN 条目、[SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md)（对齐审核页与匹配口径）、
 > [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md)（同类"整轮阻塞"教训）。
 
