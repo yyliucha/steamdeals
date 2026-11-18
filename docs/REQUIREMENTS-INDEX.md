@@ -86,6 +86,9 @@
 | **CX** | 个人资料编辑（Web + App；头像存库、双 Steam 账号默认头像、设为默认/解绑/新增换绑） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) | 待开发（2026-11-18 决策确认 + 双 demo） | ✅ 本轮已给 |
 | **CY** | 数据隔离（用户私有数据管理员只读；越权 403 + 审计；站点级/账号安全/申诉保留可写） | [DATA-ISOLATION.md](DATA-ISOLATION.md) | 待开发（2026-11-18 边界确认；P1） | ✅ 本轮已给 |
 | **CZ** | 二期：邮箱体系（更换邮箱验证码 + 邮箱验证码登录 + 忘记密码） | —（TODO CZ 条目） | 待开发（2026-11-18 立项；等沟通启动） | ⏳ 待沟通 |
+| **DA** | CM-5：App 筛选/排序服务端化（折扣/史低/免费/未发售全库筛） | [APP-PARITY.md](APP-PARITY.md) §57 | 待开发（2026-11-18 立项；等沟通） | ⏳ 待沟通 |
+| **DB** | 个人主页（公开资料页 `/u/:username`） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) §5 | 待开发（2026-11-18 立项；等沟通） | ⏳ 待沟通 |
+| **DC** | CM-6：App 公告角标（先核实登录态） | [APP-PARITY.md](APP-PARITY.md) §65 | 待开发（2026-11-18 立项；待核实） | ⏳ 待沟通 |
 | **CR** | 开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + API 契约字符串数组） | [APP-DEV-PUBLISHER-NAMES.md](APP-DEV-PUBLISHER-NAMES.md) | 已发布 v2.24.1（2026-11-18，5673ee9；QA ✅ docs/QA-CR.md） | ✅ 本轮已给 |
 | **CE** | 杉果匹配器加固 + 误合并数据修复（完整标题计分/片段限制/数字一致性/内容词只进人工/`--apply` 二次确认） | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9 | 已发布 v2.19.0（2026-11-16，12f4f42；QA 报告 docs/QA-CE.md） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |
