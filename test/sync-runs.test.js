@@ -35,6 +35,13 @@ test('同步记录：插入 → 完成 → 列表 → 重启中断标记', async
     const row = (await q('select status, output from sync_runs where id = $1', [r2.id])).rows[0];
     assert.equal(row.status, 'failed');
     assert.match(row.output, /服务重启/);
+
+    // CO-1/A5：任务失败原因——最近一条 failed 记录的输出；成功记录/别的 mode 不命中
+    await db.insertSyncRun(q, { mode: 'app-sync', args: 'src/cli.js app-sync' }).then((r) =>
+      db.finishSyncRun(q, r.id, { status: 'failed', exitCode: 1, output: 'App Release 同步失败：network' }),
+    );
+    assert.equal(await db.lastFailedSyncRun(q, 'app-sync'), 'App Release 同步失败：network', '取该 mode 最近失败原因');
+    assert.equal(await db.lastFailedSyncRun(q, 'steam-prices'), null, '别的 mode 不命中');
   } finally {
     await store.close();
   }

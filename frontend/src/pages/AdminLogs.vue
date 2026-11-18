@@ -126,11 +126,13 @@
         <div class="module-card health-bar">
           <div class="health-head"><div><h3>任务健康</h3><p>最近一次运行 · 点任务筛选日志 · 每 60 秒自动刷新</p></div><el-button text :loading="loading.health" @click="loadHealth">刷新</el-button></div>
           <div class="health-chips">
-            <button v-for="j in jobs" :key="j.name" type="button" class="health-chip" :class="[jobState(j), { on: jobFilter === j.name }]" @click="toggleJobFilter(j.name)">
+            <button v-for="j in jobs" :key="j.name" type="button" class="health-chip" :class="[jobState(j), { on: jobFilter === j.name }]" :title="jobFailTitle(j)" @click="toggleJobFilter(j.name)">
               <span class="dot" /><strong>{{ jobLabel(j.name) }}</strong>
               <span class="chip-state">{{ jobStateText(j) }}</span>
               <span v-if="j.lastElapsedMs != null">{{ fmtDur(j.lastElapsedMs) }}</span>
               <span class="chip-next">{{ nextRunText(j) }}</span>
+              <!-- CO-1/A5：失败 chip 显示失败原因（截断单行，悬停看全文） -->
+              <span v-if="jobState(j) === 'failed' && j.lastError" class="chip-reason">{{ j.lastError }}</span>
             </button>
             <el-empty v-if="!jobs.length" description="调度器状态尚未生成（未启动？）" :image-size="40" />
           </div>
@@ -463,6 +465,10 @@ function jobStateText(j) {
   if (j.lastResult === 'failed') return '失败';
   return j.lastRunAt ? '待运行' : '未运行';
 }
+// CO-1/A5：chip 悬停提示——失败时展示完整失败原因
+function jobFailTitle(j) {
+  return j.lastError ? '失败原因：' + j.lastError : jobLabel(j.name);
+}
 function fmtDur(ms) {
   const v = Number(ms);
   if (!Number.isFinite(v) || v < 0) return '—';
@@ -572,7 +578,7 @@ onBeforeUnmount(() => {
 .health-head h3{margin:0;font-size:14px}
 .health-head p{margin:4px 0 0;font-size:12px;color:var(--fg-muted)}
 .health-chips{display:flex;gap:8px;flex-wrap:wrap}
-.health-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--panel-2);border-radius:10px;padding:7px 10px;font-size:12px;color:var(--fg-2);cursor:pointer;font:inherit}
+.health-chip{display:flex;align-items:center;flex-wrap:wrap;gap:8px;border:1px solid var(--border);background:var(--panel-2);border-radius:10px;padding:7px 10px;font-size:12px;color:var(--fg-2);cursor:pointer;font:inherit}
 .health-chip:hover{border-color:var(--brand)}
 .health-chip.on{border-color:var(--brand);background:var(--brand-soft)}
 .health-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--fg-subtle);flex:none}
@@ -580,6 +586,8 @@ onBeforeUnmount(() => {
 .health-chip.failed .dot{background:var(--danger)}
 .health-chip .chip-state{color:var(--fg-muted);font-size:11px}
 .health-chip .chip-next{color:var(--fg-subtle);font-size:11px}
+/* CO-1/A5：失败原因单行截断，悬停 title 看全文 */
+.health-chip .chip-reason{flex-basis:100%;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;color:var(--danger);font-size:11px}
 .heading-actions{display:flex;gap:6px;align-items:center}
 .log-panel{display:flex;flex-direction:column;padding:0;overflow:hidden}
 .log-panel-head{position:sticky;top:0;z-index:2;background:var(--panel);border-bottom:1px solid var(--border);padding:12px 14px;display:flex;flex-direction:column;gap:8px}

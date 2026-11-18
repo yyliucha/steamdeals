@@ -84,3 +84,18 @@ test('CJ 接线：cli 命令/调度默认参数/下载路由白名单/GitHub 兜
   assert.match(server, /req\.method === 'HEAD'/, 'HEAD 可用');
   assert.match(page, /steamdeals-app\/releases/, 'GitHub 兜底指向 steamdeals-app');
 });
+
+// CO-1/A5（docs/DESIGN-AUDIT.md A5）：app-release-sync 失败不再静默——入 TRACKED_COMMANDS 写 sync_runs，
+// 真正的失败（网络/接口/资产缺失）抛错让调度任务显红；同版本跳过/无新 Release 属正常不算失败。
+test('CO-1/A5：app-sync 失败可见——写 sync_runs 且真失败抛错，正常跳过不抛', () => {
+  const root = join(process.cwd());
+  const cli = readFileSync(join(root, 'src', 'cli.js'), 'utf8');
+  const sched = readFileSync(join(root, 'src', 'scheduler.js'), 'utf8');
+  assert.match(cli, /'app-sync': cmdAppSync/, 'app-sync 进 TRACKED_COMMANDS（失败写 sync_runs 才有原因）');
+  assert.match(cli, /'steam-discovery': cmdSteamDiscovery/, 'steam-discovery 同样入 TRACKED_COMMANDS');
+  assert.match(cli, /App Release 同步失败/, 'cmdAppSync 对真失败抛错');
+  assert.match(cli, /result\.reason !== 'same_version' && result\.reason !== 'no_release'/, '同版本/无新 Release 不算失败');
+  assert.match(sched, /lastFailedSyncRun/, '调度器从 sync_runs 取失败原因');
+  assert.match(sched, /jobFailureEmailChannel/, '调度器按开关构建告警邮件通道');
+  assert.match(sched, /scheduler\.failure_alert/, '告警发送留日志');
+});

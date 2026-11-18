@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createLogger, serializeError } from './log.js';
-import { hasNotifier } from './notify.js';
+import { hasNotifier, deliver, jobFailureEmailChannel, buildJobFailureMail } from './notify.js';
 import { openStore } from './store/index.js';
 import * as db from './store/pg.js';
 import * as settings from './settings.js';
@@ -269,6 +269,27 @@ export function recordJobResult(state, { code, nowMs, threshold = CIRCUIT.thresh
 /** 熔断是否仍然生效。 */
 export function isCircuited(state, nowMs) {
   return Boolean(state?.openUntil && nowMs < state.openUntil);
+}
+
+// ---------------------------------------------------------------- CO-1 A5：任务失败可见（docs/DESIGN-AUDIT.md A5）
+
+/**
+ * 任务对应的 sync_runs mode：sync 系子命令的 mode 是第二个参数（`sync steam-prices` → steam-prices），
+ * 其余命令的 mode 就是命令本身（`app-sync` / `heat` / `probe`…）。调度器按它取最近失败原因。
+ */
+export function syncRunModeFor(job) {
+  const args = Array.isArray(job?.args) ? job.args : [];
+  return args[0] === 'sync' ? String(args[1] ?? '') : String(args[0] ?? job?.name ?? '');
+}
+
+/**
+ * 任务失败原因的最终取值：优先 sync_runs 里的真实原因（runSyncTracked 写的 err.message），
+ * 取不到回退退出码；75（429/403 软退出）保持原有 partial 文案；成功为 null。
+ */
+export function jobFailureError(code, runReason) {
+  if (code === 0) return null;
+  if (code === 75) return 'HTTP 429/403 提前收尾（进度已保留，1 小时后重排）';
+  return String(runReason || `exit code ${code}`);
 }
 
 // ---------------------------------------------------------------- BL-2：429 软退出后的 1 小时重排（docs/BACKFILL-THROUGHPUT.md §3.2）
@@ -699,17 +720,33 @@ export async function main() {
     let followUpChain = Promise.resolve();
 
     // 任务收尾（并行任务各自完成时调用）：记录时间/健康度、状态文件、串行触发后续 chart
-    const completeJob = (job, code) => {
+    const completeJob = async (job, code) => {
       running.delete(job.name);
       lastRunMs.set(job.name, Date.now());
       const started = startedAt.get(job.name) ?? Date.now();
       startedAt.delete(job.name);
-      lastOutcome.set(job.name, {
+      // CO-1/A5：失败原因从 sync_runs 取（子进程退出前已落库），取不到回退退出码
+      let runReason = null;
+      if (code !== 0 && code !== 75) {
+        try {
+          runReason = await db.lastFailedSyncRun(q, syncRunModeFor(job));
+        } catch (err) {
+          logger.warn('scheduler.failure_reason_failed', { job: job.name, err: serializeError(err) });
+        }
+      }
+      const outcome = {
         elapsedMs: Date.now() - started,
         // BL-2：75 = 429/403 软退出 → partial（不记失败、不熔断）
         result: code === 0 ? 'ok' : code === 75 ? 'partial' : 'failed',
-        error: code === 0 ? null : code === 75 ? 'HTTP 429/403 提前收尾（进度已保留，1 小时后重排）' : `exit code ${code}`,
-      });
+        error: jobFailureError(code, runReason),
+      };
+      lastOutcome.set(job.name, outcome);
+      // CO-1/A5：失败邮件告警（开关 settings alerts.jobFailureEmail，默认关；收件人走告警回退链）
+      if (outcome.result === 'failed') {
+        await alertJobFailure(job, code, outcome.error).catch((err) =>
+          logger.warn('scheduler.failure_alert_failed', { job: job.name, err: serializeError(err) }),
+        );
+      }
       retryState = applyRetry(retryState, { job: job.name, code, nowMs: Date.now() });
       writeRetryState(retryState);
       waitingSince.delete(job.name);
@@ -741,6 +778,18 @@ export async function main() {
       } else if (code === 0 && (state.failures ?? 0) > 0) {
         logger.info('scheduler.circuit_reset', { job: job.name, afterFailures: state.failures });
       }
+    };
+
+    /** CO-1/A5：任务失败邮件告警——开关关/未配 SMTP 时只记日志不发信。 */
+    const alertJobFailure = async (job, code, reason) => {
+      const channel = jobFailureEmailChannel(process.env);
+      if (!channel) {
+        logger.info('scheduler.failure_alert_skipped', { job: job.name, code, reason });
+        return;
+      }
+      const mail = buildJobFailureMail({ job: job.name, code, reason, at: new Date() });
+      const res = await deliver([channel], { subject: mail.subject, text: mail.text, logger });
+      logger.info('scheduler.failure_alert', { job: job.name, code, ok: res.ok, to: channel.to.length });
     };
 
     /** 非阻塞发射一个任务（熔断检查在发射前做）。 */

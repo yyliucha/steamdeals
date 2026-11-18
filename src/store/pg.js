@@ -3346,6 +3346,15 @@ export async function runningSyncRun(q) {
 }
 
 /**
+ * CO-1/A5（docs/DESIGN-AUDIT.md A5）：任务失败原因——该 mode 最近一条 failed 记录的输出。
+ * 子进程退出前已由 runSyncTracked 写入（err.message，≤500 字符），调度器取它作健康条/告警的失败原因。
+ */
+export async function lastFailedSyncRun(q, mode) {
+  const r = await q("select output from sync_runs where mode = $1 and status = 'failed' order by id desc limit 1", [String(mode)]);
+  return r.rows[0]?.output ?? null;
+}
+
+/**
  * 每个 mode 最近一次开始时间（X 批 P1-1）：调度器重启后用这些值恢复 lastRunMs，
  * 避免每次发版都把全部任务打回首轮延迟重新计时。调用方负责把 mode 名对齐 job.name。
  */

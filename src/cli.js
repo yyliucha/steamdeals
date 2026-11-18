@@ -611,6 +611,11 @@ async function cmdAppSync() {
     force: flag('force', false) === true,
     logger,
   });
+  if (!result.synced && result.reason !== 'same_version' && result.reason !== 'no_release') {
+    // CO-1/A5：真正的同步失败（网络/接口/资产缺失）必须抛错——让调度任务在健康条显红并带原因，
+    // 不再静默退出 0；「同版本跳过 / 无新 Release」属正常，不算失败。
+    throw new Error(`App Release 同步失败：${result.reason}${result.version ? `（${result.version}）` : ''}`);
+  }
   console.log(result.synced ? `已同步 app ${result.version}（APK ${result.apk ?? '无'}）` : `未同步：${result.reason}${result.version ? `（${result.version}）` : ''}`);
 }
 async function cmdSteamDiscovery() {
@@ -3017,6 +3022,9 @@ async function main() {
     readmodel: cmdReadModel,
     alerts: cmdAlerts,
     report: cmdReport,
+    // CO-1/A5：App Release 同步与 Steam 发现也写 sync_runs——失败原因才能进健康条/邮件告警
+    'app-sync': cmdAppSync,
+    'steam-discovery': cmdSteamDiscovery,
   };
   if (TRACKED_COMMANDS[command]) {
     if (command === 'images' && args[1] !== 'pull') return commands.images();

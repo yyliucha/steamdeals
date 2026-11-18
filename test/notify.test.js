@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
-import { buildMessage, channelsFromEnv, encodeSubject, hasNotifier, sendMail, sendWecom, deliver, postJson } from '../src/notify.js';
+import { buildMessage, channelsFromEnv, encodeSubject, hasNotifier, sendMail, sendWecom, deliver, postJson, jobFailureEmailChannel, buildJobFailureMail } from '../src/notify.js';
 
 /** 起一个假 SMTP 服务器，记录收到的每一行命令与邮件正文。 */
 function startFakeSmtp({ authCode = 235 } = {}) {
@@ -197,4 +197,77 @@ test('postJson 失败返回结构化错误', async () => {
   });
   assert.equal(res.ok, false);
   assert.match(res.error, /boom/);
+});
+
+// ---------------------------------------------------------------- CO-1/A5（docs/DESIGN-AUDIT.md A5）：任务失败邮件告警
+
+test('任务失败告警通道：开关默认关；开关开但 SMTP/收件人缺失也返回 null', () => {
+  assert.equal(jobFailureEmailChannel({}), null, '开关默认关闭（不发信）');
+  assert.equal(jobFailureEmailChannel({ ALERTS_JOB_FAILURE_EMAIL: '0', SMTP_HOST: 'smtp.x.com', ALERT_EMAIL_TO: 'a@x.com' }), null, '显式 0 同样不发');
+  assert.equal(jobFailureEmailChannel({ ALERTS_JOB_FAILURE_EMAIL: '1' }), null, '开关开但没配 SMTP');
+  assert.equal(jobFailureEmailChannel({ ALERTS_JOB_FAILURE_EMAIL: '1', SMTP_HOST: 'smtp.x.com' }), null, '配了 SMTP 但回退链取不到收件人');
+});
+
+test('任务失败告警通道：收件人走回退链（申诉邮箱 → 告警收件人 → 发件人 → SMTP 账号）', () => {
+  const base = { ALERTS_JOB_FAILURE_EMAIL: '1', SMTP_HOST: 'smtp.example.com', SMTP_USER: 'me@example.com', SMTP_PASS: 'pw' };
+  const appeal = jobFailureEmailChannel({ ...base, APPEAL_EMAIL: 'appeal@x.com', ALERT_EMAIL_TO: 'a@x.com' });
+  assert.deepEqual(appeal.to, ['appeal@x.com'], '申诉邮箱优先级最高');
+  const alert = jobFailureEmailChannel({ ...base, ALERT_EMAIL_TO: 'a@x.com, b@x.com' });
+  assert.deepEqual(alert.to, ['a@x.com', 'b@x.com'], '告警收件人次之，支持多个');
+  const from = jobFailureEmailChannel({ ...base, SMTP_FROM: 'from@x.com' });
+  assert.deepEqual(from.to, ['from@x.com'], '发件人兜底');
+  const user = jobFailureEmailChannel(base);
+  assert.deepEqual(user.to, ['me@example.com'], '最后回退 SMTP 账号');
+  assert.equal(user.host, 'smtp.example.com');
+  assert.equal(user.port, 465);
+  assert.equal(user.secure, true);
+  assert.equal(user.from, 'me@example.com');
+});
+
+test('任务失败告警邮件：主题带任务名，正文带时间/退出码/原因；缺原因回退退出码', () => {
+  const mail = buildJobFailureMail({
+    job: 'sonkwo',
+    code: 1,
+    reason: 'data/skus.json 为空，先用 add-sku 加几个 SKU',
+    at: new Date('2026-11-18T10:00:00Z'),
+  });
+  assert.equal(mail.subject, '[SteamDeals] 任务失败：sonkwo');
+  assert.match(mail.text, /定时任务 sonkwo 运行失败/);
+  assert.match(mail.text, /2026-11-18T10:00:00\.000Z/);
+  assert.match(mail.text, /退出码：1/);
+  assert.match(mail.text, /data\/skus\.json 为空/);
+  const noReason = buildJobFailureMail({ job: 'heat', code: 2, reason: null, at: new Date('2026-11-18T10:00:00Z') });
+  assert.match(noReason.text, /原因：exit code 2/, '取不到原因时用退出码兜底');
+});
+
+test('任务失败告警端到端：开关开 + 假 SMTP 真收到告警邮件；开关关不发', async () => {
+  const { server, state, port } = await startFakeSmtp();
+  try {
+    const env = {
+      ALERTS_JOB_FAILURE_EMAIL: '1',
+      SMTP_HOST: '127.0.0.1',
+      SMTP_PORT: String(port),
+      SMTP_SECURE: '0',
+      SMTP_USER: '',
+      SMTP_PASS: '',
+      ALERT_EMAIL_TO: 'ops@example.com',
+    };
+    const channel = jobFailureEmailChannel(env);
+    assert.ok(channel, '开关开 + SMTP 配好才有通道');
+    const mail = buildJobFailureMail({ job: 'app-release-sync', code: 1, reason: 'App Release 同步失败：network' });
+    const res = await deliver([channel], { subject: mail.subject, text: mail.text });
+    assert.equal(res.ok, true, 'SMTP 投递成功');
+    assert.match(state.data, /Subject: =?/, 'SMTP 服务器收到邮件');
+    assert.ok(state.commands.some((c) => c === 'RCPT TO:<ops@example.com>'), '收件人正确');
+    const body = state.data.split('\r\n\r\n').pop();
+    assert.match(Buffer.from(body.replace(/\r\n/g, ''), 'base64').toString('utf8'), /App Release 同步失败：network/, '正文带失败原因');
+  } finally {
+    server.close();
+  }
+  // 开关关：不发信（channel 为 null，调度器跳过并只记日志）
+  assert.equal(
+    jobFailureEmailChannel({ ALERTS_JOB_FAILURE_EMAIL: '0', SMTP_HOST: '127.0.0.1', SMTP_PORT: String(port), SMTP_SECURE: '0', ALERT_EMAIL_TO: 'ops@example.com' }),
+    null,
+    '开关关时无通道，不发信',
+  );
 });

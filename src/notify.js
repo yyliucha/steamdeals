@@ -8,6 +8,7 @@
 import net from 'node:net';
 import tls from 'node:tls';
 import { serializeError } from './log.js';
+import { appealEmailFrom } from './appeal.js';
 
 // ---------------------------------------------------------------- 通道发现
 
@@ -346,4 +347,50 @@ export async function deliver(channels, { text, html = null, payload, subject = 
     detail: results.map((r) => `${r.channel}:${r.ok ? 'ok' : 'fail'}`).join(','),
   });
   return { ok, results };
+}
+
+// ---------------------------------------------------------------- 任务失败告警（CO-1 A5，docs/DESIGN-AUDIT.md A5）
+
+/**
+ * 任务失败邮件告警的邮件通道。开关关闭（settings alerts.jobFailureEmail，默认关）、
+ * SMTP 未配置、或收件人回退链为空时返回 null（调用方跳过并记日志）。
+ * 收件人复用告警收件人回退链（appealEmailFrom：申诉邮箱 → 告警收件人 → 发件人 → SMTP 账号），
+ * SMTP 配置与提醒邮件共用同一套，不新增依赖。
+ */
+export function jobFailureEmailChannel(env = process.env) {
+  // 水合后的 bool 值是 '1' / '0'；只认显式开启，避免默认关的开关被误触
+  if (String(env.ALERTS_JOB_FAILURE_EMAIL ?? '') !== '1') return null;
+  const host = String(env.SMTP_HOST ?? '').trim();
+  const to = String(appealEmailFrom(env) ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!host || !to.length) return null;
+  return {
+    name: 'email',
+    kind: 'email',
+    host,
+    port: Number(env.SMTP_PORT ?? 465),
+    secure: (env.SMTP_SECURE ?? '1') !== '0',
+    user: env.SMTP_USER ?? '',
+    pass: env.SMTP_PASS ?? '',
+    from: env.SMTP_FROM ?? env.SMTP_USER ?? '',
+    to,
+  };
+}
+
+/** 任务失败告警邮件内容（纯函数）：主题带任务名，正文带时间/退出码/失败原因。 */
+export function buildJobFailureMail({ job, code, reason = null, at = new Date() }) {
+  const time = at instanceof Date ? at.toISOString() : String(at);
+  return {
+    subject: `[SteamDeals] 任务失败：${job}`,
+    text: [
+      `定时任务 ${job} 运行失败。`,
+      `时间：${time}`,
+      `退出码：${code}`,
+      `原因：${reason || `exit code ${code}`}`,
+      '',
+      '请到控制台「运行与同步」查看任务健康与日志。',
+    ].join('\n'),
+  };
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, registerCircuitReset, resetCircuit, applyRetry } from '../src/scheduler.js';
+import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, registerCircuitReset, resetCircuit, applyRetry, syncRunModeFor, jobFailureError } from '../src/scheduler.js';
 
 test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），默认 3，非法回落默认', () => {
   assert.equal(lightConcurrency({}), 3);
@@ -493,6 +493,25 @@ test('AC-2：熔断手动重置——registerCircuitReset 注册钩子，resetCi
   assert.equal(state.openUntil, null);
   off();
   assert.equal(resetCircuit('heat'), false, '注销后不再处理');
+});
+
+// CO-1/A5（docs/DESIGN-AUDIT.md A5）：任务失败可见——失败原因取 sync_runs 真实原因，取不到回退退出码
+test('CO-1/A5：任务 → sync_runs mode 映射（sync 系取第二个参数，其余取命令名）', () => {
+  assert.equal(syncRunModeFor({ name: 'app-release-sync', args: ['app-sync'] }), 'app-sync', 'App Release 同步的 mode 是命令名 app-sync');
+  assert.equal(syncRunModeFor({ name: 'steam-prices', args: ['sync', 'steam-prices', '--limit', '1'] }), 'steam-prices');
+  assert.equal(syncRunModeFor({ name: 'sonkwo', args: ['sync', 'sonkwo'] }), 'sonkwo');
+  assert.equal(syncRunModeFor({ name: 'heat', args: ['heat', '--limit', '1'] }), 'heat');
+  assert.equal(syncRunModeFor({ name: 'steam-discovery', args: ['steam-discovery', '--pages', '100'] }), 'steam-discovery');
+  assert.equal(syncRunModeFor({ name: 'proxy-probe', args: ['probe', '--proxy'] }), 'probe');
+  assert.equal(syncRunModeFor({ name: 'chart', args: null }), 'chart', '缺 args 回退任务名');
+});
+
+test('CO-1/A5：失败原因取值——真实原因优先，缺失回退退出码，75 保持 partial 文案，成功为 null', () => {
+  assert.equal(jobFailureError(0, 'x'), null, '成功不带原因');
+  assert.equal(jobFailureError(1, 'data/skus.json 为空'), 'data/skus.json 为空', '优先 sync_runs 里的真实原因');
+  assert.equal(jobFailureError(1, null), 'exit code 1', '取不到原因回退退出码');
+  assert.equal(jobFailureError(-1, ''), 'exit code -1', '空串同样回退');
+  assert.equal(jobFailureError(75, 'ignored'), 'HTTP 429/403 提前收尾（进度已保留，1 小时后重排）', '75 软退出不是失败');
 });
 
 // CH 批（docs/DISCOVERY-FOR-YOU.md §6）：steam-discovery 任务默认参数与 STEAM_HEAVY 互斥

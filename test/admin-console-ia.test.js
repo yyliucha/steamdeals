@@ -315,6 +315,10 @@ test('BA 批：运行与同步页——健康条、记录精简与 5 轮折叠�
   assert.match(vue, /v-for="j in jobs"[^>]*class="health-chip"/, '任务 chip 列表');
   assert.match(vue, /toggleJobFilter\(j\.name\)/, '点 chip 过滤日志');
   assert.match(vue, /setInterval\(\(\) => \{\s*if \(activeTab\.value === 'run' && !document\.hidden\) loadHealth\(\);/, '60 秒刷新健康条');
+  // CO-1/A5：失败 chip 显红并显示失败原因（截断单行，悬停 title 看全文）
+  assert.match(vue, /jobState\(j\) === 'failed' && j\.lastError/, '失败 chip 显示失败原因');
+  assert.match(vue, /class="chip-reason"/, '失败原因行样式');
+  assert.match(vue, /jobFailTitle\(j\)/, '悬停显示完整失败原因');
   // ② 同步记录：6 列（时间/模式/状态/结果/耗时/备注）+ 默认 5 轮 + 展开全部
   assert.match(vue, /label="结果"/, '合并结果列');
   assert.doesNotMatch(vue, /label="请求数"/, '旧的请求数列已合并');

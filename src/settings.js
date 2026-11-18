@@ -169,6 +169,10 @@ export const SETTINGS = [
   def('alerts.appealEmail', 'APPEAL_EMAIL', 'alerts', '申诉邮箱', 'string', '', {
     help: '封禁页/申诉页展示的邮箱。留空则依次回退到：邮件收件人 → 发件人 → SMTP 账号。',
   }),
+  // CO-1/A5（docs/DESIGN-AUDIT.md A5）：任务失败邮件告警——默认关闭，不新增 SMTP 依赖（复用提醒邮件的 SMTP 配置）
+  def('alerts.jobFailureEmail', 'ALERTS_JOB_FAILURE_EMAIL', 'alerts', '任务失败邮件告警', 'bool', false, {
+    help: '调度任务失败时向告警收件人发信（收件人回退链：申诉邮箱 → 邮件收件人 → 发件人 → SMTP 账号）；需已配置 SMTP，否则失败只记录不发信。',
+  }),
 
   // ---- 账号与登录（AK-3，docs/AUTH-REDESIGN.md §4.6）----
   def('auth.registrationEnabled', 'AUTH_REGISTRATION_ENABLED', 'auth', '开放用户注册', 'bool', true, {

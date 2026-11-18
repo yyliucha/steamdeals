@@ -19,8 +19,8 @@ async function fresh() {
   return { store, q };
 }
 
-test('设置定义完整：58 项、7 个密钥、关键分组都在', () => {
-  assert.equal(settings.SETTINGS.length, 88, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项');
+test('设置定义完整：59 项、7 个密钥、关键分组都在', () => {
+  assert.equal(settings.SETTINGS.length, 89, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项');
   assert.equal(settings.SETTINGS.filter((d) => d.secret).length, 7);
   const tz = settings.SETTINGS.find((d) => d.key === 'system.timezone');
   assert.ok(tz, '要有 system.timezone（时区设置化）');
@@ -33,6 +33,7 @@ test('设置定义完整：58 项、7 个密钥、关键分组都在', () => {
     'sources.gog.regions',
     'alerts.smtp.host',
     'alerts.emailTo',
+    'alerts.jobFailureEmail',
     'network.steamProxy',
     'system.circuitThreshold',
     'system.logLevel',
@@ -45,6 +46,10 @@ test('设置定义完整：58 项、7 个密钥、关键分组都在', () => {
     assert.ok(keys.includes(key), `缺少 ${key}`);
   }
   assert.equal(new Set(keys).size, keys.length, 'key 不能重复');
+  const jobFailure = settings.SETTINGS.find((d) => d.key === 'alerts.jobFailureEmail');
+  assert.equal(jobFailure.type, 'bool', '任务失败邮件告警是布尔开关');
+  assert.equal(jobFailure.default, false, 'CO-1/A5：默认关闭，不新增 SMTP 依赖');
+  assert.equal(jobFailure.env, 'ALERTS_JOB_FAILURE_EMAIL');
   const adult = settings.SETTINGS.find((d) => d.key === 'site.adultDisplay');
   assert.deepEqual(adult.options, ['hide', 'badge', 'show'], '成人内容策略三档');
   const ssl = settings.SETTINGS.find((d) => d.key === 'steamStatus.limit');
@@ -126,6 +131,7 @@ test('水合：把库值写回 env，SMTP 关闭时清空 SMTP_HOST', async () =
         'sources.steam.enabled': false,
         'sources.gog.regions': 'us',
         'alerts.emailTo': 'x@y.com',
+        'alerts.jobFailureEmail': true,
         'alerts.smtp.host': 'smtp.example.com',
         'alerts.smtp.user': 'u@example.com',
         'alerts.smtp.pass': 'pass-123456',
@@ -138,6 +144,7 @@ test('水合：把库值写回 env，SMTP 关闭时清空 SMTP_HOST', async () =
     assert.equal(env.STEAM_ENABLED, '0');
     assert.equal(env.GOG_REGIONS, 'us');
     assert.equal(env.ALERT_EMAIL_TO, 'x@y.com');
+    assert.equal(env.ALERTS_JOB_FAILURE_EMAIL, '1', 'CO-1/A5：任务失败邮件告警水合成 1（开）');
     assert.equal(env.SMTP_HOST, 'smtp.example.com');
     assert.equal(env.SMTP_USER, 'u@example.com');
     assert.equal(env.SMTP_PASS, 'pass-123456');
