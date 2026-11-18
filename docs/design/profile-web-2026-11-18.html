@@ -2,53 +2,57 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>个人资料（Web）demo</title>
+<title>个人资料（Web）demo v2</title>
 <style>
   :root{--bg:#0b1020;--panel:#121a30;--panel-2:#0f1728;--border:#243050;--border-2:#2e3d63;--fg:#e8edf9;--fg-muted:#93a0bf;--fg-subtle:#6d7a99;--brand:#6b7dff;--green:#3fbf7f;--green-bg:#12291f;--green-border:#2a6b4a}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--fg);font:13.5px/1.65 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;display:flex;min-height:100vh}
-  .side{width:232px;flex:none;background:#0d1526;border-right:1px solid var(--border);padding:16px 12px}
+  .side{width:224px;flex:none;background:#0d1526;border-right:1px solid var(--border);padding:16px 12px}
   .brand{display:flex;align-items:center;gap:9px;margin-bottom:16px}
   .logo{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#6b7dff,#3e4fd8);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px}
   .nav{color:var(--fg-muted);font-size:12.5px;display:flex;flex-direction:column;gap:2px}
   .nav div{padding:7px 10px;border-radius:8px}
   .nav div.on{background:#1a2440;color:#fff}
-  .main{flex:1;padding:22px 30px;position:relative}
-  .crumb{color:var(--fg-subtle);font-size:11.5px;margin-bottom:6px}
+  .main{flex:1;padding:20px 28px;min-width:0}
+  .crumb{color:var(--fg-subtle);font-size:11.5px;margin-bottom:5px}
   h1{font-size:19px;margin:0 0 3px}
-  .sub{color:var(--fg-muted);font-size:12px;margin:0 0 18px}
-  .card{background:linear-gradient(180deg,#121b31,#101728);border:1px solid var(--border);border-radius:14px;margin-bottom:14px;overflow:hidden}
-  .card-h{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);background:#0f1729;font-size:13px;font-weight:600}
-  .card-h .tag{font-size:10.5px;color:#b9c6e6;border:1px solid #2c3a68;background:#16203a;border-radius:999px;padding:1px 8px;font-weight:400}
-  .body{padding:14px 16px}
-  .avatar-row{display:flex;gap:16px;align-items:center;padding-bottom:14px;border-bottom:1px dashed #1c2740;margin-bottom:14px}
-  .avatar{width:84px;height:84px;border-radius:50%;background:center/cover no-repeat,linear-gradient(135deg,#2c3a68,#1b2440);border:2px solid #2e3d63;position:relative}
+  .sub{color:var(--fg-muted);font-size:12px;margin:0 0 16px}
+  .card{background:linear-gradient(180deg,#121b31,#101728);border:1px solid var(--border);border-radius:14px;margin-bottom:13px;overflow:hidden}
+  .card-h{display:flex;align-items:center;gap:8px;padding:11px 15px;border-bottom:1px solid var(--border);background:#0f1729;font-size:13px;font-weight:600}
+  .tag{font-size:10.5px;color:#b9c6e6;border:1px solid #2c3a68;background:#16203a;border-radius:999px;padding:1px 8px;font-weight:400}
+  .body{padding:14px 15px}
+  .avatar-row{display:flex;gap:18px;align-items:flex-start;padding-bottom:14px;border-bottom:1px dashed #1c2740;margin-bottom:14px}
+  .avatar{width:84px;height:84px;border-radius:50%;background:linear-gradient(135deg,#6b7dff,#3e4fd8);position:relative;flex:none;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;color:#fff;border:2px solid #2e3d63}
   .avatar::after{content:'✎';position:absolute;right:-2px;bottom:-2px;width:24px;height:24px;border-radius:50%;background:var(--brand);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;border:2px solid #101728}
-  .avatar-actions{display:flex;flex-direction:column;gap:6px}
-  .avatar-actions .hint{color:var(--fg-subtle);font-size:11px}
+  .avatar-opt{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+  .avopt{display:flex;align-items:center;gap:7px;border:1px solid #2c3a68;background:#121a30;border-radius:10px;padding:5px 10px;font-size:11.5px;color:var(--fg-muted);cursor:pointer}
+  .avopt.on{border-color:var(--brand);box-shadow:0 0 0 3px #4f61f022;color:#fff}
+  .avopt .dot{width:18px;height:18px;border-radius:50%;background:linear-gradient(135deg,#6b7dff,#3e4fd8);display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff}
   .btn{border:1px solid var(--border-2);background:var(--panel-2);color:var(--fg);border-radius:9px;padding:6px 13px;font-size:12.5px;cursor:pointer}
   .btn-primary{background:linear-gradient(180deg,#7287ff,#5a6bf5);border-color:#6b7dff;color:#fff;font-weight:600;box-shadow:0 4px 14px #4256ff33}
+  .btn-sm{padding:4px 10px;font-size:11.5px;border-radius:8px}
   .btn-link{border:0;background:none;color:#9fb4ff;font-size:12px;cursor:pointer;padding:0}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}
   .field label{display:block;font-size:11.5px;color:var(--fg-muted);margin-bottom:5px}
-  .input{background:var(--field,#0d1526);border:1px solid var(--border-2);border-radius:9px;padding:8px 11px;color:var(--fg);font-size:12.5px}
+  .input{background:#0d1526;border:1px solid var(--border-2);border-radius:9px;padding:8px 11px;color:var(--fg);font-size:12.5px;width:100%}
   .input.ro{color:var(--fg-subtle);background:#0b1222}
   .hint{color:var(--fg-subtle);font-size:10.5px;margin-top:4px}
   .badge{font-size:10px;border-radius:999px;padding:1px 7px;border:1px solid var(--green-border);background:var(--green-bg);color:#c8f3dd;margin-left:6px}
-  textarea.input{min-height:74px;resize:vertical;font-family:inherit}
+  textarea.input{min-height:70px;resize:vertical;font-family:inherit}
   .counter{text-align:right;color:var(--fg-subtle);font-size:10.5px}
   .switch{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--fg-muted);cursor:pointer}
-  .sw{width:38px;height:21px;border-radius:999px;background:linear-gradient(180deg,#6b7dff,#5567f2);position:relative;flex:none}
-  .sw::after{content:'';position:absolute;top:2px;left:19px;width:15px;height:15px;border-radius:50%;background:#fff}
-  .sw.off{background:#26334f}
-  .sw.off::after{left:2px;background:#93a3c4}
-  .steam-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px dashed #1c2740}
+  .sw{width:36px;height:20px;border-radius:999px;background:linear-gradient(180deg,#6b7dff,#5567f2);position:relative;flex:none}
+  .sw::after{content:'';position:absolute;top:2px;left:18px;width:14px;height:14px;border-radius:50%;background:#fff}
+  .steam-row{display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px dashed #1c2740}
   .steam-row:first-child{border-top:0}
-  .steam-row img{width:28px;height:28px;border-radius:6px;background:#1b2440}
-  .steam-row .name{flex:1;font-size:12.5px}
+  .sav{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#6b7dff,#3e4fd8);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:none}
+  .steam-row .name{flex:1;min-width:0}
+  .steam-row .name b{font-size:12.5px;font-weight:600}
   .steam-row .id{color:var(--fg-subtle);font-size:11px}
+  .steam-row .ops{display:flex;gap:8px;align-items:center}
+  .def{font-size:10px;color:#c8f3dd;border:1px solid var(--green-border);background:var(--green-bg);border-radius:999px;padding:0 7px}
+  .add{border:1px dashed #3a4c86;background:transparent;color:#9fb4ff;border-radius:10px;padding:8px 12px;font-size:12px;cursor:pointer;width:100%;margin-top:10px}
   .foot{display:flex;justify-content:flex-end;gap:10px;position:sticky;bottom:0;background:linear-gradient(180deg,#0b1020cc,#0b1020);padding:12px 0 4px}
-.avatar .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;color:#fff}.avatar{background:linear-gradient(135deg,#6b7dff,#3e4fd8)}.sav{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#6b7dff,#3e4fd8);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none}
 </style>
 </head>
 <body>
@@ -59,7 +63,7 @@
       <div style="height:8px"></div>
       <div>访问记录</div><div>申诉管理</div>
       <div style="height:8px"></div>
-      <div class="on">👤 个人资料</div><div>Steam 账号</div><div>登录会话</div>
+      <div class="on">👤 个人资料</div><div class="on">Steam 账号</div><div>登录会话</div>
       <div style="height:8px"></div>
       <div>操作日志</div>
     </div>
@@ -68,26 +72,47 @@
   <div class="main">
     <div class="crumb">管理中心 / 账号与服务 / 个人资料</div>
     <h1>个人资料</h1>
-    <p class="sub">管理员与普通用户权限相同：<strong>只能修改自己的资料</strong>；用户名与邮箱需走安全校验。</p>
+    <p class="sub">管理员与普通用户同一套页面：<strong>只能修改自己的资料</strong>；用户私有数据（愿望单/提醒/标记）管理员只读。</p>
 
     <div class="card">
       <div class="card-h">基本信息 <span class="tag">管理员 / 用户通用</span></div>
       <div class="body">
         <div class="avatar-row">
-          <div class="avatar"><span class="ini">S</span></div>
-          <div class="avatar-actions">
-            <div style="display:flex;gap:8px"><button class="btn">更换头像</button><button class="btn">移除</button></div>
-            <span class="hint">支持 JPG/PNG，≤2MB，自动裁剪为 256×256</span>
-            <span class="hint">默认头像取自 Steam 绑定账号</span>
+          <div class="avatar">S</div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;gap:8px;align-items:center"><button class="btn">上传自定义头像</button><button class="btn">移除</button>
+              <span class="hint">JPG/PNG ≤2MB，自动裁剪 256×256</span></div>
+            <div class="hint" style="margin-top:8px">默认头像（已绑 2 个 Steam 账号，可选其一或用自定义上传）：</div>
+            <div class="avatar-opt">
+              <span class="avopt on"><span class="dot">s</span>Steam · sunming</span>
+              <span class="avopt"><span class="dot">a</span>Steam · alt_account</span>
+              <span class="avopt"><span class="dot">↑</span>自定义上传</span>
+            </div>
           </div>
         </div>
         <div class="grid">
-          <div class="field"><label>昵称</label><div class="input">超级管理员</div><div class="hint">2–20 个字符，展示在评论/申诉等位置</div></div>
-          <div class="field"><label>用户名（登录名）</label><div class="input ro">admin</div><div class="hint">不可修改（安全约束）</div></div>
-          <div class="field"><label>邮箱</label><div class="input ro">admin@example.com <span class="badge">已验证</span></div><div class="hint">换邮箱需二次验证（本版先只读）</div></div>
-          <div class="field"><label>角色</label><div class="input ro">管理员</div><div class="hint">由所有者分配，不可自改</div></div>
+          <div class="field"><label>昵称</label><div class="input">超级管理员</div><div class="hint">2–20 个字符</div></div>
+          <div class="field"><label>用户名（登录名）</label><div class="input ro">admin</div><div class="hint">不可修改</div></div>
+          <div class="field"><label>邮箱</label><div class="input ro">admin@example.com <span class="badge">已验证</span></div><div class="hint">更换邮箱（二期）需验证码</div></div>
+          <div class="field"><label>角色</label><div class="input ro">管理员</div><div class="hint">由所有者分配</div></div>
         </div>
-        <div class="field" style="margin-top:14px"><label>个人简介</label><textarea class="input" style="width:100%">Steam 老玩家，喜欢策略与 RPG。</textarea><div class="counter">23 / 200</div></div>
+        <div class="field" style="margin-top:13px"><label>个人简介</label><textarea class="input">Steam 老玩家，喜欢策略与 RPG。</textarea><div class="counter">23 / 200</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">Steam 绑定账号 <span class="tag">可解绑 / 新增 / 更换</span> <span class="tag">2 个</span></div>
+      <div class="body">
+        <div class="steam-row"><span class="sav">s</span>
+          <div class="name"><b>sunming</b> <span class="def">默认</span><div class="id">SteamID 76561198…1234 · 绑定于 2026-11-01</div></div>
+          <div class="ops"><button class="btn btn-sm">设为默认</button><button class="btn btn-sm">解绑</button></div>
+        </div>
+        <div class="steam-row"><span class="sav">a</span>
+          <div class="name"><b>alt_account</b><div class="id">SteamID 76561198…5678 · 绑定于 2026-11-10</div></div>
+          <div class="ops"><button class="btn btn-sm">设为默认</button><button class="btn btn-sm">解绑</button></div>
+        </div>
+        <button class="add">＋ 绑定新的 Steam 账号</button>
+        <div class="hint">解绑只停止后续检测；历史「曾拥有」记录保留。已拥有游戏的展示以当前绑定账号为准。</div>
       </div>
     </div>
 
@@ -101,18 +126,7 @@
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-h">Steam 绑定账号 <span class="tag">只读</span></div>
-      <div class="body">
-        <div class="steam-row"><span class="sav">s</span><div class="name">sunming</div><div class="id">76561198…1234</div><button class="btn-link">在详情页查看拥有</button></div>
-        <div class="steam-row"><span class="sav">s</span><div class="name">alt_account</div><div class="id">76561198…5678</div><button class="btn-link">在详情页查看拥有</button></div>
-        <div class="hint" style="margin-top:8px">绑定/解绑在「Steam 账号」页操作，这里只展示。</div>
-      </div>
-    </div>
-
     <div class="foot"><button class="btn">取消</button><button class="btn btn-primary">保存修改</button></div>
   </div>
 </body>
 </html>
-
-

@@ -1975,9 +1975,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ⑧ 保存/重载/权限行为不变；⑨ `npm test` / `frontend:build` / `scan` 全绿；移动端单列。
 - **待确认**：§6 三条（折叠摘要字段、恢复默认二次确认、移动端形态）。
 
-## CS. 待开发（P0 未完成）：对齐审核预算截断 → 队列恒为空
+## CS. ~~待开发（P0 未完成）：对齐审核预算截断 → 队列恒为空~~ → **已发布 v2.24.3（2026-11-18，2a03188）**
 
-**状态：质检通过（2026-11-18，2a03188；QA 报告 docs/QA-CS-CV.md 第 1 轮 ✅——通过 12 / 需人工确认 2：部署后 P95 + App 真机目视）**
+**状态：已发布 v2.24.3（2026-11-18，2a03188；QA 报告 docs/QA-CS-CV.md 第 1 轮 ✅——通过 12 / 需人工确认 2：部署后 P95 + App 真机目视）**
 **优先级：** P0 —— 功能仍不可用（页面能打开但队列为空）
 **依赖：** CN（已发布 v2.24.1；v2.24.2 已部署）
 **解锁：** 无
@@ -2040,9 +2040,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ④ 抽检 SQL 结论；⑤ npm test / frontend:build / scan 全绿；⑥ CU-4 只出建议不改配置。
 - **待确认**：无（2026-11-18 已定：迁移目标=按 Steam 愿望单反查的用户，多个全列；抽检=全部异常样本；CU-4=只出配额数字）。
 
-## CV. 待开发（P0 体验）：所有查询不再排除已拥有（列表 + 搜索；App 对齐）
+## CV. ~~待开发（P0 体验）：所有查询不再排除已拥有（列表 + 搜索；App 对齐）~~ → **已发布 v2.24.3（2026-11-18，站点 2a03188 + App 仓库 0945006）**
 
-**状态：质检通过（2026-11-18，站点 2a03188 + App 仓库 0945006；QA 报告 docs/QA-CS-CV.md 第 1 轮 ✅——通过 12 / 需人工确认 2：部署后 P95 + App 真机目视）**
+**状态：已发布 v2.24.3（2026-11-18，站点 2a03188 + App 仓库 0945006；QA 报告 docs/QA-CS-CV.md 第 1 轮 ✅——通过 12 / 需人工确认 2：部署后 P95 + App 真机目视）**
 **优先级：** P0 —— 用户搜不到自己的游戏（App 体验事故）
 **依赖：** CL（详情终态已发布 v2.23.0）
 **解锁：** 无
@@ -2080,4 +2080,43 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   无 appid 兜底、移动端、`npm test` / `frontend:build` / `scan` 全绿。
 - **已确认（2026-11-18）**：回收站同样支持；弹窗加 **DLC 数量 + Steam 评测数**（复用同一详情响应，
   `heat_reviews` 随 `GAME_SELECT` 返回）；简介保持 4 行截断 + 展开。
+
+## CX. 待开发：个人资料编辑（Web + App；头像存库/双 Steam 账号/换绑）
+
+**状态：待开发（2026-11-18，所有者 5 项决策已确认；两个 demo 已出）**
+**依赖：** 无（CY 的数据隔离可并行）
+**解锁：** 无
+**规格**：[USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md)
+**Demo**：[design/profile-web-2026-11-18.html](design/profile-web-2026-11-18.html) / [design/profile-android-2026-11-18.html](design/profile-android-2026-11-18.html)
+
+- **现状**：`users` 无头像/bio 列；`/api/me` 只有 GET；没有个人资料页；Steam 账号已有列表/别名/解绑（解绑保留历史），
+  绑定走 Steam 登录。
+- **需求（8 项）**：① 管理员/用户同一套页面与接口，只能改自己；② **头像存数据库**（bytea + mime + source），
+  客户端裁剪 256×256，`GET /api/avatar/:userId` 输出；③ 头像来源 = 已绑 Steam 账号（**多账号可选其一**）或自定义上传；
+  ④ 昵称（2–20）/简介（≤200）/主题/邮件提醒开关可编辑；用户名/邮箱（二期换邮箱）/角色只读；
+  ⑤ Steam 账号卡：列表 + **设为默认 / 解绑（保留历史）/ 新增绑定**；⑥ **App 端同样支持**（新增在浏览器打开绑定流程）；
+  ⑦ 其它页面有头像处显示头像；⑧ 与 CY 的只读边界一致（管理员不能改别人的资料）。
+- **改动落点**：`pg.js`（users 加列 + profile/avatar/默认账号）、`server.js`（`PATCH /api/me/profile`、
+  `POST/DELETE /api/me/avatar`、`GET /api/avatar/:userId`、`POST /api/steam/accounts/:id/default`）、
+  `frontend/src/pages/ProfilePage.vue`（新）+ Console 入口、App `ProfileEditScreen`、`test/profile.test.js`。
+- **验收**：见规格 §4 的 10 行「demo 状态 ↔ 断言」——头像展示/默认头像切换/双账号列表/设为默认/解绑/新增、表单校验、
+  只读字段、越权 403、`npm test` / `frontend:build` / `scan` 全绿 + App 模拟器验证。
+
+## CY. 待开发：数据隔离（用户私有数据管理员只读）
+
+**状态：待开发（2026-11-18，所有者确认边界）**
+**优先级：** P1（安全/合规）
+**依赖：** CX（个人资料页）
+**解锁：** 无
+**规格**：[DATA-ISOLATION.md](DATA-ISOLATION.md)
+
+- **现状**：用户级接口已按 `session.user.id`；但 `/api/admin/watchlist`（全站到价提醒）、`/api/admin/wishlists`、
+  `/api/admin/views` 等**管理员可写用户数据**（后台有删除按钮），没有只读边界。
+- **边界（已确认）**：用户私有数据（提醒/愿望单/访问记录/Steam 绑定）**管理员只读**；站点级提醒、账号安全
+  （封禁/会话/设备）、申诉处理、内容审核、未归属账号认领**保留可写**。
+- **改动**：`/api/admin/watchlist` 写操作仅允许 `user_id IS NULL`；用户行写 → **403 + 审计 `admin.forbidden_write`**；
+  `/api/admin/wishlists`、`/api/admin/views` 去掉写方法；前端用户行隐藏操作按钮并标「只读」；
+  用户级接口忽略请求里的 `userId`；新增 `test/isolation.test.js`（A/B 两用户 + 管理员三视角）。
+- **验收**：见规格 §4——① A 只看自己的；② 管理员看全部但用户行不可写（越权 403 + 审计）；③ 站点级可写；
+  ④ 账号安全/申诉/审核回归通过；⑤ 管理员查看 Steam 绑定只读；⑥ `npm test` / `frontend:build` / `scan` 全绿。
 
