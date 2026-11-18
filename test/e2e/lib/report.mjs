@@ -16,6 +16,7 @@ const STATUS_BADGE = {
   pass: '<span class="badge pass">通过</span>',
   fail: '<span class="badge fail">失败</span>',
   skip: '<span class="badge skip">跳过</span>',
+  truncated: '<span class="badge trunc">预算截断</span>',
 };
 
 function maskSecrets(text) {
@@ -44,7 +45,7 @@ export function renderHtml(run) {
         <td>${STATUS_BADGE[r.status] ?? esc(r.status)}</td>
         <td class="sec">${r.durationMs != null ? `${(r.durationMs / 1000).toFixed(1)}s` : '—'}</td>
         <td>${esc(r.expect ?? '')}</td>
-        <td class="detail">${r.status === 'skip' ? `跳过原因：${esc(r.skipReason ?? '')}` : esc(maskSecrets(r.error ?? r.summary ?? ''))}${consoleErr}${shots}</td>
+        <td class="detail">${r.status === 'skip' || r.status === 'truncated' ? `原因：${esc(r.skipReason ?? '')}` : esc(maskSecrets(r.error ?? r.summary ?? ''))}${consoleErr}${shots}</td>
       </tr>`;
     })
     .join('');
@@ -54,6 +55,12 @@ export function renderHtml(run) {
       .map((c) => `<tr><td>${esc(c.name)}</td><td>${c.ok ? '<span class="badge pass">✓</span>' : '<span class="badge fail">✗</span>'}</td><td>${esc(c.detail ?? '')}</td></tr>`)
       .join('')}</tbody></table>`)
     .join('');
+
+  // 预算截断警示（DJ 批）：轮次不完整，报告中必须显眼、不允许按"全绿"上报。
+  const budgetNote = run.budgetExceeded
+    ? `<p style="color:#b45309;font-weight:600">⚠️ 整轮预算耗尽：剩余 ${run.truncated} 行未执行（标「预算截断」），
+    本轮 e2e 不完整——不得按"全绿"上报；修复问题或延长预算（E2E_BUDGET_MS / --budget-ms=）后重跑全量。</p>`
+    : '';
 
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>e2e 报告 ${esc(run.label)}</title>
 <style>
@@ -67,8 +74,8 @@ th{background:#eef2f9;position:sticky;top:0}
 .rid{font-family:Consolas,monospace;white-space:nowrap}
 .sec{white-space:nowrap}
 .badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600;color:#fff}
-.badge.pass{background:#16a34a}.badge.fail{background:#dc2626}.badge.skip{background:#9aa4b2}
-.row-fail{background:#fef2f2}.row-skip{background:#fafafa;color:#777}
+.badge.pass{background:#16a34a}.badge.fail{background:#dc2626}.badge.skip{background:#9aa4b2}.badge.trunc{background:#d97706}
+.row-fail{background:#fef2f2}.row-skip{background:#fafafa;color:#777}.row-truncated{background:#fffbeb}
 .tag-smoke{font-size:10px;color:#7c5cff;border:1px solid #c9bfff;border-radius:8px;padding:0 5px}
 .cons{background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:4px 8px;margin-top:4px}
 .cons ul{margin:2px 0 2px 16px}
@@ -90,12 +97,14 @@ th{background:#eef2f9;position:sticky;top:0}
   <div><b>Node / Edge</b><br>${esc(run.nodeVersion)} / ${esc(run.edgePath ?? '—')}</div>
   <div><b>总耗时</b><br>${(run.elapsedMs / 1000).toFixed(1)}s</div>
   <div><b>通过 / 失败 / 跳过</b><br>${run.passed} / ${run.failed} / ${run.skipped}</div>
+  <div><b>预算截断</b><br>${run.truncated ?? 0}${run.budgetMs > 0 ? `（预算 ${(run.budgetMs / 1000).toFixed(0)}s）` : ''}</div>
   <div><b>矩阵行数</b><br>${run.rows.length}</div>
 </div>
 <h2>矩阵逐行结果</h2>
 <table><thead><tr><th>ID</th><th>功能</th><th>结果</th><th>耗时</th><th>预期</th><th>断言明细 / 失败截图</th></tr></thead>
 <tbody>${rows}</tbody></table>
 ${checks}
+${budgetNote}
 <h2>真实测试清单状态</h2>
 <p>本报告覆盖 R1（本地全栈 + headless Edge + Android 模拟器/真机 + 公网只读）。R2（所有者目视：真机微信/邮箱客户端/字体触控）与
 R3（部署）清单见 docs/DELIVERY.md「部署后验证」表；本套件不代替 R2/R3，只提供 R1 自动证据。</p>

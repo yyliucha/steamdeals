@@ -1,6 +1,8 @@
-// e2e 入口（CK 批，docs/E2E-SUITE.md §3/§5）：
-// 解析参数 → 预检（Edge/设备/前端产物）→ 起本地服务栈 → 开场清 e2e_ 孤儿 → 逐行跑矩阵 → 收尾（清账号/关服务/关模拟器）→ 报告 PDF。
+// e2e 入口（CK 批，docs/E2E-SUITE.md §3/§5；DJ 批加整轮总预算）：
+// 解析参数 → 预检（Edge/设备/前端产物）→ 起本地服务栈 → 开场清 e2e_ 孤儿 → 逐行跑矩阵（整轮总预算内）→ 收尾（清账号/关服务/关模拟器）→ 报告 PDF。
 // 用法：npm run e2e（全量）/ npm run e2e:smoke（--tag=smoke）/ node test/e2e/runner.mjs --only=games,appeals --tag=admin --device=real --online --expect-version=2.22.0
+// 整轮总预算（DJ 批）：默认 20 分钟（E2E_BUDGET_MS 环境变量 / --budget-ms= 可调），到点强制收尾——剩余未跑项标「预算截断」、照常生成 HTML/PDF 报告；
+// 退出码三态：0 全绿 / 1 有失败 / 2 预算截断（口径见 lib/budget.mjs）。
 import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +15,36 @@ const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const REPORT_ROOT = 'F:\\dsh\\e2e-reports';
 const ONLINE_DEFAULT_BASE = 'https://sd.yyliucha.cn';
 
+/**
+ * 当前提交短哈希。优先 git rev-parse；git 不可用（PATH 缺失 / 沙箱禁止管道 stdio 等）时
+ * 回退读 .git/HEAD（ref 或 packed-refs）取前 7 位；都失败用 'unknown'。
+ * 报告命名依赖短哈希（F:\dsh\e2e-reports\<日期>-<短哈希>.pdf），不能因 git 不可用直接崩。
+ */
+function gitShortHash() {
+  try {
+    const r = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' });
+    if (!r.error && r.status === 0 && r.stdout) return r.stdout.trim();
+  } catch {
+    /* 落下面的纯 fs 兜底 */
+  }
+  try {
+    const head = readFileSync(join(REPO_ROOT, '.git', 'HEAD'), 'utf8').trim();
+    const ref = /^ref:\s*(.+)$/.exec(head);
+    if (ref) {
+      const refPath = join(REPO_ROOT, '.git', ref[1]);
+      if (existsSync(refPath)) return readFileSync(refPath, 'utf8').trim().slice(0, 7);
+      const packed = readFileSync(join(REPO_ROOT, '.git', 'packed-refs'), 'utf8');
+      const m = new RegExp(`^(\\S{7})\\S* ${ref[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm').exec(packed);
+      if (m) return m[1];
+    } else if (/^[0-9a-f]{40}$/i.test(head)) {
+      return head.slice(0, 7);
+    }
+  } catch {
+    /* 兜底失败按 unknown */
+  }
+  return 'unknown';
+}
+
 function parseArgs(argv) {
   const args = {
     only: null,
@@ -21,6 +53,7 @@ function parseArgs(argv) {
     online: false,
     expectVersion: null,
     base: null,
+    budgetMs: null,
   };
   for (const a of argv) {
     if (a.startsWith('--only=')) args.only = a.slice(7).split(',').map((s) => s.trim()).filter(Boolean);
@@ -29,6 +62,7 @@ function parseArgs(argv) {
     else if (a === '--online') args.online = true;
     else if (a.startsWith('--expect-version=')) args.expectVersion = a.slice(17).trim();
     else if (a.startsWith('--base=')) args.base = a.slice(7).trim();
+    else if (a.startsWith('--budget-ms=')) args.budgetMs = a.slice(11).trim();
     else if (a === '--help' || a === '-h') args.help = true;
   }
   return args;
@@ -42,6 +76,8 @@ function usage() {
   --device=real     真机模式（无设备立即中断）；默认 emulator（自动拉起 steamdeals35）
   --online          部署后公网只读验收（默认 https://sd.yyliucha.cn，--base= 可覆盖）
   --expect-version= 与 --online 配合：断言线上版本
+  --budget-ms=      整轮总预算毫秒数（默认 20 分钟；环境变量 E2E_BUDGET_MS 同效，0 禁用）
+                    到点强制收尾：剩余未跑项标「预算截断」，报告照常生成，退出码 2
 报告输出：${REPORT_ROOT}\\<日期>-<提交短哈希>.pdf（仓库外，不入库）`;
 }
 
@@ -66,6 +102,7 @@ async function main() {
     mail: 'readMailEnv',
     report: 'writeHtml',
     steps: 'executeRow',
+    budget: 'resolveBudgetMs',
   };
   async function loadLib(name) {
     // 命名空间是活绑定：同一实例上轮询等待导出值物化（本机 loader 竞态下更可靠）。
@@ -84,9 +121,17 @@ async function main() {
   const mail = await loadLib('mail');
   const report = await loadLib('report');
   const steps = await loadLib('steps');
+  const budget = await loadLib('budget');
   const { findEdge, launchEdge } = browser;
   const { startE2EStack, ADMIN_USERNAME, ADMIN_PASSWORD } = serverMod;
   const { executeRow, ensureAdminBrowserLogin, SkipError } = steps;
+
+  // ---- 整轮总预算（DJ 批；默认 20 分钟，到点剩余项标「预算截断」，见 lib/budget.mjs）----
+  const budgetMs = budget.resolveBudgetMs({ envMs: process.env.E2E_BUDGET_MS, cliMs: args.budgetMs });
+  const budgetDeadline = budget.deadlineFor(t0, budgetMs); // null = 禁用（调试用）
+  if (budgetMs > 0) {
+    log(`整轮总预算：${(budgetMs / 1000).toFixed(0)}s（E2E_BUDGET_MS / --budget-ms= 可调；到点剩余未跑项标「预算截断」，退出码 2）`);
+  }
 
   const matrix = JSON.parse(readFileSync(join(REPO_ROOT, 'test', 'e2e', 'matrix.json'), 'utf8'));
   const rows = matrix.rows.filter((r) => {
@@ -134,7 +179,7 @@ async function main() {
   // ---- 运行目录（仓库外）----
   const startedAt = new Date();
   const dateStr = startedAt.toISOString().slice(0, 10);
-  const gitHash = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' }).stdout.trim() || 'unknown';
+  const gitHash = gitShortHash();
   const runDir = join(REPORT_ROOT, `${dateStr}-run-${startedAt.toISOString().slice(11, 19).replaceAll(':', '')}`);
   mkdirSync(runDir, { recursive: true });
 
@@ -185,6 +230,7 @@ async function main() {
   };
 
   let abort = false;
+  let budgetTruncated = false;
   const results = [];
   const abortReason = [];
 
@@ -200,11 +246,19 @@ async function main() {
     log(`⚠️ 开场孤儿清理失败（不中断）：${err.message}`);
   }
 
-  // ---- 逐行执行（不 fail-fast；设备/服务级错误才中断）----
+  // ---- 逐行执行（不 fail-fast；设备/服务级错误才中断；到点先于新行做预算检查）----
   for (const row of rows) {
     if (abort) {
       results.push({ ...row, status: 'skip', skipReason: '运行已中断：' + abortReason.join('；'), durationMs: 0 });
       continue;
+    }
+    // 整轮总预算：到点强制收尾——剩余未跑项（含当前行）标「预算截断」，报告与收尾照常执行（DJ 批）。
+    if (budget.isBudgetExceeded(performance.now(), budgetDeadline)) {
+      budgetTruncated = true;
+      const remaining = rows.slice(rows.indexOf(row));
+      results.push(...budget.truncateRows(remaining, { budgetMs }));
+      log(`⏰ 整轮预算耗尽（${(budgetMs / 1000).toFixed(0)}s）：剩余 ${remaining.length} 行标「预算截断」，收尾照常`);
+      break;
     }
     const rowT0 = performance.now();
     const rec = { ...row, status: 'pass', durationMs: 0, artifacts: [], consoleErrors: [], error: null, skipReason: null };
@@ -341,6 +395,7 @@ async function main() {
     const passed = results.filter((r) => r.status === 'pass').length;
     const failed = results.filter((r) => r.status === 'fail').length;
     const skipped = results.filter((r) => r.status === 'skip').length;
+    const truncated = results.filter((r) => r.status === 'truncated').length;
     const label = args.tag ? `tag=${args.tag}` : args.only ? `only=${args.only.join(',')}` : '全量';
     const run = {
       label,
@@ -353,6 +408,9 @@ async function main() {
       passed,
       failed,
       skipped,
+      truncated,
+      budgetMs,
+      budgetExceeded: budgetTruncated,
       rows: results,
       reportDir: runDir,
       reportRoot: REPORT_ROOT,
@@ -383,12 +441,14 @@ async function main() {
     }
 
     log('════════════════════════════════════════');
-    log(`结果：通过 ${passed} / 失败 ${failed} / 跳过 ${skipped}（矩阵 ${rows.length} 行，耗时 ${(elapsedMs / 1000).toFixed(1)}s）`);
+    log(`结果：通过 ${passed} / 失败 ${failed} / 跳过 ${skipped}${truncated ? ` / 预算截断 ${truncated}` : ''}（矩阵 ${rows.length} 行，耗时 ${(elapsedMs / 1000).toFixed(1)}s）`);
     if (skipped) log(`跳过明细：${results.filter((r) => r.status === 'skip').map((r) => `${r.id}（${r.skipReason}）`).join('；')}`);
+    if (truncated) log(`预算截断明细：${results.filter((r) => r.status === 'truncated').map((r) => r.id).join(', ')}（整轮预算 ${(budgetMs / 1000).toFixed(0)}s 已耗尽，未跑项照常计入报告）`);
     if (failed) log(`失败明细：${results.filter((r) => r.status === 'fail').map((r) => r.id).join(', ')}`);
     log(`报告：${pdfOk ? pdfPath : htmlPath}${pdfOk ? '' : '（PDF 未生成）'}`);
     log(`产物目录：${runDir}`);
-    return failed > 0 ? 1 : 0;
+    // 退出码三态：0 全绿 / 1 有失败 / 2 预算截断（截断优先，见 lib/budget.mjs exitCode）
+    return budget.exitCode({ failed, truncated });
   } finally {
     if (device?.startedByUs) {
       await adb.shutdownEmulatorIfStarted(device).catch(() => {});

@@ -8,7 +8,7 @@
 
 | # | 决策 |
 |---|---|
-| 1 | 两档：`npm run e2e`（**全量**：完整功能矩阵 + 后台建删 e2e 测试账号）/ `npm run e2e:smoke`（核心链路，≤5 分钟）。**发版前与每轮 QA 跑全量**。 |
+| 1 | 两档：`npm run e2e`（**全量**：完整功能矩阵 + 后台建删 e2e 测试账号）/ `npm run e2e:smoke`（核心链路，≤5 分钟）。**发版后由独立报告会话跑全量并出 PDF**（流程见 [steamdeals-test](../.dsh/skills/steamdeals-test/SKILL.md) §2.3 / TODO DJ；不阻塞构建）；**每轮 QA 跑本批相关矩阵行**（`--only`/`--tag`）。 |
 | 2 | 功能矩阵文件化、**可自定义**：`test/e2e/matrix.json`，支持 `--only=<id列表>`、`--tag=<组>`；**新功能必须加行**，否则 QA 按覆盖不足打回。 |
 | 3 | 真实浏览器：**headless Edge**（`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`）做 DOM/Console/截图断言；不引入 playwright/puppeteer。 |
 | 4 | 移动端：**默认 Android 模拟器 `steamdeals35`（API 35，WHPX）**；真机用 `--device=real`。**设备未连接/掉线 → 立即中断**并提示连接步骤（USB 模式选“传输文件(MTP)”、开发者选项开 USB 调试与 USB 调试（安全设置）、手机点允许）。 |
@@ -21,6 +21,7 @@
 | 11 | **后台矩阵深度**：用户 / 愿望单 / 站点通知 / Steam 账号 **四类走增删改**；其余模块到列表/筛选/详情即可。 |
 | 12 | **App 覆盖安装**：以 `frontend/public/app/steamdeals-2.19.0.apk` 作为"旧版"包测覆盖安装（同签名、数据保留）。 |
 | 13 | **`--online` 公网验收在部署后跑**（带 `--expect-version=X.Y.Z` 断言新版本）；发版前不跑。 |
+| 14 | **整轮总预算（DJ 批）**：默认 20 分钟 deadline（`E2E_BUDGET_MS` 环境变量 / `--budget-ms=` 可调，测试可缩短），到点**强制收尾**——剩余未跑项标「预算截断」、照常生成 HTML/PDF 报告；退出码三态：0 全绿 / 1 有失败 / 2 预算截断。 |
 
 ## 2. 现状（代码证据，2026-11-17 核对）
 
@@ -40,6 +41,7 @@ test/e2e/
   lib/browser.mjs      # headless Edge：dump-dom / screenshot / console 采集 / print-to-pdf
   lib/adb.mjs          # 设备预检 / 启动模拟器 / 安装 APK / tap / uiautomator dump / screencap
   lib/report.mjs       # HTML 报告 + PDF
+  lib/budget.mjs       # 整轮总预算（DJ 批）：默认 20 分钟 deadline / 到点「预算截断」/ 退出码三态（纯函数，可单测）
   lib/account.mjs      # e2e_ 测试账号：建/登录/改密/删、孤儿清理
   lib/online.mjs       # 公网只读验收（--online）
 ```
@@ -62,7 +64,7 @@ test/e2e/
 1. 预检：Edge 存在；`--device=real` 时 `adb devices` 必须有设备，否则**中断**；模拟器模式自动启动 `steamdeals35`。
 2. 起本地服务：临时 pglite 库（随机端口 + 临时目录）→ setup 建管理员 → 最小种子数据（若干游戏/报价/快照）。
 3. 清理孤儿 `e2e_%` 用户 → 新建 `e2e_<ts>` → 登录/改密。
-4. 跑矩阵（前台 → 后台 → App → 可选线上），逐行记录结果/截图/Console。
+4. 跑矩阵（前台 → 后台 → App → 可选线上），逐行记录结果/截图/Console；**整轮总预算**默认 20 分钟（决策 #14），到点剩余未跑项标「预算截断」后照常收尾。
 5. 收尾：删除 `e2e_<ts>` 并断言 401/不存在 → 关服务 → 清理临时库 → 生成报告 → 打印摘要（通过/失败/skip/耗时/报告路径）。
 6. 失败截图与日志保留在 `F:\dsh\e2e-reports\<run>\`。
 
@@ -72,6 +74,8 @@ test/e2e/
 - 设备掉线/服务启动失败 → 立即中断，报告写明原因与已跑行。
 - skip 只允许“环境不具备”（如无真机、无外网），且必须写原因并计入报告；**不得 skip 失败项**。
 - 真实外部依赖（Steam/ITAD/GOG 真实请求）默认 skip 并在报告注明（本机无出口）。
+- **预算截断（DJ 批）**：整轮预算到点 → 剩余未跑项标「预算截断」（不算 skip、不算失败）、报告照常生成、退出码 2；
+  按“轮次不完整”处理——不得报全绿，定位拖慢行后延长预算（`E2E_BUDGET_MS`）或拆批重跑。
 
 ## 7. 安全与合规
 

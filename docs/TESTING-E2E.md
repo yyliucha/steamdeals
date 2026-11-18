@@ -7,12 +7,13 @@
 
 ```powershell
 cd F:\dsh\gameprice
-npm run e2e            # 全量：完整矩阵 + 后台建删 e2e_ 账号 + 模拟器/真机 + PDF 报告（发版前 / 每轮 QA 必跑）
+npm run e2e            # 全量：完整矩阵 + 后台建删 e2e_ 账号 + 模拟器/真机 + PDF 报告（发版后独立报告会话跑，见 steamdeals-test §2.3）
 npm run e2e:smoke      # 冒烟：核心链路（首页/搜索/详情/登录/后台登录/申诉页），≤5 分钟
 node test/e2e/runner.mjs --only=game-detail-dlc,search-cn   # 只跑指定行（逗号分隔）
 node test/e2e/runner.mjs --tag=admin                        # 按组跑（front/admin/app/online/smoke）
 node test/e2e/runner.mjs --device=real                      # 真机模式（无设备立即中断并打印连接步骤）
 node test/e2e/runner.mjs --online --expect-version=2.22.0   # 部署后公网只读验收（默认 https://sd.yyliucha.cn，--base= 可换）
+$env:E2E_BUDGET_MS='60000'; npm run e2e                     # 整轮总预算 60 秒（默认 20 分钟；--budget-ms= 同效，0 禁用）
 ```
 
 **前置条件**：
@@ -33,7 +34,9 @@ node test/e2e/runner.mjs --online --expect-version=2.22.0   # 部署后公网只
 
 **运行行为**：临时 pglite 库（每次全新、用完即删，**不连生产库**）；开场清 `e2e_%` 孤儿账号（只删该前缀）；
 逐行执行矩阵（行失败不中断其余行，设备掉线/服务不可用才整体中断）；结束时断言无 `e2e_` 残留、关闭本次拉起的模拟器、
-生成 HTML + PDF 报告。失败行自动留截图与 Console 错误。退出码：0 全过 / 1 有失败。
+生成 HTML + PDF 报告。失败行自动留截图与 Console 错误。
+**整轮总预算**：默认 20 分钟（`E2E_BUDGET_MS` / `--budget-ms=` 可调），到点**强制收尾**——剩余未跑项标「预算截断」、
+报告照常生成。退出码：0 全过 / 1 有失败 / 2 预算截断（轮次不完整，不得按"全绿"上报）。
 
 > 环境适配说明（都在 e2e 进程内，不改仓库生产默认）：
 > ① `AUTH_SESSION_BIND_UA=0`——e2e 有微信/移动 UA 仿真行，生产默认的「会话绑定浏览器」会因 UA 切换误踢会话；
