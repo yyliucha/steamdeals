@@ -307,6 +307,73 @@ test('抽样对账 0 差异；corrupt 后 check 发现、--fix 修复、rebuild 
   }
 });
 
+test('B5 增量对账：绕过双写（直改 offers 不刷快照）被变更优先检出并修复', async () => {
+  const { store, q } = await fresh();
+  try {
+    const { ids } = await seedMixed({ store, q });
+    // 模拟「手动 SQL/迁移绕过」：直接改 offers 价格且不调 refreshGameRegionPrices（快照陈旧）
+    await q("update offers set price_cents = 8888, updated_at = now() where game_id = $1 and region = 'cn' and platform_code = 'steam'", [ids.cs]);
+    const stale = await q('select price_cents from game_region_snapshot where game_id = $1 and region = $2', [ids.cs, 'cn']);
+    assert.equal(Number(stale.rows[0].price_cents), 9900, '绕过写后快照仍是旧价（不一致已构造）');
+
+    let r = await db.readModelCheck(q, { sample: 200 });
+    assert.ok(r.suspect >= 1, `疑似陈旧行应被优先检出，实际 ${r.suspect}`);
+    assert.ok(
+      r.diffs.some((d) => d.gameId === Number(ids.cs) && d.field === 'price_cents'),
+      '对账能检出直改 offers 造成的不一致',
+    );
+
+    r = await db.readModelCheck(q, { sample: 200, fix: true });
+    assert.ok(r.fixed >= 1, 'fix 就地修复出现差异的行');
+    r = await db.readModelCheck(q, { sample: 200 });
+    assert.equal(r.diffs.length, 0, '修复后 0 差异');
+    const repaired = await q('select price_cents, offers_count from game_region_snapshot where game_id = $1 and region = $2', [ids.cs, 'cn']);
+    assert.equal(Number(repaired.rows[0].price_cents), 8888, '快照价已对齐被绕过的 offers 写入');
+  } finally {
+    await store.close();
+  }
+});
+
+test('B5 增量对账：绕过 daily_prices 写入（史低口径）同样被检出并修复', async () => {
+  const { store, q } = await fresh();
+  try {
+    const { ids } = await seedMixed({ store, q });
+    // 模拟绕过 touchDailyAggregate：直改日价把「昨天史低」压低（快照 hist/prev 陈旧）
+    await q("update daily_prices set min_price_cents = 100, updated_at = now() where game_id = $1 and region = 'cn' and day < current_date", [ids.cs]);
+    const stale = await q('select hist_low_cents from game_region_snapshot where game_id = $1 and region = $2', [ids.cs, 'cn']);
+    assert.equal(Number(stale.rows[0].hist_low_cents), 9500, '绕过写后史低仍是旧值（不一致已构造）');
+
+    let r = await db.readModelCheck(q, { sample: 200 });
+    assert.ok(r.suspect >= 1, '日价比快照新的行应进疑似陈旧行');
+    assert.ok(
+      r.diffs.some((d) => d.gameId === Number(ids.cs) && d.field === 'hist_low_cents'),
+      '对账能检出直改 daily_prices 造成的史低不一致',
+    );
+
+    r = await db.readModelCheck(q, { sample: 200, fix: true });
+    assert.ok(r.fixed >= 1, '修复出现差异的行');
+    const repaired = await q('select hist_low_cents, prev_hist_low_cents from game_region_snapshot where game_id = $1 and region = $2', [ids.cs, 'cn']);
+    assert.equal(Number(repaired.rows[0].hist_low_cents), 100, '史低已对齐被绕过的日价写入');
+  } finally {
+    await store.close();
+  }
+});
+
+test('B5 对账口径不回归：默认无 fix 只报告、返回字段齐全', async () => {
+  const { store, q } = await fresh();
+  try {
+    const { ids } = await seedMixed({ store, q });
+    await q('update game_region_snapshot set price_cents = 54321 where game_id = $1 and region = $2', [ids.portal, 'cn']);
+    const r = await db.readModelCheck(q, { sample: 200 });
+    assert.ok(r.diffs.length >= 1, '默认只报告不修');
+    assert.equal(r.fixed, 0, '未传 fix 时 fixed 为 0');
+    const untouched = await q('select price_cents from game_region_snapshot where game_id = $1 and region = $2', [ids.portal, 'cn']);
+    assert.equal(Number(untouched.rows[0].price_cents), 54321, '默认 check 不写快照（只报告）');
+  } finally {
+    await store.close();
+  }
+});
+
 test('READ_MODEL=legacy 回滚开关：旧 SQL 路径仍可用（表保留）', async () => {
   const { store, q } = await fresh();
   try {

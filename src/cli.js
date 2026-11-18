@@ -2438,12 +2438,14 @@ async function cmdReadModel() {
       db.readModelCheck((sql, p) => store.query(sql, p), { sample, fix }),
     );
     console.log(
-      `对账完成：抽样 ${result.checked} 个 (game,region)，差异 ${result.diffs.length}${fix ? '（已就地修复）' : '（可用 --fix 就地修复）'}`,
+      `对账完成：比对 ${result.checked} 个 (game,region)（其中底层比快照新的疑似陈旧行 ${result.suspect} 个），` +
+        `差异 ${result.diffs.length}${fix ? `（已就地修复 ${result.fixed} 行）` : '（可用 --fix 就地修复）'}`,
     );
     for (const d of result.diffs.slice(0, 20)) {
       console.log(`  差异：game ${d.gameId} / ${d.region} / ${d.field} → 快照 ${JSON.stringify(d.snapshot)} ≠ 实际 ${JSON.stringify(d.actual)}`);
     }
-    logger.info('readmodel.check', { checked: result.checked, diffs: result.diffs.length, fix });
+    // B5 批：fixed 只计「出现差异的行」，修复走 refresh* 唯一写入路径（不是自拼 SQL）
+    logger.info('readmodel.check', { checked: result.checked, suspect: result.suspect, diffs: result.diffs.length, fixed: result.fixed, fix });
     if (result.diffs.length && !fix) process.exitCode = 1; // 对账不通过非零退出（调度器可观测）
     return;
   }

@@ -141,8 +141,12 @@ export function jobsFromEnv(env = process.env) {
     },
     {
       name: 'readmodel',
-      // AV 批（docs/READ-MODEL.md §8）：每日抽样对账 200 个 (game,region)，发现差异记 job 失败可观测
-      args: ['readmodel', 'check', '--sample', String(num(env.READMODEL_SAMPLE, 200))],
+      // AV 批（docs/READ-MODEL.md §8）：每日抽样对账 200 个 (game,region)。
+      // B5 批（docs/DESIGN-AUDIT.md B5 行）：每日任务带 --fix 自动修复——快照是纯派生数据、
+      // 修复走 refresh* 唯一写入路径（口径与对账一致、幂等），自动修复把「列表价与详情不一致」
+      // 的窗口上限压到 24 小时；变更优先增量校验优先扫「底层比快照新」的疑似陈旧行。
+      // 发现差异仍记 readmodel.check（diffs/fixed 字段），修复不静默；手动 check 默认仍只报告不修。
+      args: ['readmodel', 'check', '--sample', String(num(env.READMODEL_SAMPLE, 200)), '--fix'],
       intervalMin: num(env.READMODEL_INTERVAL_MIN, 1440),
       initialDelaySec: num(env.READMODEL_INITIAL_DELAY_SEC, 3600),
       enabled: env.READMODEL_ENABLED !== '0',

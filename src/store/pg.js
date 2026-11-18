@@ -659,6 +659,11 @@ create index if not exists idx_user_search_logs_user on user_search_logs (user_i
   );
   // AV 批（docs/READ-MODEL.md §3/§6）：首页列表读模型——(game, region) 粒度的价格/史低快照。
   // 表空时一次性回填（offers ∪ daily_prices 并集）；回填失败必须报错不吞（列表暂时为空需人工介入，规格 §7）。
+  // B5 批（docs/DESIGN-AUDIT.md B5 行）：offers/daily_prices 补 updated_at 作为「底层数据比快照新」的
+  // 增量对账信号（readModelCheck 变更优先候选）；ALTER 必须排在回填之前，避免旧行默认值晚于快照造成
+  // 首轮对账大面积误报。列只加不改语义，幂等。
+  await store.exec('alter table offers add column if not exists updated_at timestamptz not null default now()');
+  await store.exec('alter table daily_prices add column if not exists updated_at timestamptz not null default now()');
   await store.exec(GAME_REGION_SNAPSHOT_DDL);
   const empty = await store.query('select count(*)::int as n from game_region_snapshot limit 1');
   if (Number(empty.rows[0]?.n ?? 0) === 0) {
@@ -804,7 +809,7 @@ export async function insertOffer(q, offer) {
 export async function updateOffer(q, offerId, offer) {
   await q(
     `update offers set price_cents=$1, original_cents=$2, discount_pct=$3,
-                       in_stock=$4, buy_url=$5, last_seen_at=now()
+                       in_stock=$4, buy_url=$5, last_seen_at=now(), updated_at=now()
       where id=$6`,
     [offer.priceCents, offer.originalCents, offer.discountPct, offer.inStock, offer.buyUrl, offerId],
   );
@@ -1054,7 +1059,8 @@ export async function upsertDaily(q, { gameId, platformCode, region, priceCents,
     `insert into daily_prices (game_id, platform_code, region, day, min_price_cents, currency)
      values ($1,$2,$3, current_date, $4,$5)
      on conflict (game_id, platform_code, region, day)
-     do update set min_price_cents = least(daily_prices.min_price_cents, excluded.min_price_cents)`,
+     do update set min_price_cents = least(daily_prices.min_price_cents, excluded.min_price_cents),
+                   updated_at = now()`,
     [gameId, platformCode, region, priceCents, currency],
   );
 }
@@ -1063,6 +1069,13 @@ export async function upsertDaily(q, { gameId, platformCode, region, priceCents,
 //
 // 目标：把「每次请求现算全库聚合」改成「入库时算一次、读的时候只查一行」。
 // 写入方只有 ingestOffers（唯一写 offers）+ mergeGames（唯一删/移 offers），同库强一致，不需要队列。
+//
+// B5 批（docs/DESIGN-AUDIT.md B5 行）：本表全部 INSERT/UPDATE/DELETE 收敛到下方唯一的
+// snapshotWrite 网关（SQL 常量表 + 一个执行函数），杜绝任何函数绕过维护钩子直写快照——
+// test/read-model-guard.test.js 静态锁：src/ 下除网关块外的任何直写语句都会让测试变红。
+// 新增维护逻辑时 SQL 必须进 SNAPSHOT_WRITE_SQL、经 snapshotWrite 调用；维护钩子本身
+// （refresh*/touch/backfill）是「唯一写入路径」的对外入口，调用方（ingest/mergeGames/
+// migrate/check --fix）一律走它们，不得自拼 SQL。
 
 const GAME_REGION_SNAPSHOT_DDL = `
 create table if not exists game_region_snapshot (
@@ -1095,15 +1108,16 @@ create index if not exists grs_region_seen     on game_region_snapshot (region, 
 create index if not exists grs_game on game_region_snapshot (game_id);
 `;
 
-/**
- * 一次性回填读模型（docs/READ-MODEL.md §6）：行集合 = offers ∪ daily_prices 的 (game, region)；
- * 当前价列实时聚合 offers（官方渠道、在售），历史列一次聚合 daily_prices（hist_low_day=current_date）。
- * 幂等（on conflict do update / do nothing），中断后重启可继续。
- */
-export async function backfillGameRegionSnapshot(q) {
-  // 1) 当前价列：每个 (game, region) 一条（有在售官方报价才有价）
-  await q(
-    `insert into game_region_snapshot (game_id, region, price_cents, currency, original_cents, discount_pct,
+// 官方渠道集合（snapshot 全部 SQL 共用；声明在网关之前，模板串在模块加载期就要取值）
+const OFFICIAL_KINDS = "('official', 'authorized_reseller')";
+
+// <snapshot-write-gateway>
+// B5 批：game_region_snapshot 的唯一写入网关——全部写语句收在这张表里，经 snapshotWrite 执行。
+// 静态锁 test/read-model-guard.test.js 校验：本块之外（含 migrate 与其它文件）出现任何
+// insert/update/delete into game_region_snapshot 都会变红。加新语句必须进这张表。
+const SNAPSHOT_WRITE_SQL = {
+  backfillPrices: `
+    insert into game_region_snapshot (game_id, region, price_cents, currency, original_cents, discount_pct,
         steam_price_cents, low_platform, low_platform_name, platform_names, offers_count, last_seen_at)
      select o.game_id, o.region,
        min(o.price_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}) as current_low,
@@ -1124,16 +1138,12 @@ export async function backfillGameRegionSnapshot(q) {
        low_platform = excluded.low_platform, low_platform_name = excluded.low_platform_name,
        platform_names = excluded.platform_names, offers_count = excluded.offers_count,
        last_seen_at = excluded.last_seen_at, updated_at = now()`,
-  );
-  // 2) 有历史但无现价的游戏也要有行（与旧 exists(daily_prices) 语义对齐，§6.3）
-  await q(
-    `insert into game_region_snapshot (game_id, region)
+  backfillRows: `
+    insert into game_region_snapshot (game_id, region)
      select distinct d.game_id, d.region from daily_prices d
      on conflict (game_id, region) do nothing`,
-  );
-  // 3) 历史列：一次聚合 daily_prices（官方渠道；prev = 今天以前）
-  await q(
-    `update game_region_snapshot rs
+  backfillHist: `
+    update game_region_snapshot rs
         set hist_low_cents = t.hist, prev_hist_low_cents = t.prev, hist_low_day = current_date, updated_at = now()
        from (
          select d.game_id, d.region,
@@ -1143,16 +1153,8 @@ export async function backfillGameRegionSnapshot(q) {
           group by d.game_id, d.region
        ) t
       where rs.game_id = t.game_id and rs.region = t.region`,
-  );
-}
-
-/**
- * 重算一个游戏全部区服的「当前价」列（docs/READ-MODEL.md §4）：
- * 每个 offer 写库后调用；单游戏只扫几行，1–3ms。历史列不动（由 touchDailyAggregate 维护）。
- */
-export async function refreshGameRegionPrices(q, gameId) {
-  await q(
-    `insert into game_region_snapshot (game_id, region, price_cents, currency, original_cents, discount_pct,
+  prices: `
+    insert into game_region_snapshot (game_id, region, price_cents, currency, original_cents, discount_pct,
         steam_price_cents, low_platform, low_platform_name, platform_names, offers_count, last_seen_at)
      select o.game_id, o.region,
        min(o.price_cents) filter (where o.in_stock and p.kind in ${OFFICIAL_KINDS}) as current_low,
@@ -1174,23 +1176,12 @@ export async function refreshGameRegionPrices(q, gameId) {
        low_platform = excluded.low_platform, low_platform_name = excluded.low_platform_name,
        platform_names = excluded.platform_names, offers_count = excluded.offers_count,
        last_seen_at = excluded.last_seen_at, updated_at = now()`,
-    [gameId],
-  );
-}
-
-/**
- * 重算一个游戏全部区服的「历史」列（mergeGames 移动 daily 后调用，docs/READ-MODEL.md §4）。
- * 先补齐行（该游戏有日价但快照缺行的区服——与回填「daily ∪ offers」的语义一致），再更新历史列。
- */
-export async function refreshGameRegionHist(q, gameId) {
-  await q(
-    `insert into game_region_snapshot (game_id, region)
+  histRows: `
+    insert into game_region_snapshot (game_id, region)
      select distinct d.game_id, d.region from daily_prices d where d.game_id = $1
      on conflict (game_id, region) do nothing`,
-    [gameId],
-  );
-  await q(
-    `update game_region_snapshot rs
+  hist: `
+    update game_region_snapshot rs
         set hist_low_cents = t.hist, prev_hist_low_cents = t.prev, hist_low_day = current_date, updated_at = now()
        from (
          select d.game_id, d.region,
@@ -1201,18 +1192,8 @@ export async function refreshGameRegionHist(q, gameId) {
           group by d.game_id, d.region
        ) t
       where rs.game_id = t.game_id and rs.region = t.region`,
-    [gameId],
-  );
-}
-
-/**
- * 维护史低与新史低（docs/READ-MODEL.md §4 日界切换）：
- * upsertDaily 之后调用。hist_low 只吸收官方渠道价（c2c 不进史低）；
- * 日界切换不看渠道——「今天第一次写入之前」的 hist_low 恰好等于 prev_hist_low，任何写入触发切换都对。
- */
-export async function touchDailyAggregate(q, { gameId, region, platformCode, priceCents }) {
-  await q(
-    `insert into game_region_snapshot (game_id, region, price_cents, offers_count, hist_low_cents, prev_hist_low_cents, hist_low_day)
+  touchDaily: `
+    insert into game_region_snapshot (game_id, region, price_cents, offers_count, hist_low_cents, prev_hist_low_cents, hist_low_day)
      values ($1, $2, null, 0,
        case when exists (select 1 from platforms p where p.code = $3 and p.kind in ${OFFICIAL_KINDS}) then $4::int else null end,
        null, current_date)
@@ -1227,8 +1208,57 @@ export async function touchDailyAggregate(q, { gameId, region, platformCode, pri
          else game_region_snapshot.prev_hist_low_cents end,
        hist_low_day = current_date,
        updated_at = now()`,
-    [gameId, region, platformCode, priceCents],
-  );
+  clearRegion: `delete from game_region_snapshot where region = $1`,
+  clearAll: `delete from game_region_snapshot`,
+};
+
+/** 快照写网关：所有写语句的唯一执行出口（未知 op 直接抛错，防拼错走旁路）。 */
+async function snapshotWrite(q, op, params = []) {
+  const sql = SNAPSHOT_WRITE_SQL[op];
+  if (!sql) throw new Error(`game_region_snapshot 未知写操作：${op}（必须经 SNAPSHOT_WRITE_SQL 网关）`);
+  return q(sql, params);
+}
+// </snapshot-write-gateway>
+
+/**
+ * 一次性回填读模型（docs/READ-MODEL.md §6）：行集合 = offers ∪ daily_prices 的 (game, region)；
+ * 当前价列实时聚合 offers（官方渠道、在售），历史列一次聚合 daily_prices（hist_low_day=current_date）。
+ * 幂等（on conflict do update / do nothing），中断后重启可继续。
+ */
+export async function backfillGameRegionSnapshot(q) {
+  // 1) 当前价列：每个 (game, region) 一条（有在售官方报价才有价）
+  await snapshotWrite(q, 'backfillPrices');
+  // 2) 有历史但无现价的游戏也要有行（与旧 exists(daily_prices) 语义对齐，§6.3）
+  await snapshotWrite(q, 'backfillRows');
+  // 3) 历史列：一次聚合 daily_prices（官方渠道；prev = 今天以前）
+  await snapshotWrite(q, 'backfillHist');
+}
+
+/**
+ * 重算一个游戏全部区服的「当前价」列（docs/READ-MODEL.md §4）：
+ * 每个 offer 写库后调用；单游戏只扫几行，1–3ms。历史列不动（由 touchDailyAggregate 维护）。
+ * 写入唯一路径：经 snapshotWrite 网关，SQL 见 SNAPSHOT_WRITE_SQL.prices。
+ */
+export async function refreshGameRegionPrices(q, gameId) {
+  await snapshotWrite(q, 'prices', [gameId]);
+}
+
+/**
+ * 重算一个游戏全部区服的「历史」列（mergeGames 移动 daily 后调用，docs/READ-MODEL.md §4）。
+ * 先补齐行（该游戏有日价但快照缺行的区服——与回填「daily ∪ offers」的语义一致），再更新历史列。
+ */
+export async function refreshGameRegionHist(q, gameId) {
+  await snapshotWrite(q, 'histRows', [gameId]);
+  await snapshotWrite(q, 'hist', [gameId]);
+}
+
+/**
+ * 维护史低与新史低（docs/READ-MODEL.md §4 日界切换）：
+ * upsertDaily 之后调用。hist_low 只吸收官方渠道价（c2c 不进史低）；
+ * 日界切换不看渠道——「今天第一次写入之前」的 hist_low 恰好等于 prev_hist_low，任何写入触发切换都对。
+ */
+export async function touchDailyAggregate(q, { gameId, region, platformCode, priceCents }) {
+  await snapshotWrite(q, 'touchDaily', [gameId, region, platformCode, priceCents]);
 }
 
 export async function startFetchRun(q, platformCode) {
@@ -1243,8 +1273,6 @@ export async function finishFetchRun(q, id, fields) {
     [fields.requests ?? 0, fields.total ?? 0, fields.ok ?? 0, fields.skipped ?? 0, fields.failed ?? 0, fields.status ?? 'ok', fields.note ?? null, id],
   );
 }
-
-const OFFICIAL_KINDS = "('official', 'authorized_reseller')";
 
 export async function lowestOffers(q, { region = 'cn', limit = 50 } = {}) {
   const r = await q(
@@ -3974,13 +4002,48 @@ export async function mergeGames(q, { fromGameId, toGameId, logger = null }) {
 
 /**
  * 抽样对账：随机取 N 个快照行，实时聚合 offers/daily_prices 与快照逐字段比对（价格 9 列 + 史低 2 列）。
- * 返回 { checked, diffs }；fix=true 对出现差异的 game 就地重刷（价格列 + 历史列）。
+ * 返回 { checked, diffs, fixed, suspect }；fix=true 对出现差异的 game 就地重刷（价格列 + 历史列）。
  * 口径与 refreshGameRegionPrices / touchDailyAggregate 完全一致（官方渠道、在售、日界 prev）。
+ *
+ * B5 批（docs/DESIGN-AUDIT.md B5 行）增量校验：候选改「变更优先」——先取「底层数据比快照新」的
+ * 疑似陈旧行（offers/daily_prices 有比快照 updated_at 更新的写入 = 快照维护被绕过/漏挂的直接信号，
+ * 即 DESIGN-AUDIT B5 的「手动 SQL/迁移绕过双写」场景），不足 sample 再随机补齐保持全表兜底覆盖
+ * （防快照行本身被直接篡改）。设计理由见 docs/READ-MODEL.md §13。
  */
 export async function readModelCheck(q, { sample = 200, fix = false } = {}) {
   const cap = Math.min(Math.max(Number(sample) || 200, 1), 2000);
-  const rows = (await q('select game_id, region from game_region_snapshot order by random() limit $1', [cap])).rows;
+  // 疑似陈旧行：底层数据比快照新（写入后快照没跟着刷新）
+  const suspect = (
+    await q(
+      `select rs.game_id, rs.region
+         from game_region_snapshot rs
+        where exists (select 1 from offers o
+                       where o.game_id = rs.game_id and o.region = rs.region
+                         and o.updated_at > rs.updated_at)
+           or exists (select 1 from daily_prices d
+                       where d.game_id = rs.game_id and d.region = rs.region
+                         and d.updated_at > rs.updated_at)
+        order by rs.updated_at asc
+        limit $1`,
+      [cap],
+    )
+  ).rows;
+  // 随机补齐到 sample（去重，防同一行重复比对）
+  const seen = new Set(suspect.map((r) => `${r.game_id}|${r.region}`));
+  const rows = [...suspect];
+  if (rows.length < cap) {
+    const extra = (
+      await q('select game_id, region from game_region_snapshot order by random() limit $1', [cap - rows.length])
+    ).rows;
+    for (const r of extra) {
+      const key = `${r.game_id}|${r.region}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push(r);
+    }
+  }
   const diffs = [];
+  let fixed = 0;
   const normArr = (v) => (Array.isArray(v) ? [...v].sort().map(String) : v == null ? null : [String(v)]);
   const toIso = (v) => (v instanceof Date ? v.toISOString() : v == null ? null : String(v).slice(0, 23));
   for (const row of rows) {
@@ -4028,22 +4091,28 @@ export async function readModelCheck(q, { sample = 200, fix = false } = {}) {
       ['hist_low_cents', snap.hist_low_cents, hist.hist_low_cents],
       ['prev_hist_low_cents', snap.prev_hist_low_cents, hist.prev_hist_low_cents],
     ];
+    const rowDiffs = [];
     for (const [field, a, b] of pairs) {
-      if (String(a) !== String(b)) diffs.push({ gameId, region, field, snapshot: a, actual: b });
+      if (String(a) !== String(b)) rowDiffs.push({ gameId, region, field, snapshot: a, actual: b });
     }
-    if (fix && diffs.some((d) => d.gameId === gameId && d.region === region)) {
-      await refreshGameRegionPrices(q, gameId);
-      await refreshGameRegionHist(q, gameId);
+    if (rowDiffs.length) {
+      diffs.push(...rowDiffs);
+      if (fix) {
+        // B5 批：修复走唯一写入路径的维护钩子（refresh*），不是自拼 SQL
+        await refreshGameRegionPrices(q, gameId);
+        await refreshGameRegionHist(q, gameId);
+        fixed += 1;
+      }
     }
   }
-  return { checked: rows.length, diffs };
+  return { checked: rows.length, diffs, fixed, suspect: suspect.length };
 }
 
 /** 全量重建：删除（可指定区服）后重跑一次性回填（docs/READ-MODEL.md §7 运维手段）。 */
 export async function readModelRebuild(q, { region = null } = {}) {
   const del = region
-    ? await q('delete from game_region_snapshot where region = $1', [String(region)])
-    : await q('delete from game_region_snapshot');
+    ? await snapshotWrite(q, 'clearRegion', [String(region)])
+    : await snapshotWrite(q, 'clearAll');
   const deleted = del.rowCount ?? 0;
   await backfillGameRegionSnapshot(q);
   return { deleted };

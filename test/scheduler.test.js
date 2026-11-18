@@ -99,7 +99,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.deepEqual(args('rename'), ['rename', '--limit', '200000', '--batch', '100', '--sleep', '1500']);
   assert.deepEqual(args('backfill'), ['backfill', '--limit', '5000', '--batch', '100', '--sleep', '3000'], 'BL 批：回填默认每天上限 5000');
   assert.deepEqual(args('prune'), ['prune']);
-  assert.deepEqual(args('readmodel'), ['readmodel', 'check', '--sample', '200'], 'AV 批：默认抽样 200 对账');
+  assert.deepEqual(args('readmodel'), ['readmodel', 'check', '--sample', '200', '--fix'], 'B5 批：每日抽样 200 对账 + 自动修复（手动 check 默认仍只报告）');
   assert.deepEqual(args('proxy-probe'), ['probe', '--proxy'], 'BB 批：探测命令与参数');
   assert.ok(!jobsFromEnv({ PROXY_PROBE_ENABLED: '0' }).some((j) => j.name === 'proxy-probe'), 'BB 批：PROXY_PROBE_ENABLED=0 可关闭');
 });
