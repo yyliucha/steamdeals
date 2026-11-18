@@ -23,7 +23,7 @@
 | 3 | **已拥有游戏显示对应的 Steam 账号**：列表卡片徽标显示账号名（现已有 `已拥有 xxx +N`）；详情页显示「已拥有账号：全部账号」。 |
 | 4 | **已拥有游戏按钮不同（终态）**：详情页其余操作隐藏，**只保留「去 Steam 商店」**——Web 已实现（`USER-ALERTS` §1 #3）；App 需对齐。 |
 | 5 | 服务端 `gameSearch` 默认值**保持不变**（`exclude`），由前端显式传 `include`（避免影响其它调用方/后台）。 |
-| 6 | App 端：列表/搜索带 `owned=include`；已拥有卡片显示「已拥有」徽标；详情按钮按终态显示（无账号名时显示「已拥有」）。 |
+| 6 | App 端：列表/搜索带 `owned=include`；已拥有卡片显示「已拥有」徽标；详情按终态显示；**站点 `/api/app/games/:appid` 补 `owned_by`（账号名数组，已确认要补）**，App 显示「已拥有 · 账号名」。 |
 
 ## 3. 改动落点
 
@@ -31,8 +31,8 @@
   卡片徽标沿用现有 `ownedByText`（前两个账号 +N）；详情终态保持（已实现）。
 - `frontend` 之外：`GET /api/games` 不变；如后台某处依赖默认 `exclude`，确认不回归（后台游戏管理用独立接口）。
 - App（`steamdeals-app`）：`SearchScreen`/`HomeScreen` 请求加 `owned=include`；卡片与详情按 `owned` 字段显示徽标；
-  详情终态（只留 Steam 商店）——账号名需要 `/api/app/games/:appid` 返回 `owned_by`（当前契约只有 `flags`）：
-  **站点侧给 App 详情补 `owned_by`（只读账号名数组）**，App 展示；若暂不加，App 先显示「已拥有」。
+  详情终态（只留 Steam 商店）——**站点 `/api/app/games/:appid` 补 `owned_by`（只读账号名数组，2026-11-18 已确认）**，
+  App 展示「已拥有 · 账号名」。
 - 测试：`test/api.test.js`/`gameSearch` 断言「include 时不排除已拥有」；App JVM 单测断言请求带 `owned=include`。
 
 ## 4. 验收
@@ -46,5 +46,5 @@
 
 ## 5. 待确认
 
-1. App 详情是否补 `owned_by`（账号名）？建议补（与 Web 一致）；不补则 App 只显示「已拥有」。
+1. ~~App 详情是否补 `owned_by`~~ → **已确认（2026-11-18）：补**，App 详情显示「已拥有 · 账号名」。
 2. 「全部」列表包含已拥有后，首页统计/筛选是否需要在 UI 上提示"含已拥有"？（建议不提示，徽标已足够）

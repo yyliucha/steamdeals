@@ -2069,7 +2069,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **已确认口径（6 项）**：① **所有查询不排除已拥有**（全部/感兴趣/不感兴趣 + 搜索都 `owned=include`）；
   ② 「已拥有」页签保留为筛选（only）；③ 已拥有游戏显示**对应 Steam 账号**（列表徽标已有，详情列全）；
   ④ 已拥有详情**按钮不同（终态）**：只留「去 Steam 商店」——Web 已实现，App 对齐；⑤ 服务端默认值不变（前端显式传）；
-  ⑥ App 列表/搜索带 `owned=include`，详情按终态显示；App 账号名需站点补 `owned_by` 字段（待确认）。
+  ⑥ App 列表/搜索带 `owned=include`，详情按终态显示；站点 `/api/app/games/:appid` **补 `owned_by`（已确认）**，App 显示账号名。
 - **改动落点**：`frontend/src/pages/Home.vue`（owned include）、App `SearchScreen/HomeScreen`（owned include + 徽标/终态）、
   `src/server.js` 的 `/api/app/games/:appid` 补 `owned_by`（若确认）、测试（api.test 断言 + App JVM 单测）。
 - **验收**：见规格 §4——① 登录已拥有时 Web/App 列表与搜索都能看到并标账号；② 详情只留 Steam 商店 + 账号名；
