@@ -168,8 +168,22 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
 
 - 位置：`docs/design/<topic>-YYYY-MM-DD.html`（+ 同名 `.png` 截图），随仓库提交；
 - 覆盖关键状态：默认 / 空态 / 已设置 / 编辑中 / 移动端，至少各有一个画面；
-- 截图用 headless Edge 生成：
-  `msedge --headless=new --disable-gpu --window-size=1180,1560 --screenshot=<png> file:///<html>`；
+- **截图用 headless Edge 生成（2026-11-18 事故后硬规则）**：
+  **严禁杀 Edge**——禁止 `Get-Process msedge | Stop-Process`、`taskkill /IM msedge` 等任何按进程名杀
+  msedge 的命令，不得以"先清理""防残留"为理由关闭或干扰用户已打开的 Edge（2026-11-18 事故：设计文档会话
+  每截一张图就强杀用户全部 Edge 窗口，一天多次）。headless 截图自带唯一临时配置目录，与用户浏览器完全隔离，
+  直接运行即可，**无需任何前置清理**：
+
+  ```powershell
+  $out='F:\dsh\gameprice\docs\design\<topic>-YYYY-MM-DD.png'
+  $ud="$env:TEMP\edge-demo-$(Get-Random)"
+  & 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe' --headless=new --disable-gpu `
+    --hide-scrollbars --no-first-run --user-data-dir="$ud" `
+    --window-size=1180,1560 --screenshot="$out" `
+    "file:///F:/dsh/gameprice/docs/design/<topic>-YYYY-MM-DD.html" 2>$null
+  Start-Sleep -Seconds 7
+  if(Test-Path $out){ Get-Item $out | Select-Object Length } else { '未生成' }
+  ```
 - 规格 §4（前端/后台）必须引用 demo 路径，§验收里必须有一条「与 demo 一致」；
 - 规格里必须附一张 **「demo 状态 ↔ 自动化断言」对照表**（每个关键状态一行：`状态 | 断言点 | 预期`）——
   开发据此加 e2e 矩阵行（见 `steamdeals-test` §2），质检据此逐行核对；页面类验收 =
