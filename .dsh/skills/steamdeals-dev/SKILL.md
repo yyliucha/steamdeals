@@ -5,12 +5,10 @@ description: F:\dsh\gameprice（SteamDeals 跨平台游戏比价）的开发规�
 
 # gameprice 开发规范（职责范围：只做开发）
 
-> **开工前会话检查（2026-11-18 所有者新规）**：本技能只允许在**为本次任务新开的会话**里使用。动手/回复实质内容前先自检：
-> 1. 本会话在收到本次交接消息之前**是否已有其它任务的对话历史**（需求讨论、别的编号的开发/质检、旧结论、旧改动）；
-> 2. 交接消息是否满足 `docs/HANDOVER.md` §7 的**自包含 8 项**（仓库与 HEAD、技能、编号、规格路径、范围、验收、纪律、汇报格式）。
->
-> **命中任一（有上下文 / 交接不完整）→ 直接拒绝开工**，只回复：「本会话已有上下文（或交接信息不全），请为 <编号> 新开会话，并按 HANDOVER §7 的自包含模板交接」，并列出缺失项。
-> 不得"顺手"继续做本会话里的旧任务；不得在缺规格路径时凭记忆开发；不得把多个编号塞进同一会话。
+> **开工前自检（2026-11-18 修订：允许复用会话，不再强制新开会话）**：动手/回复实质内容前先自检：
+> 1. 交接消息是否满足 `docs/HANDOVER.md` §7 的**自包含 8 项**（仓库与 HEAD、技能、编号、规格路径、范围、验收、纪律、汇报格式）——不完整先补全，不得凭记忆开工；
+> 2. 本会话是否残留**别的编号的未完成任务**（未提交改动、写到一半的报告）——有则先收尾旧任务或说明归属，不把多个编号的工作混进同一批提交；
+> 3. 目标编号是否已被其他会话占用（TODO 状态 / 未提交改动 / 对话声明）——占用就跳过并等待（HANDOVER §10.5）。
 >
 
 > **路径基准**：下文 `docs/…`、`src/…`、`frontend/…`、`test/…` 都相对**仓库根** `F:\dsh\gameprice`，
@@ -87,7 +85,7 @@ git status --short; git log --oneline -5; node -p "require('./package.json').ver
 | 关注点 | 文件 |
 |---|---|
 | CLI 入口与全部子命令 | `src/cli.js` |
-| 常驻调度（`jobsFromEnv` 目前 19 个任务） | `src/scheduler.js` |
+| 常驻调度（`jobsFromEnv` 目前 23 个任务） | `src/scheduler.js` |
 | HTTP 服务、静态页、封禁页注入 | `src/server.js`、`src/serve.js`、`src/*-routes.js` |
 | 采集适配器（统一返回 `RawOffer[]`） | `src/adapters/{steam,sonkwo,gog,humble,itad,steam-meta,steam-catalog,sonkwo-discover,store-browse}.js` |
 | 入库：指纹判重、upsert、快照、日聚合 | `src/ingest.js` |
@@ -95,7 +93,7 @@ git status --short; git log --oneline -5; node -p "require('./package.json').ver
 | 连接池、查询日志、时区 | `src/store/index.js` |
 | 出网、代理分流、重试 | `src/http.js`、`src/proxy.js` |
 | 结构化日志与脱敏 | `src/log.js` |
-| 业务设置 schema（约 50 项，落库热加载） | `src/settings.js` |
+| 业务设置 schema（88 项 `def()`，落库热加载；以 `src/settings.js` 实际数为准） | `src/settings.js` |
 | 名称匹配 / 多区比价 / 静态曲线页 | `src/match.js`、`src/compare.js`、`src/report.js` |
 | 关注与提醒 | `src/alerts.js`、`src/notify.js` |
 | 前端入口与组件注册 | `frontend/src/main.js`（控制台组件走 `admin-ui.js` 懒加载） |
@@ -121,7 +119,7 @@ git status --short; git log --oneline -5; node -p "require('./package.json').ver
 - **Element Plus 按需注册，漏一个就静默失效**：新用组件要在 `frontend/src/main.js` 同时加三处——`import`、`import 'element-plus/es/components/<x>/style/css'`、`app.use()` 的数组；控制台专用组件加在 `frontend/src/admin-ui.js`。`test/frontend-registration.test.js` 会拦住漏注册。
 - 主题用语义化 CSS 变量（`html.dark` + `styles/main.css` token），不要写死颜色；亮暗色跟随 `composables/useTheme.js`。
 - 时间展示统一走 `frontend/src/utils/siteTime.js`（站点时区），别用本地时区直接 `toLocaleString`。
-- 响应式三档断点 900 / 760 / 420；手机与桌面是 `v-if` 双结构，触摸目标 ≥44px。
+- 响应式断点 1200 / 1100 / 1024 / 768 / 760 / 420（以 `styles/main.css` 的 `@media` 为准，别背数字）；手机与桌面是 `v-if` 双结构，触摸目标 ≥44px。
 - 改完前端必须 `npm run frontend:build`（`frontend/dist/` 不入库）。
 - **按 demo 实现（2026-11-17 起）**：规格附了 `docs/design/*.html` demo 时，页面必须与 demo 对齐
   （层级 / 间距 / 状态 / 移动端 / 文案）；页面类需求**没有 demo 就不开工**，退回需求会话补。
@@ -172,6 +170,9 @@ node --check src/xxx.js         # 新增/大改文件先过语法
 立即 `git add <具体路径>`（**不要 `git add -A`**——工作区常有其它会话的改动；技能文件已随仓库提交，
 改技能就单独 `git add .dsh/skills/<name>/SKILL.md`）→ `git commit -m "<type>(<scope>): <摘要>"`
 （feat/fix/refactor/test/docs/chore，见 CONTRIBUTING 提交规范）→ `git push origin main`。
+
+**收尾清理自己的临时文件（2026-11-18 起）**：自己产生的 `npmtest-*.log`、探针脚本、临时 patch 等
+不留工作区（删除或移到仓库外），只留下源码/测试/文档改动——避免工作区被日志堆满、也避免误提交。
 然后**立刻直接调用 `steamdeals-qa`**（**不等所有者发话、不问"要不要质检"**）：把 TODO 编号 + 规格路径 +
 基线/HEAD 哈希交给质检（同会话加载 skill 即可）；质检会产出「功能清单」表（用户视角、一条功能一行），
 你按那张表核对"是不是真的都交付了"；
