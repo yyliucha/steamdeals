@@ -2113,12 +2113,18 @@ export function createApiServer({
 
       // ---- 当前用户与偏好 ----
       if (path === '/api/me' && req.method === 'GET') {        const prefs = user ? await db.getPrefs(q, user.id) : null;
+        // DA 批（docs/APP-FILTER-SERVER-SIDE.md §3）：App「已拥有」chip 仅登录且已绑定 Steam 时显示，
+        // 站点 /api/me 与 App /api/app/me 共用本路由，steamBound 口径一致。
+        const steamBound = user
+          ? Number((await q('select count(*)::int as n from steam_accounts where user_id = $1', [user.id])).rows[0]?.n ?? 0) > 0
+          : false;
         return json(res, 200, {
           user: user
             // CL 批：带本人 email（用户级提醒保存后前端提示绑定邮箱；只回显自己）
             ? { id: user.id, username: user.username, role: user.role, mustChangePassword: Boolean(user.must_change_password), email: user.email ?? null }
             : null,
           prefs,
+          steamBound,
           // 站点时区（系统设置里的「时区」）：前端用它格式化时间，而不是浏览器本地时区
           timezone: process.env.TZ || 'Asia/Shanghai',
         });
@@ -2223,9 +2229,16 @@ export function createApiServer({
         const interest = oneOf('interest', ['all', 'on', 'off'], 'all');
         const ownedParam = oneOf('owned', ['exclude', 'only', 'include'], 'exclude');
         const blockedParam = oneOf('blocked', ['exclude', 'only', 'include'], 'exclude');
-        const sort = oneOf('sort', ['discount', 'price', 'name', 'score'], 'discount');
+        const sort = oneOf('sort', ['discount', 'price', 'name', 'score', 'heat', 'release'], 'discount');
         const typeFilter = oneOf('type', ['all', 'game', 'dlc'], 'all');
         const released = oneOf('released', ['all', '30d', '1y', '3y'], 'all');
+        // DA 批（docs/APP-FILTER-SERVER-SIDE.md §2）：筛选开关白名单（'1'/'true' 视为开），
+        // 互斥优先级 unreleased > freeOnly > histLowOnly > discountOnly 在 gameSearch 内归一（口径对全部调用方一致）。
+        const flagOn = (key) => ['1', 'true'].includes(String(getInput(key) ?? '').trim());
+        const discountOnly = flagOn('discountOnly');
+        const histLowOnly = flagOn('histLowOnly');
+        const freeOnly = flagOn('freeOnly');
+        const unreleased = flagOn('unreleased');
         // CH 批（docs/DISCOVERY-FOR-YOU.md §3）：好评率与 Deck 筛选（白名单）
         const reviewMin = Number(getInput('reviewMin') ?? 0);
         const deck = oneOf('deck', ['all', 'verified', 'playable', 'ok', 'unsupported'], 'all');
@@ -2269,6 +2282,11 @@ export function createApiServer({
           adult,
           reviewMin: Number.isFinite(reviewMin) && reviewMin >= 1 && reviewMin <= 9 ? reviewMin : null,
           deck,
+          // DA 批（docs/APP-FILTER-SERVER-SIDE.md §2）：App/Web 共用筛选开关（count 与列表同条件在 gameSearch 内保证）
+          discountOnly,
+          histLowOnly,
+          freeOnly,
+          unreleased,
           // 愿望单是登录用户专属维度；游客传入的 wishlist=true 一律无效
           wishlist: Boolean(user && guestSearchPost && body?.wishlist === true),
         });

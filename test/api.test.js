@@ -126,7 +126,8 @@ test('登录才能存偏好；普通用户不能改游戏标记；管理员可�
     });
     assert.equal(prefs.status, 200);
     const saved = (await prefs.json()).prefs;
-    assert.equal(saved.only_discount, true);
+    // DA 批（docs/APP-FILTER-SERVER-SIDE.md §5）：only_discount 死字段已删列——老客户端传了也被忽略，响应不再回显
+    assert.equal(saved.only_discount, undefined);
     assert.equal(saved.sort, 'price');
 
     // 页签偏好也落库：登录用户下次按自己的习惯加载
@@ -141,6 +142,8 @@ test('登录才能存偏好；普通用户不能改游戏标记；管理员可�
     assert.equal((await q('select tab from user_prefs where user_id = (select id from users where username = $1)', ['alice'])).rows[0].tab, 'off', '页签要写进 user_prefs');
     const meBody = await (await fetch(`${base}/api/me`, { headers: { cookie: alice.cookie } })).json();
     assert.equal(meBody.prefs.tab, 'off', '/api/me 要把页签带回来');
+    // DA 批（docs/APP-FILTER-SERVER-SIDE.md §3）：steamBound 随 /api/me 返回（App「已拥有」chip 显隐依据）
+    assert.equal(meBody.steamBound, false, '未绑定 Steam 时 steamBound=false');
 
     // 非法值归一化
     const prefs3 = await fetch(`${base}/api/prefs`, {
@@ -543,6 +546,10 @@ test('CV：owned=include 时已拥有游戏列表/搜索可见并带账号名；
     // 详情接口返回 owned_by 账号名（CV 决策 6，App 消费）
     const detail = await (await fetch(`${base}/api/games/413150`, { headers: { cookie: alice.cookie } })).json();
     assert.ok(detail.game.owned_by.some((a) => a.name === 'Alice 主号'), '详情返回 owned_by 账号名');
+
+    // DA 批：绑定 Steam 后 /api/me 的 steamBound=true（App「已拥有」chip 显示依据）
+    const meBound = await (await fetch(`${base}/api/me`, { headers: { cookie: alice.cookie } })).json();
+    assert.equal(meBound.steamBound, true, '绑定 Steam 后 steamBound=true');
   } finally {
     await srv.close();
     await store.close();

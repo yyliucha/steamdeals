@@ -191,11 +191,12 @@ POST /api/setup/complete
 ### `POST /api/prefs`
 
 ```json
-{ "hide_uninterested": true, "only_discount": false, "sort": "discount", "theme": "dark" }
+{ "hide_uninterested": true, "sort": "discount", "theme": "dark" }
 ```
 
 登录用户的偏好存在服务端；**访客的筛选偏好只存浏览器 localStorage**（`steamdeals.prefs.v1`），不上传。
 `theme` 取值 `light` / `dark` / `null`：`null` 表示清除显式选择、回到跟随系统；缺省表示不改动。
+`only_discount` 字段已删除（死字段，v2.24.x DA 批起不再读写，老客户端传入被忽略）。
 
 ### 管理员
 

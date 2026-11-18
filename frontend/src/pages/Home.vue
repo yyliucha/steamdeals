@@ -257,7 +257,7 @@ async function changePageSize(value) { pageSize.value=value; await loadGames(1);
 // AF 批（docs/FRONTEND-STALE-LIST.md）：写操作成功后必须失效搜索缓存，否则 30 秒内 loadGames 命中旧缓存不刷新
 function invalidateSearchCache(){searchCache.clear();}
 function saveLocalPrefs(){try{localStorage.setItem('steamdeals.prefs.v1',JSON.stringify({tab:activeTab.value,sort:sort.value,region:region.value}));}catch{}}
-async function savePrefs(){saveLocalPrefs();if(!user.value)return;try{await request('/api/prefs',{method:'POST',body:JSON.stringify({tab:activeTab.value,sort:sort.value,only_discount:false})});}catch{}}
+async function savePrefs(){saveLocalPrefs();if(!user.value)return;try{await request('/api/prefs',{method:'POST',body:JSON.stringify({tab:activeTab.value,sort:sort.value})});}catch{}}
 async function setTab(value){activeTab.value=value;if(value==='watchlist'){await loadWatchList(1);return;}await savePrefs();await loadGames(1);}
 async function changeSort(){await savePrefs();await loadGames(1);}
 async function changeRegion(){saveLocalPrefs();await loadGames(1);}

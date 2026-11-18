@@ -215,7 +215,6 @@ create table if not exists sessions (
 );create table if not exists user_prefs (
   user_id integer primary key references users(id) on delete cascade,
   hide_uninterested boolean not null default true,
-  only_discount boolean not null default false,
   sort text not null default 'discount',
   tab text not null default 'all'
 );
@@ -518,6 +517,11 @@ const ALTERS = [  'alter table games add column if not exists interested boolean
   'create unique index if not exists watchlist_user_game_uq on watchlist (user_id, game_id, region) where user_id is not null',
   'create unique index if not exists watchlist_site_game_uq on watchlist (game_id, region) where user_id is null',
   'create index if not exists idx_watchlist_user on watchlist (user_id, created_at desc)',
+  // DA 批（docs/APP-FILTER-SERVER-SIDE.md §5）：user_prefs.only_discount 是死字段（存但 gameSearch 从未使用）
+  // → drop 列避免两套真相；unreleased 筛选/sort=release 走 release_date 索引；discountOnly 走部分索引。
+  'alter table user_prefs drop column if exists only_discount',
+  'create index if not exists idx_games_release_date on games (release_date desc nulls last)',
+  'create index if not exists idx_offers_discount on offers (game_id) where discount_pct > 0',
 ];
 
 export async function migrate(store, { logger = null } = {}) {
@@ -1595,8 +1599,20 @@ export function gameKeywordSql(kwParam, { appidAsInt = false, appidAsText = fals
  */
 export async function gameSearch(
   q,
-  { region = 'cn', page = 1, pageSize = 20, keyword = '', sort = 'discount', interest = 'all', owned = 'exclude', blocked = 'exclude', userId = null, typeFilter = 'all', released = 'all', marks = 'any', compact = false, guestFlags = null, wishlist = false, adult = 'hide', reviewMin = null, deck = 'all' } = {},
+  { region = 'cn', page = 1, pageSize = 20, keyword = '', sort = 'discount', interest = 'all', owned = 'exclude', blocked = 'exclude', userId = null, typeFilter = 'all', released = 'all', marks = 'any', compact = false, guestFlags = null, wishlist = false, adult = 'hide', reviewMin = null, deck = 'all', discountOnly = false, histLowOnly = false, freeOnly = false, unreleased = false } = {},
 ) {
+  // DA 批（docs/APP-FILTER-SERVER-SIDE.md §2）：四个筛选开关互斥（App 单选 chip），
+  // 同时传多个按优先级 unreleased > freeOnly > histLowOnly > discountOnly 取第一个——在这里归一，口径对全部调用方一致。
+  if (unreleased) {
+    freeOnly = false;
+    histLowOnly = false;
+    discountOnly = false;
+  } else if (freeOnly) {
+    histLowOnly = false;
+    discountOnly = false;
+  } else if (histLowOnly) {
+    discountOnly = false;
+  }
   const kw = String(keyword ?? '').trim();
   const size = Math.min(Math.max(Number(pageSize) || 20, 5), 100);
   const pg = Math.max(1, Number(page) || 1);
@@ -1652,7 +1668,8 @@ export async function gameSearch(
     keywordCond = gameKeywordSql('$2');
   }
   const conds = [
-    ...(useReadModel ? [] : ['exists (select 1 from daily_prices d where d.game_id = g.id and d.region = $1)']),
+    // DA 批：unreleased 筛选要能看到「无报价/无历史的未来游戏」，豁免 legacy 的 daily_prices 前置条件
+    ...(useReadModel || unreleased ? [] : ['exists (select 1 from daily_prices d where d.game_id = g.id and d.region = $1)']),
     'not g.deleted',
     keywordCond,
   ];
@@ -1698,6 +1715,41 @@ export async function gameSearch(
   else if (deck === 'playable') conds.push('g.deck_compat >= 2');
   else if (deck === 'ok') conds.push('g.deck_compat >= 1');
   else if (deck === 'unsupported') conds.push('g.deck_compat = 1');
+  // DA 批（docs/APP-FILTER-SERVER-SIDE.md §2）：App/Web 共用的四个筛选口径。
+  // 折扣：官方+授权渠道、在售、折扣 > 0（与详情 current 口径一致，exists 可走 idx_offers_discount 部分索引）。
+  if (discountOnly) {
+    conds.push(
+      `exists (select 1 from offers o join platforms p on p.code = o.platform_code
+        where o.game_id = g.id and o.region = $1 and o.in_stock and p.kind in ${OFFICIAL_KINDS} and o.discount_pct > 0)`,
+    );
+  }
+  // 史低：当前价 = 历史最低（current_low <= hist_low；hist 含当天，两者相等即命中）。
+  // 读模型直接读快照列（生产路径，无逐行子查询）；legacy 回滚用与 GAME_SELECT 同口径的子查询。
+  if (histLowOnly) {
+    conds.push(
+      useReadModel
+        ? 'rs.price_cents is not null and rs.hist_low_cents is not null and rs.price_cents <= rs.hist_low_cents'
+        : `(select min(o.price_cents) from offers o join platforms p on p.code = o.platform_code
+             where o.game_id = g.id and o.region = $1 and o.in_stock and p.kind in ${OFFICIAL_KINDS}) is not null
+           and (select min(d.min_price_cents) from daily_prices d join platforms p on p.code = d.platform_code
+             where d.game_id = g.id and d.region = $1 and p.kind in ${OFFICIAL_KINDS}) is not null
+           and (select min(o.price_cents) from offers o join platforms p on p.code = o.platform_code
+             where o.game_id = g.id and o.region = $1 and o.in_stock and p.kind in ${OFFICIAL_KINDS})
+               <= (select min(d.min_price_cents) from daily_prices d join platforms p on p.code = d.platform_code
+             where d.game_id = g.id and d.region = $1 and p.kind in ${OFFICIAL_KINDS})`,
+    );
+  }
+  // 免费：is_free 标记为主，兼容 0 元官方报价（部分历史数据可能只落价未落标记）。
+  if (freeOnly) {
+    conds.push(
+      `(g.is_free = true or exists (select 1 from offers o join platforms p on p.code = o.platform_code
+        where o.game_id = g.id and o.region = $1 and o.in_stock and p.kind in ${OFFICIAL_KINDS} and o.price_cents = 0))`,
+    );
+  }
+  // 未发售：release_date 在未来；无日期时回退 steam_status=coming_soon。不含「已发售但无报价」。
+  if (unreleased) {
+    conds.push(`(g.release_date > current_date or (g.release_date is null and g.steam_status = 'coming_soon'))`);
+  }
   const where = 'where ' + conds.join(' and ');
 
   const priceExpr = `(select min(o.price_cents) from offers o
@@ -1706,6 +1758,14 @@ export async function gameSearch(
   const discountExpr = `(select max(o.discount_pct) from offers o
      join platforms p on p.code = o.platform_code
     where o.game_id = g.id and o.region = $1 and o.in_stock and p.kind in ${OFFICIAL_KINDS})`;
+  // DA 批（docs/APP-FILTER-SERVER-SIDE.md §2）：sort=heat/release 是独立主排序（非「热度前缀+二级」结构），
+  // 直接替换整段 order by；其余排序保持原结构不变（排序口径不变）。
+  const primaryOrder =
+    sort === 'heat'
+      ? 'g.heat desc nulls last, g.id desc'
+      : sort === 'release'
+        ? 'g.release_date desc nulls last, g.id desc'
+        : null;
   const order =
     sort === 'price'
       ? `${priceExpr} asc nulls last, name asc`
@@ -1720,8 +1780,11 @@ export async function gameSearch(
   const rmFromCompact = `from games g ${userJoin(3)} join game_region_snapshot rs on rs.game_id = g.id and rs.region = $1`;
   const rmFromFull = `from games g ${userJoin(3)} left join game_region_snapshot rs on rs.game_id = g.id and rs.region = $1`;
   const rmConds = useReadModel ? [...conds] : null;
-  if (rmConds && !compact) rmConds.unshift('rs.game_id is not null');
+  // DA 批：unreleased 筛选需要「无报价/无历史的未来游戏」也可见——读模型的「有历史/有报价」限制
+  // （非 compact 的 rs.game_id is not null / compact 的内连接）在该筛选下豁免，改用 left join + 不 unshift。
+  if (rmConds && !compact && !unreleased) rmConds.unshift('rs.game_id is not null');
   const rmWhereStr = rmConds ? 'where ' + rmConds.join(' and ') : null;
+  const rmFromList = unreleased ? rmFromFull : rmFromCompact;
   const rmSort =
     sort === 'name'
       ? 'name asc'
@@ -1734,7 +1797,7 @@ export async function gameSearch(
   const total = useReadModel
     ? Number(
         (await q(
-          `select count(*)::int as n ${compact ? rmFromCompact : rmFromFull} ${rmWhereStr}`,
+          `select count(*)::int as n ${compact ? rmFromList : rmFromFull} ${rmWhereStr}`,
           filterParams,
         )).rows[0]?.n ?? 0,
       )
@@ -1790,7 +1853,7 @@ export async function gameSearch(
     left join price_rollup pr on pr.game_id = g.id
     left join daily_rollup dr on dr.game_id = g.id
     ${where}
-    order by g.heat desc nulls last, ${sort === 'name' ? 'name asc' : sort === 'price' ? 'pr.current_low asc nulls last, name asc' : 'pr.discount desc nulls last, pr.current_low asc nulls last, name asc'}, g.id asc
+    order by ${primaryOrder ?? `g.heat desc nulls last, ${sort === 'name' ? 'name asc' : sort === 'price' ? 'pr.current_low asc nulls last, name asc' : 'pr.discount desc nulls last, pr.current_low asc nulls last, name asc'}, g.id asc`}
     limit __LIST_LIMIT__ offset __LIST_OFFSET__`;
   // AV 批（docs/READ-MODEL.md §5.1）：compact 读模型查询——与旧 compact 同字段（价格/史低来自 rs.*，
   // 补 rs.platform_names），排序与旧 CTE 版一致（含 g.id 兜底）。
@@ -1811,19 +1874,19 @@ export async function gameSearch(
       rs.hist_low_cents as hist_low, rs.prev_hist_low_cents as prev_hist_low,
       (select count(*)::int from daily_prices d where d.game_id = g.id and d.region = $1) as day_count,
       rs.last_seen_at, rs.low_platform_name, rs.low_platform, rs.platform_names
-    ${rmFromCompact}
+    ${rmFromList}
     ${rmWhereStr}
-    order by g.heat desc nulls last, ${rmSort}, g.id asc
+    order by ${primaryOrder ?? `g.heat desc nulls last, ${rmSort}, g.id asc`}
     limit __LIST_LIMIT__ offset __LIST_OFFSET__`;
   const limitIndex = filterParams.length + 1;
   const rows = (await q(
     useReadModel
       ? compact
         ? compactRmQuery.replace('__LIST_LIMIT__', `$${limitIndex}`).replace('__LIST_OFFSET__', `$${limitIndex + 1}`)
-        : `${GAME_SELECT_RM}${extra} ${rmFromFull} ${rmWhereStr} order by g.heat desc nulls last, ${rmSort} limit $${limitIndex} offset $${limitIndex + 1}`
+        : `${GAME_SELECT_RM}${extra} ${rmFromFull} ${rmWhereStr} order by ${primaryOrder ?? `g.heat desc nulls last, ${rmSort}`} limit $${limitIndex} offset $${limitIndex + 1}`
       : compact
         ? compactQuery.replace('__LIST_LIMIT__', `$${limitIndex}`).replace('__LIST_OFFSET__', `$${limitIndex + 1}`)
-        : `${GAME_SELECT}${extra} from games g ${userJoin(3)} ${where} order by g.heat desc nulls last, ${order} limit $${limitIndex} offset $${limitIndex + 1}`,
+        : `${GAME_SELECT}${extra} from games g ${userJoin(3)} ${where} order by ${primaryOrder ?? `g.heat desc nulls last, ${order}`} limit $${limitIndex} offset $${limitIndex + 1}`,
     [...filterParams, size, offset],
   )).rows;
   if (userId && !compact) {
@@ -2568,11 +2631,11 @@ export function normalizePrefs(prefs = {}) {
 }
 
 export async function getPrefs(q, userId) {
-  const r = await q('select hide_uninterested, only_discount, sort, tab, theme from user_prefs where user_id = $1', [userId]);
+  const r = await q('select hide_uninterested, sort, tab, theme from user_prefs where user_id = $1', [userId]);
   const row = r.rows[0];
-  if (!row) return { hide_uninterested: false, only_discount: false, sort: 'discount', tab: 'all', theme: null };
+  if (!row) return { hide_uninterested: false, sort: 'discount', tab: 'all', theme: null };
   const { tab, sort } = normalizePrefs({ tab: row.tab, sort: row.sort });
-  return { hide_uninterested: row.hide_uninterested === true, only_discount: row.only_discount === true, sort, tab, theme: row.theme ?? null };
+  return { hide_uninterested: row.hide_uninterested === true, sort, tab, theme: row.theme ?? null };
 }
 
 export async function savePrefs(q, userId, prefs = {}) {
@@ -2580,19 +2643,17 @@ export async function savePrefs(q, userId, prefs = {}) {
   const existing = await getPrefs(q, userId);
   const tab = prefs.tab === undefined ? existing.tab : normalizePrefs(prefs).tab;
   const sort = prefs.sort === undefined ? existing.sort : normalizePrefs(prefs).sort;
-  const onlyDiscount = prefs.only_discount === undefined ? existing.only_discount : Boolean(prefs.only_discount);
   // theme：'light'/'dark' 显式选择；null 显式回到「跟随系统」；缺省保持
   const theme = prefs.theme === 'light' || prefs.theme === 'dark' ? prefs.theme : prefs.theme === null ? null : existing.theme;
   await q(
-    `insert into user_prefs (user_id, hide_uninterested, only_discount, sort, tab, theme) values ($1, $2, $3, $4, $5, $6)
+    `insert into user_prefs (user_id, hide_uninterested, sort, tab, theme) values ($1, $2, $3, $4, $5)
      on conflict (user_id) do update set
        hide_uninterested = excluded.hide_uninterested,
-       only_discount = excluded.only_discount,
        sort = excluded.sort,
        tab = excluded.tab,
        theme = excluded.theme`,
     // hide_uninterested 是旧字段：tab=on 等价于"隐藏不感兴趣"，保留兼容老客户端
-    [userId, tab === 'on', onlyDiscount, sort, tab, theme],
+    [userId, tab === 'on', sort, tab, theme],
   );
   return getPrefs(q, userId);
 }

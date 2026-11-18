@@ -1,6 +1,6 @@
-# App 筛选/排序服务端化（DA = CM-5，方案 A）（待开发）
+# App 筛选/排序服务端化（DA = CM-5，方案 A）（已实现待发版）
 
-> 状态：**已确认待开发（2026-11-18，所有者选方案 A：站点 + App 一起做）**。
+> 状态：**已实现待发版（2026-11-18 实现，见 TODO DA 条目；方案 A：站点 + App 一起做）**。
 > 关联：[TODO.md](TODO.md) DA 条目、[APP-PARITY.md](APP-PARITY.md) §57、[APP-NATIVE.md](APP-NATIVE.md) §4.4、
 > [DISCOVERY-FOR-YOU.md](DISCOVERY-FOR-YOU.md)（筛选口径）。
 
