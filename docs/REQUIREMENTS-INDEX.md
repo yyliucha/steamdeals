@@ -82,6 +82,7 @@
 | **CT** | app-release-sync 404（私有仓库 + 无 token → 支持 GITHUB_TOKEN） | [APP-SYNC-404.md](APP-SYNC-404.md) | 待开发（2026-11-18 线上日志；P1） | ✅ 本轮已给 |
 | **CU** | 到价提醒治理（无报价标记 / 站点级按 Steam 愿望单反查并迁移 / 史低抽检 / Steam 刷新频率评估） | [USER-ALERTS-GOVERNANCE.md](USER-ALERTS-GOVERNANCE.md) | 待开发（2026-11-18 实测后合并立项） | ✅ 本轮已给 |
 | **CV** | 所有查询不再排除已拥有（列表+搜索 owned=include；已拥有显示账号与终态按钮；App 对齐） | [APP-SEARCH-OWNED.md](APP-SEARCH-OWNED.md) | 待开发（2026-11-18 实测定位；P0） | ✅ 本轮已给 |
+| **CW** | 后台「游戏目录」点游戏名弹详情（Steam 已同步数据 + 封面/发售/开发商 + 底部 Steam 商店跳转） | [ADMIN-GAME-POPUP.md](ADMIN-GAME-POPUP.md) | 待开发（2026-11-18 需求 + demo） | ✅ 本轮已给 |
 | **CR** | 开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + API 契约字符串数组） | [APP-DEV-PUBLISHER-NAMES.md](APP-DEV-PUBLISHER-NAMES.md) | 已发布 v2.24.1（2026-11-18，5673ee9；QA ✅ docs/QA-CR.md） | ✅ 本轮已给 |
 | **CE** | 杉果匹配器加固 + 误合并数据修复（完整标题计分/片段限制/数字一致性/内容词只进人工/`--apply` 二次确认） | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9 | 已发布 v2.19.0（2026-11-16，12f4f42；QA 报告 docs/QA-CE.md） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |

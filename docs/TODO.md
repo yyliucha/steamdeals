@@ -2079,3 +2079,23 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **验收**：见规格 §4——① 登录已拥有时 Web/App 列表与搜索都能看到并标账号；② 详情只留 Steam 商店 + 账号名；
   ③ 未登录行为不变；④ 「已拥有」页签仍只显示已拥有；⑤ 服务端默认值未变；⑥ `npm test` / `frontend:build` / `scan` 全绿。
 
+## CW. 待开发：后台「游戏目录」点游戏名弹详情（Steam 数据 + 商店跳转）
+
+**状态：待开发（2026-11-18，所有者需求；demo 已出）**
+**依赖：** 无
+**解锁：** 无
+**规格**：[ADMIN-GAME-POPUP.md](ADMIN-GAME-POPUP.md)（含 demo 状态↔断言表）
+**Demo**：[design/admin-game-popup-2026-11-18.html](design/admin-game-popup-2026-11-18.html)
+
+- **现状**：后台游戏名是纯文本（`AdminModules.vue` L67），无点击；已有 `GET /api/games/:appid` 返回
+  `{game, offers, series, dlc, watch}`；`GAME_SELECT` **缺 `header_image`、`release_date`** 两列。
+- **需求（6 项）**：① 点游戏名弹小弹窗（640px，移动端 100%）；② 内容 = 封面 + 中英名 + AppID + 徽标 +
+  发售/开发商/发行商/类型/平台/分级 + 价格条（当前/史低/折扣）+ 简介（4 行可展开）；③ 数据用**站内已同步的
+  Steam 数据**（不实时请求）；④ 底部固定「**在 Steam 商店查看**」→ `https://store.steampowered.com/app/<appid>/` 新窗口；
+  ⑤ 未同步/无 appid 有明确兜底；⑥ 游戏名用蓝色虚线下划线样式，不影响行内按钮。
+- **改动落点**：`src/store/pg.js`（`GAME_SELECT` +2 列）、`frontend/src/pages/AdminModules.vue`（点击 + 弹窗 + fetch + 兜底）、
+  `test/api.test.js`（详情含 `header_image`/`release_date` 断言）。
+- **验收**：见规格 §4 的 11 行「demo 状态 ↔ 断言」——列表点击、徽标、封面、字段、价格、简介展开、Steam 跳转、
+  无 appid 兜底、移动端、`npm test` / `frontend:build` / `scan` 全绿。
+- **待确认**：回收站是否也支持（建议支持）；是否加 DLC 数量/评测数；简介默认 4 行还是 6 行。
+

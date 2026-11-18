@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>后台游戏名点击弹窗 demo</title>
+<style>
+  :root{--bg:#0b1020;--panel:#121a30;--panel-2:#0f1728;--border:#243050;--border-2:#2e3d63;--fg:#e8edf9;
+    --fg-muted:#93a0bf;--fg-subtle:#6d7a99;--brand:#6b7dff;--green:#3fbf7f;--green-bg:#12291f;--green-border:#2a6b4a;--amber:#e0a23c}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:13.5px/1.6 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;padding:18px}
+  .crumb{color:var(--fg-subtle);font-size:11.5px;margin-bottom:10px}
+  .appbar{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#6b7dff,#3e4fd8);display:flex;align-items:center;justify-content:center;font-weight:800}
+  .table{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .tr{display:grid;grid-template-columns:2.2fr 1.2fr .9fr 1fr 1fr .8fr;gap:12px;align-items:center;padding:9px 14px;border-bottom:1px solid #1c2740;font-size:12.5px}
+  .tr.head{color:var(--fg-subtle);font-size:11.5px;background:#0f1729}
+  .tr:last-child{border-bottom:0}
+  .gname{display:flex;align-items:center;gap:10px}
+  .gname img{width:56px;height:26px;object-fit:cover;border-radius:4px;background:#1b2440}
+  .gname a{color:#9fb4ff;text-decoration:none;cursor:pointer;border-bottom:1px dashed #3a4c86}
+  .gname a:hover{color:#c9d6ff}
+  .tag{font-size:10.5px;border:1px solid #2c3a68;background:#16203a;border-radius:999px;padding:1px 8px;color:#b9c6e6}
+  .tag.ok{color:#c8f3dd;border-color:var(--green-border);background:var(--green-bg)}
+  .tag.warn{color:#ffe3b8;border-color:#5a4520;background:#2a2113}
+  /* 弹窗 */
+  .overlay{position:fixed;inset:0;background:rgba(4,8,18,.62);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:20px}
+  .dialog{width:640px;max-width:94vw;background:linear-gradient(180deg,#131c31,#101728);border:1px solid var(--border-2);
+    border-radius:14px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55)}
+  .d-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);background:#0f1729}
+  .d-head h3{font-size:14px;margin:0;flex:1}
+  .x{color:var(--fg-subtle);cursor:pointer;font-size:16px;line-height:1}
+  .d-body{padding:0 16px 14px}
+  .hero{height:150px;margin:0 -16px 12px;background:center/cover no-repeat;position:relative}
+  .hero::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,#101728)}
+  .title-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:2px}
+  .title-row h2{font-size:17px;margin:0}
+  .en{color:var(--fg-muted);font-size:12px}
+  .meta{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin:10px 0 12px;font-size:12.5px}
+  .meta div{display:flex;gap:8px}
+  .meta b{color:var(--fg-subtle);font-weight:600;min-width:56px}
+  .price{display:flex;gap:18px;align-items:baseline;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:9px 12px;margin-bottom:12px}
+  .price strong{font-size:17px;color:#9ff0c6}
+  .price s{color:var(--fg-subtle)}
+  .price .lbl{color:var(--fg-subtle);font-size:11.5px}
+  .desc{color:#c3cde6;font-size:12.5px;line-height:1.7;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:8px}
+  .more{color:#9fb4ff;font-size:12px;cursor:pointer;border-bottom:1px dashed #3a4c86;display:inline-block}
+  .d-foot{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--border);background:#0e1626}
+  .d-foot .note{color:var(--fg-subtle);font-size:11.5px;flex:1}
+  .btn{border:1px solid var(--border-2);background:var(--panel-2);color:var(--fg);border-radius:9px;padding:7px 14px;font-size:12.5px;cursor:pointer}
+  .btn-primary{background:linear-gradient(180deg,#7287ff,#5a6bf5);border-color:#6b7dff;color:#fff;font-weight:600;box-shadow:0 4px 14px #4256ff33}
+  .hint{color:var(--fg-subtle);font-size:11px;margin:10px 2px 0}
+  .rule{display:inline-block;background:#141d33;border:1px dashed #2c3a68;color:#9fb0d8;border-radius:6px;padding:1px 8px;font-size:11px}
+</style>
+</head>
+<body>
+  <div class="crumb">管理中心 / 内容运营 / 游戏管理 / 游戏目录</div>
+  <div class="appbar"><div class="logo">S</div><strong>SteamDeals · 游戏目录</strong><span class="tag">共 200,512 款</span></div>
+
+  <div class="table">
+    <div class="tr head"><div>游戏</div><div>平台</div><div>Steam 价</div><div>报价</div><div>同步状态</div><div>操作</div></div>
+    <div class="tr">
+      <div class="gname"><img src="https://sd.yyliucha.cn/img/steam/435150/header" alt=""><div><a>神界：原罪2 - 终极版</a><div class="en">Divinity: Original Sin 2 - Definitive Edition</div></div></div>
+      <div><span class="tag">GOG</span> <span class="tag">Steam 国区</span></div><div>¥133.00</div><div>2</div><div><span class="tag ok">正常</span></div><div>编辑 · 禁用 · 删除</div>
+    </div>
+    <div class="tr">
+      <div class="gname"><img src="https://sd.yyliucha.cn/img/steam/1091500/header" alt=""><div><a>赛博朋克 2077</a><div class="en">Cyberpunk 2077</div></div></div>
+      <div><span class="tag">Steam 国区</span></div><div>¥298.00</div><div>1</div><div><span class="tag ok">正常</span></div><div>编辑 · 禁用 · 删除</div>
+    </div>
+    <div class="tr">
+      <div class="gname"><div><a>王国：拯救2</a><div class="en">Kingdom Come: Deliverance II</div></div></div>
+      <div><span class="tag">GOG</span></div><div>¥228.00</div><div>2</div><div><span class="tag warn">未同步</span></div><div>编辑 · 禁用 · 删除</div>
+    </div>
+  </div>
+  <p class="hint"><span class="rule">demo</span> 点游戏名（蓝色虚线下划线）→ 弹窗；内容来自站内已同步的 Steam 数据；底部固定「在 Steam 商店查看」。</p>
+
+  <!-- 弹窗 -->
+  <div class="overlay">
+    <div class="dialog">
+      <div class="d-head">
+        <h3>游戏详情</h3><span class="tag ok">已同步</span><span class="tag warn">成熟</span><span class="x">✕</span>
+      </div>
+      <div class="d-body">
+        <div class="hero" style="background-image:url('https://sd.yyliucha.cn/img/steam/435150/header')"></div>
+        <div class="title-row">
+          <h2>神界：原罪2 - 终极版</h2>
+          <span class="en">Divinity: Original Sin 2 - Definitive Edition</span>
+        </div>
+        <div class="en">AppID 435150</div>
+        <div class="meta">
+          <div><b>发售日期</b>2017-09-14</div>
+          <div><b>开发商</b>Larian Studios</div>
+          <div><b>发行商</b>Larian Studios</div>
+          <div><b>类型</b>RPG · 策略 · 冒险</div>
+          <div><b>平台</b>GOG · Steam 国区</div>
+          <div><b>分级</b>成熟（18+）</div>
+        </div>
+        <div class="price">
+          <div><div class="lbl">当前最低</div><strong>¥133.00</strong></div>
+          <div><div class="lbl">史低</div><s>¥66.50</s></div>
+          <div><div class="lbl">折扣</div>-0%</div>
+        </div>
+        <p class="desc">神已死，虚空逼近。召集你的队伍，掌握元素之力，在《神界：原罪2》中体验回合制战斗与深度对话。终极版包含全部 DLC 与改进内容，支持分屏与合作模式；你的每个选择都会改变世界的走向。</p>
+        <span class="more">展开全部简介 ›</span>
+      </div>
+      <div class="d-foot">
+        <span class="note">数据来源：站内已同步的 Steam 数据 · 更新于 2026-11-18 12:40</span>
+        <button class="btn">关闭</button>
+        <button class="btn btn-primary">在 Steam 商店查看 ↗</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
