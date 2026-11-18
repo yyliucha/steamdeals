@@ -2097,5 +2097,6 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `test/api.test.js`（详情含 `header_image`/`release_date` 断言）。
 - **验收**：见规格 §4 的 11 行「demo 状态 ↔ 断言」——列表点击、徽标、封面、字段、价格、简介展开、Steam 跳转、
   无 appid 兜底、移动端、`npm test` / `frontend:build` / `scan` 全绿。
-- **待确认**：回收站是否也支持（建议支持）；是否加 DLC 数量/评测数；简介默认 4 行还是 6 行。
+- **已确认（2026-11-18）**：回收站同样支持；弹窗加 **DLC 数量 + Steam 评测数**（复用同一详情响应，
+  `heat_reviews` 随 `GAME_SELECT` 返回）；简介保持 4 行截断 + 展开。
 
