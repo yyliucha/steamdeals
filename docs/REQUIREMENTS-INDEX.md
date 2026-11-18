@@ -92,7 +92,7 @@
 | **DE** | 对齐审核页改版（统计卡/进度条/搜索筛选/批量/空态互斥） | [ALIGN-REVIEW-UI.md](ALIGN-REVIEW-UI.md) | 已发布 v2.24.4（2026-11-18，318e678 + 修复 729d0e9；QA docs/QA-DE.md——通过 7/偏差 1 已修/需人工确认 1） | ✅ 本轮已给 |
 | **DF** | 到价提醒手动推送（每行「推送」；强制推送/更新去重时间/频控/审计） | [ALERT-MANUAL-PUSH.md](ALERT-MANUAL-PUSH.md) | 待开发（2026-11-18 需求 + demo；4 口径待定） | ✅ 本轮已给 |
 | **DG** | 对齐匹配修复（副标题/别名低分 → 无候选；索引补 name_en + 副标题感知） | —（TODO DG 条目） | 质检通过（2026-11-18，QA docs/QA-DG.md 第 1 轮 ✅） | ✅ 本轮已给 |
-| **DH** | 对齐审核数据完整性（继承缺口/已忽略撤销/审阅痕迹/孤儿行合并提示） | [ALIGN-INTEGRITY.md](ALIGN-INTEGRITY.md) | 待开发（2026-11-18 已立） | ✅ 本轮已给 |
+| **DH** | 对齐审核数据完整性（继承缺口/已忽略撤销/审阅痕迹/孤儿行合并提示） | [ALIGN-INTEGRITY.md](ALIGN-INTEGRITY.md) | 已实现待发版（2026-11-18，d3c67ec） | ✅ 本轮已给 |
 | **DI** | 测试环境隔离与主链分段（A 测试隔离 / B 四段主链 / C 环境复位脚本） | [TEST-ENV-ISOLATION.md](TEST-ENV-ISOLATION.md) | 质检通过（2026-11-18，3acd1b8，QA docs/QA-DI.md ✅） | ✅ 本轮已给 |
 | **CR** | 开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + API 契约字符串数组） | [APP-DEV-PUBLISHER-NAMES.md](APP-DEV-PUBLISHER-NAMES.md) | 已发布 v2.24.1（2026-11-18，5673ee9；QA ✅ docs/QA-CR.md） | ✅ 本轮已给 |
 | **CE** | 杉果匹配器加固 + 误合并数据修复（完整标题计分/片段限制/数字一致性/内容词只进人工/`--apply` 二次确认） | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9 | 已发布 v2.19.0（2026-11-16，12f4f42；QA 报告 docs/QA-CE.md） | ✅ 本轮已给 |
