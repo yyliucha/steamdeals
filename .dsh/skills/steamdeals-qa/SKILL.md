@@ -14,11 +14,8 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
 > **路径基准**：下文 `docs/…`、`src/…`、`frontend/…`、`test/…` 都相对**仓库根** `F:\dsh\gameprice`，
 > 不是本 SKILL.md 所在目录。开场先 `git rev-parse --show-toplevel` 确认在仓库根。
 >
-> **技能文件位置**：`.dsh/skills/steamdeals-qa/SKILL.md`，**自 2026-11-09 起随仓库提交、推 GitHub**；
-> 本机 DSH 扫描路径 `F:\dsh\.dsh\skills\steamdeals-qa` 是指向它的 junction（仅本机环境配置，不入库）。
-> **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/dsh-skills`；修改后执行
-> `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步（见该仓库 README）。
-> 别的机器 clone 后如需 DSH 发现该技能，按同样方式建 junction；**不要再维护第二份副本**。
+> **技能维护**：本文件随仓库提交；改动后执行 `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步镜像仓库
+> （junction 与「不维护第二份副本」的完整说明见 `steamdeals-requirements` SKILL.md 头部）。
 >
 > **分工**：`steamdeals-requirements` 出需求与开发描述 → `steamdeals-dev` 实现并验证 →
 > **`steamdeals-qa` 验收核对**。结论只有三档：✅ 放行 / ⚠️ 有条件放行 / ❌ 打回。
@@ -48,10 +45,8 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
   并在 `docs/REQUIREMENTS-INDEX.md` 同步；**质检不写 `已发布`**（那是发版后的事）。`质检通过` 条目**仍留在
   [TODO.md](TODO.md)**（等构建）；发布后由 `steamdeals-build` 把它移入 [DONE.md](DONE.md)。
   回写即可——README 不再有「开发进度」生成块（2026-11-12 起下线，没有 `todo:progress` 命令与 `docs-progress` 门禁）。
-- **并发写 TODO（2026-11-09 所有者新规）**：回写状态前先探测占用（`git status --short` + `LastWriteTime`
-  2 分钟内被改过 + `.git/index.lock`）；**被占用就跳过状态回写**，照常完成判定、报告与结论（报告里注明
-  「状态回写待补」）；状态由**收尾复盘**补——本批最后提交的会话重读两份文件全文、用 `edit` 定点替换回写
-  `质检通过 / 质检打回`。完整规则见 [docs/HANDOVER.md](../../../docs/HANDOVER.md) §10。
+- **并发写 TODO/INDEX/DONE**：回写状态前按 [HANDOVER.md](HANDOVER.md) §10.1 探测占用；被占用就跳过状态回写，
+  照常完成判定、报告与结论（注明「状态回写待补」），由收尾复盘按 §10.3 补回。
 - **开工前查重，不重复质检（2026-11-18 所有者新规）**：动手前先确认该编号**是否已被其他会话质检**——
   命中任一即视为"他人进行中"：① TODO 状态已是 `待质检 / 质检通过 / 质检打回`；② `docs/QA-<编号>.md`
   已存在且最近被修改或已提交；③ 对话里已有别的会话声明在做该编号的质检。

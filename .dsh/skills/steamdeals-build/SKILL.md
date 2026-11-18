@@ -14,11 +14,8 @@ description: SteamDeals/gameprice 的构建发版技能：收到所有者「构�
 > **路径基准**：下文 `docs/…`、`src/…`、`test/…`、`package.json` 都相对**仓库根** `F:\dsh\gameprice`，
 > 不是本 SKILL.md 所在目录。开工先 `git rev-parse --show-toplevel` 确认在仓库根。
 >
-> **技能文件位置**：`.dsh/skills/steamdeals-build/SKILL.md`，**随仓库提交、推 GitHub**；
-> 本机 DSH 扫描路径 `F:\dsh\.dsh\skills\steamdeals-build` 是指向它的 junction（仅本机环境配置，不入库）。
-> **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/dsh-skills`；修改后执行
-> `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步（见该仓库 README）。
-> 别的机器 clone 后如需 DSH 发现该技能，按同样方式建 junction；**不要再维护第二份副本**。
+> **技能维护**：本文件随仓库提交；改动后执行 `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步镜像仓库
+> （junction 与「不维护第二份副本」的完整说明见 `steamdeals-requirements` SKILL.md 头部）。
 >
 > **分工**：`steamdeals-dev` 实现并验证 → `steamdeals-qa` 验收核对（TODO 改「质检通过」）→
 > **`steamdeals-build` 发布**（本技能）。构建命令由**所有者**发出；本技能负责把「质检通过」的条目打成镜像版本。
@@ -84,8 +81,8 @@ git status --short                 # 其它会话的未提交改动，记录下�
 
 ### 2.3 文档撞车（HANDOVER.md §10）
 
-改 `docs/TODO.md` / `docs/REQUIREMENTS-INDEX.md` 前探测占用（2 分钟内 mtime + index.lock + git status）；
-被占用就**跳过这两份文件的写入**，照常构建，状态回写留到收尾复盘（本批最后提交的会话用 `edit` 定点替换补齐）。
+改 `docs/TODO.md` / `docs/REQUIREMENTS-INDEX.md` / `docs/DONE.md` 前按 HANDOVER §10.1 探测占用；
+被占用就跳过这三份文件的写入，照常构建，状态回写留到收尾复盘（§10.3）。
 
 ### 2.4 同名文件混入他人 hunk
 
@@ -111,13 +108,10 @@ git status --short                 # 其它会话的未提交改动，记录下�
 
 ### 3.3 验证（全绿才继续，失败就修）
 
-```powershell
-node test/<本批相关>.test.js   # 本批改动相关的测试文件全绿（相关优先，2026-11-18 起；全量主链由 CI 自动跑，本机不再每次全量）
-npm run test:N                  # 主链已分段 test:1~test:4 串行（DI 批）：本机兜底 / 失败段续跑（N=1..4）
-npm run frontend:build          # 改过 frontend/ 必跑（保险起见每次都跑）
-npm run scan                    # 凭据自检
-node test/api.test.js           # 动过 API/权限/标记必跑
-```
+验证命令以 `steamdeals-dev` §7 为**唯一版本**，本技能只列发版特有项：
+- `npm run test:N`——主链已分段 test:1~test:4 串行（DI 批）：本机兜底只跑失败段（N=1..4）；
+- `node test/api.test.js`——动过 API/权限/标记必跑；
+- `npm run frontend:build` + `npm run scan` 每次都跑。
 **e2e 全量与测试报告不在本会话跑**（2026-11-18 所有者新规：报告独立、不阻塞构建）——发版完成后由所有者开
 **独立报告会话**跑 `npm run e2e` 全量并出 PDF（流程见 `steamdeals-test` §2.3 与 TODO DJ 条目）。
 

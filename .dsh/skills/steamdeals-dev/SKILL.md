@@ -14,11 +14,8 @@ description: F:\dsh\gameprice（SteamDeals 跨平台游戏比价）的开发规�
 > **路径基准**：下文 `docs/…`、`src/…`、`frontend/…`、`test/…` 都相对**仓库根** `F:\dsh\gameprice`，
 > 不是本 SKILL.md 所在目录。开工先 `cd F:\dsh\gameprice` 并确认 `git rev-parse --show-toplevel`。
 >
-> **技能文件位置**：`.dsh/skills/steamdeals-dev/SKILL.md`，**自 2026-11-09 起随仓库提交、推 GitHub**；
-> 本机 DSH 扫描路径 `F:\dsh\.dsh\skills\steamdeals-dev` 是指向它的 junction（仅本机环境配置，不入库）。
-> **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/dsh-skills`；修改后执行
-> `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步（见该仓库 README）。
-> 别的机器 clone 后如需 DSH 发现该技能，按同样方式建 junction；**不要再维护第二份副本**。
+> **技能维护**：本文件随仓库提交；改动后执行 `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步镜像仓库
+> （junction 与「不维护第二份副本」的完整说明见 `steamdeals-requirements` SKILL.md 头部）。
 >
 > **分工**：聊需求、定方案、写规格用 `steamdeals-requirements`；本技能只负责把规格变成代码 + 测试；
 > 验收核对用 `steamdeals-qa`（提交推 main 后**直接调用**、不用问所有者；它会输出「功能清单」表；打回项补齐才算交付）；
@@ -66,19 +63,9 @@ git status --short; git log --oneline -5; node -p "require('./package.json').ver
 
 ### 1.1 TODO 被占用时（2026-11-09 所有者新规：直接干活，收尾复盘）
 
-`docs/TODO.md` / `docs/REQUIREMENTS-INDEX.md` 可能被别的会话同时改。**被占用就跳过 TODO/INDEX 的写入，照常干活**，不要停下等。
-
-1. **写前探测**：`git status --short docs/TODO.md docs/REQUIREMENTS-INDEX.md` + 看 `LastWriteTime`
-   （2 分钟内被改过 = 可能有人在写，自己刚写过的除外）+ `Test-Path .git/index.lock`（True = 有 git 操作）；
-2. **命中就跳过这两份文件的写入**：不改状态、不加哈希、不加条目、不补 INDEX、不 `git add` 这两份文件；
-   不回滚、不 `git stash`、不覆盖；
-3. **照常干活**：改代码、补测试、跑验证、提交推 main（提交只 `git add` 自己的文件，**绝不 `git add -A`**）、
-   质检照常调用；把「待回写的状态」记进提交信息与汇报，不要只留在对话里；
-4. **收尾复盘**：本批最后提交的会话负责——先 `git pull --rebase` / `git diff`，**重读两份文件全文**吸收别人的新增，
-   用 `edit` 定点替换补上本批状态（**禁止整文件 `write`**）；README 不再有进度摘要（2026-11-12 下线），无需同步；
-   发现别人的内容被冲掉 → 停手、保留现场再上报，不自行补回。
-
-完整规则（含撞车处理）见 [docs/HANDOVER.md](../../../docs/HANDOVER.md) §10。
+`docs/TODO.md` / `docs/REQUIREMENTS-INDEX.md` / `docs/DONE.md` 可能被别的会话同时改。**完整规则（写前探测 / 被占用跳过 / 收尾复盘）见 [HANDOVER.md](HANDOVER.md) §10，本技能只留要点**：
+被占用就**跳过这三份文件的写入**、照常干活（提交只 `git add` 自己的文件，**绝不 `git add -A`**），
+把「待回写的状态」记进提交信息与汇报；收尾复盘由本批最后提交的会话按 §10.3 用 `edit` 定点补回；不覆盖、不 stash、不回滚。
 
 ## 2. 代码地图
 
@@ -137,8 +124,8 @@ git status --short; git log --oneline -5; node -p "require('./package.json').ver
 ## 6. 文档收尾（是交付的一部分，不是可选）
 
 - **必改 `docs/TODO.md`**：本批条目的 `**状态：…**` 改成 `已实现待发版`（打回后改回 `开发中`），并补提交哈希；
-  TODO 只出现**未完成态**：`待开发 / 依赖阻塞 / 开发中 / 已实现待发版 / 待质检 / 质检通过 / 质检打回 / 待排查 / 待决策`；
-  终态（`已发布 vX.Y.Z` / `已过时`）由 `steamdeals-build` 发布时 / 需求会话判定过时时**移入 [DONE.md](DONE.md)**，dev 不写终态。
+  状态词口径与终态移入规则见 [HANDOVER.md](HANDOVER.md) §1（**本技能不重复列清单**）；
+  dev 不写终态——`已发布 vX.Y.Z` / `已过时` 由 build 发布时 / 需求会话判定过时时移入 [DONE.md](DONE.md)。
 - **README 不再维护进度摘要**（2026-11-12 起）：进度只在 `docs/TODO.md`，README 只有一条指向它的链接，
   没有生成块、没有 `docs-progress` 门禁，也没有 `todo:progress` 命令。
 - **解锁下游**：扫一遍 TODO，把 `依赖：` 指向本条的条目从 `依赖阻塞` 改成 `待开发`，并在汇报里给 `🔓 解锁` 行。
@@ -183,12 +170,8 @@ node --check src/xxx.js         # 新增/大改文件先过语法
 
 **听到「构建」指令后 → 加载 `steamdeals-build` 技能执行**（2026-11-10 起发版职责独立成技能）：
 
-- 发版全流程（版本号自动推算 / 构建门禁 / 文档落地 / 验证 / 提交推 main / 打 tag 推 tag / 盯 CI / 汇报）以
-  `steamdeals-build` 的 SKILL.md 为准，本技能不再重复维护这段；
-- 版本号规则（所有者 2026-11-17 修订，以 `steamdeals-build` §1 为准）：只说「构建」时自动推算——
-  修复/文档 → **小版本 +1**（X.Y.Z+1）、含新功能 → **大版本 +1**（X.Y+1.0，不论条目数/diff 大小）、
-  主版本 X.0.0 必须点名；**禁止跳号**（旧「跳一小版本」档已删除）；「构建 vX.Y.Z」用指定版本；**任何构建都必须有版本号**；
-- 构建门禁：只有 `质检通过` 的条目进版本，存在 `质检打回` / 未质检条目时拒绝构建并列出；
+- 发版全流程、版本号推算（小版本 +1 / 大版本 +1 / 主版本点名 / 禁止跳号）、构建门禁一律以
+  `steamdeals-build` SKILL.md 的 §1/§2/§3 为准，本技能**不重复维护、不复述**；
 - 开发侧照旧：质检通过后停手等指令，**不要提前改版本号、不要打 tag**。
 
 ## 9. 已知坑速查

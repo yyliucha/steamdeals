@@ -9,7 +9,7 @@ description: SteamDeals/gameprice 项目「只聊需求」工作法：先用代�
 > **路径基准**：下文所有项目路径（`docs/…`、`src/…`、`frontend/…`）都相对**仓库根目录**
 > `F:\dsh\gameprice`，不是本 SKILL.md 所在目录。开场先确认当前工作目录在仓库根（`git rev-parse --show-toplevel`）。
 >
-> **技能文件位置**：`.dsh/skills/steamdeals-requirements/SKILL.md`，**自 2026-11-09 起随仓库提交、推 GitHub**；
+> **技能文件位置（权威说明，其余 steamdeals-* 技能引用此处）**：`.dsh/skills/steamdeals-requirements/SKILL.md`，**自 2026-11-09 起随仓库提交、推 GitHub**；
 > 本机 DSH 扫描路径 `F:\dsh\.dsh\skills\steamdeals-requirements` 是指向它的 junction（仅本机配置，不入库）。
 > **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/dsh-skills`；修改后执行
 > `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步（见该仓库 README）。
@@ -247,11 +247,9 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
    **不要 `pull --rebase --autostash`**（会把他人改动 stash 走），停手上报所有者；
    若领先且工作区只有自己的改动，可 `git pull --rebase`（拉取失败或冲突停手报告，禁止强推）。
 
-**并发写 TODO（2026-11-09 所有者新规）**：建条目 / 加 INDEX 行之前先探测占用
-（`git status --short docs/TODO.md docs/REQUIREMENTS-INDEX.md docs/DONE.md`、`LastWriteTime` 2 分钟内被改过、`.git/index.lock`）；
-**被占用就跳过 TODO / INDEX / DONE 的写入**——规格与开发描述照常产出，把「待建条目 / 待改状态」写进开发描述与对话，
-开发照常派发；条目由**收尾复盘**补——本批最后提交的会话重读三份文件全文、用 `edit` 定点替换补建 / 补状态
-（README 自 2026-11-12 起不再有进度摘要，无需同步）。完整规则见 [docs/HANDOVER.md](../../../docs/HANDOVER.md) §10。
+**并发写 TODO（完整规则见 HANDOVER §10）**：建条目 / 加 INDEX 行 / 移入 DONE 之前按 §10.1 探测占用；
+被占用就跳过这三份文件的写入——规格与开发描述照常产出，把「待建条目 / 待改状态」写进开发描述与对话，
+开发照常派发；由收尾复盘按 §10.3 用 `edit` 定点补回。
 
 > 不要在主对话里当"唯一的传话人"：对话会丢，TODO 不会。任何"以后要做"的结论，
 > 只要没进 TODO，就等于没记。
