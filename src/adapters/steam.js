@@ -1,4 +1,5 @@
 import { fetchJson, sleep } from '../http.js';
+import { redactUrl } from '../log.js';
 
 // 一平台一个适配器，统一吐 RawOffer：
 // { platformCode, platformProductId, steamAppid, title, productType, region,
@@ -139,6 +140,8 @@ export async function syncPrices(opts = {}) {
     if (!loggedNoOffers && parsed.offers.length === 0) {
       loggedNoOffers = true;
       logger?.warn('adapter.steam.no_offers', {
+        reason: 'zero_offers',
+        url: redactUrl(url),
         batch: i + 1,
         appids: batch.slice(0, 5),
         bytes,

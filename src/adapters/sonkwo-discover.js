@@ -9,6 +9,8 @@
 //   已知最大 id 111491 → 扫 111489..111608 → 111492 起连续空壳 → 提前停
 // 这样每天只需几十次请求就能跟上新上架，而不必扫描整个 id 空间。
 import { sleep } from '../http.js';
+import { failFields } from '../log.js';
+import { descriptor as sonkwoDescriptor } from './sonkwo.js';
 
 export const DEFAULT_STATE = { highWaterMark: 0, lastRunAt: null, totalFound: 0 };
 
@@ -53,7 +55,11 @@ export async function discoverSkus({
     } catch (err) {
       error = err;
       if (err.status && err.status !== 404) {
-        logger?.warn('discover.probe_failed', { skuId: id, status: err.status, message: String(err.message).slice(0, 120) });
+        logger?.warn('discover.probe_failed', {
+          skuId: id,
+          ...failFields(err, { url: `${sonkwoDescriptor.buyUrlBase}${id}` }),
+          message: String(err.message).slice(0, 120),
+        });
       }
     }
 

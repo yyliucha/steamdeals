@@ -20,7 +20,7 @@ async function fresh() {
 }
 
 test('设置定义完整：59 项、7 个密钥、关键分组都在', () => {
-  assert.equal(settings.SETTINGS.length, 89, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项');
+  assert.equal(settings.SETTINGS.length, 91, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项');
   assert.equal(settings.SETTINGS.filter((d) => d.secret).length, 7);
   const tz = settings.SETTINGS.find((d) => d.key === 'system.timezone');
   assert.ok(tz, '要有 system.timezone（时区设置化）');
@@ -34,6 +34,8 @@ test('设置定义完整：59 项、7 个密钥、关键分组都在', () => {
     'alerts.smtp.host',
     'alerts.emailTo',
     'alerts.jobFailureEmail',
+    'alerts.ingestAlertMin',
+    'alerts.ingestAlertPct',
     'network.steamProxy',
     'system.circuitThreshold',
     'system.logLevel',
@@ -50,6 +52,12 @@ test('设置定义完整：59 项、7 个密钥、关键分组都在', () => {
   assert.equal(jobFailure.type, 'bool', '任务失败邮件告警是布尔开关');
   assert.equal(jobFailure.default, false, 'CO-1/A5：默认关闭，不新增 SMTP 依赖');
   assert.equal(jobFailure.env, 'ALERTS_JOB_FAILURE_EMAIL');
+  const ingestAlertMin = settings.SETTINGS.find((d) => d.key === 'alerts.ingestAlertMin');
+  assert.equal(ingestAlertMin.default, 5, 'CO-4/E4：入库告警最少条数默认 5');
+  assert.equal(ingestAlertMin.env, 'ALERTS_INGEST_ALERT_MIN');
+  const ingestAlertPct = settings.SETTINGS.find((d) => d.key === 'alerts.ingestAlertPct');
+  assert.equal(ingestAlertPct.default, 50, 'CO-4/E4：入库告警占比默认 50%');
+  assert.equal(ingestAlertPct.env, 'ALERTS_INGEST_ALERT_PCT');
   const adult = settings.SETTINGS.find((d) => d.key === 'site.adultDisplay');
   assert.deepEqual(adult.options, ['hide', 'badge', 'show'], '成人内容策略三档');
   const ssl = settings.SETTINGS.find((d) => d.key === 'steamStatus.limit');
