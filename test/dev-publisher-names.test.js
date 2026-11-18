@@ -60,7 +60,8 @@ test('CR-2 修复：生产非法 JSON 元素不抛 22P02，清洗幂等稳定（
   // 守的约束：① 截断/无引号键/空对象等非法 JSON 元素一律不抛错（旧 ::jsonb 实现会 22P02 崩 bootstrap）；
   //           ② 第一轮清洗出的 name 值本身以 `{` 开头时，第二轮不再被当 JSON 二次解析（否则仍 22P02）；
   //           ③ 纯文本元素原样保留。反向自检：把迁移里的 substring 提取换回 `::jsonb ->> 'name'` →
-  //             本用例与 CR-2 用例必红（pglite 抛 invalid input syntax for type json）。
+  //             本用例必红（pglite 抛 invalid input syntax for type json，22P02；旧 CR-2 用例的夹具全是合法
+  //             JSON，在旧实现下仍绿——正是「测试夹具没覆盖生产脏形态」才让事故漏检，本用例补上这一层）。
   const store = await openStore('pglite:', {});
   await db.migrate(store);
   const q = (sql, p) => store.query(sql, p);

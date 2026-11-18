@@ -34,7 +34,7 @@
 | # | 项 | 说明 |
 |---|---|---|
 | CR-1 | **写入归一化（根因）** | `mapStoreItem` 对 `developers`/`publishers` 做与 `genres` 同款归一化：元素为字符串→去首尾空白后保留；元素为对象→取 `name`；过滤空值；去重保序；上限 20。`normalizeOfficial`/`normalizeSteamcmd` 口径不变 |
-| CR-2 | **历史脏数据清洗（幂等）** | 迁移内一次性清洗：元素以 `{` 开头的用 `::jsonb ->> 'name'` 解析取名称，再按 CR-1 口径去空/去重/保序；无脏元素时不更新（二次执行无副作用）。清洗范围 `games.developers`/`games.publishers` |
+| CR-2 | **历史脏数据清洗（幂等）** | 迁移内一次性清洗：元素含 `"name":` 特征的用**纯正则提取**名称（v2.24.2 起，不再 `::jsonb` 解析——生产存在 `{CRYTIME}` 等占位符非 JSON 元素，cast 会 22P02 崩 bootstrap），再按 CR-1 口径去空/去重/保序；无脏元素时不更新（二次执行无副作用）。清洗范围 `games.developers`/`games.publishers` |
 | CR-3 | **接口契约** | `/api/games/:appid`、`/api/games/by-id/:id`、`/api/app/games`（列表/详情）返回的 `developers`/`publishers` 保证为**字符串数组或 null**，不含 `{` |
 | CR-4 | **测试进主链** | 新增 `test/dev-publisher-names.test.js`：① `mapStoreItem` 对象数组→名称数组（含 creator_clan_account_id 夹具）；② 字符串数组/脏 JSON 文本/混合/空值/超 20 去重；③ `writeGames` 写库读回为纯字符串；④ 迁移清洗：造脏行→`migrate`→干净且幂等；⑤ 详情接口真跑断言无 `{` |
 
@@ -61,9 +61,11 @@
 
 ```sql
 select count(*) as dirty_rows from games
- where (developers is not null and exists (select 1 from unnest(developers) e where e like '{%'))
-    or (publishers is not null and exists (select 1 from unnest(publishers) e where e like '{%'));
--- 期望 0；清洗前可用于度量影响面
+ where (developers is not null and exists (select 1 from unnest(developers) e where e ~ '"name"\s*:'))
+    or (publishers is not null and exists (select 1 from unnest(publishers) e where e ~ '"name"\s*:'));
+-- 期望 0；清洗前可用于度量影响面。
+-- 注（v2.24.2）：以 `{` 开头但无 `"name":` 特征的占位符元素（{CRYTIME} 等）按设计保留、不计脏；
+-- 生产实测 `"name":` 元素已 0、占位符仅 4 个（2026-11-18 取证）。
 ```
 
 ## 7. 影响面与风险
