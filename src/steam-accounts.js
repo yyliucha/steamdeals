@@ -492,25 +492,5 @@ export async function listWishlists(q, { limit = 200, keyword = '', userId = nul
   return { items: rows, total: rows.length };
 }
 
-/**
- * 后台删除愿望单（单条 + 批量共用）：删 user_wishlist 行；若该游戏已无任何用户收藏，
- * 清掉全局自动提醒（watchlist source=user_wishlist / target 为空 / cn）——保留用户手动设过的目标价。
- */
-export async function deleteWishlistsByIds(q, ids) {
-  const list = [...new Set((ids ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
-  if (!list.length) return { deleted: [], gameIds: [], watchesCleaned: 0 };
-  const rows = (await q('delete from user_wishlist where id = any($1::bigint[]) returning id, user_id, game_id', [list])).rows;
-  const gameIds = [...new Set(rows.map((r) => Number(r.game_id)))];
-  let watchesCleaned = 0;
-  if (gameIds.length) {
-    const cleaned = await q(
-      `delete from watchlist w
-        where w.source = 'user_wishlist' and w.target_cents is null and w.region = 'cn'
-          and w.game_id = any($1::bigint[])
-          and not exists (select 1 from user_wishlist uw where uw.game_id = w.game_id)`,
-      [gameIds],
-    );
-    watchesCleaned = cleaned.rowCount ?? 0;
-  }
-  return { deleted: rows, gameIds, watchesCleaned };
-}
+// CY 批（docs/DATA-ISOLATION.md §3）：原 deleteWishlistsByIds（后台删愿望单）已删除——
+// 愿望单属用户私有数据，管理员只读，唯一写通道是用户本人 POST/DELETE /api/wishlist。

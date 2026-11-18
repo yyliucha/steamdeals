@@ -1,6 +1,6 @@
-# 数据隔离：用户私有数据管理员只读（CY，待开发）
+# 数据隔离：用户私有数据管理员只读（CY，已实现待发版）
 
-> 状态：**已确认待开发（2026-11-18，所有者确认边界）**。
+> 状态：**已实现待发版（2026-11-18 晚完成；提交哈希见交付汇报；验收以 §4 为准）**。
 > 关联：[TODO.md](TODO.md) CY 条目、[USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md)（CX：个人资料）、
 > [USER-ALERTS.md](USER-ALERTS.md)（CL：用户级提醒）、[HANDOVER.md](HANDOVER.md) §6（权限）。
 

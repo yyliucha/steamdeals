@@ -244,12 +244,14 @@ test('HTTP：未登录 401；用户可加/查/删自己的提醒；详情带 wat
   }
 });
 
-test('HTTP：管理员全站清单可查可删（按提醒 id + 审计），普通用户 403', async () => {
+test('HTTP：管理员全站清单可查；用户行删除 403 + 审计、站点级行可删、普通用户 403', async () => {
   const { store, q } = await setup();
   const admin = (await db.createUser(q, { username: 'httpadmin', password: 'wpass123456', role: 'admin' })).id;
   const u = (await db.createUser(q, { username: 'httpuser', password: 'wpass123456', role: 'user' })).id;
   const g1 = await makeGame(q, store, 400010, '管理游戏', 12000);
   const watchId = await db.upsertUserWatch(q, { userId: u, gameId: g1, targetCents: 10000 });
+  // CY 批（docs/DATA-ISOLATION.md §3）：站点级提醒保留可删，与用户行只读形成对照
+  const siteWatchId = await db.upsertWatch(q, { gameId: g1, targetCents: 9000 });
   const srv = await startApiServer({ query: q, port: 0, host: '127.0.0.1' });
   const base = `http://127.0.0.1:${srv.port}`;
   const login = async (username, password) => {
@@ -266,9 +268,17 @@ test('HTTP：管理员全站清单可查可删（按提醒 id + 审计），普�
     assert.equal(list.items[0].username, 'httpuser');
     assert.equal(Number(list.items[0].current_cents), 12000, '清单带当前价');
 
+    // CY 批：用户级提醒管理员只读——删除 403 + 审计 admin.forbidden_write
     const del = await fetch(`${base}/api/admin/watchlist/${watchId}`, { method: 'DELETE', headers: { cookie: cookieAdmin } });
-    assert.equal(del.status, 200, '管理员按提醒 id 删除 200');
-    assert.equal(await db.getUserWatch(q, { userId: u, gameId: g1 }), null, '删除生效');
+    assert.equal(del.status, 403, '用户级提醒 403');
+    assert.notEqual(await db.getUserWatch(q, { userId: u, gameId: g1 }), null, '删除被拒，行仍在');
+    const audits = await q("select action, target from audit_logs where action = 'admin.forbidden_write'");
+    assert.equal(audits.rows.length, 1, '越权写落一条审计');
+    assert.equal(audits.rows[0].target, `watchlist:${watchId}`, '审计指向被写行');
+
+    // 站点级行仍可删（不受只读边界影响）
+    const delSite = await fetch(`${base}/api/admin/watchlist/${siteWatchId}`, { method: 'DELETE', headers: { cookie: cookieAdmin } });
+    assert.equal(delSite.status, 200, '站点级提醒可删');
     // 不存在 → 404
     assert.equal((await fetch(`${base}/api/admin/watchlist/999999`, { method: 'DELETE', headers: { cookie: cookieAdmin } })).status, 404);
   } finally {

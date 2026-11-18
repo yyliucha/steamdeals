@@ -1,5 +1,7 @@
 // BE 批（docs/WISHLIST-SITE-ONLY.md §4.2/§4.4）：愿望单后台清单（用户/游戏/当前价/史低/加入时间）、
-// 单条删除、批量删除（max 200）、权限（401/403），以及「每账号 API Key 用于账号同步、不回退全局 key」的静态接线。
+// 权限（401/403），以及「每账号 API Key 用于账号同步、不回退全局 key」的静态接线。
+// CY 批（docs/DATA-ISOLATION.md §3）：单条 DELETE 与批量 wishlists/delete 已移除——愿望单属用户私有数据，
+// 管理员只读；本条断言写通道确实关闭（DELETE 404 / 白名单 400），行为不回归。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -100,34 +102,28 @@ test('GET /api/admin/wishlists：关键词（用户名/游戏名/AppID）与 use
   }
 });
 
-test('DELETE /api/admin/wishlists/:id：删行；还有别人收藏时保留自动提醒，最后一个删掉才清', async () => {
+test('CY 批：DELETE /api/admin/wishlists/:id 已移除——管理员写用户愿望单 → 404，行不动', async () => {
   const ctx = await setup();
   try {
-    // 删 bob 对 g1 的收藏：alice 也收藏了 g1 → 提醒保留
-    let res = await fetch(`${ctx.base}/api/admin/wishlists/${ctx.w3.id}`, { method: 'DELETE', headers: { cookie: ctx.admin } });
-    assert.equal(res.status, 200);
-    assert.equal((await res.json()).removed, 1);
-    assert.equal((await ctx.q('select 1 from user_wishlist where id = $1', [ctx.w3.id])).rows.length, 0, '行已删');
+    // 写方法已去掉：删除路由不再存在（404），行保留、自动提醒保留
+    const res = await fetch(`${ctx.base}/api/admin/wishlists/${ctx.w3.id}`, { method: 'DELETE', headers: { cookie: ctx.admin } });
+    assert.equal(res.status, 404, 'DELETE 路由已移除');
+    assert.equal((await ctx.q('select 1 from user_wishlist where id = $1', [ctx.w3.id])).rows.length, 1, '行仍在');
     assert.equal(
       (await ctx.q("select 1 from watchlist where game_id = $1 and source = 'user_wishlist'", [ctx.g1.id])).rows.length,
       1,
-      '还有 alice 收藏 → 提醒保留',
+      '自动提醒保留（未被删除）',
     );
-    // 删 alice 对 g1 的收藏（最后一个）→ 自动提醒清理
-    res = await fetch(`${ctx.base}/api/admin/wishlists/${ctx.w1.id}`, { method: 'DELETE', headers: { cookie: ctx.admin } });
-    assert.equal(res.status, 200);
-    const left = await ctx.q("select 1 from watchlist where game_id = $1 and source = 'user_wishlist'", [ctx.g1.id]);
-    assert.equal(left.rows.length, 0, '最后一个收藏删掉 → 自动提醒清理');
-    // 不存在的 id → 404
-    res = await fetch(`${ctx.base}/api/admin/wishlists/999999`, { method: 'DELETE', headers: { cookie: ctx.admin } });
-    assert.equal(res.status, 404);
+    // 不存在的 id 同样 404（路由已移除，无写通道）
+    const res2 = await fetch(`${ctx.base}/api/admin/wishlists/999999`, { method: 'DELETE', headers: { cookie: ctx.admin } });
+    assert.equal(res2.status, 404);
   } finally {
     await ctx.srv.close();
     await ctx.store.close();
   }
 });
 
-test('批量 wishlists/delete：max 200、正常删除、超限 400、普通用户 403', async () => {
+test('CY 批：批量 wishlists/delete 已从白名单移除——管理员 400、普通用户 403、行不动', async () => {
   const ctx = await setup();
   try {
     const res = await fetch(`${ctx.base}/api/admin/bulk`, {
@@ -135,22 +131,14 @@ test('批量 wishlists/delete：max 200、正常删除、超限 400、普通用�
       headers: { 'content-type': 'application/json', cookie: ctx.admin },
       body: JSON.stringify({ target: 'wishlists', action: 'delete', keys: [ctx.w2.id] }),
     });
-    assert.equal(res.status, 200);
-    const body = await res.json();
-    assert.equal(body.ok, 1, '删掉 1 条');
-    assert.equal((await ctx.q('select 1 from user_wishlist where id = $1', [ctx.w2.id])).rows.length, 0);
+    assert.equal(res.status, 400, '未登记组合一律 400');
+    assert.match((await res.json()).error, /不支持的批量操作/, '明确报不支持的批量操作');
+    assert.equal((await ctx.q('select 1 from user_wishlist where id = $1', [ctx.w2.id])).rows.length, 1, '行仍在');
     assert.equal(
       (await ctx.q("select 1 from watchlist where game_id = $1 and source = 'user_wishlist'", [ctx.g2.id])).rows.length,
-      0,
-      '最后一个收藏 → 自动提醒清理',
+      1,
+      '自动提醒保留（未被删除）',
     );
-    // 上限 200：201 个键 → 400
-    const tooMany = await fetch(`${ctx.base}/api/admin/bulk`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', cookie: ctx.admin },
-      body: JSON.stringify({ target: 'wishlists', action: 'delete', keys: Array.from({ length: 201 }, (_, i) => i + 1) }),
-    });
-    assert.equal(tooMany.status, 400, '单次最多 200');
     const normalUser = await fetch(`${ctx.base}/api/admin/bulk`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: ctx.aliceCookie },

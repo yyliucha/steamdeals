@@ -3123,7 +3123,7 @@ export function createApiServer({
         return json(res, 200, { ok: true, siteRemoved: removed.removed, watchesCleaned: removed.watchesCleaned, removedFromSteam: [], failed: [] });
       }
 
-      // ---- 管理员：愿望单清单（BE 批 §4.2；只读 + 删除，**不提供新增**）----
+      // ---- 管理员：愿望单清单（BE 批 §4.2；CY 批改为只读——用户私有数据，写方法已移除）----
       if (path === '/api/admin/wishlists' && req.method === 'GET') {
         if (!requireAdmin()) return;
         const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 200) || 200, 1), 500);
@@ -3131,15 +3131,7 @@ export function createApiServer({
         const filterUserId = url.searchParams.get('userId') ? Number(url.searchParams.get('userId')) : null;
         return json(res, 200, await steamAccountsMod.listWishlists(q, { limit, keyword, userId: filterUserId }));
       }
-      const adminWishDel = path.match(/^\/api\/admin\/wishlists\/(\d+)$/);
-      if (adminWishDel && req.method === 'DELETE') {
-        if (!requireAdmin()) return;
-        const r = await steamAccountsMod.deleteWishlistsByIds(q, [Number(adminWishDel[1])]);
-        const row = r.deleted[0];
-        if (!row) return json(res, 404, { error: '愿望单不存在或已删除' });
-        logger?.info('wishlist.admin_removed', { admin: user.username, userId: row.user_id, gameId: Number(row.game_id) });
-        return json(res, 200, { ok: true, removed: 1, watchesCleaned: r.watchesCleaned });
-      }
+      // CY 批：/api/admin/wishlists/:id 的 DELETE 已移除——愿望单属用户私有数据，管理员只读（越权写走 404/白名单拦截）
       // ---- 管理员：游戏同步概览（待同步数量统计）----
       if (path === '/api/admin/games/stats' && req.method === 'GET') {
         if (!requireAdmin()) return;
@@ -3297,12 +3289,30 @@ export function createApiServer({
       }
 
       // CL 批：按提醒 id 清理任意一条（含用户级），记审计 api.watch_deleted
+      // CY 批（docs/DATA-ISOLATION.md §3）：用户私有提醒管理员只读——用户行写 → 403 + 审计，
+      // 站点级行（user_id IS NULL）保留清理能力。
       const watchDel = path.match(/^\/api\/admin\/watchlist\/(\d+)$/);
       if (watchDel && req.method === 'DELETE') {
         if (!requireAdmin()) return;
-        const row = await db.deleteWatchById(q, { id: Number(watchDel[1]), region: 'cn' });
+        const wid = Number(watchDel[1]);
+        const found = await q('select id, user_id, game_id from watchlist where id = $1 and region = \'cn\'', [wid]);
+        const row = found.rows[0];
         if (!row) return json(res, 404, { error: '提醒不存在' });
-        logger?.info('api.watch_deleted', { watchId: Number(row.id), userId: row.user_id ?? null, gameId: Number(row.game_id), by: user.username });
+        if (row.user_id != null) {
+          logger?.warn('admin.forbidden_write', { target: `watchlist:${wid}`, userId: Number(row.user_id), by: user.username, ip });
+          await db.writeAuditLog(q, {
+            actorId: user.id,
+            actor: user.username,
+            action: 'admin.forbidden_write',
+            target: `watchlist:${wid}`,
+            detail: { userId: Number(row.user_id), method: 'DELETE', path },
+            ip,
+          });
+          return json(res, 403, { error: '用户提醒只读，请让用户自行操作' });
+        }
+        const deleted = await db.deleteWatchById(q, { id: wid, region: 'cn' });
+        if (!deleted) return json(res, 404, { error: '提醒不存在' });
+        logger?.info('api.watch_deleted', { watchId: wid, userId: null, gameId: Number(deleted.game_id), by: user.username });
         return json(res, 200, { ok: true, removed: 1 });
       }
 
@@ -4045,6 +4055,26 @@ export function createApiServer({
             email: email ? String(email).replace(/^(.)(.*)(@.*)$/, '$1***$3') : null,
             by: user.username,
           });
+          // CZ 批（docs/EMAIL-CHANGE.md 决策 5）：管理员重置邮箱是安全兜底，必须落审计 admin.email_reset
+          // （新旧邮箱脱敏）；审计失败绝不阻塞绑定（audit_logs 表由迁移提供，早期库缺失时静默跳过）。
+          try {
+            await q(
+              'insert into audit_logs (actor_id, actor, action, target, detail, ip) values ($1, $2, $3, $4, $5::jsonb, $6)',
+              [
+                user.id,
+                user.username,
+                'admin.email_reset',
+                username,
+                JSON.stringify({
+                  oldEmail: maskEmail(String(oldRow.email ?? '')),
+                  newEmail: email ? maskEmail(email) : null,
+                }),
+                ip,
+              ],
+            );
+          } catch {
+            /* 审计失败不影响绑定 */
+          }
           // AJ 批：改邮箱发两封（docs/USER-LIFECYCLE.md §4.2/决策 18）——异步发送，响应 notify:'queued'，
           // 避免两封串行拖住请求。旧邮箱收「登录邮箱已变更」（旧邮箱为空/未验证时改发新邮箱），
           // 新邮箱收「绑定成功」；新旧邮箱相同时只发「绑定成功」一封；解绑（新邮箱为空）不发。
@@ -5199,7 +5229,8 @@ const BULK_ACTIONS = {
   'devices/ban': { max: 50, risk: 'high', keyType: 'fingerprint', run: bulkDeviceBan },
   'users/disable': { max: 50, risk: 'high', keyType: 'id', guard: bulkGuardUserDisable, run: bulkUserDisable },
   'users/enable': { max: 200, risk: 'low', keyType: 'id', run: bulkUserEnable },
-  'wishlists/delete': { max: 200, risk: 'low', keyType: 'id', run: bulkWishlistDelete },
+  // CY 批（docs/DATA-ISOLATION.md §3）：wishlists/delete 已从白名单移除——愿望单属用户私有数据，
+  // 管理员只读，未登记组合一律 400（不提供任何写通道）。
 };
 
 /** 键规范化：IP 走 visitors.normalizeBanInput（与单条接口同一口径），非法返回 null。 */
@@ -5365,19 +5396,7 @@ async function bulkAnnouncementDeactivate({ q, keys }) {
   return { ok: done.length, results: bulkMissing(keys, done, '公告不存在或已是停用状态') };
 }
 
-/** BE 批（docs/WISHLIST-SITE-ONLY.md §4.2）：后台批量删愿望单（max 200，低风险），复用 bulk_ops 审计。 */
-async function bulkWishlistDelete({ q, keys, user, logger }) {
-  const mod = await import('./steam-accounts.js');
-  const r = await mod.deleteWishlistsByIds(q, keys);
-  const doneIds = r.deleted.map((x) => Number(x.id));
-  logger?.info('wishlist.admin_removed', {
-    admin: user?.username ?? null,
-    removed: doneIds.length,
-    bulk: true,
-    watchesCleaned: r.watchesCleaned,
-  });
-  return { ok: doneIds.length, results: bulkMissing(keys, doneIds, '愿望单不存在或已删除') };
-}
+/** BE 批（docs/WISHLIST-SITE-ONLY.md §4.2）批量删愿望单已随 CY 批移除——愿望单属用户私有数据，管理员只读。 */
 async function bulkBlacklistUnban({ q, keys }) {
   const done = await db.bulkRemoveBlockedIps(q, keys);
   // 内存黑名单必须同步刷新，否则这批 IP 仍会被 403（验收 §8.3 专门盯这条）

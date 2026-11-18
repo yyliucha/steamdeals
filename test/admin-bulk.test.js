@@ -84,15 +84,16 @@ test('前端：11 个表格列表 + 站点通知 + 异常审核合并视图都�
   const count = (text, needle) => text.split(needle).length - 1;
 
   // 表格勾选列：游戏目录/访问明细/最近设备/已封设备/黑名单/白名单/自动封禁 + 回收站/用户/登录会话；
-  // AX 批起异常审核只有按 IP 合并视图（勾选用 el-checkbox，不再有明细表 selection 列）
-  assert.equal(count(modules, 'type="selection"'), 8, 'AdminModules 应有 8 个勾选列（BE 批 + 愿望单）');
+  // AX 批起异常审核只有按 IP 合并视图（勾选用 el-checkbox，不再有明细表 selection 列）；
+  // CY 批（docs/DATA-ISOLATION.md §3）：愿望单改为只读，勾选列与批量工具条已移除
+  assert.equal(count(modules, 'type="selection"'), 7, 'AdminModules 应有 7 个勾选列（CY 批移除愿望单）');
   assert.equal(count(extras, 'type="selection"'), 3, 'AdminExtras 应有 3 个勾选列（回收站/用户/登录会话 BK 批）');
   // 站点通知与异常审核合并视图：卡片/合并行没有表格勾选列，用 el-checkbox
   assert.match(modules, /sel\.announcements\.has\(a\)/, '站点通知卡片要有勾选框');
   assert.match(modules, /mergedPicked\.has\(row\.key\)/, '异常审核合并视图要有勾选框（AX 批：默认唯一视图）');
-  // 每个列表都要有工具条（AdminModules 8 个 + AdminExtras 3 个）；
+  // 每个列表都要有工具条（AdminModules 7 个 + AdminExtras 3 个）；
   // BW 批起 AdminExtras 三个列表的桌面表格与手机卡片各一个 BulkBar（同一选择集），共 6 个
-  assert.equal(count(modules, '<BulkBar'), 9, 'AdminModules 应有 9 个批量工具条（BE 批 + 愿望单）');
+  assert.equal(count(modules, '<BulkBar'), 8, 'AdminModules 应有 8 个批量工具条（CY 批移除愿望单）');
   assert.equal(count(extras, '<BulkBar'), 6, 'AdminExtras 应有 6 个批量工具条（回收站/用户/登录会话 × 桌面/手机两视图，BW 批）');
   // 翻页清空：合并视图翻页清空 IP 选择；服务端分页靠 load 清、其余客户端分页靠 watch 页码清
   assert.match(modules, /watch\(mergedPage,\(\)=>mergedPicked\.value=new Set\(\)\)/, '合并视图翻页应清空选择');
