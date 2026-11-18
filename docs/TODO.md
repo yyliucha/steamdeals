@@ -2149,11 +2149,11 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   注释明确"服务端 /api/games 目前只支持 sort 与 type/released"。→ 用户只能筛出**已加载的约 50 条**里的折扣游戏。
 - **范围（方案 A）**：站点 `/api/games` 增加 `discountOnly / histLowOnly / freeOnly / unreleased` + `sort=heat|release`，
   4 个开关互斥（优先级 unreleased > freeOnly > histLowOnly > discountOnly），count 与列表同条件；App chip 改为
-  **服务端筛选 + 分页重置**；Web 复用同参数保证口径一致。
-- **附带**：`user_prefs.only_discount` 是**死字段**（存但未用）——本批决定删除或接线（见规格 §5）。
-- **验收**：见规格 §4——① App 折扣筛选返回全库结果；② Web/App 同条件总数一致；③ 空态/分页正确；④ count 与列表一致；
-  ⑤ P95 ≤500ms；⑥ `npm test` / `frontend:build` / `scan` 全绿 + App 模拟器逐 chip 截图。
-- **待确认**：`only_discount` 删或接线；「史低」= 当前价=历史最低（默认）；「未发售」是否含"已发售无报价"（默认不含）。
+  **服务端筛选 + 分页重置**；**第 5 个 chip「已拥有」复用 `owned=only`**（仅登录+已绑定 Steam 显示）；Web 复用同参数保证口径一致。
+- **附带（已确认）**：`user_prefs.only_discount` 是**死字段**（存但未用）→ **删除**（迁移 drop 列）。
+- **已确认口径**：史低 = 当前价 = 历史最低（与详情页一致）；未发售**不含**"已发售无报价"；已拥有 = 多账号 Steam 库存并集。
+- **验收**：见规格 §4——① App 折扣筛选返回全库结果；② Web/App 同条件总数一致；②b 已拥有 chip 返回库存并集/未绑定不显示；
+  ③ 空态/分页正确；④ count 与列表一致；⑤ P95 ≤500ms；⑥ `npm test` / `frontend:build` / `scan` 全绿 + App 模拟器逐 chip 截图。
 - **待沟通**：App 是否本期做（涉及 App + 站点双仓库）；Web 前台是否复用同一批参数。
 
 ## DB. 待开发（二期，待沟通）：个人主页（公开资料页）

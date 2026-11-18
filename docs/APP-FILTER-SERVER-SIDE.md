@@ -22,9 +22,12 @@
 | `unreleased=1` | 只看未发售 | `g.release_date > current_date`（无 date 时回退 `g.steam_status = 'coming_soon'`） |
 | `sort=heat` | 按热度 | `g.heat desc nulls last, g.id desc` |
 | `sort=release` | 按发售时间 | `g.release_date desc nulls last, g.id desc` |
+| `owned=only` | **只看已拥有**（复用现有参数，App 第 5 个 chip） | 现有 `owned` 条件：用户 Steam 库存（`steam_games` 并集）；未登录/未绑定时返回空 |
 
-组合规则：4 个参数**互斥**（App 是单选 chip），同时传多个时以优先级 `unreleased > freeOnly > histLowOnly > discountOnly` 取第一个；
-`sort` 与筛选正交。
+组合规则：4 个新参数**互斥**（App 是单选 chip），同时传多个时以优先级 `unreleased > freeOnly > histLowOnly > discountOnly` 取第一个；
+`sort` 与筛选正交；`owned=only` 是**第 5 个 chip**（仅登录且已绑定 Steam 时显示）。
+
+App 首页 chip 最终为 6 个：**全部 / 折扣 / 史低 / 免费 / 未发售 / 已拥有**（已拥有复用 `owned=only`）。
 
 ## 3. 改动落点
 
@@ -32,21 +35,25 @@
 - `src/store/pg.js`（`gameSearch`）：4 个条件 + 2 个排序；`sort` 白名单加 `heat/release`；count 与列表**同条件**；
   `only_discount` 死字段处理见 §5；
 - 索引：为筛选补充 `offers(game_id) where discount_pct > 0`、`games(release_date)`、`games(heat)`（按 EXPLAIN 实测决定是否必要，不盲目加）；
-- App（`steamdeals-app`）：`HomeScreen`/`HomeViewModel`——chip 变更 → 带参数请求 + `page=1` 重置；筛选状态保存到本地（已有）；空态文案区分「筛选无结果」；
+- App（`steamdeals-app`）：`HomeScreen`/`HomeViewModel`——chip 变更 → 带参数请求 + `page=1` 重置；筛选状态保存到本地（已有）；
+  空态文案区分「筛选无结果」；**已拥有 chip**：仅登录且已绑定 Steam 时显示，未绑定点击提示「去绑定 Steam 账号」；
 - Web（`Home.vue`）：筛选抽屉/排序复用同参数（若 Web 暂不做 UI，接口也先支持，保证两端口径一致）。
 
 ## 4. 验收
 
 1. App 选「折扣」→ 返回**全库**折扣游戏（总数远大于已加载 50 条），翻页正常；
 2. 「史低/免费/未发售」同样为全库结果；Web 同条件返回总数与 App 一致（同一接口对比断言）；
+2b. 「已拥有」chip 返回该用户 Steam 库存并集（多账号合并）；未登录/未绑定不显示 chip；空态有引导；
 3. 空结果时页面显示「没有符合条件的游戏」而不是空白/加载中；
 4. 切换 chip 时列表回到第一页（不追加旧数据）；
 5. `count` 与列表条数一致（分页 total 正确）；
 6. 性能：`/api/games` 带筛选 P95 ≤ 500ms（部署后线上抽测）；
 7. `npm test`（新增筛选参数/组合/优先级断言）/ `frontend:build` / `scan` 全绿；App 模拟器逐 chip 截图。
 
-## 5. 待确认
+## 5. 已确认（2026-11-18 所有者「接受你的建议」）
 
-1. `user_prefs.only_discount` 这个死字段：**删除**（推荐，避免两套真相）还是**接线**（用户默认只看折扣）？
-2. 「史低」口径确认：是「当前价 = 历史最低」还是「近期新低（低于 30/90 天内最低）」？**默认按前者**（与详情页史低一致）。
-3. App 的「未发售」是否包含"已发售但无报价"？（默认不包含）
+1. `user_prefs.only_discount`：**删除**（死字段，避免两套真相；迁移里 drop 列）；
+2. 「史低」口径：**当前价 = 历史最低**（与详情页一致），不是"近期新低"；
+3. 「未发售」：**不含**"已发售但无报价"；
+4. 「已拥有」：作为 **DA 第 5 个 chip**（`owned=only`），仅登录且已绑定 Steam 时显示。
+
