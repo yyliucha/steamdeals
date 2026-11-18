@@ -2262,6 +2262,26 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ⑤ `npm test` / `frontend:build` / `scan` 全绿。
 - **待确认**：补写时机（自动 vs 按钮）；恢复是否二次确认。
 
+## DI. 待开发：测试环境隔离与主链分段（A 隔离 + B 分段 + C 复位）
+
+**状态：待开发（2026-11-18，A/B/C 三项方案所有者已拍板）**
+**依赖：** 无（2026-11-18 CO-3 会话两次全量测试被环境干扰，本条目把应对措施固化）
+**解锁：** 无
+**规格**：[TEST-ENV-ISOLATION.md](TEST-ENV-ISOLATION.md)
+
+- **背景（CO-3 会话实测）**：① 本机 `data/app/latest.json` 同步产物让 `serve.test.js` CJ-回归用例红
+  （测试读真实工作区 `data/`，手工移到 `F:\dsh\data-app-co3-bak` 才绿）；② 主链 100+ 文件单条 `&&` 链
+  （8–15 分钟）中途被中断需从头重跑（手工 4 段串行后通过）。
+- **A 测试隔离**：`test/serve.test.js` CJ-回归用例改用 `APP_DATA_DIR` 临时目录注入（`src/server.js:163` 已支持，
+  无需改服务端）+ 反向自检（不注入 + 放假产物必须红）。
+- **B 主链分段**：`package.json` 拆 `test:1`~`test:4` 四段，`test` 逐段串行；中断从失败段续跑；同步
+  dev/test/qa/build 四个技能的验证命令说明。
+- **C 环境复位**：`scripts/test-env-reset.mjs`（`npm run test:reset`）白名单精确移走运行时产物到仓库外
+  `F:\dsh\test-env-bak\<时间戳>\`（默认 dry-run，`--apply` 执行，`--restore` 可恢复）；**绝不整删 `data/`**——
+  `skus.json`/`games.json`/`secret.key` 源数据与 `*pgdata*` 调试库永不入选。
+- **验收**：见规格 §4——A：data/app 有产物时 serve.test.js 仍全绿 + 反向自检红；B：四段互不依赖、失败段可续跑；
+  C：dry-run 只打印、--apply 后源数据完好、幂等；`npm test` 全绿 + `scan` 干净。
+
 
 
 
