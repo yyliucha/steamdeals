@@ -2191,7 +2191,8 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 **依赖：** CS（后台生成已实现）
 **解锁：** 无
 **规格**：[ALIGN-REVIEW-UI.md](ALIGN-REVIEW-UI.md)
-**Demo**：[design/align-review-redesign-2026-11-18.html](design/align-review-redesign-2026-11-18.html)
+**Demo**：[design/align-review-redesign-2026-11-18.html](design/align-review-redesign-2026-11-18.html)（页面改版）+
+[design/admin-confirm-no-toggle-2026-11-18.html](design/admin-confirm-no-toggle-2026-11-18.html)（批量确认/孤儿行提示/审计）
 
 - **问题（2026-11-18 线上 v2.24.3）**：横幅长期显示「0/0 组」（`total` 在分组完成前为 0）；生成中同时出现「暂无数据」+
   「没有待对齐的组」两种语义；缺统计、缺搜索/筛选、批量操作弱、信息密度低。
@@ -2210,7 +2211,8 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 **依赖：** CL（用户级提醒，已发布）、现有 `notify.js` 通道
 **解锁：** 无
 **规格**：[ALERT-MANUAL-PUSH.md](ALERT-MANUAL-PUSH.md)
-**Demo**：[design/alert-manual-push-2026-11-18.html](design/alert-manual-push-2026-11-18.html)
+**Demo**：[design/alert-manual-push-2026-11-18.html](design/alert-manual-push-2026-11-18.html)（单条推送）+
+[design/admin-confirm-no-toggle-2026-11-18.html](design/admin-confirm-no-toggle-2026-11-18.html)（批量推送合并一封/确认/审计）
 
 - **现状**：提醒只由 `alerts` 定时任务触发（每 360 分钟）；后台每行只有「删除」，没有手动发送。
 - **需求**：每行加「推送」→ 确认弹窗（游戏/用户/当前价/史低/上次提醒/渠道）→ 立即发送；
