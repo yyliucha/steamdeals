@@ -27,11 +27,11 @@ test('CJ sync：发现新版本下载 latest+APK 并 sha256 校验；同版本�
   const { createHash } = await import('node:crypto');
   const sha = createHash('sha256').update(apk).digest('hex');
   const handlers = {
-    'https://api.github.com/repos/yyliucha/steamdeals-app/releases/latest': { json: fakeRelease('2.19.0', [
+    'https://api.github.com/repos/yyliucha/steamdeals-app/releases?per_page=10': { json: [fakeRelease('2.19.0', [
       { name: 'latest.json', url: 'x-latest' },
       { name: 'steamdeals-2.19.0.apk', url: 'x-apk' },
       { name: 'steamdeals-2.19.0.apk.sha256', url: 'x-sha' },
-    ]) },
+    ])] },
     'x-latest': { buf: Buffer.from(latestJson) },
     'x-apk': { buf: apk },
     'x-sha': { buf: Buffer.from(sha) },
@@ -42,8 +42,14 @@ test('CJ sync：发现新版本下载 latest+APK 并 sha256 校验；同版本�
   assert.ok(existsSync(join(dir, 'steamdeals-2.19.0.apk')), 'APK 落盘');
   const r2 = await syncAppRelease({ dir, fetchImpl: fakeFetch(handlers) });
   assert.equal(r2.reason, 'same_version', '同版本跳过');
-  // 断网：保留旧文件、返回 failed 而不是抛错
-  const r3 = await syncAppRelease({ dir, fetchImpl: fakeFetch({ 'https://api.github.com/repos/yyliucha/steamdeals-app/releases/latest': { error: new Error('network down') } }) });
+  // 断网（列表与 latest 都抛错）：保留旧文件、返回 network 而不是抛错
+  const r3 = await syncAppRelease({
+    dir,
+    fetchImpl: fakeFetch({
+      'https://api.github.com/repos/yyliucha/steamdeals-app/releases?per_page=10': { error: new Error('network down') },
+      'https://api.github.com/repos/yyliucha/steamdeals-app/releases/latest': { error: new Error('network down') },
+    }),
+  });
   assert.equal(r3.reason, 'network');
   assert.ok(existsSync(join(dir, 'latest.json')), '旧 latest 保留');
   const meta = readLatestMeta(dir);
