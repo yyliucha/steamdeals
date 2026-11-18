@@ -2240,3 +2240,21 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 
 
 
+## DH. 待开发：对齐审核数据完整性（继承缺口/忽略撤销/审阅痕迹）
+
+**状态：待开发（2026-11-18 所有者「立DH」；规格已出）**
+**依赖：** DG（匹配修复）、DE（页改版）
+**解锁：** 无
+**规格**：[ALIGN-INTEGRITY.md](ALIGN-INTEGRITY.md)
+
+- **问题**：A 继承缺口——`applyMapInheritance` 只认 `game_source_map`，不认 `skus.json` 已有 `appid`（断箭 SKU 111465 已映射仍入队）；
+  B 忽略不可撤销（无「已忽略」视图/恢复）；C 审阅痕迹不可见（`reviewed_by` 有存但页面无展示）；D 孤儿行合并无提示。
+- **修复**：A1 继承同时参考 item.appid（有则不入队，库无映射则自动补写 + 日志 `align.map_backfilled`）；
+  A2 队列标「已映射（待同步）」+ 一键补写；B1 「已忽略」视图 + 恢复为待处理（审计 `align.restored`）；
+  C1 每组显示最近处理（操作人/时间/动作）；D1 确认弹窗提示孤儿行合并。
+- **接口**：`GET /api/admin/align/ignored`、`POST /api/admin/align/restore {key}`、`GET /api/admin/align/history?key=`、
+  `POST /api/admin/align/map`。
+- **验收**：见规格 §4——① 断箭组不再入队且映射补写；② 已忽略可列出/恢复；③ 审阅记录可查；④ 孤儿行合并提示；
+  ⑤ `npm test` / `frontend:build` / `scan` 全绿。
+- **待确认**：补写时机（自动 vs 按钮）；恢复是否二次确认。
+
