@@ -47,6 +47,31 @@ test('同步记录：插入 → 完成 → 列表 → 重启中断标记', async
   }
 });
 
+test('B3 实测耗时：sync_runs 成功运行平均秒，失败行与样本不足的 mode 不参与', async () => {
+  const store = await openStore('pglite:', {});
+  try {
+    await db.migrate(store);
+    const q = (sql, p) => store.query(sql, p);
+    // steam-prices：两条成功（30s/90s → 平均 60s）+ 一条失败 1000s（不参与）
+    for (const [sec, status] of [[30, 'ok'], [90, 'ok'], [1000, 'failed']]) {
+      const r = await db.insertSyncRun(q, { mode: 'steam-prices' });
+      await q("update sync_runs set started_at = now() - ($1 || ' seconds')::interval where id = $2", [String(sec), r.id]);
+      await db.finishSyncRun(q, r.id, { status, exitCode: status === 'ok' ? 0 : 1 });
+    }
+    // heat：只有 1 条成功 → 样本不足（minRuns=2）不回传，预算回落理论值
+    const h = await db.insertSyncRun(q, { mode: 'heat' });
+    await q("update sync_runs set started_at = now() - interval '10 seconds' where id = $1", [h.id]);
+    await db.finishSyncRun(q, h.id, { status: 'ok', exitCode: 0 });
+    const map = await db.observedSyncRunSeconds(q);
+    assert.equal(map.size, 1, '只有样本达标的 mode 回传');
+    const sec = map.get('steam-prices');
+    assert.ok(Math.abs(sec - 60) < 0.5, `平均应为 60s，实际 ${sec}`);
+    assert.equal(map.get('heat'), undefined, '样本不足不回传（minRuns=2）');
+  } finally {
+    await store.close();
+  }
+});
+
 test('回填接口：匿名 401，管理员空状态，未运行时停止返回 409', async () => {
   const store = await openStore('pglite:', {});
   await db.migrate(store);

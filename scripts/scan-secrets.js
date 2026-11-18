@@ -10,7 +10,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'logs', '.npm-cache', 'pgdata', 'coverage', 'out']);
+const SKIP_DIRS = new Set(['node_modules', '.git', 'logs', '.npm-cache', 'pgdata', 'coverage', 'out', '.agents']);
 // 这些目录里没有"会被误公开的凭据"，只有本地数据库文件与抓包快照：
 // 扫它们既慢又会产生大量噪音（实测 2147 个文件 → 50 个）
 const SKIP_PATHS = [/^data\/.+pgdata(\/|$)/, /^data\/pages(\/|$)/];

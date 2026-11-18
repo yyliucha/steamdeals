@@ -439,22 +439,50 @@ export function describeSchedule(jobs) {
 
 // ---------------------------------------------------------------- AC-4：每日 Steam 配额预算
 
+/** AC-4 的四个 Steam 重任务 mode 列表（B3 批共用：预算/任务卡估算只覆盖这四个）。 */
+export const STEAM_BUDGET_MODES = ['steam-prices', 'heat', 'steam-status', 'backfill'];
+
 /**
- * AC-4（docs/SYNC-FAILURE-MODES.md AC4）：四任务的每日串行总时长估算（分钟）。
- * 口径与任务实现一致：
+ * AC-4 单轮理论耗时（秒）——口径与任务实现一致：
  *  - steam-prices：每 30 款一批约 1.1s（batchSize=30/rateLimitMs=1100，cmd 内固定）；
  *  - heat：每款约 1.7s（scheduler 里 --sleep 1700 固定）；
  *  - steam-status：每款平均 2 次请求 × rate；
- *  - backfill：每 100 款一批 GetItems 间隔 3s + 每批最多 10 个单条回退（各 0.4s），
- *    并按 intervalMin 折算成每日分摊（每周跑一次 → 除以 7）。
+ *  - backfill：每 100 款一批 GetItems 间隔 3s + 每批最多 10 个单条回退（各 0.4s）。
  */
-export function steamDailyBudgetMinutes(env = process.env) {
-  const priceMin = (num(env.STEAM_PRICE_LIMIT, 200000) / 30) * 1.1 / 60;
-  const heatMin = num(env.STEAM_HEAT_LIMIT, 20000) * 1.7 / 60;
-  const statusMin = num(env.STEAM_STATUS_LIMIT, 6000) * 2 * (num(env.STEAM_STATUS_RATE_MS, 1500) / 60000);
+export function theoreticalRunSeconds(env = process.env) {
   const backfillLimit = num(env.STEAM_BACKFILL_LIMIT, 5000);
-  const backfillRoundMin = (backfillLimit / 100) * 3 / 60 + (backfillLimit / 100) * 10 * 0.4 / 60;
-  const backfillDailyMin = backfillRoundMin / Math.max(1, num(env.STEAM_BACKFILL_INTERVAL_MIN, 1440) / 1440);
+  return {
+    'steam-prices': (num(env.STEAM_PRICE_LIMIT, 200000) / 30) * 1.1,
+    heat: num(env.STEAM_HEAT_LIMIT, 20000) * 1.7,
+    'steam-status': num(env.STEAM_STATUS_LIMIT, 6000) * 2 * (num(env.STEAM_STATUS_RATE_MS, 1500) / 1000),
+    backfill: (backfillLimit / 100) * 3 + (backfillLimit / 100) * 10 * 0.4,
+  };
+}
+
+/**
+ * AC-4（docs/SYNC-FAILURE-MODES.md AC4）：四任务的每日串行总时长估算（分钟）。
+ * B3 批（docs/DESIGN-AUDIT.md B3）：预算改**实测耗时**——observed（sync_runs 成功运行平均秒，
+ * `db.observedSyncRunSeconds`）优先，样本不足的 mode 回落理论值。
+ * 每 mode 每日轮数 = 1440 / intervalMin（intervalMin 至少按 1 分钟折算，防止 0 除）。
+ */
+export function steamDailyBudgetMinutes(env = process.env, observed = null) {
+  const theo = theoreticalRunSeconds(env);
+  const perDay = (intervalMin) => 1440 / Math.max(1, intervalMin);
+  const runsPerDay = {
+    'steam-prices': perDay(num(env.STEAM_PRICE_INTERVAL_MIN, 1440)),
+    heat: perDay(num(env.STEAM_HEAT_INTERVAL_MIN, 1440)),
+    'steam-status': perDay(num(env.STEAM_STATUS_INTERVAL_MIN, 1440)),
+    backfill: perDay(num(env.STEAM_BACKFILL_INTERVAL_MIN, 1440)),
+  };
+  const secOf = (mode) => {
+    const obs = observed?.get?.(mode);
+    return obs != null && Number.isFinite(obs) && obs > 0 ? Number(obs) : theo[mode];
+  };
+  const priceMin = (secOf('steam-prices') * runsPerDay['steam-prices']) / 60;
+  const heatMin = (secOf('heat') * runsPerDay.heat) / 60;
+  const statusMin = (secOf('steam-status') * runsPerDay['steam-status']) / 60;
+  const backfillRoundMin = secOf('backfill') / 60;
+  const backfillDailyMin = (secOf('backfill') * runsPerDay.backfill) / 60;
   return {
     priceMin,
     heatMin,
@@ -466,16 +494,40 @@ export function steamDailyBudgetMinutes(env = process.env) {
 }
 
 /**
+ * B3 批：任务卡「实际 vs 估算」——四个 Steam 重任务的单轮耗时：
+ * estSec = 理论估算（theoreticalRunSeconds），obsSec = sync_runs 实测平均（没有样本为 null）。
+ * 返回 Map(jobName → { estSec, obsSec })。
+ */
+export function jobRuntimeEstimates(jobs, env = process.env, observed = null) {
+  const theo = theoreticalRunSeconds(env);
+  const map = new Map();
+  for (const j of jobs ?? []) {
+    const mode = syncRunModeFor(j);
+    if (!(mode in theo)) continue;
+    const obs = observed?.get?.(mode);
+    map.set(j.name, { estSec: theo[mode], obsSec: obs != null && Number.isFinite(obs) && obs > 0 ? Number(obs) : null });
+  }
+  return map;
+}
+
+/**
  * AC-4：总时长超过 24 小时（1440 分钟）时自动降频——只缩 steam-status 的每日限额
  * （唯一可调的大项），把总量压回预算内并记 `scheduler.budget_exceeded` 告警。
+ * B3 批：observed（sync_runs 实测平均秒）参与预算；缩量仍按理论每款速率折算（限额是可调旋钮）。
  * 返回 { jobs, budget, adjusted }，jobs 是调整后的副本。
  */
-export function applySteamBudget(jobs, env = process.env, logger = null) {
-  const budget = steamDailyBudgetMinutes(env);
+export function applySteamBudget(jobs, env = process.env, logger = null, observed = null) {
+  const budget = steamDailyBudgetMinutes(env, observed);
   if (budget.total <= 1440) return { jobs, budget, adjusted: false };
   const others = budget.priceMin + budget.heatMin + budget.backfillDailyMin;
   const statusTargetMin = Math.max(120, 1440 - others); // 至少给 status 留 2 小时
-  const statusPerGameMin = 2 * (num(env.STEAM_STATUS_RATE_MS, 1500) / 60000);
+  // B3 批：每款速率优先用实测（observed 平均秒 ÷ 当前限额），没有实测才用理论 2×rate
+  const statusLimit = num(env.STEAM_STATUS_LIMIT, 6000);
+  const obsStatus = observed?.get?.('steam-status');
+  const statusPerGameMin =
+    obsStatus != null && Number.isFinite(obsStatus) && obsStatus > 0
+      ? obsStatus / Math.max(1, statusLimit) / 60
+      : 2 * (num(env.STEAM_STATUS_RATE_MS, 1500) / 60000);
   const newLimit = Math.max(500, Math.floor(statusTargetMin / statusPerGameMin));
   const adjusted = jobs.map((j) => {
     if (j.name !== 'steam-status') return j;
@@ -488,6 +540,7 @@ export function applySteamBudget(jobs, env = process.env, logger = null) {
     totalMin: Math.round(budget.total),
     targetMin: 1440,
     adjustedSteamStatusLimit: newLimit,
+    source: observed ? 'observed' : 'theoretical', // B3 批：标注预算来源
   });
   return { jobs: adjusted, budget, adjusted: true };
 }
@@ -536,7 +589,7 @@ export function auditJobs(env = process.env) {
  * 把调度器状态写到文件，Web 进程读它来展示「定时任务 / 下次运行」。
  * 跨进程通信不值得上 IPC：一个小 JSON 足够，读不到就当没有。
  */
-export function writeStatusFile(jobs, { lastRunMs, health, running, tickMs = 60000, lastOutcome = null, waitingSince = null, retry = null, file = process.env.SCHEDULER_STATUS_FILE || 'data/scheduler-status.json' } = {}) {
+export function writeStatusFile(jobs, { lastRunMs, health, running, tickMs = 60000, lastOutcome = null, waitingSince = null, retry = null, estimates = null, file = process.env.SCHEDULER_STATUS_FILE || 'data/scheduler-status.json' } = {}) {
   try {
     const now = Date.now();
     const payload = {
@@ -565,6 +618,8 @@ export function writeStatusFile(jobs, { lastRunMs, health, running, tickMs = 600
           waitingFor: waiting ? { occupiedBy: waiting.occupiedBy, since: new Date(waiting.at).toISOString() } : null,
           // BL-2：429 软退出后的重排时间（后台「状态」列显示重试于 HH:mm）
           retryAt: retry?.[j.name]?.at ?? null,
+          // B3 批（docs/DESIGN-AUDIT.md B3）：单轮耗时估算（理论）与实测（sync_runs 平均秒）——任务卡显示实际与估算差
+          estimate: estimates?.get?.(j.name) ?? null,
         };
       }),
     };
@@ -696,9 +751,20 @@ export async function main() {
     await settings.hydrateSettings({ store, logger });
     await store.setTimezone?.(process.env.TZ); // 时区设置水合后立即生效
     let jobs = jobsFromEnv();
+    // B3 批（docs/DESIGN-AUDIT.md B3）：预算与任务卡估算用 sync_runs 实测耗时（缺样本/查询失败回落理论值）
+    const refreshObserved = async () => {
+      try {
+        return await db.observedSyncRunSeconds(q);
+      } catch (err) {
+        logger.warn('scheduler.observed_fetch_failed', { ...failFields(err), err: serializeError(err) });
+        return new Map();
+      }
+    };
+    let observed = await refreshObserved();
     // AC-4（docs/SYNC-FAILURE-MODES.md AC4）：每日 Steam 配额预算——超 24h 自动缩 steam-status 并告警
-    const budget = applySteamBudget(jobs, process.env, logger);
+    const budget = applySteamBudget(jobs, process.env, logger, observed);
     jobs = budget.jobs;
+    let estimates = jobRuntimeEstimates(jobs, process.env, observed);
     let lastRevision = await settings.getRevision(q);
     let circuitThreshold = num(process.env.CIRCUIT_THRESHOLD, CIRCUIT.threshold);
     let circuitCooldownMs = num(process.env.CIRCUIT_COOLDOWN_MIN, CIRCUIT.cooldownMs / 60_000) * 60_000;
@@ -776,7 +842,7 @@ export async function main() {
       retryState = applyRetry(retryState, { job: job.name, code, nowMs: Date.now() });
       writeRetryState(retryState);
       waitingSince.delete(job.name);
-      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, lastOutcome, waitingSince, retry: retryState });
+      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, lastOutcome, waitingSince, retry: retryState, estimates });
       const followUp = followUpArgs(job.name, code, process.env);
       if (followUp && !stopping) {
         followUpChain = followUpChain
@@ -889,7 +955,7 @@ export async function main() {
       setupCompleted: initialized.completed,
       lightConcurrency: lightMax,
     });
-    writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, retry: retryState });
+    writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, retry: retryState, estimates });
 
     while (!stopping) {
       // 设置页保存后 revision +1：重新水合 env 并重建任务表，无需重启容器
@@ -898,7 +964,9 @@ export async function main() {
         await settings.hydrateSettings({ store, logger });
         await store.setTimezone?.(process.env.TZ);
         jobs = jobsFromEnv();
-        jobs = applySteamBudget(jobs, process.env, logger).jobs; // AC-4：设置变更后同样过预算
+        observed = await refreshObserved(); // B3 批：设置变更后同样按实测耗时重算预算
+        jobs = applySteamBudget(jobs, process.env, logger, observed).jobs; // AC-4：设置变更后同样过预算
+        estimates = jobRuntimeEstimates(jobs, process.env, observed);
         circuitThreshold = num(process.env.CIRCUIT_THRESHOLD, CIRCUIT.threshold);
         circuitCooldownMs = num(process.env.CIRCUIT_COOLDOWN_MIN, CIRCUIT.cooldownMs / 60_000) * 60_000;
         lastRevision = revision;
@@ -962,7 +1030,7 @@ export async function main() {
       if (stopping) break;
       // P2（X 批）：状态文件每个 tick 都写一次，updatedAt 才能反映调度器存活
       // （此前只在启动与任务完成时写，长任务运行期间看起来像卡死）。
-      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, lastOutcome, waitingSince });
+      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, lastOutcome, waitingSince, estimates });
       await sleepInterruptible(TICK_MS);
     }
 

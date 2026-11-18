@@ -3635,6 +3635,28 @@ export async function runningSyncRun(q) {
 }
 
 /**
+ * B3 批（docs/DESIGN-AUDIT.md B3）：各 mode 最近 sinceDays 天成功运行的平均耗时（秒）——
+ * 调度预算从理论估算改实测（AC-4）；样本不足 minRuns 的 mode 不回传（调用方回落理论值）。
+ */
+export async function observedSyncRunSeconds(q, { sinceDays = 30, minRuns = 2 } = {}) {
+  const r = await q(
+    `select mode, count(*)::int as runs, avg(extract(epoch from (finished_at - started_at)))::float8 as avg_sec
+       from sync_runs
+      where status = 'ok' and finished_at is not null and started_at > now() - ($1 || ' days')::interval
+      group by mode`,
+    [String(sinceDays)],
+  );
+  const map = new Map();
+  for (const row of r.rows ?? []) {
+    if (typeof row.mode !== 'string' || !row.mode) continue;
+    if ((Number(row.runs) ?? 0) < minRuns) continue;
+    const sec = Number(row.avg_sec);
+    if (Number.isFinite(sec) && sec > 0) map.set(row.mode, sec);
+  }
+  return map;
+}
+
+/**
  * CO-1/A5（docs/DESIGN-AUDIT.md A5）：任务失败原因——该 mode 最近一条 failed 记录的输出。
  * 子进程退出前已由 runSyncTracked 写入（err.message，≤500 字符），调度器取它作健康条/告警的失败原因。
  */

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, registerCircuitReset, resetCircuit, applyRetry, syncRunModeFor, jobFailureError, jobFailedReason } from '../src/scheduler.js';
+import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, theoreticalRunSeconds, jobRuntimeEstimates, registerCircuitReset, resetCircuit, applyRetry, syncRunModeFor, jobFailureError, jobFailedReason } from '../src/scheduler.js';
 
 test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），默认 3，非法回落默认', () => {
   assert.equal(lightConcurrency({}), 3);
@@ -445,6 +445,84 @@ test('AC-4：默认配置的每日预算 <24h（不降频）；超预算时自�
   const after = steamDailyBudgetMinutes({ ...env, STEAM_STATUS_LIMIT: String(newLimit) });
   assert.ok(after.total <= 1440, '调整后回到预算内（' + Math.round(after.total) + ' 分钟）');
   assert.ok(events.some(([e]) => e === 'scheduler.budget_exceeded'), '告警日志');
+});
+
+test('B3：实测耗时优先——steamDailyBudgetMinutes 用 sync_runs 平均秒折算每日预算，缺样本回落理论值', () => {
+  const env = {};
+  const theo = steamDailyBudgetMinutes(env);
+  assert.ok(theo.total > 0, '无实测时理论预算可用');
+  // 实测：四个 mode 各给平均秒（steam-status 实测 300s/轮 vs 理论 5h，证明预算跟着实测走）
+  const observed = new Map([
+    ['steam-prices', 60],
+    ['heat', 120],
+    ['steam-status', 300],
+    ['backfill', 600],
+  ]);
+  const obs = steamDailyBudgetMinutes(env, observed);
+  assert.equal(obs.priceMin, 1, '价格：60s × 1 轮/天 = 1 分钟');
+  assert.equal(obs.heatMin, 2, '热度：120s × 1 轮/天 = 2 分钟');
+  assert.equal(obs.statusMin, 5, '状态：300s × 1 轮/天 = 5 分钟');
+  assert.equal(obs.backfillDailyMin, 10, '回填：600s × 1 轮/天 = 10 分钟');
+  assert.equal(obs.total, 18, '总预算 = 实测之和（不再按理论常数）');
+  // 缺样本回落理论：只有 heat 有实测，其余回落
+  const partial = steamDailyBudgetMinutes(env, new Map([['heat', 0.1]]));
+  assert.equal(partial.heatMin, 0.1 / 60, 'heat 用实测（0.1s × 1 轮/天）');
+  assert.equal(partial.priceMin, theo.priceMin, '缺实测的 mode 回落理论值');
+  // 非法实测值（0/负数/NaN）当没有样本
+  const junk = steamDailyBudgetMinutes(env, new Map([['steam-prices', 0], ['heat', -5], ['steam-status', Number.NaN]]));
+  assert.equal(junk.total, theo.total, '非法实测值全部回落理论值');
+});
+
+test('B3：applySteamBudget 预算来源实测——实测超预算同样触发缩量并标注 source', () => {
+  const env = {};
+  // 实测把总预算推过 24h：status 实测 30h/轮
+  const observed = new Map([
+    ['steam-prices', 60],
+    ['heat', 120],
+    ['steam-status', 30 * 3600],
+    ['backfill', 600],
+  ]);
+  const events = [];
+  const logger = { warn: (e, f) => events.push([e, f]) };
+  const { jobs, budget, adjusted } = applySteamBudget(jobsFromEnv(env), env, logger, observed);
+  assert.equal(adjusted, true, '实测超预算也要缩量');
+  assert.ok(budget.total > 1440, '实测总预算超过 24h');
+  assert.equal(events[0][1].source, 'observed', '告警标注预算来源=实测');
+  const status = jobs.find((j) => j.name === 'steam-status');
+  const limitIdx = status.args.indexOf('--limit');
+  assert.ok(Number(status.args[limitIdx + 1]) < 6000, 'steam-status 被降频');
+  // 未超预算时不动
+  const ok = applySteamBudget(jobsFromEnv({}), {}, logger);
+  assert.equal(ok.adjusted, false, '理论预算内不调整');
+});
+
+test('B3：jobRuntimeEstimates 只覆盖四个 Steam 重任务，obsSec 来自实测、无实测为 null', () => {
+  const jobs = jobsFromEnv({});
+  const observed = new Map([['heat', 42]]);
+  const est = jobRuntimeEstimates(jobs, {}, observed);
+  assert.deepEqual([...est.keys()].sort(), ['backfill', 'heat', 'steam-prices', 'steam-status'].sort(), '只给四个 Steam 重任务');
+  const heat = est.get('heat');
+  assert.equal(heat.obsSec, 42, '实测秒透传');
+  assert.equal(heat.estSec, theoreticalRunSeconds({}).heat, '理论估算保留');
+  assert.equal(est.get('steam-prices').obsSec, null, '无实测 obsSec=null（任务卡标注「理论」）');
+  assert.ok(!est.has('catalog'), 'catalog 不在预算口径内');
+});
+
+test('B3：writeStatusFile 带 estimate 字段，前端任务卡显示实际/估算差（静态锁）', () => {
+  const jobs = jobsFromEnv({});
+  const estimates = jobRuntimeEstimates(jobs, {}, new Map([['heat', 42]]));
+  const file = join(tmpdir(), `b3-status-${Date.now()}.json`);
+  writeStatusFile(jobs, { lastRunMs: new Map(), health: new Map(), running: new Set(), estimates, file });
+  const payload = JSON.parse(readFileSync(file, 'utf8'));
+  const heat = payload.jobs.find((j) => j.name === 'heat');
+  assert.deepEqual(heat.estimate, { estSec: theoreticalRunSeconds({}).heat, obsSec: 42 }, '状态文件带 estimate');
+  const sonkwo = payload.jobs.find((j) => j.name === 'sonkwo');
+  assert.equal(sonkwo.estimate, null, '非预算任务不带 estimate');
+  // 前端接线（静态）：任务表显示「估算」与差值文案
+  const admin = readFileSync(new URL('../frontend/src/pages/AdminModules.vue', import.meta.url), 'utf8');
+  assert.match(admin, /估算 \{\{ estimateText\(row\) \}\}/, '任务卡显示估算');
+  assert.match(admin, /deltaText\(row\)/, '任务卡显示实际与估算差');
+  assert.match(admin, /j\.estimate/, 'taskRows 透传 estimate 字段');
 });
 
 test('AC-9/BL-1：回填候选新游戏优先 + 四态排除 + 默认每天 5000（静态断言）', () => {
