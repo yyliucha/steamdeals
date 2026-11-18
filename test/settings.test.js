@@ -376,6 +376,9 @@ test('CQ 前端接线（静态）：只看非默认/折叠/恢复本组默认/�
   // 质检打回项静态锁：只看非默认过滤折叠内项 / bool 摘要开·关 / 紧凑行每字段恢复入口
   assert.match(admin, /'开':'关'/, 'bool 摘要显示开/关而非 true/false');
   assert.match(admin, /kind:'foldBody',sec,fields:adv/, '折叠展开项与折叠计数同用过滤后的 adv（只看非默认生效）');
+  assert.match(admin, /summaryFor\(sec,adv\)/, '折叠摘要按过滤后 adv 计算（与计数口径一致）');
   assert.match(admin, /↺/, '紧凑行每个字段都有恢复入口');
-  assert.match(admin, /en\[0\]\.key/, '卡头启用开关取第一个 .enabled（杉果卡启用状态）');
+  assert.match(admin, /sources\.\$\{s\.id\}\.enabled/, '卡头开关取与分区同名的平台 enabled（杉果=sonkwo.enabled）');
+  assert.match(admin, /s\.id==='gog-humble'/, 'GOG/Humble 卡不挂卡头开关、按平台分两行');
+  assert.match(admin, /enabledField\?\[sec\.enabledField\]/, '恢复本组默认包含卡头开关字段');
 });
