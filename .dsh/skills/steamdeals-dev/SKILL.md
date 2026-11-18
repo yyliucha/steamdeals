@@ -137,7 +137,8 @@ git status --short; git log --oneline -5; node -p "require('./package.json').ver
 ## 6. 文档收尾（是交付的一部分，不是可选）
 
 - **必改 `docs/TODO.md`**：本批条目的 `**状态：…**` 改成 `已实现待发版`（打回后改回 `开发中`），并补提交哈希；
-  状态词只能用 `待开发 / 开发中 / 已实现待发版 / 待质检 / 质检通过 / 质检打回 / 已发布 vX.Y.Z / 待排查 / 待决策 / 已过时`。
+  TODO 只出现**未完成态**：`待开发 / 依赖阻塞 / 开发中 / 已实现待发版 / 待质检 / 质检通过 / 质检打回 / 待排查 / 待决策`；
+  终态（`已发布 vX.Y.Z` / `已过时`）由 `steamdeals-build` 发布时 / 需求会话判定过时时**移入 [DONE.md](DONE.md)**，dev 不写终态。
 - **README 不再维护进度摘要**（2026-11-12 起）：进度只在 `docs/TODO.md`，README 只有一条指向它的链接，
   没有生成块、没有 `docs-progress` 门禁，也没有 `todo:progress` 命令。
 - **解锁下游**：扫一遍 TODO，把 `依赖：` 指向本条的条目从 `依赖阻塞` 改成 `待开发`，并在汇报里给 `🔓 解锁` 行。
@@ -154,6 +155,7 @@ cd F:\dsh\gameprice
 node test/<最相关的>.test.js    # 先跑单文件，秒级定位
 node test/<相关>.test.js ...    # 改动相关的测试文件全部跑绿才算完成（相关优先，2026-11-18 起）
 npm test                        # 主链全量：按需——改动触及 store/pg.js、match.js、server.js 等共享底层 / 发版前兜底；不再每次必跑（CI 自动全量）
+npm run test:N                  # 主链已分段 test:1~test:4 串行（DI 批）：中断从失败段续跑（N=1..4），不用从头重跑
 npm run frontend:build          # 动过 frontend/ 必跑
 npm run scan                    # 提交前凭据自检
 node --check src/xxx.js         # 新增/大改文件先过语法

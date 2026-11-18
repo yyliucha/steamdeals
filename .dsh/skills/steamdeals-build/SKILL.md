@@ -99,8 +99,9 @@ git status --short                 # 其它会话的未提交改动，记录下�
 - `CHANGELOG.md`：顶部加 `## [X.Y.Z] - YYYY-MM-DD`，按 Keep a Changelog 分「新增 / 修复 / 测试」，写清为什么；
 - `README.md`：功能表状态标 ✅ 并写边界与限制、命令参考（新 CLI 命令/参数）、已知限制；
 - `docs/PROJECT-OVERVIEW.md`：功能与代码落点表 + 验证记录，状态词改 `已发布 vX.Y.Z`；
-- 本批规格文档状态改「已实现并发布 vX.Y.Z」；`docs/TODO.md` 条目标题同步改 `~~…~~ → 已发布 vX.Y.Z`、
-  状态行写 `已发布 vX.Y.Z（<短哈希>；QA 报告 …）`；
+- 本批规格文档状态改「已实现并发布 vX.Y.Z」；**把 `docs/TODO.md` 里本批条目整段移入 [DONE.md](DONE.md)**
+  （保留原文；标题改 `~~…~~ → 已发布 vX.Y.Z`，状态行写 `已发布 vX.Y.Z（<短哈希>；QA 报告 …）`）——
+  **2026-11-18 起 TODO 只放待办，终态条目发布后必须移入 DONE，不留 TODO**；
 - `docs/REQUIREMENTS-INDEX.md` 对应行同步；`docs/DELIVERY.md`「当前状态」加新版本条目
   （验证结果 + 「CI 待确认」+「服务器部署待执行」）。
 
@@ -112,6 +113,7 @@ git status --short                 # 其它会话的未提交改动，记录下�
 
 ```powershell
 node test/<本批相关>.test.js   # 本批改动相关的测试文件全绿（相关优先，2026-11-18 起；全量主链由 CI 自动跑，本机不再每次全量）
+npm run test:N                  # 主链已分段 test:1~test:4 串行（DI 批）：本机兜底 / 失败段续跑（N=1..4）
 npm run e2e                    # 发版门禁必跑全量矩阵（含 e2e_ 账号建删），输出 PDF 报告到仓库外
 npm run frontend:build          # 改过 frontend/ 必跑（保险起见每次都跑）
 npm run scan                    # 凭据自检

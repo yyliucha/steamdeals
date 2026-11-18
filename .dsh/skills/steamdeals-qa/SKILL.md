@@ -45,8 +45,9 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
 - **输入来自待办清单（2026-11-06 所有者要求）**：开发者说"做完了"时必须给出 **TODO 编号**；
   质检按该编号在 [docs/TODO.md](../../../docs/TODO.md) 找到条目与规格，不接受"你去看我提交"这种转述。
 - **检查完必须回写状态**：把该条目从 `待质检` 改成 `质检通过` 或 `质检打回`（打回时在条目里写一句打回摘要），
-  并在 `docs/REQUIREMENTS-INDEX.md` 同步；**质检不写 `已发布`**（那是发版后的事）。回写即可——
-  README 不再有「开发进度」生成块（2026-11-12 起下线，没有 `todo:progress` 命令与 `docs-progress` 门禁）。
+  并在 `docs/REQUIREMENTS-INDEX.md` 同步；**质检不写 `已发布`**（那是发版后的事）。`质检通过` 条目**仍留在
+  [TODO.md](TODO.md)**（等构建）；发布后由 `steamdeals-build` 把它移入 [DONE.md](DONE.md)。
+  回写即可——README 不再有「开发进度」生成块（2026-11-12 起下线，没有 `todo:progress` 命令与 `docs-progress` 门禁）。
 - **并发写 TODO（2026-11-09 所有者新规）**：回写状态前先探测占用（`git status --short` + `LastWriteTime`
   2 分钟内被改过 + `.git/index.lock`）；**被占用就跳过状态回写**，照常完成判定、报告与结论（报告里注明
   「状态回写待补」）；状态由**收尾复盘**补——本批最后提交的会话重读两份文件全文、用 `edit` 定点替换回写
@@ -95,6 +96,7 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
    cd F:\dsh\gameprice
    node test/<本批相关>.test.js  # 本批相关测试文件重跑（相关优先）
    npm test                # 主链全量：默认不跑（开发刚跑过 + CI 每推必跑）；只在触及共享底层 / 断言存疑 / 打回复检兜底时跑
+   npm run test:N          # 主链已分段 test:1~test:4 串行（DI 批）：兜底只跑失败段（N=1..4）即可
    npm run frontend:build  # diff 动过 frontend/ 必跑
    npm run scan            # 必跑
    ```

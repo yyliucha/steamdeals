@@ -51,7 +51,7 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
    规则的完整版见 `docs/HANDOVER.md` §11；TODO 头部也有封板声明。
 1. `docs/PROJECT-OVERVIEW.md` —— 产品边界、架构、功能与代码落点、必做收尾规则
 2. `docs/DELIVERY.md` —— §0 一分钟看懂、§2 改动前必知规则、§3 发版流程
-3. `docs/TODO.md` —— **唯一排期与状态来源**（先查这里，避免把已在做的事重提一遍；新需求必须在这里建条目）
+3. `docs/TODO.md` —— **唯一排期与状态来源（待办侧）**（先查这里，避免把已在做的事重提一遍；新需求必须在这里建条目）+ `docs/DONE.md`（已完成/已过时存档，2026-11-18 起）
 4. `docs/REQUIREMENTS-INDEX.md` —— 需求批次总账：每个编号对应哪份规格、状态、有没有开发描述
 5. `docs/HANDOVER.md` —— 开发/质检会话的唯一入口（状态词、汇报格式、红线）
 6. `docs/ROADMAP.md` —— 未实现议题、已做过的决策与取舍（避免翻案重谈）
@@ -197,8 +197,9 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
 禁止把"建议"写成"已决定"。
 
 > 注意：**规格文档的状态词**与 **`docs/TODO.md` 条目的状态词**是两套——TODO 用
-> `待开发 / 依赖阻塞 / 开发中 / 已实现待发版 / 待质检 / 质检通过 / 质检打回 / 已发布 vX.Y.Z / 待排查 / 待决策 / 已过时`。
-> 写 TODO 条目时用后者，别混。
+> `待开发 / 依赖阻塞 / 开发中 / 已实现待发版 / 待质检 / 质检通过 / 质检打回 / 待排查 / 待决策`。
+> 写 TODO 条目时用后者，别混。**终态不在 TODO 出现**（2026-11-18 起）：`已发布 vX.Y.Z` 由
+> `steamdeals-build` 发布时、`已过时` 由需求会话判定时，**整段移入 [DONE.md](../../../docs/DONE.md)**。
 
 文档内链接一律相对路径（`docs/xxx.md`、`../src/xxx.js`）；`test/docs.test.js` 会校验固定文档清单的断链。
 
@@ -238,17 +239,18 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
 2. **在 `docs/REQUIREMENTS-INDEX.md` 加一行**：编号 / 主题 / 规格 / 状态 / 是否有开发描述；
 3. **本轮回复给开发描述**（上面三行）；
 4. 若需求里有真机/线上证据，写进 TODO 条目或规格（开发本机可能复现不了）。
-5. **不需要同步 README**：2026-11-12 起 README 不再有「开发进度」摘要（只有一条指向 TODO 的链接），也没有 `todo:progress` 命令；进度以 `docs/TODO.md` 为准。
-6. **提交推 main（只提交自己的文件，2026-11-17 起）**：`git add <本次自己的路径>`（绝不 `git add -A`）→
+5. **不需要同步 README**：2026-11-12 起 README 不再有「开发进度」摘要（只有一条指向 TODO 的链接），也没有 `todo:progress` 命令；进度以 `docs/TODO.md`（待办）+ `docs/DONE.md`（已完成）为准。
+6. **条目「已过时」→ 整段移入 `docs/DONE.md`**（2026-11-18 起）：取消/并入其他条目的需求（如 DB 公开主页取消），从 TODO 把该段移入 DONE.md（保留原文与状态行），INDEX 行标「已过时」；TODO 只放待办。
+7. **提交推 main（只提交自己的文件，2026-11-17 起）**：`git add <本次自己的路径>`（绝不 `git add -A`）→
    `git commit -m "docs(<scope>): <摘要>"` → `git push origin main`；其他会话的未提交改动不碰；
    push 前 `git fetch origin main` 看领先情况——若 origin/main 领先且工作区有他人未提交改动，
    **不要 `pull --rebase --autostash`**（会把他人改动 stash 走），停手上报所有者；
    若领先且工作区只有自己的改动，可 `git pull --rebase`（拉取失败或冲突停手报告，禁止强推）。
 
 **并发写 TODO（2026-11-09 所有者新规）**：建条目 / 加 INDEX 行之前先探测占用
-（`git status --short docs/TODO.md docs/REQUIREMENTS-INDEX.md`、`LastWriteTime` 2 分钟内被改过、`.git/index.lock`）；
-**被占用就跳过 TODO / INDEX 的写入**——规格与开发描述照常产出，把「待建条目 / 待改状态」写进开发描述与对话，
-开发照常派发；条目由**收尾复盘**补——本批最后提交的会话重读两份文件全文、用 `edit` 定点替换补建 / 补状态
+（`git status --short docs/TODO.md docs/REQUIREMENTS-INDEX.md docs/DONE.md`、`LastWriteTime` 2 分钟内被改过、`.git/index.lock`）；
+**被占用就跳过 TODO / INDEX / DONE 的写入**——规格与开发描述照常产出，把「待建条目 / 待改状态」写进开发描述与对话，
+开发照常派发；条目由**收尾复盘**补——本批最后提交的会话重读三份文件全文、用 `edit` 定点替换补建 / 补状态
 （README 自 2026-11-12 起不再有进度摘要，无需同步）。完整规则见 [docs/HANDOVER.md](../../../docs/HANDOVER.md) §10。
 
 > 不要在主对话里当"唯一的传话人"：对话会丢，TODO 不会。任何"以后要做"的结论，
@@ -269,7 +271,7 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
 2. 决策是否区分了"所有者已确认"与"我的建议"？
 3. 有没有偷偷承诺版本号、上线时间、构建？——删掉。
 4. 本次是否确实没改任何业务代码、没跑构建、没打 tag？自己的 docs 产出是否已 commit/push（只提交自己的文件）？（回复里明确写这一句）
-5. **是否已在 `docs/TODO.md` 建/更新条目**（正文第一行有 `**状态：…**`），并在 `docs/REQUIREMENTS-INDEX.md` 加了一行？
+5. **是否已在 `docs/TODO.md` 建/更新条目**（正文第一行有 `**状态：…**`），并在 `docs/REQUIREMENTS-INDEX.md` 加了一行？已过时条目是否已移入 `docs/DONE.md`？
 6. **是否已产出开发描述**（§6 三行：要做的条目 / 规格 / 验收要点）？
 7. **有没有写清依赖关系**：新条目有 `**依赖：**` / `**解锁：**` 两行吗？前置未完成时状态是 `依赖阻塞` 吗？
    有没有哪些"后续需求必须等这条做完才能定位"的情况没写出来？（例：先加日志，下一条才能诊断）
