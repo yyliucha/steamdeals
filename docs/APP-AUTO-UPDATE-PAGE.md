@@ -2,9 +2,9 @@
 
 > 状态：**已实现并发布 v2.22.0（2026-11-17，517ffb6；质检 ✅ docs/QA-CJ.md）；现场回归修复 b726af4**
 > **（apkPath 按 data/app 存在性回落镜像 + /app/dl/ 缺失 302 兜底，质检 ✅ docs/QA-CJ-regression.md）随 v2.22.1 发布**。
-> **DK 批（2026-11-19，站点 d65542f + App 仓库 8fb6328）**：apkPath 兜底 GitHub Release 直链
+> **DK 批（已发布 v2.25.0，2026-11-19，站点 d65542f + App 仓库 8fb6328；QA docs/QA-DK.md 第 1 轮 ✅ 6/0/0/2）**：apkPath 兜底 GitHub Release 直链
 > （本地/镜像都无 APK 时不再 null）；`apk_download` 失败带 `apkFailed` 标记 → 任务健康条显红；
-> same_version 跳过加 APK 存在性检查（APK 缺失自动重新下载，每小时自愈）。见 [TODO.md](TODO.md) DK 条目。
+> same_version 跳过加 APK 存在性检查（APK 缺失自动重新下载，每小时自愈）。
 > 关联：[TODO.md](TODO.md) CJ 条目、[APP-NATIVE.md](APP-NATIVE.md) §5（/app 页与分发口径）、
 > [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md)（App 内置更新契约：versionName/versionCode/minVersionCode/notes）、
 > [APP-API.md](APP-API.md)（`/api/app/latest` 契约）。

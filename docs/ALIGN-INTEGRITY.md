@@ -1,6 +1,6 @@
 # 对齐审核数据完整性（DH，待开发）
 
-> 状态：**已确认待开发（2026-11-18，所有者「立DH」）**。
+> 状态：**已发布 v2.25.0（2026-11-19，d3c67ec + 修复 cc8e351；QA docs/QA-DH.md 第 2 轮 ✅）**。
 > 关联：[TODO.md](TODO.md) DH 条目、[ALIGN-REVIEW-UI.md](ALIGN-REVIEW-UI.md)（DE 页改版）、
 > `src/align.js`（applyMapInheritance / ignoreGroup）、`src/store/pg.js`（game_source_map）。
 

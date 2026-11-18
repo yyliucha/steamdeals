@@ -1,6 +1,6 @@
-# 更换登录邮箱（CZ 二期：邮箱体系收尾）（已实现待发版）
+# 更换登录邮箱（CZ 二期：邮箱体系收尾）（已发布 v2.25.0）
 
-> 状态：**已实现待发版（2026-11-19 凌晨完成；实现提交哈希见交付汇报）**。决策与验收口径见 §2/§4（2026-11-18，所有者 5 项决策已确认；App 端同样支持）。
+> 状态：**已发布 v2.25.0（2026-11-19，站点 ac52955 + App 仓库 7c01820；QA docs/QA-CZ.md 第 1 轮 ✅ 放行 11/0/0/2；App 发版 app-v2.21.0）**。决策与验收口径见 §2/§4（2026-11-18，所有者 5 项决策已确认；App 端同样支持）。
 > Demo：[design/email-change-2026-11-18.html](design/email-change-2026-11-18.html)（Web）/ [design/email-change-android-2026-11-18.html](design/email-change-android-2026-11-18.html)（App）
 > 关联：[TODO.md](TODO.md) CZ 条目、[USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md)（CX 资料页）、
 > [AUTH-REDESIGN.md](AUTH-REDESIGN.md)（AK 批邮箱验证码登录取证）、`src/auth-routes.js`（现有 OTP 实现）。

@@ -195,13 +195,15 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-19 更新，v2.24.5 已发布：DG + DI + DJ + CO-1/A5 + CO-2/B5 + CO-4/D1）
+### 当前状态（2026-11-19 更新，v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
-- **DK 质检通过（修 bug）**（站点 d65542f + App 仓库 8fb6328；QA ✅ [QA-DK.md](QA-DK.md) 第 1 轮 6/0/0/2）：App 检查更新失败修复——`/api/app/latest` 的 apkPath 在本地/镜像都无 APK 时兜底 GitHub Release 直链（不再 null）；App 端下载地址不可用单独提示「新版下载地址暂不可用，请到站点 /app 页下载」、不再笼统报失败（`UpdateManager.decideUpdate` → Unavailable）；apk_download 失败在任务健康条显红（apkFailed 标记 + cmdAppSync 抛错，A5 接线）+ same_version 跳过加 APK 存在性检查（APK 缺失自动重下补齐，每小时自愈）；等「构建」指令（修复 → 小版本 +1）。
-- **CW 已实现待发版**（实现随 b9811f8 入 main；QA ✅ [QA-CW.md](QA-CW.md) 第 1 轮 11/0/0/2）：后台「游戏目录」点游戏名弹 640px 详情弹窗（封面/中英名/AppID/徽标/元信息/价格条/简介 4 行可展开/DLC 数/评测数 + 底部 Steam 商店跳转；未同步/无 appid/回收站三态兜底；移动端 100%）。数据只用站内已同步 Steam 数据；等「构建」指令（含新功能 → 大版本 +1）。
-- **CY 已实现待发版**（实现 3351f9f + 16d7d72 + 0b8e506；QA ✅ [QA-CY.md](QA-CY.md) 第 1 轮 6/0/0/0）：数据隔离——用户私有数据（提醒/愿望单/访问记录/Steam 绑定）管理员只读（越权写 403 + `audit_logs` 审计 `admin.forbidden_write`；站点级提醒/账号安全/会话/申诉/审核/未归属认领保留可写）；等「构建」指令（含新功能面 → 大版本 +1）。
-- **CZ 已实现待发版**（站点 ac52955 + d72d933 + App 仓库 7c01820；QA ✅ [QA-CZ.md](QA-CZ.md) 第 1 轮 11/0/0/2）：更换登录邮箱——`POST /api/me/email/request|verify`（不泄露占用/验证码通过后才 409/换成功删全部会话并撤销全部 App token/审计 `auth.email_changed`/双邮件）；验证码 10 分钟/5 次、24h 最多 1 次、未验证也能换（换完变已验证）；管理员重置邮箱保留（审计 `admin.email_reset` 随 CY 提交 3351f9f 入 main）；Web 资料页两步对话框 + App 底部弹层两步（模拟器走通：发码→验证→清 token 跳登录）；test/email-change.test.js 7 项进主链；等「构建」指令（含新功能面 → 大版本 +1）。
+- **v2.25.0 已发布**（tag `v2.25.0`，release 提交见 git log）：CO-1/A3（6a9ecc3）+ CO-2/B3（7a324b0）+ CQ（6850e5b + 修复 b705824/50f5e45）+ CW（随 b9811f8 入 main）+ CX（随 b9356aa/93e1241/2f01b59 入 main + App 6f68e81）+ CY（3351f9f）+ CZ（站点 ac52955 + App 7c01820）+ DA（站点 b46669a + App 4334823）+ DC（App ef17e9a）+ DH（d3c67ec + cc8e351）+ DK（站点 d65542f + App 8fb6328）合并发版（含新功能条目 → 大版本，2.24.5 → 2.25.0 连续递增）。
+  CQ 系统设置信息架构（6 平台卡/折叠摘要/只看非默认/来源标注/恢复默认/搜索展开）；CW 后台游戏详情弹窗（站内已同步 Steam 数据 + Steam 商店跳转，三态兜底）；CX 个人资料编辑（头像存库/双 Steam 账号默认头像/我的游戏库与统计，Web + App）；CY 数据隔离（用户私有数据管理员只读，越权写 403 + 审计）；CZ 更换登录邮箱（两步验证码、全会话下线、双邮件、24h 频控，Web + App）；DA App 筛选/排序服务端化（4 开关互斥 + heat/release 排序，App 依赖本批站点参数）；DC App 公告角标与列表（游客本地已读）；DH 对齐审核数据完整性（继承缺口/已忽略恢复/审阅痕迹/孤儿行提示）；DK App 检查更新失败修复（apkPath 兜底 GitHub 直链 + App 提示区分 + APK 缺失自愈）；A3 双真相源收敛（库唯一真相、skus.json 只读兼容）；B3 任务预算实测化（sync_runs 实测折算 + 任务卡实际/估算差）。
+  QA：A3 ✅ [QA-CO1-A3.md](QA-CO1-A3.md)（25/0/0/0）/ B3 ✅ [QA-CO2-B3.md](QA-CO2-B3.md)（15/0/0/1）/ CQ ✅ [QA-CQ.md](QA-CQ.md) 第 3 轮（9/0/0/2）/ CW ✅ [QA-CW.md](QA-CW.md)（11/0/0/2）/ CX ✅ [QA-CX.md](QA-CX.md)（14/0/0/1）/ CY ✅ [QA-CY.md](QA-CY.md)（6/0/0/0）/ CZ ✅ [QA-CZ.md](QA-CZ.md)（11/0/0/2）/ DA ✅ [QA-DA.md](QA-DA.md)（6/0/0/2）/ DC ✅ [QA-DC.md](QA-DC.md) / DH ✅ [QA-DH.md](QA-DH.md) 第 2 轮 / DK ✅ [QA-DK.md](QA-DK.md)（6/0/0/2）；多会话并行审计 [AUDIT-2026-11-19.md](AUDIT-2026-11-19.md)（改坏项已全部恢复；本批补其 §③遗漏 1——`test/isolation.test.js` 注册进主链 test:4）。
+  验证（本机发版门禁）：主链分段 test:1~test:4 全绿 + `node test/api.test.js` + `frontend:build` + `scan`（输出见 v2.25.0 release 提交说明与 CHANGELOG）。
+  CI：docker-hub / docker-tcr 见下文 CI 记录（双绿后补 run id）。
+  **服务器部署待执行**（升级到 `2.25.0`）；**App 升级路径**：app-v2.21.0 依赖本批站点 `/api/games` 参数（DA）——先部署站点 v2.25.0，再提示用户升级 App（详情见 [APP-FILTER-SERVER-SIDE.md](APP-FILTER-SERVER-SIDE.md) §4）；发版后 e2e 全量由独立报告会话按 steamdeals-test §2.3 执行（PDF 落 `F:\dsh\e2e-reports\`），不在本会话跑。
 - **v2.24.5 已发布**（tag `v2.24.5`，实现 afc5a91 + 12a6de7 / 3acd1b8 / c87dfe0 / 5b1cbfb / c4e2695 / 2ee09af）：DG + DI + DJ + CO-1/A5 + CO-2/B5 + CO-4/D1 合并发版（无新功能面 → 小版本）。
   DG 对齐匹配修复（候选索引补 `name_en` + 副标题感知——主标题命中 0.90–0.93 + 「副标题」理由、只进人工，断箭组恢复候选）；
   DI 测试环境隔离与主链分段（`APP_DATA_DIR` 注入隔离 + `test:1`~`test:4` 四段 + `test:reset` 白名单复位）；

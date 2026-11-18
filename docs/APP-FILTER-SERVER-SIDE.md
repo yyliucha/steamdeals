@@ -1,6 +1,6 @@
-# App 筛选/排序服务端化（DA = CM-5，方案 A）（已实现待发版）
+# App 筛选/排序服务端化（DA = CM-5，方案 A）（已发布 v2.25.0）
 
-> 状态：**已实现待发版（2026-11-18 实现，见 TODO DA 条目；方案 A：站点 + App 一起做）**。
+> 状态：**已发布 v2.25.0（2026-11-19，站点 b46669a + App 仓库 4334823；QA docs/QA-DA.md 第 1 轮 ✅ 放行 6/0/0/2——App 空态目视、部署后 P95 ≤500ms 抽测；App 依赖本批站点 `/api/games` 参数，站点部署后再升级 App 至 app-v2.21.0）**。
 > 关联：[TODO.md](TODO.md) DA 条目、[APP-PARITY.md](APP-PARITY.md) §57、[APP-NATIVE.md](APP-NATIVE.md) §4.4、
 > [DISCOVERY-FOR-YOU.md](DISCOVERY-FOR-YOU.md)（筛选口径）。
 

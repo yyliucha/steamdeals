@@ -1,6 +1,6 @@
-# 数据隔离：用户私有数据管理员只读（CY，已实现待发版）
+# 数据隔离：用户私有数据管理员只读（CY，已发布 v2.25.0）
 
-> 状态：**已实现待发版（2026-11-18 晚完成；3351f9f；验收以 §4 为准）**。
+> 状态：**已发布 v2.25.0（2026-11-19，实现 3351f9f；QA docs/QA-CY.md 第 1 轮 ✅ 放行 6/0/0/0；`test/isolation.test.js` 随本批注册进主链 test:4）**。
 > 关联：[TODO.md](TODO.md) CY 条目、[USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md)（CX：个人资料）、
 > [USER-ALERTS.md](USER-ALERTS.md)（CL：用户级提醒）、[HANDOVER.md](HANDOVER.md) §6（权限）。
 

@@ -16,7 +16,7 @@
 
 ## CO. 待开发：设计审计技术债清理（21 项 → 4 批，每日推进）
 
-**状态：已发布子项（CO-2 B1/B2、CO-3 C2/C4/C5、CO-1 A5、CO-2 B5、CO-4 D1）已移入 [DONE.md](DONE.md)；A3 质检通过（2026-11-18，QA docs/QA-CO1-A3.md）；B3 质检通过（2026-11-19，QA docs/QA-CO2-B3.md ✅；实现 7a324b0）；剩余 B4/D4/E4/D6 待开发（源清单 [DESIGN-AUDIT.md](DESIGN-AUDIT.md)，每条含证据与建议）；E1 文档归档已完成（不进版本）**
+**状态：已发布子项（CO-2 B1/B2、CO-3 C2/C4/C5、CO-1 A5、CO-2 B5、CO-4 D1、CO-1 A3、CO-2 B3）已移入 [DONE.md](DONE.md)；D4/D6 质检通过（QA docs/QA-D4.md、docs/QA-D6.md ✅）——按所有者指示未随 v2.25.0 发布，留待下批；剩余 B4/E4 待开发（源清单 [DESIGN-AUDIT.md](DESIGN-AUDIT.md)，每条含证据与建议；E4 的审计结论见 docs/AUDIT-2026-11-19.md §③遗漏 3）；E1 文档归档已完成（不进版本）**
 **依赖：** 无（A2/A4/C1/D5 已分别由 CL/CJ/CK 覆盖，本批只做"未开"的 15 项）
 **解锁：** 无
 **推进规则**：每个开发会话**至少认领 1 条**（开工把该行改「开发中」），当天实现+测试+提交，
@@ -25,8 +25,6 @@
 
 | 批次 | 子项 | 内容（对应审计编号） | 状态 |
 |---|---|---|---|
-| **CO-1** | A3 | `skus.json` 与 `game_source_map` 双真相源 → 以库为唯一真相、skus.json 只读兼容 | 质检通过（2026-11-18，QA docs/QA-CO1-A3.md 第 1 轮 ✅；实现 6a9ecc3 + 随行提交） |
-| **CO-2** | B3 | 任务预算改**实测耗时**（AC-4 估算）；任务卡显示实际与估算差 | 质检通过（2026-11-19，QA docs/QA-CO2-B3.md 第 1 轮 ✅；实现 7a324b0） |
 | **CO-4** | B4 | 巨石拆分（`server.js`/`pg.js`/`cli.js` 渐进拆 routes/repository，先一个域试点） | 待开发 |
 | **CO-4** | D4 | 移动/桌面双结构 `v-if` 渐进合并（CSS 优先） | 质检通过（2026-11-18，QA docs/QA-D4.md 第 1 轮 ✅） |
 | **CO-4** | E1 | TODO 历史段归档（K/M/N/O/P 重复字母、A 段 v1.4.6） | 质检通过（2026-11-18 文档归档完成，需求会话直接交付，无 QA 轮；历史段已移 DONE.md） |
@@ -34,28 +32,6 @@
 | **CO-4** | D6 | 覆盖率/性能基线门禁（与 CK 的 e2e 报告联动） | 质检通过（2026-11-19，QA docs/QA-D6.md 第 1 轮 ✅） |
 
 > 已被其它条目覆盖、**不重复做**：A1→CN、A2→CL、A4→CJ、C1→CL、D5→CK、D2/D3 已有测试防护、E3 已有规则。
-
-
-## CQ. 待开发：系统设置信息架构重构（平台卡片 + 常用/高级折叠 + 只看非默认）
-
-**状态：质检通过（2026-11-19，QA docs/QA-CQ.md 第 3 轮 ✅；实现 6850e5b + 修复 b705824/50f5e45）**
-**依赖：** 无
-**解锁：** 无
-**规格**：[SETTINGS-IA.md](SETTINGS-IA.md)
-
-- **痛点（实测）**：`settings.js` 86 个配置项平铺——sources 32、advanced 16、alerts 13、security 10、site 8、auth 4、network 3；
-  「数据源与采集」把开关/间隔/条数/限速/Key 混在一起，`高级` 16 项一屏到底，越加越难维护。
-- **已确认决策（7 项）**：① 数据源按平台卡片（全局/Steam/杉果/ITAD/GOG+Humble/发现与热度）；② 每卡常用 ≤3 项，
-  其余进「高级 N 项」折叠（默认收起，标题行带摘要）；③ 站点与内容常用 4 项 + 「推荐与评分 4 项」折叠；
-  ④ 高级拆 4 折叠组（调度与熔断/备份与日志/缓存与图片/时区与显示）；⑤ 通用能力：只看非默认、来源标注（数据库/环境变量/默认）、
-  恢复默认（单行+分组）、搜索命中自动展开高亮；⑥ **不改任何 key/默认值/语义**，只在 `def()` 加 meta（section/tier/summary）
-  并由 schema 接口下发；⑦ 保存/重新加载/15 秒热加载行为不变。
-- **改动落点**：`src/settings.js`（86 项补 meta）、`src/settings-routes.js`/`src/server.js`（schema 带 meta + `source` + `isDefault`）、
-  `frontend/src/pages/AdminModules.vue`（卡片/折叠/过滤/恢复/搜索展开）、`test/settings.test.js` 扩展。
-- **验收**：见规格 §4——① 6 张平台卡、每卡常用 ≤3；② 折叠默认收起且标题带摘要；③ 站点/高级折叠组符合 demo；
-  ④ 只看非默认生效且刷新保持；⑤ 来源标注三类正确；⑥ 恢复默认（单行/分组）生效；⑦ 搜索命中折叠项自动展开高亮；
-  ⑧ 保存/重载/权限行为不变；⑨ `npm test` / `frontend:build` / `scan` 全绿；移动端单列。
-- **已确认（2026-11-18）**：折叠标题行带摘要；恢复默认（单行/分组）二次确认；移动端单列卡片 + 折叠保留。
 
 
 ## CU. 待开发：到价提醒治理（无报价标记 / 站点级迁移 / 史低抽检 / 刷新频率评估）
@@ -79,134 +55,6 @@
 - **待确认**：无（2026-11-18 已定：迁移目标=按 Steam 愿望单反查的用户，多个全列；抽检=全部异常样本；CU-4=只出配额数字）。
 
 
-## CW. 待开发：后台「游戏目录」点游戏名弹详情（Steam 数据 + 商店跳转）
-
-**状态：质检通过（2026-11-19，实现随 b9811f8 入 main；QA docs/QA-CW.md 第 1 轮 ✅ 放行 11/0/0/2）**
-**依赖：** 无
-**解锁：** 无
-**规格**：[ADMIN-GAME-POPUP.md](ADMIN-GAME-POPUP.md)（含 demo 状态↔断言表）
-**Demo**：[design/admin-game-popup-2026-11-18.html](design/admin-game-popup-2026-11-18.html)
-
-- **现状**：后台游戏名是纯文本（`AdminModules.vue` L67），无点击；已有 `GET /api/games/:appid` 返回
-  `{game, offers, series, dlc, watch}`；`GAME_SELECT` **缺 `header_image`、`release_date`** 两列。
-- **需求（6 项）**：① 点游戏名弹小弹窗（640px，移动端 100%）；② 内容 = 封面 + 中英名 + AppID + 徽标 +
-  发售/开发商/发行商/类型/平台/分级 + 价格条（当前/史低/折扣）+ 简介（4 行可展开）；③ 数据用**站内已同步的
-  Steam 数据**（不实时请求）；④ 底部固定「**在 Steam 商店查看**」→ `https://store.steampowered.com/app/<appid>/` 新窗口；
-  ⑤ 未同步/无 appid 有明确兜底；⑥ 游戏名用蓝色虚线下划线样式，不影响行内按钮。
-- **改动落点**：`src/store/pg.js`（`GAME_SELECT` +2 列）、`frontend/src/pages/AdminModules.vue`（点击 + 弹窗 + fetch + 兜底）、
-  `test/api.test.js`（详情含 `header_image`/`release_date` 断言）。
-- **验收**：见规格 §4 的 11 行「demo 状态 ↔ 断言」——列表点击、徽标、封面、字段、价格、简介展开、Steam 跳转、
-  无 appid 兜底、移动端、`npm test` / `frontend:build` / `scan` 全绿。
-- **已确认（2026-11-18）**：回收站同样支持；弹窗加 **DLC 数量 + Steam 评测数**（复用同一详情响应，
-  `heat_reviews` 随 `GAME_SELECT` 返回）；简介保持 4 行截断 + 展开。
-
-
-## CX. 已实现待发版：个人资料编辑（Web + App；头像存库/双 Steam 账号/换绑）
-
-**状态：已实现待发版（2026-11-18 晚完成；提交哈希见交付汇报；所有者 5 项决策已确认；两个 demo 已出）**
-**依赖：** 无（CY 的数据隔离可并行）
-**涉及 App 仓库**：是（app-v2.20.0 随本批）
-**解锁：** 无
-**规格**：[USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md)
-**Demo**：[design/profile-web-2026-11-18.html](design/profile-web-2026-11-18.html) / [design/profile-android-2026-11-18.html](design/profile-android-2026-11-18.html)
-
-- **现状**：`users` 无头像/bio 列；`/api/me` 只有 GET；没有个人资料页；Steam 账号已有列表/别名/解绑（解绑保留历史），
-  绑定走 Steam 登录。
-- **需求（8 项）**：① 管理员/用户同一套页面与接口，只能改自己；② **头像存数据库**（bytea + mime + source），
-  客户端裁剪 256×256，`GET /api/avatar/:userId` 输出；③ 头像来源 = 已绑 Steam 账号（**多账号可选其一**）或自定义上传；
-  ④ 昵称（2–20）/简介（≤200）/主题/邮件提醒开关可编辑；用户名/邮箱（二期换邮箱）/角色只读；
-  ⑤ Steam 账号卡：列表 + **设为默认 / 解绑（保留历史）/ 新增绑定**；⑥ **App 端同样支持**（新增在浏览器打开绑定流程）；
-  ⑦ 其它页面有头像处显示头像；⑧ 与 CY 的只读边界一致（管理员不能改别人的资料）。
-- **改动落点**：`pg.js`（users 加列 + profile/avatar/默认账号）、`server.js`（`PATCH /api/me/profile`、
-  `POST/DELETE /api/me/avatar`、`GET /api/avatar/:userId`、`POST /api/steam/accounts/:id/default`）、
-  `frontend/src/pages/ProfilePage.vue`（新）+ Console 入口、App `ProfileEditScreen`、`test/profile.test.js`。
-- **验收**：见规格 §4 的 10 行「demo 状态 ↔ 断言」——头像展示/默认头像切换/双账号列表/设为默认/解绑/新增、表单校验、
-  只读字段、越权 403、`npm test` / `frontend:build` / `scan` 全绿 + App 模拟器验证。
-- **补充（2026-11-18 沟通）**：**我的资料仅本人可见**（无他人访问入口，管理员同样）；**必填**昵称/简介/邮箱（管理员昵称/简介可空，
-  邮箱仍必填；老用户邮箱为空不强制补全）；**多 Steam 账号用卡片**（每账号一卡：头像/昵称/SteamID/已拥有数/愿望单数/最近同步）；
-  资料页下半部展示我的游戏库与统计（仅本人）；DB 已并入本条目。
-
-
-## CY. 质检通过：数据隔离（用户私有数据管理员只读）
-
-**状态：质检通过（2026-11-19，QA docs/QA-CY.md 第 1 轮 ✅ 放行：通过 6/缺失 0/偏差 0/需人工确认 0；实现 3351f9f）**
-**优先级：** P1（安全/合规）
-**依赖：** CX（个人资料页）
-**解锁：** 无
-**规格**：[DATA-ISOLATION.md](DATA-ISOLATION.md)
-
-- **现状**：用户级接口已按 `session.user.id`；但 `/api/admin/watchlist`（全站到价提醒）、`/api/admin/wishlists`、
-  `/api/admin/views` 等**管理员可写用户数据**（后台有删除按钮），没有只读边界。
-- **边界（已确认）**：用户私有数据（提醒/愿望单/访问记录/Steam 绑定）**管理员只读**；站点级提醒、账号安全
-  （封禁/会话/设备）、申诉处理、内容审核、未归属账号认领**保留可写**。
-- **改动**：`/api/admin/watchlist` 写操作仅允许 `user_id IS NULL`；用户行写 → **403 + 审计 `admin.forbidden_write`**；
-  `/api/admin/wishlists`、`/api/admin/views` 去掉写方法；前端用户行隐藏操作按钮并标「只读」；
-  用户级接口忽略请求里的 `userId`；新增 `test/isolation.test.js`（A/B 两用户 + 管理员三视角）。
-- **验收**：见规格 §4——① A 只看自己的；② 管理员看全部但用户行不可写（越权 403 + 审计）；③ 站点级可写；
-  ④ 账号安全/申诉/审核回归通过；⑤ 管理员查看 Steam 绑定只读；⑥ `npm test` / `frontend:build` / `scan` 全绿。
-
-
-## CZ. 质检通过：更换登录邮箱（邮箱体系收尾；验证码登录/忘记密码已实现）
-
-**状态：质检通过（2026-11-19，QA docs/QA-CZ.md 第 1 轮 ✅ 放行：通过 11/缺失 0/偏差 0/需人工确认 2——App 重登目视、demo 像素目视；站点 ac52955 + App 7c01820；管理员重置邮箱审计随 CY 提交 3351f9f 入 main，PROJECT-OVERVIEW 行随 CO-2 提交 7a324b0 入 main）**
-**来源：** [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) §5、[APP-NATIVE.md](APP-NATIVE.md) §6 第 4 条
-**依赖：** CX（个人资料页）、现有邮件服务（SMTP 已配置）
-**涉及 App 仓库**：是（app-vX.Y.Z 随本批）
-**解锁：** 无
-**规格**：[EMAIL-CHANGE.md](EMAIL-CHANGE.md)
-**Demo**：[design/email-change-2026-11-18.html](design/email-change-2026-11-18.html)（Web）/ [design/email-change-android-2026-11-18.html](design/email-change-android-2026-11-18.html)（App）
-
-- **现状（代码核对）**：邮箱验证码登录（`/api/auth/email/request|verify` purpose=login）、忘记密码（purpose=reset）、
-  邮箱验证码注册（`/api/auth/register/request|verify`）**都已实现**并有前端入口；**用户自助更换邮箱没有**——
-  只有管理员能改用户邮箱（`server.js:3506`）。→ 本批只做换邮箱 + 加固，不重复实现已有功能。
-- **已确认决策（5 项）**：① 验证码发**新邮箱**、旧邮箱收安全通知；② 换成功**全部会话下线**（含当前，跳登录）；
-  ③ 验证码 10 分钟/5 次；**换邮箱 24h 最多 1 次**；④ 未验证邮箱也能换（换完变已验证）；
-  ⑤ **保留管理员重置邮箱能力**（安全兜底）+ 审计 + 通知用户。
-- **接口**：`POST /api/me/email/request`（不泄露占用）、`POST /api/me/email/verify`（占用在验证码通过后才提示 409；
-  成功→更新 email/email_verified、删全部会话、审计 `auth.email_changed`、发两封邮件）；管理员重置接口保留。
-- **前端**：资料页邮箱行加「更换邮箱」→ 两步对话框（新邮箱+验证码）；**App 端同样支持**（底部弹层两步，成功后清 token 跳登录）。
-- **验收**：见规格 §4——① 换成功双邮件 + email_verified；② 会话全清（当前 401 跳登录）；③ 验证码错误/过期/超次数提示；
-  ④ 24h 频控 429；⑤ 未验证可换；⑥ 管理员重置仍可用 + 审计；⑦ App 端可完整走通换邮箱；⑧ npm test（email-change 7 项）/ frontend:build / scan 全绿。
-
-
-## DA. 质检通过：CM-5 App 筛选/排序服务端化（方案 A：站点 + App 一起做）
-
-**状态：质检通过（2026-11-18，QA docs/QA-DA.md 第 1 轮 ✅ 放行：通过 6/缺失 0/偏差 0/需人工确认 2——App 空态目视、部署后 P95 ≤500ms 抽测；实现站点 b46669a + App 4334823）**
-**来源：** [APP-PARITY.md](APP-PARITY.md) §57（CM-5）、[APP-NATIVE.md](APP-NATIVE.md) §4.4（"筛选 ⚠️ 本地按已加载数据"）
-**依赖：** 无（站点 `/api/games` 已支持 sort=discount/price/name/score、type、released；需扩展筛选参数）
-**涉及 App 仓库**：是（app-v2.20.0 随本批；App 依赖本批站点 `/api/games` 参数）
-**解锁：** 无
-**规格**：[APP-FILTER-SERVER-SIDE.md](APP-FILTER-SERVER-SIDE.md)
-
-- **现状（代码证据）**：App `HomeScreen.kt` 的 `HomeFilter`（全部/折扣/史低/免费/未发售）是**本地筛选已加载数据**；
-  注释明确"服务端 /api/games 目前只支持 sort 与 type/released"。→ 用户只能筛出**已加载的约 50 条**里的折扣游戏。
-- **范围（方案 A）**：站点 `/api/games` 增加 `discountOnly / histLowOnly / freeOnly / unreleased` + `sort=heat|release`，
-  4 个开关互斥（优先级 unreleased > freeOnly > histLowOnly > discountOnly），count 与列表同条件；App chip 改为
-  **服务端筛选 + 分页重置**；**第 5 个 chip「已拥有」复用 `owned=only`**（仅登录+已绑定 Steam 显示）；Web 复用同参数保证口径一致。
-- **附带（已确认）**：`user_prefs.only_discount` 是**死字段**（存但未用）→ **删除**（迁移 drop 列）。
-- **已确认口径**：史低 = 当前价 = 历史最低（与详情页一致）；未发售**不含**"已发售无报价"；已拥有 = 多账号 Steam 库存并集。
-- **验收**：见规格 §4——① App 折扣筛选返回全库结果；② Web/App 同条件总数一致；②b 已拥有 chip 返回库存并集/未绑定不显示；
-  ③ 空态/分页正确；④ count 与列表一致；⑤ P95 ≤500ms；⑥ `npm test` / `frontend:build` / `scan` 全绿 + App 模拟器逐 chip 截图。
-- **已确认（2026-11-18 开发完成时）**：App 本期做（双仓库同批提交）；Web 前台复用同一批参数（接口共用解析保证口径一致，Web UI 不改版）。
-
-
-## DC. 待开发：App 公告角标与公告列表（CM-6）
-
-**状态：质检通过（2026-11-18 沟通完成；3 项口径已确认；实现 ef17e9a；QA docs/QA-DC.md 第 1 轮 ✅）**
-**来源：** [APP-PARITY.md](APP-PARITY.md) §65
-**依赖：** 站点 `GET /api/announcements` + `POST /api/announcements/read`（均已实现）、App 登录态
-**涉及 App 仓库**：是（app-vX.Y.Z 随本批；纯 App 端）
-
-- **现状（代码核对）**：后端已齐——`announcements`（active/starts_at/ends_at）、`announcement_reads(user_id, announcement_id)`、
-  读接口返回公告 + 当前用户 `readIds`（游客空数组）、已读上报接口；**App 端没有公告列表/角标**。
-- **已确认口径**：① 入口 = **首页右上角铃铛 + 「我的」里的「公告」**；② 未读 = **所有 active 公告中不在 readIds 的**；
-  ③ **游客可看公告**，已读存本地（登录后与服务端合并）。
-- **范围（纯 App 端）**：铃铛角标（未读数，0 隐藏）→ 公告列表弹层（标题/级别色点/时间/已读态）→ 点开详情；
-  进入/点击后上报已读；下拉刷新；未读数为 0 时角标消失。
-- **验收**：未读公告出现角标数字；点开列表后逐条已读、角标递减；全部已读后角标消失；游客本地已读重启 App 仍保留；
-  登录后本地已读合并到服务端；`npm test`（如站点补 unreadCount 则加断言）/ App 构建 + 模拟器验证。
-
-
 ## DF. 待开发：到价提醒手动推送（重发按钮）
 
 **状态：待开发（2026-11-18 沟通完成；4 个口径已确认；demo 已出）**
@@ -224,63 +72,6 @@
 - **验收**：见规格 §4——达标/未达标/强制/mark 去重/频控 429/无通道禁用/审计落库/`npm test`+`frontend:build`+`scan` 全绿。
 - **已确认（2026-11-18）**：① **只有管理员能推**，用户级提醒**不可推**（只站点级）；② mark **默认勾选**；
   ③ **支持一键推送/批量**，批量**只发一封邮件**（正文列出所有勾选游戏）；④ 频控 **5 分钟**。
-
-
-## DH. 待开发：对齐审核数据完整性（继承缺口/忽略撤销/审阅痕迹）
-
-**状态：质检通过（2026-11-18，d3c67ec + 修复 cc8e351；QA docs/QA-DH.md 第 2 轮 ✅）**
-**依赖：** DG（匹配修复）、DE（页改版）
-**解锁：** 无
-**规格**：[ALIGN-INTEGRITY.md](ALIGN-INTEGRITY.md)
-
-- **问题**：A 继承缺口——`applyMapInheritance` 只认 `game_source_map`，不认 `skus.json` 已有 `appid`（断箭 SKU 111465 已映射仍入队）；
-  B 忽略不可撤销（无「已忽略」视图/恢复）；C 审阅痕迹不可见（`reviewed_by` 有存但页面无展示）；D 孤儿行合并无提示。
-- **修复**：A1 继承同时参考 item.appid（有则不入队，库无映射则自动补写 + 日志 `align.map_backfilled`）；
-  A2 队列标「已映射（待同步）」+ 一键补写；B1 「已忽略」视图 + 恢复为待处理（审计 `align.restored`）；
-  C1 每组显示最近处理（操作人/时间/动作）；D1 确认弹窗提示孤儿行合并。
-- **接口**：`GET /api/admin/align/ignored`、`POST /api/admin/align/restore {key}`、`GET /api/admin/align/history?key=`、
-  `POST /api/admin/align/map`。
-- **验收**：见规格 §4——① 断箭组不再入队且映射补写；② 已忽略可列出/恢复；③ 审阅记录可查；④ 孤儿行合并提示；
-  ⑤ `npm test` / `frontend:build` / `scan` 全绿。
-- **已确认（2026-11-18）**：补写=**自动**（计算时补写 + 日志 align.map_backfilled）；恢复已忽略=**需要二次确认**。
-
-## DK. 质检通过（修 bug）：App 检查更新失败——apkPath 缺 GitHub 直链兜底
-
-**状态：质检通过（2026-11-19，站点 d65542f + App 仓库 8fb6328；QA docs/QA-DK.md 第 1 轮 ✅ 放行 6/0/0/2）**
-**优先级：** P1 —— App 更新链路不可用（有新版但提示失败）
-**依赖：** 无（CJ/BY 内置更新契约已发布）
-**解锁：** 无
-**涉及 App 仓库**：是（App 端提示分支；app-v 随本批）
-**规格**：本条目 + [APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md)（CJ 契约）+ [APP-NATIVE.md](APP-NATIVE.md)（内置更新）
-
-- **现象（2026-11-19 01:54 手机实测）**：「我的 → 检查更新」弹「检查更新失败，请稍后再试」；
-  线上 `GET https://sd.yyliucha.cn/api/app/latest` 返回 200：`version=2.20.0`、`versionCode=22000`、
-  `sha256`/`size` 与 GitHub Release 一致，但 **`apkPath: null`**。
-- **根因（代码证据）**：① `src/app-release.js:146-166` APK 下载失败只记 `release_failed`（reason=apk_download）、
-  latest.json 照常落盘 → 服务器 `data/app` 有元数据、无 APK（国内服务器拉 GitHub 资产域名超时是已知风险）；
-  ② 站点 `/api/app/latest` 的 apkPath 按文件存在性派生（CJ 回归修复），无本地 APK 且镜像无该版本 → `null`；
-  ③ App `UpdateManager.kt:75` `resolveApkUrl(latest.apkPath) ?: return CheckResult.Failed` → 报「检查更新失败」。
-- **修复**：A **服务端兜底**：apkPath 为 null 时返回 GitHub Release 直链
-  `https://github.com/yyliucha/steamdeals-app/releases/download/app-v<version>/steamdeals-<version>.apk`
-  （App 白名单已含 github.com / githubusercontent.com，见 `UpdateManager.kt:107`）；
-  B **App 端体验**：apkPath 缺失分支区分提示「新版下载地址暂不可用，请到站点 /app 页下载」，不再笼统报失败；
-  C 观测：`apk_download` 失败在后台任务健康可见（A5 已具备，部署后核对）；
-  **D 同步自愈（2026-11-19 追加，代码证据 `src/app-release.js:116-124`）**：`same_version` 跳过判断必须
-  加 APK 文件存在性检查——本地 latest.json 同版本但 `steamdeals-<version>.apk` 缺失时**不得跳过**、应重新下载；
-  否则一旦某轮 APK 下载失败（如本次），每小时调度会永远 same_version 跳过、APK 永不补齐。
-- **验收**：① 模拟 apkPath 缺失（data/app 无 APK、镜像无该版本）→ 接口返回 GitHub 直链（形如
-  `/releases/download/app-v…/steamdeals-…apk`）且不为 null；② App 该分支提示新文案且不报「失败」（单测）；
-  ③ 正常同步场景（data/app 有 APK）不回归；④ `npm test`（分段）+ `npm run scan` 全绿。
-- **实现（2026-11-19）**：A `src/app-release.js` 新增 `githubApkUrl`（版本不合法仍 null）+
-  `src/server.js` `/api/app/latest` 的 `apkPath = appApkPathFor(…) ?? githubApkUrl(…)`；
-  B App 端 `UpdateManager.decideUpdate` 纯函数——apkPath 缺失/非法返回 `Unavailable`（提示
-  「新版下载地址暂不可用，请到站点 /app 页下载」，网络失败仍是 `Failed`）+ `UpdateDialogHost` 新分支 +
-  `UpdateManagerTest` 9 项；C apk_download 失败带 `apkFailed` 标记、`cmdAppSync` 抛错 → 任务健康条显红；
-  D（同批追加）same_version 跳过加 APK 存在性检查（APK 缺失重新下载补齐，每小时自愈）。
-
-
-
-
 
 
 

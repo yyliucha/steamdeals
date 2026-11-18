@@ -75,24 +75,24 @@
 | **CL** | 用户级到价提醒（列表页 + 已拥有终态隐藏 + 后台全站清单 + 详情页三段式 UI） | [USER-ALERTS.md](USER-ALERTS.md) | 已发布 v2.23.0（2026-11-17，e196382；QA ✅ docs/QA-CL.md） | ✅ 本轮已给 |
 | **CM** | App 功能补齐（开发商 JSON 修复 / DLC 列表 / 价格历史区间与指标 / 复制名；CM-5 筛选服务端化二期） | [APP-PARITY.md](APP-PARITY.md) | 已发布 v2.24.0（站点侧，2026-11-17；QA docs/QA-CM.md ✅；App 侧 app-v2.20.0 待指令） | ✅ 本轮已给 |
 | **CN** | 对齐审核查询拖垮站点（缓存 + 候选预筛 + 单飞 + 时间预算 + 分页） | [ALIGN-QUERY-PERF.md](ALIGN-QUERY-PERF.md) | 已发布 v2.24.1（2026-11-17，5c723aa + 2060586；QA ✅ docs/QA-CN.md） | ✅ 本轮已给 |
-| **CO** | 设计审计技术债清理（15 项 → CO-1~CO-4 四批，每日至少推进 1 条） | [DESIGN-AUDIT.md](DESIGN-AUDIT.md) | CO-2 已发布 v2.24.4（2026-11-18，75a7e7f，QA docs/QA-CP-CT-CO2.md：B1 统一超时+并发闸、B2 admin 列表提速）；CO-3 已发布 v2.24.4（2026-11-18，89c8dfd，QA docs/QA-CO3.md：C2 设备限流、C4 日期金额 helper、C5 契约校验）；CO-1/A5 已发布 v2.24.5（2026-11-18，c4e2695，QA docs/QA-CO1-A5.md 第 1 轮 ✅：任务失败健康条显红 + 失败原因可见 + 可选邮件告警）；CO-2/B5 已发布 v2.24.5（2026-11-18，5b1cbfb，QA docs/QA-B5.md 第 1 轮 ✅：快照唯一写入路径 + 增量对账 + 每日自动修复）；CO-4/D1 已发布 v2.24.5（2026-11-18，2ee09af，QA docs/QA-D1.md 第 1 轮 ✅：四族设计 token 落 main.css + 三个最重组件试点）；CO-1/A3 质检通过（2026-11-18，QA docs/QA-CO1-A3.md ✅；实现 6a9ecc3）；CO-2/B3 质检通过（2026-11-19，QA docs/QA-CO2-B3.md ✅；实现 7a324b0）；CO-4/D4 质检通过（2026-11-18，QA docs/QA-D4.md 第 1 轮 ✅；实现 56d8573）；CO-4/D6 质检通过（2026-11-19，QA docs/QA-D6.md 第 1 轮 ✅；实现 40517d5）；B4/E4 待开发；E1 文档归档已完成（不进版本） | ✅ 本轮已给 |
+| **CO** | 设计审计技术债清理（15 项 → CO-1~CO-4 四批，每日至少推进 1 条） | [DESIGN-AUDIT.md](DESIGN-AUDIT.md) | CO-2 已发布 v2.24.4（2026-11-18，75a7e7f，QA docs/QA-CP-CT-CO2.md：B1 统一超时+并发闸、B2 admin 列表提速）；CO-3 已发布 v2.24.4（2026-11-18，89c8dfd，QA docs/QA-CO3.md：C2 设备限流、C4 日期金额 helper、C5 契约校验）；CO-1/A5 已发布 v2.24.5（2026-11-18，c4e2695，QA docs/QA-CO1-A5.md 第 1 轮 ✅：任务失败健康条显红 + 失败原因可见 + 可选邮件告警）；CO-2/B5 已发布 v2.24.5（2026-11-18，5b1cbfb，QA docs/QA-B5.md 第 1 轮 ✅：快照唯一写入路径 + 增量对账 + 每日自动修复）；CO-4/D1 已发布 v2.24.5（2026-11-18，2ee09af，QA docs/QA-D1.md 第 1 轮 ✅：四族设计 token 落 main.css + 三个最重组件试点）；CO-1/A3 已发布 v2.25.0（2026-11-19，6a9ecc3，QA docs/QA-CO1-A3.md ✅：库为唯一真相、skus.json 只读兼容）；CO-2/B3 已发布 v2.25.0（2026-11-19，7a324b0，QA docs/QA-CO2-B3.md ✅：任务预算实测耗时）；CO-4/D4 质检通过（2026-11-18，QA docs/QA-D4.md 第 1 轮 ✅；实现 56d8573；按所有者指示未随 v2.25.0，留待下批）；CO-4/D6 质检通过（2026-11-19，QA docs/QA-D6.md 第 1 轮 ✅；实现 40517d5；按所有者指示未随 v2.25.0，留待下批）；B4/E4 待开发；E1 文档归档已完成（不进版本） | ✅ 本轮已给 |
 | **CP** | 手机端识别增强（Sec-CH-UA-Mobile + 前端 screen.width 兜底，修小米浏览器桌面 UA 漏判） | [MOBILE-DETECT-FIX.md](MOBILE-DETECT-FIX.md) | 已发布 v2.24.4（2026-11-18，75a7e7f；QA docs/QA-CP-CT-CO2.md 第 1 轮） | ✅ 本轮已给 |
-| **CQ** | 系统设置信息架构重构（平台卡片 + 常用/高级折叠 + 只看非默认/来源/恢复默认） | [SETTINGS-IA.md](SETTINGS-IA.md) | 质检通过（2026-11-19，QA docs/QA-CQ.md 第 3 轮 ✅；实现 6850e5b + 修复 b705824/50f5e45） | ✅ 本轮已给 |
+| **CQ** | 系统设置信息架构重构（平台卡片 + 常用/高级折叠 + 只看非默认/来源/恢复默认） | [SETTINGS-IA.md](SETTINGS-IA.md) | 已发布 v2.25.0（2026-11-19，QA docs/QA-CQ.md 第 3 轮 ✅；实现 6850e5b + 修复 b705824/50f5e45） | ✅ 本轮已给 |
 | **CS** | 对齐审核二次修复（事件循环阻塞观测 + 首屏后台化；补齐 CN 未进镜像问题；DB 侧已验证 91ms 无需索引） | [ALIGN-DB-SLOW.md](ALIGN-DB-SLOW.md) | 已发布 v2.24.3（2026-11-18，2a03188；QA ✅ docs/QA-CS-CV.md） | ✅ 本轮已给 |
 | **CT** | app-release-sync 404 → 改用 releases 列表接口取最新（仓库已公开，无需 token；日志区分失败原因） | [APP-SYNC-404.md](APP-SYNC-404.md) | 已发布 v2.24.4（2026-11-18，9312054；QA docs/QA-CP-CT-CO2.md 第 1 轮） | ✅ 本轮已给 |
 | **CU** | 到价提醒治理（无报价标记 / 站点级按 Steam 愿望单反查并迁移 / 史低抽检 / Steam 刷新频率评估） | [USER-ALERTS-GOVERNANCE.md](USER-ALERTS-GOVERNANCE.md) | 待开发（2026-11-18 实测后合并立项） | ✅ 本轮已给 |
 | **CV** | 所有查询不再排除已拥有（列表+搜索 owned=include；已拥有显示账号与终态按钮；App 对齐） | [APP-SEARCH-OWNED.md](APP-SEARCH-OWNED.md) | 已发布 v2.24.3（2026-11-18，站点 2a03188 + App 0945006；QA ✅ docs/QA-CS-CV.md） | ✅ 本轮已给 |
-| **CW** | 后台「游戏目录」点游戏名弹详情（Steam 已同步数据 + 封面/发售/开发商 + 底部 Steam 商店跳转） | [ADMIN-GAME-POPUP.md](ADMIN-GAME-POPUP.md) | 质检通过（2026-11-19，实现随 b9811f8 入 main；QA docs/QA-CW.md ✅） | ✅ 本轮已给 |
-| **CX** | 个人资料编辑（Web + App；头像存库、双 Steam 账号默认头像、设为默认/解绑/新增换绑） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) | 已实现待发版（2026-11-18 决策确认 + 双 demo） | ✅ 本轮已给 |
-| **CY** | 数据隔离（用户私有数据管理员只读；越权 403 + 审计；站点级/账号安全/申诉保留可写） | [DATA-ISOLATION.md](DATA-ISOLATION.md) | 质检通过（2026-11-19，QA docs/QA-CY.md 第 1 轮 ✅；实现 3351f9f） | ✅ 本轮已给 |
-| **CZ** | 更换登录邮箱（邮箱体系收尾；验证码登录/忘记密码已实现，只做换邮箱+加固） | [EMAIL-CHANGE.md](EMAIL-CHANGE.md) | 质检通过（2026-11-19，QA docs/QA-CZ.md 第 1 轮 ✅；站点 ac52955 + App 7c01820） | ✅ 本轮已给 |
-| **DA** | CM-5：App 筛选/排序服务端化（折扣/史低/免费/未发售全库筛；站点 + App 方案 A） | [APP-FILTER-SERVER-SIDE.md](APP-FILTER-SERVER-SIDE.md) | 质检通过（2026-11-18，QA docs/QA-DA.md 第 1 轮 ✅；实现站点 b46669a + App 4334823） | ✅ 本轮已给 |
+| **CW** | 后台「游戏目录」点游戏名弹详情（Steam 已同步数据 + 封面/发售/开发商 + 底部 Steam 商店跳转） | [ADMIN-GAME-POPUP.md](ADMIN-GAME-POPUP.md) | 已发布 v2.25.0（2026-11-19，实现随 b9811f8 入 main；QA docs/QA-CW.md ✅） | ✅ 本轮已给 |
+| **CX** | 个人资料编辑（Web + App；头像存库、双 Steam 账号默认头像、设为默认/解绑/新增换绑） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) | 已发布 v2.25.0（2026-11-19，QA docs/QA-CX.md ✅；站点随 b9356aa/93e1241/2f01b59 入 main + App 6f68e81） | ✅ 本轮已给 |
+| **CY** | 数据隔离（用户私有数据管理员只读；越权 403 + 审计；站点级/账号安全/申诉保留可写） | [DATA-ISOLATION.md](DATA-ISOLATION.md) | 已发布 v2.25.0（2026-11-19，QA docs/QA-CY.md 第 1 轮 ✅；实现 3351f9f） | ✅ 本轮已给 |
+| **CZ** | 更换登录邮箱（邮箱体系收尾；验证码登录/忘记密码已实现，只做换邮箱+加固） | [EMAIL-CHANGE.md](EMAIL-CHANGE.md) | 已发布 v2.25.0（2026-11-19，QA docs/QA-CZ.md 第 1 轮 ✅；站点 ac52955 + App 7c01820） | ✅ 本轮已给 |
+| **DA** | CM-5：App 筛选/排序服务端化（折扣/史低/免费/未发售全库筛；站点 + App 方案 A） | [APP-FILTER-SERVER-SIDE.md](APP-FILTER-SERVER-SIDE.md) | 已发布 v2.25.0（2026-11-19，QA docs/QA-DA.md 第 1 轮 ✅；实现站点 b46669a + App 4334823） | ✅ 本轮已给 |
 | **DB** | ~~个人主页（公开资料页）~~ → **已过时**：合并进 CX（仅本人可见的「我的资料」） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) | 已过时（2026-11-18 取消公开页） | — |
-| **DC** | CM-6：App 公告角标与公告列表（铃铛入口/全量未读/游客本地已读） | —（TODO DC 条目） | 待开发（2026-11-18 沟通完成） | ✅ 本轮已给 |
+| **DC** | CM-6：App 公告角标与公告列表（铃铛入口/全量未读/游客本地已读） | —（TODO DC 条目） | 已发布 v2.25.0（2026-11-19，App 仓库 ef17e9a；QA docs/QA-DC.md ✅） | ✅ 本轮已给 |
 | **DE** | 对齐审核页改版（统计卡/进度条/搜索筛选/批量/空态互斥） | [ALIGN-REVIEW-UI.md](ALIGN-REVIEW-UI.md) | 已发布 v2.24.4（2026-11-18，318e678 + 修复 729d0e9；QA docs/QA-DE.md——通过 7/偏差 1 已修/需人工确认 1） | ✅ 本轮已给 |
 | **DF** | 到价提醒手动推送（每行「推送」；强制推送/更新去重时间/频控/审计） | [ALERT-MANUAL-PUSH.md](ALERT-MANUAL-PUSH.md) | 待开发（2026-11-18 需求 + demo；4 口径待定） | ✅ 本轮已给 |
 | **DG** | 对齐匹配修复（副标题/别名低分 → 无候选；索引补 name_en + 副标题感知） | —（TODO DG 条目） | 已发布 v2.24.5（2026-11-18，afc5a91 + 12a6de7；QA docs/QA-DG.md 第 1 轮 ✅） | ✅ 本轮已给 |
-| **DH** | 对齐审核数据完整性（继承缺口/已忽略撤销/审阅痕迹/孤儿行合并提示） | [ALIGN-INTEGRITY.md](ALIGN-INTEGRITY.md) | 质检通过（2026-11-18，d3c67ec + 修复 cc8e351；QA docs/QA-DH.md 第 2 轮 ✅） | ✅ 本轮已给 |
+| **DH** | 对齐审核数据完整性（继承缺口/已忽略撤销/审阅痕迹/孤儿行合并提示） | [ALIGN-INTEGRITY.md](ALIGN-INTEGRITY.md) | 已发布 v2.25.0（2026-11-19，d3c67ec + 修复 cc8e351；QA docs/QA-DH.md 第 2 轮 ✅） | ✅ 本轮已给 |
 | **DI** | 测试环境隔离与主链分段（A 测试隔离 / B 四段主链 / C 环境复位脚本） | [TEST-ENV-ISOLATION.md](TEST-ENV-ISOLATION.md) | 已发布 v2.24.5（2026-11-18，3acd1b8；QA docs/QA-DI.md ✅） | ✅ 本轮已给 |
 | **CR** | 开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + API 契约字符串数组） | [APP-DEV-PUBLISHER-NAMES.md](APP-DEV-PUBLISHER-NAMES.md) | 已发布 v2.24.1（2026-11-18，5673ee9；QA ✅ docs/QA-CR.md） | ✅ 本轮已给 |
 | **CE** | 杉果匹配器加固 + 误合并数据修复（完整标题计分/片段限制/数字一致性/内容词只进人工/`--apply` 二次确认） | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9 | 已发布 v2.19.0（2026-11-16，12f4f42；QA 报告 docs/QA-CE.md） | ✅ 本轮已给 |
@@ -116,7 +116,7 @@
 | **F** | Steam 价格同步优化（缩量 / 热点优先） | 计划写在 [TODO.md](TODO.md) F 段 | 已发布 v2.2.1（f32e2b9） | ✅ 按 F 段方案实现 |
 | **C1** | heat 逐 appid 全 `success:false` | 无独立规格（[TODO.md](TODO.md) C 段定案） | 已发布 v2.2.0（2026-11-09，b01aaf8 修复） | ✅ 已在对话给出 |
 | **DJ** | 发版测试报告独立会话 + e2e 整轮总预算 | [E2E-SUITE.md](E2E-SUITE.md) | 已发布 v2.24.5（2026-11-18，c87dfe0；QA docs/QA-DJ.md 第 1 轮 ✅） | ✅ 本轮已给 |
-| **DK** | App 检查更新失败：apkPath 缺 GitHub 直链兜底 + App 提示区分 | 本条目 + [APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md) | 质检通过（2026-11-19，站点 d65542f + App 仓库 8fb6328；QA docs/QA-DK.md 第 1 轮 ✅） | ✅ 本轮已给 |
+| **DK** | App 检查更新失败：apkPath 缺 GitHub 直链兜底 + App 提示区分 | 本条目 + [APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md) | 已发布 v2.25.0（2026-11-19，站点 d65542f + App 仓库 8fb6328；QA docs/QA-DK.md 第 1 轮 ✅） | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
 

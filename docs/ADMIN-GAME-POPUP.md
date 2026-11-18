@@ -1,6 +1,6 @@
 # 后台「游戏目录」点游戏名弹详情（CW，待开发）
 
-> 状态：**已确认待开发（2026-11-18，所有者需求；demo：[design/admin-game-popup-2026-11-18.html](design/admin-game-popup-2026-11-18.html)）**。
+> 状态：**已发布 v2.25.0（2026-11-19，实现随 b9811f8 入 main；QA docs/QA-CW.md 第 1 轮 ✅ 放行 11/0/0/2；demo：[design/admin-game-popup-2026-11-18.html](design/admin-game-popup-2026-11-18.html)）**。
 > 关联：[TODO.md](TODO.md) CW 条目、[ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md)（AT 批后台信息架构）、
 > [APP-PARITY.md](APP-PARITY.md)（详情字段口径）、[IMAGE-FETCH.md](IMAGE-FETCH.md)（封面取图）。
 
