@@ -748,8 +748,6 @@ async function runSonkwoMatchStep({ limit = 100, autoScore = 0.94 } = {}) {
     const appid = group.best.candidate.steam_appid;
     for (const skuId of group.skuIds) {
       await withStore((store) => applySkuMapping(store, { skuId, appid }));
-      const entry = entries.find((e) => Number(e.skuId) === skuId);
-      if (entry) entry.appid = appid;
       mapped += 1;
     }
     const res = await withStore((store) =>
@@ -766,7 +764,6 @@ async function runSonkwoMatchStep({ limit = 100, autoScore = 0.94 } = {}) {
     );
     merged += res.merged;
   }
-  if (mapped) writeFileSync(skuFile, `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
   logger.info('match.summary', { groups: groups.length, auto: auto.length, mapped, merged, limit });
   return { proposals: groups.length, auto: auto.length, mapped, merged };
 }
@@ -992,6 +989,12 @@ async function cmdAlerts() {
       if (!group.email) {
         logger.info('alert.skipped_no_email', { userId: group.userId, count: group.hits.length });
         console.log(`  ✘ 用户 ${group.userId} 未绑定邮箱，跳过 ${group.hits.length} 条提醒。`);
+        continue;
+      }
+      // CX 批（docs/USER-PROFILE-EDIT.md §2 #5）：到价提醒邮件开关——用户关闭后不投递（仍会继续参与评估/记录）
+      if (!group.emailAlerts) {
+        logger.info('alert.skipped_email_off', { userId: group.userId, count: group.hits.length });
+        console.log(`  ✘ 用户 ${group.userId} 已关闭到价提醒邮件，跳过 ${group.hits.length} 条提醒。`);
         continue;
       }
       if (!process.env.SMTP_HOST || !process.env.SMTP_FROM && !process.env.SMTP_USER) {
@@ -1318,14 +1321,7 @@ async function cmdMatch() {
   await withStore((store) =>
     align.writeBackfilledMaps({ q: (sql, p) => store.query(sql, p), backfill: inherit.backfill, steamGames: games, logger }),
   );
-  if (inherit.inheritApplied) {
-    for (const item of items) {
-      const entry = entries.find((e) => Number(e.skuId) === item.skuId);
-      if (entry && item.appid) entry.appid = item.appid;
-    }
-    writeFileSync(skuFile, `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
-    logger.info('match.inherited', { applied: inherit.inheritApplied });
-  }
+  if (inherit.inheritApplied) logger.info('match.inherited', { applied: inherit.inheritApplied });
   const unresolved = inherit.items.slice(0, limit);
 
   if (!unresolved.length) {
@@ -1391,8 +1387,6 @@ async function cmdMatch() {
     console.log(`  ${p.group.name}（${p.group.skuIds.length} 个 SKU）→ ${p.best.candidate.name ?? p.best.matchedField}（appid ${appid}）`);
     for (const skuId of p.group.skuIds) {
       await withStore((store) => applySkuMapping(store, { skuId, appid }));
-      const entry = entries.find((e) => Number(e.skuId) === skuId);
-      if (entry) entry.appid = appid;
       mapped += 1;
     }
     const res = await withStore((store) =>

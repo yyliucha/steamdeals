@@ -1625,6 +1625,7 @@ export function createApiServer({
           p === '/api/site' ||
           p === '/api/captcha' ||
           p === '/api/password/check' ||
+          p.startsWith('/api/avatar/') || // CX 批：头像公开只读，改密页也要能显示本人头像
           !p.startsWith('/api/');
         if (!allow(path)) {
           return json(res, 403, { error: '需要先修改密码', code: 'must_change_password' });
@@ -2113,18 +2114,32 @@ export function createApiServer({
 
       // ---- 当前用户与偏好 ----
       if (path === '/api/me' && req.method === 'GET') {        const prefs = user ? await db.getPrefs(q, user.id) : null;
-        // DA 批（docs/APP-FILTER-SERVER-SIDE.md §3）：App「已拥有」chip 仅登录且已绑定 Steam 时显示，
-        // 站点 /api/me 与 App /api/app/me 共用本路由，steamBound 口径一致。
-        const steamBound = user
-          ? Number((await q('select count(*)::int as n from steam_accounts where user_id = $1', [user.id])).rows[0]?.n ?? 0) > 0
-          : false;
+        // CX 批（docs/USER-PROFILE-EDIT.md §3）：user 带完整本人资料（display_name/bio/avatar 元信息）。
+        // 本批无他人资料入口，email 只回显自己（CL 批口径不变）。
+        const me = user ? await db.getUserPublic(q, user.id) : null;
         return json(res, 200, {
-          user: user
-            // CL 批：带本人 email（用户级提醒保存后前端提示绑定邮箱；只回显自己）
-            ? { id: user.id, username: user.username, role: user.role, mustChangePassword: Boolean(user.must_change_password), email: user.email ?? null }
+          user: me
+            ? {
+                id: me.id,
+                username: me.username,
+                role: me.role,
+                mustChangePassword: Boolean(user.must_change_password),
+                email: me.email ?? null,
+                emailVerified: Boolean(me.email_verified),
+                displayName: me.display_name ?? null,
+                bio: me.bio ?? null,
+                avatarSource: me.avatar_source ?? null,
+                avatarMime: me.avatar_mime ?? null,
+                avatarUpdatedAt: me.avatar_updated_at ?? null,
+                createdAt: me.created_at ?? null,
+              }
             : null,
           prefs,
-          steamBound,
+          // DA 批（docs/APP-FILTER-SERVER-SIDE.md §3）：App「已拥有」chip 仅登录且已绑定 Steam 时显示，
+          // 站点 /api/me 与 App /api/app/me 共用本路由，steamBound 口径一致。
+          steamBound: user
+            ? Number((await q('select count(*)::int as n from steam_accounts where user_id = $1', [user.id])).rows[0]?.n ?? 0) > 0
+            : false,
           // 站点时区（系统设置里的「时区」）：前端用它格式化时间，而不是浏览器本地时区
           timezone: process.env.TZ || 'Asia/Shanghai',
         });
@@ -2136,6 +2151,198 @@ export function createApiServer({
         const prefs = await db.savePrefs(q, user.id, body);
         logger?.info('api.prefs_saved', { userId: user.id, ...prefs });
         return json(res, 200, { prefs });
+      }
+
+      // ---- CX 批（docs/USER-PROFILE-EDIT.md §3）：个人资料编辑（只改自己；管理员与用户同一套接口）----
+
+      // 头像公开只读：custom 输出库内字节（ETag/长缓存）；steam:<id> 302 到该账号 Steam CDN 头像；无头像 404。
+      const avatarMatch = path.match(/^\/api\/avatar\/(\d+)$/);
+      if (avatarMatch && req.method === 'GET') {
+        const avatarUserId = Number(avatarMatch[1]);
+        const row = await db.avatarOfUser(q, avatarUserId);
+        if (!row) return json(res, 404, { error: '没有该用户' });
+        const source = row.avatar_source ?? null;
+        if (source && source.startsWith('steam:')) {
+          const steamId = source.slice('steam:'.length);
+          const acct = (await q('select avatar from steam_accounts where steam_id = $1', [steamId])).rows[0];
+          if (acct?.avatar) {
+            res.writeHead(302, { location: acct.avatar, 'cache-control': 'public, max-age=300' });
+            res.end();
+            return;
+          }
+          return json(res, 404, { error: 'no avatar' });
+        }
+        if (source === 'custom' && row.avatar_bytes) {
+          const etag = `"av-${avatarUserId}-${row.avatar_updated_at ? new Date(row.avatar_updated_at).getTime() : 0}"`;
+          if (req.headers['if-none-match'] === etag) {
+            res.writeHead(304, { etag, 'cache-control': 'public, max-age=31536000, immutable' });
+            res.end();
+            return;
+          }
+          res.writeHead(200, {
+            'content-type': row.avatar_mime ?? 'image/png',
+            'content-length': row.avatar_bytes.length,
+            etag,
+            'cache-control': 'public, max-age=31536000, immutable',
+          });
+          res.end(row.avatar_bytes);
+          return;
+        }
+        return json(res, 404, { error: 'no avatar' });
+      }
+
+      // 昵称 2–20 字 / 简介 ≤200 字（管理员可空；普通用户必填）。校验只认 body 里这三个可编辑字段 + 偏好两项，
+      // 用户名 / 邮箱 / 角色 / userId 一律忽略（只读；越权传 userId 无效——写的是 session 用户自己）。
+      if (path === '/api/me/profile' && req.method === 'PATCH') {
+        if (!requireUser()) return;
+        const body = await readBody(req);
+        const isAdmin = user.role === 'admin';
+        const chars = (s) => [...String(s ?? '')].length;
+        let displayName;
+        if (body.displayName !== undefined && body.displayName !== null) {
+          const raw = String(body.displayName).trim();
+          const n = chars(raw);
+          if (isAdmin) {
+            displayName = raw || null;
+          } else {
+            if (n < 2 || n > 20) return json(res, 400, { error: '昵称需要 2–20 个字符' });
+            displayName = raw;
+          }
+        }
+        let bio;
+        if (body.bio !== undefined && body.bio !== null) {
+          const raw = String(body.bio).trim();
+          const n = chars(raw);
+          if (n > 200) return json(res, 400, { error: '个人简介不能超过 200 字' });
+          if (isAdmin) {
+            bio = raw || null;
+          } else {
+            if (n < 1) return json(res, 400, { error: '个人简介必填（1–200 字）' });
+            bio = raw;
+          }
+        }
+        let theme = undefined;
+        if (body.theme !== undefined) {
+          if (body.theme === null || body.theme === 'light' || body.theme === 'dark') theme = body.theme;
+          else return json(res, 400, { error: '主题只能是 light / dark / null（跟随系统）' });
+        }
+        let emailAlerts = undefined;
+        if (body.emailAlerts !== undefined) emailAlerts = Boolean(body.emailAlerts);
+        const me = await db.updateUserProfile(q, { userId: user.id, displayName, bio });
+        const prefs = await db.savePrefs(q, user.id, { theme, email_alerts: emailAlerts });
+        logger?.info('api.profile_saved', { userId: user.id, displayName: displayName ?? me.display_name, bioSet: bio !== undefined, theme, emailAlerts });
+        return json(res, 200, {
+          user: {
+            id: me.id,
+            username: me.username,
+            role: me.role,
+            email: me.email ?? null,
+            emailVerified: Boolean(me.email_verified),
+            displayName: me.display_name ?? null,
+            bio: me.bio ?? null,
+            avatarSource: me.avatar_source ?? null,
+            avatarMime: me.avatar_mime ?? null,
+            avatarUpdatedAt: me.avatar_updated_at ?? null,
+            createdAt: me.created_at ?? null,
+          },
+          prefs,
+        });
+      }
+
+      // 自定义头像上传：JSON dataUrl（客户端裁剪 256×256，JPG/PNG/WebP/GIF，≤512KB），服务端校验魔数 + 大小后存库
+      if (path === '/api/me/avatar' && req.method === 'POST') {
+        if (!requireUser()) return;
+        // 头像 dataUrl 上限 512KB，请求体放宽到 600KB；超限时暂停读取并回 413（不 destroy 连接，客户端能拿到响应）
+        const readAvatarBody = (r, limit) =>
+          new Promise((done, fail) => {
+            let size = 0;
+            const chunks = [];
+            r.on('data', (c) => {
+              size += c.length;
+              if (size > limit) {
+                fail(new Error('too large'));
+                r.pause();
+                return;
+              }
+              chunks.push(c);
+            });
+            r.on('end', () => {
+              const raw = Buffer.concat(chunks).toString('utf8');
+              if (!raw) return done({});
+              try {
+                done(JSON.parse(raw));
+              } catch {
+                fail(new Error('invalid json'));
+              }
+            });
+            r.on('error', fail);
+          });
+        const body = await readAvatarBody(req, 600 * 1024).catch(() => null);
+        if (!body) return json(res, 413, { error: '请求体过大或不是有效 JSON' }, { connection: 'close' });
+        const dataUrl = String(body?.dataUrl ?? '');
+        if (dataUrl.length > 512 * 1024) return json(res, 413, { error: '头像过大：请裁剪为 256×256 后上传（≤512KB）' });
+        const m = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/i.exec(dataUrl);
+        if (!m) return json(res, 400, { error: '头像格式不支持：只接受 JPG / PNG / WebP / GIF 的 base64 dataUrl' });
+        const mime = m[1].toLowerCase();
+        let bytes;
+        try {
+          bytes = Buffer.from(m[2], 'base64');
+        } catch {
+          return json(res, 400, { error: '头像数据不是有效的 base64' });
+        }
+        if (!bytes.length) return json(res, 400, { error: '头像数据为空' });
+        // 魔数校验（防把任意二进制伪装成图片存库）
+        const sig = (hex) => bytes.subarray(0, hex.length / 2).toString('hex') === hex;
+        const valid =
+          (mime === 'image/png' && sig('89504e470d0a1a0a')) ||
+          (mime === 'image/jpeg' && sig('ffd8ff')) ||
+          (mime === 'image/gif' && (sig('474946383761') || sig('474946383961'))) ||
+          (mime === 'image/webp' && bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP');
+        if (!valid) return json(res, 400, { error: '头像文件内容与格式不符' });
+        const after = await db.setUserAvatar(q, { userId: user.id, bytes, mime });
+        logger?.info('api.avatar_uploaded', { userId: user.id, mime, bytes: bytes.length });
+        return json(res, 200, { avatarSource: after.avatar_source, avatarMime: after.avatar_mime, avatarUpdatedAt: after.avatar_updated_at });
+      }
+
+      if (path === '/api/me/avatar' && req.method === 'DELETE') {
+        if (!requireUser()) return;
+        const after = await db.clearUserAvatar(q, user.id);
+        logger?.info('api.avatar_removed', { userId: user.id });
+        return json(res, 200, { avatarSource: after.avatar_source, avatarMime: after.avatar_mime, avatarUpdatedAt: after.avatar_updated_at });
+      }
+
+      // 我的游戏库与统计（仅本人）：每账号一卡 + 5 项汇总
+      if (path === '/api/me/library' && req.method === 'GET') {
+        if (!requireUser()) return;
+        const steamAccountsMod = await import('./steam-accounts.js');
+        const me = await db.getUserPublic(q, user.id);
+        const accounts = await steamAccountsMod.listUserAccounts(q, user.id);
+        const bindTimes = new Map();
+        for (const a of accounts) {
+          const bt = (
+            await q(
+              "select min(created_at) as bound_at from steam_account_logs where action = 'bind' and steam_id = $1",
+              [a.steam_id],
+            )
+          ).rows[0];
+          bindTimes.set(a.steam_id, bt?.bound_at ?? null);
+        }
+        const list = accounts.map((a) => ({
+          steamId: a.steam_id,
+          name: a.alias || a.persona_name || a.steam_id,
+          personaName: a.persona_name ?? null,
+          avatar: a.avatar ?? null,
+          owned: Number(a.games ?? 0),
+          wishlist: Number(a.wishlist ?? 0),
+          lastSyncedAt:
+            a.library_synced_at && a.wishlist_synced_at
+              ? new Date(Math.max(new Date(a.library_synced_at).getTime(), new Date(a.wishlist_synced_at).getTime())).toISOString()
+              : a.library_synced_at ?? a.wishlist_synced_at ?? null,
+          boundAt: bindTimes.get(a.steam_id),
+          isDefault: me.avatar_source === 'steam:' + a.steam_id,
+        }));
+        const stats = await db.userLibraryStats(q, user.id);
+        return json(res, 200, { accounts: list, stats });
       }
 
       // ---- 游戏数量（匿名可读）：库内总数 + 已有价格数，前台"实时数量"靠它 ----
@@ -2572,15 +2779,19 @@ export function createApiServer({
 
       if (path === '/api/auth/steam/start' && req.method === 'GET') {
         if (!requireUser()) return;
+        // CX 批：资料页发起的绑定带 back=profile，成功后回跳个人资料页；其余保持回 Steam 账号页
+        const back = url.searchParams.get('back') === 'profile' ? 'profile' : 'steam';
         const state = steamMod.issueBindState(bindStates, user.id);
-        const target = steamMod.buildLoginUrl(steamMod.baseUrl(req), state);
-        logger?.info('steam.bind_start', { userId: user.id, host: req.headers.host });
+        const target = steamMod.buildLoginUrl(steamMod.baseUrl(req), state, { back });
+        logger?.info('steam.bind_start', { userId: user.id, host: req.headers.host, back });
         res.writeHead(302, { location: target, 'cache-control': 'no-store' });
         res.end();
         return;
       }
 
       if (path.startsWith('/api/auth/steam/callback')) {
+        // CX 批：绑定成功/失败都回到发起处（profile=个人资料页；默认=Steam 账号页）
+        const back = url.searchParams.get('back') === 'profile' ? 'profile' : 'steam';
         const bindResult = (location) => {
           const params = new URL(location, 'http://localhost').searchParams;
           // 成功（带 steamBound）一律 302；错误时浏览器 302 到控制台展示提示、API 客户端回 JSON 状态码
@@ -2609,27 +2820,27 @@ export function createApiServer({
         const stateUserId = steamMod.consumeBindState(bindStates, url.searchParams.get('state'));
         if (!stateUserId) {
           logger?.warn('steam.bind_state_invalid', { ip });
-          return bindResult('/console?section=steam&steamError=state');
+          return bindResult(`/console?section=${back}&steamError=state`);
         }
         if (!user || Number(user.id) !== Number(stateUserId)) {
           logger?.warn('steam.bind_session_mismatch', { stateUserId, sessionUserId: user?.id ?? null });
-          return bindResult('/console?section=steam&steamError=state');
+          return bindResult(`/console?section=${back}&steamError=state`);
         }
         // 2) Steam OpenID 校验 → steamId
         const steamId = await (steamVerify ?? steamMod.verifyCallback)(url, { logger });
-        if (!steamId) return bindResult('/console?section=steam&steamError=verify');
+        if (!steamId) return bindResult(`/console?section=${back}&steamError=verify`);
         // 3) 唯一性 / 上限校验
         const existing = await q('select user_id from steam_accounts where steam_id = $1', [steamId]);
         const ownerId = existing.rows[0]?.user_id ?? null;
         if (ownerId != null && Number(ownerId) !== Number(user.id)) {
           logger?.warn('steam.bind_conflict', { steamId, ownedBy: ownerId, by: user.id });
-          return bindResult('/console?section=steam&steamError=conflict');
+          return bindResult(`/console?section=${back}&steamError=conflict`);
         }
         if (ownerId == null) {
           const count = await q('select count(*)::int as n from steam_accounts where user_id = $1', [user.id]);
           if (Number(count.rows[0]?.n ?? 0) >= MAX_ACCOUNTS_PER_USER) {
             logger?.warn('steam.bind_limit', { steamId, userId: user.id, count: count.rows[0].n });
-            return bindResult('/console?section=steam&steamError=limit');
+            return bindResult(`/console?section=${back}&steamError=limit`);
           }
         }
         // 4) 落库（已绑定同人 = 幂等，只刷新昵称/头像）
@@ -2642,6 +2853,9 @@ export function createApiServer({
           [steamId, persona.personaName, persona.avatar, user.id],
         );
         logger?.info('steam.bind_ok', { steamId, userId: user.id, persona: persona.personaName ?? null });
+        // CX 批（docs/USER-PROFILE-EDIT.md §2 #3）：头像默认取已绑 Steam 账号——首个账号绑定后自动成为默认
+        // （仅当用户从未显式设置过头像来源；之后可在资料页换选任一账号或自定义）。
+        await db.setDefaultSteamAccountIfUnset(q, { userId: user.id, steamId });
         // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：绑定落一条审计；同步类动作由 syncAccount* 各自记录。
         await steamLogMod.recordSteamLog(q, {
           action: 'bind',
@@ -2654,7 +2868,7 @@ export function createApiServer({
         });
         // BE 批（docs/WISHLIST-SITE-ONLY.md §4.4 决策 5）：绑定新账号**不再自动同步**（此时还没有该账号的 key），
         // 前台提示「请先为该账号配置 API Key，再点同步」。
-        return bindResult('/console?section=steam&steamBound=1&steamNeedKey=1');
+        return bindResult(`/console?section=${back}&steamBound=1&steamNeedKey=1`);
       }
 
       if (path === '/api/steam/accounts' && req.method === 'GET') {
@@ -2689,6 +2903,8 @@ export function createApiServer({
           if (!found.rows[0]) return json(res, 404, { error: '没有该 Steam 账号' });
           if (found.rows[0].user_id != null) return json(res, 409, { error: '该账号已被认领' });
           await q('update steam_accounts set user_id = $1, last_login_at = now() where steam_id = $2 and user_id is null', [user.id, steamId]);
+          // CX 批：认领的首个账号同样自动成为默认头像来源（未显式设置过时）
+          await db.setDefaultSteamAccountIfUnset(q, { userId: user.id, steamId });
           // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：认领落审计（失败吞异常，不影响认领）
           await steamLogMod.recordSteamLog(q, {
             action: 'claim',
@@ -2742,17 +2958,39 @@ export function createApiServer({
             return json(res, 502, { error: '拉取愿望单失败：' + String(err.message).slice(0, 160) });
           }
         }
+        // CX 批（docs/USER-PROFILE-EDIT.md §3）：库列表支持搜索/分页（弹窗用）；
+        // 不带参数保持旧行为（一次取到 500 条，后台「Steam 账号」页沿用 in_db/current_low 字段）。
         if (accountAction[2] === 'library' && req.method === 'GET') {
           const row = await requireAccountOwner(steamId);
           if (!row) return;
-          const games = await q(
-            "select sg.appid, coalesce(g.name, sg.name) as name, sg.playtime_minutes, sg.last_played_at, " +
-              "g.steam_appid is not null as in_db, " +
-              '(select min(o.price_cents) from offers o where o.game_id = g.id and o.in_stock) as low ' +
-              'from steam_games sg left join games g on g.steam_appid = sg.appid where sg.steam_id = $1 order by sg.playtime_minutes desc limit 500',
-            [steamId],
-          );
-          return json(res, 200, { steamId, games: games.rows });
+          const hasParams = url.searchParams.has('q') || url.searchParams.has('page') || url.searchParams.has('pageSize');
+          const kw = String(url.searchParams.get('q') ?? '').trim().slice(0, 80);
+          const page = Number(url.searchParams.get('page') ?? 1);
+          const pageSize = hasParams ? Number(url.searchParams.get('pageSize') ?? 10) : 500;
+          const data = await db.userLibraryItems(q, { steamId, kind: 'library', kw, page, pageSize });
+          return json(res, 200, {
+            steamId,
+            games: data.items,
+            total: data.total,
+            page: data.page,
+            pageSize: data.pageSize,
+          });
+        }
+        // CX 批：愿望单条目列表（弹窗「愿望单」tab）
+        if (accountAction[2] === 'wishlist' && req.method === 'GET') {
+          const row = await requireAccountOwner(steamId);
+          if (!row) return;
+          const kw = String(url.searchParams.get('q') ?? '').trim().slice(0, 80);
+          const page = Number(url.searchParams.get('page') ?? 1);
+          const pageSize = Number(url.searchParams.get('pageSize') ?? 10);
+          const data = await db.userLibraryItems(q, { steamId, kind: 'wishlist', kw, page, pageSize });
+          return json(res, 200, {
+            steamId,
+            items: data.items,
+            total: data.total,
+            page: data.page,
+            pageSize: data.pageSize,
+          });
         }
         return json(res, 404, { error: 'not found' });
       }
@@ -2801,7 +3039,21 @@ export function createApiServer({
           logger,
           log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
         });
+        // CX 批（docs/USER-PROFILE-EDIT.md §3）：解绑的是默认账号 → 头像来源清空（回退首字/重选），不留悬挂引用
+        await db.clearDefaultSteamIfMatches(q, { userId: user.id, steamId });
         return json(res, 200, result);
+      }
+
+      // CX 批：设为默认 Steam 账号（头像默认取该账号；每用户一个默认）
+      const accountDefaultMatch = path.match(/^\/api\/steam\/accounts\/([^/]+)\/default$/);
+      if (accountDefaultMatch && req.method === 'POST') {
+        if (!requireUser()) return;
+        const steamId = decodeURIComponent(accountDefaultMatch[1]);
+        const row = await requireAccountOwner(steamId);
+        if (!row) return;
+        const me = await db.setDefaultSteamAccount(q, { userId: user.id, steamId });
+        logger?.info('steam.default_set', { steamId, userId: user.id });
+        return json(res, 200, { ok: true, avatarSource: me.avatar_source });
       }
 
       // ---- CL 批（docs/USER-ALERTS.md §3.1）：用户级到价提醒（登录必需；POST/DELETE 每用户 30 次/分）----
@@ -3010,8 +3262,12 @@ export function createApiServer({
         const page = Math.max(1, Number(url.searchParams.get('page') ?? 1) || 1);
         const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize') ?? 20) || 20, 1), 200);
         const username = String(url.searchParams.get('username') ?? '').trim() || null;
-        const result = await db.listAllWatchesAdmin(q, { region, page, pageSize, username });
-        return json(res, 200, { ...result, region });
+        // CU-1（docs/USER-ALERTS-GOVERNANCE.md §2）：status=no_price 只出「无报价」行
+        const status = String(url.searchParams.get('status') ?? '');
+        const result = await db.listAllWatchesAdmin(q, { region, page, pageSize, username, noPriceOnly: status === 'no_price' });
+        // 契约：hasPrice 用驼峰（规格 §3）；其余字段沿用既有蛇形命名，前端消费不动
+        const items = result.items.map(({ has_price: hasPrice, ...rest }) => ({ ...rest, hasPrice: hasPrice === true }));
+        return json(res, 200, { ...result, items, region });
       }
 
       if (path === '/api/admin/watchlist' && req.method === 'POST') {
@@ -4649,17 +4905,6 @@ export function createApiServer({
               results.push({ key: k, error: String(err?.message ?? err) });
             }
           }
-          // 写回 skus.json（兼容回落）：只回写执行成功的组
-          const okAppids = new Map(results.filter((r) => r.appid != null).map((r) => [r.key, r.appid]));
-          for (const [k, appid] of okAppids) {
-            const group = groups.find((g) => g.key === k);
-            if (!group) continue;
-            for (const skuId of group.skuIds) {
-              const entry = entries.find((e) => Number(e.skuId) === skuId);
-              if (entry) entry.appid = appid;
-            }
-          }
-          writeFileSync(alignSkuFile(), `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
           alignRunner.invalidate(); // 队列内容已变，下一次 GET 重算（CN 批）
           logger?.info('match.batch_confirmed', { by: user.username, keys, results });
           return json(res, 200, { ok: true, results, totalMapped, totalMerged });
@@ -4667,19 +4912,13 @@ export function createApiServer({
         if (singleKey) {
           const appid = Number(body?.appid);
           if (!Number.isFinite(appid)) return json(res, 400, { error: '参数不合法（key + appid）' });
-          const { align, entries, games, groups } = await buildAlignGroups();
+          const { align, games, groups } = await buildAlignGroups();
           const group = groups.find((g) => g.key === singleKey);
           if (!group) return json(res, 404, { error: '队列里没有该组（可能已被处理）' });
           const target = games.find((g) => Number(g.steam_appid) === appid);
           if (!target) return json(res, 404, { error: `库里没有 appid ${appid}` });
           // 合并孤立行（只合并无 appid 的源行；有 appid 冲突跳过）——不可自动撤销
           const { mapped, merged } = await confirmAlignKey({ q, align, group, appid, games, user, method });
-          // 写回 skus.json（兼容回落）
-          for (const skuId of group.skuIds) {
-            const entry = entries.find((e) => Number(e.skuId) === skuId);
-            if (entry) entry.appid = appid;
-          }
-          writeFileSync(alignSkuFile(), `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
           alignRunner.invalidate(); // 队列内容已变，下一次 GET 重算（CN 批）
           logger?.info('match.confirmed', { by: user.username, key: singleKey, appid, skus: group.skuIds, merged });
           return json(res, 200, { ok: true, mapped, merged: merged.length, appid });
