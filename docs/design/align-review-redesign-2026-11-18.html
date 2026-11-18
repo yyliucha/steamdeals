@@ -32,7 +32,7 @@
   .chip{border:1px solid var(--border-2);background:#0f1728;color:var(--fg-muted);border-radius:999px;padding:4px 11px;font-size:11.5px;cursor:pointer}
   .chip.on{background:#1a2440;color:#fff;border-color:#3a4c86}
   .table{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden}
-  .tr{display:grid;grid-template-columns:34px 2.1fr .7fr 1.6fr .8fr .8fr .9fr 1.2fr;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid #1c2740;font-size:12.5px}
+  .tr{display:grid;grid-template-columns:34px 2.1fr .6fr 1.5fr .8fr .8fr .9fr 1.3fr 1.5fr;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid #1c2740;font-size:12.5px}
   .tr.head{background:#0f1729;color:var(--fg-subtle);font-size:11.5px}
   .tr:last-child{border-bottom:0}
   .cb{width:15px;height:15px;border-radius:4px;border:1px solid #3a4c86;display:inline-block}
@@ -57,6 +57,7 @@
   .pg.on{background:#1a2440;color:#fff;border-color:#3a4c86}
   .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:38px 0;color:var(--fg-subtle);font-size:12px}
   .empty .ico{font-size:34px;opacity:.5}
+.links{display:flex;gap:8px;align-items:center}.lnk{color:#9fb4ff;font-size:11.5px;text-decoration:none;border-bottom:1px dashed #3a4c86}.lnk:hover{color:#c9d6ff}
 </style>
 </head>
 <body>
@@ -99,7 +100,7 @@
   </div>
 
   <div class="table">
-    <div class="tr head"><span></span><span>杉果名（组）</span><span>SKU 数</span><span>候选</span><span>分数</span><span>方式</span><span>建议</span><span>操作</span></div>
+        <div class="tr head"><span></span><span>杉果名（组）</span><span>SKU 数</span><span>候选</span><span>分数</span><span>方式</span><span>建议</span><span>操作</span><span>链接 / 明细</span></div>
     <div class="tr">
       <span class="cb on"></span>
       <div class="gname"><b>神界：原罪2 - 终极版</b><div class="en">Divinity: Original Sin 2</div></div>
@@ -108,7 +109,8 @@
       <div class="score"><div class="b"><i class="hi" style="width:97%"></i></div><span>0.97</span></div>
       <span>appid</span>
       <span class="sug"><span class="tag ok">高置信</span></span>
-      <span><button class="btn-link">确认</button><button class="btn-link">忽略</button><button class="btn-link">搜索</button></span>
+      <span><button class="btn-link">确认</button><button class="btn-link">换候选</button><button class="btn-link">忽略</button></span>
+      <span class="links"><a href="#" class="lnk">Steam ↗</a><a href="#" class="lnk">杉果 ↗</a><button class="btn-link">明细</button></span>
     </div>
     <div class="tr">
       <span class="cb"></span>
@@ -118,31 +120,34 @@
       <div class="score"><div class="b"><i class="hi" style="width:95%"></i></div><span>0.95</span></div>
       <span>标题</span>
       <span class="sug"><span class="tag ok">高置信</span></span>
-      <span><button class="btn-link">确认</button><button class="btn-link">忽略</button><button class="btn-link">搜索</button></span>
+      <span><button class="btn-link">确认</button><button class="btn-link">换候选</button><button class="btn-link">忽略</button></span>
+      <span class="links"><a href="#" class="lnk">Steam ↗</a><a href="#" class="lnk">杉果 ↗</a><button class="btn-link">明细</button></span>
     </div>
     <div class="tr">
       <span class="cb"></span>
-      <div class="gname"><b>王国：拯救2</b><div class="en">Kingdom Come: Deliverance II</div></div>
+      <div class="gname"><b>巴士模拟器 27 - 第1年季票</b><div class="en">Bus Simulator 27 - Year 1 Pass</div></div>
       <span class="sku">1</span>
-      <div class="cand"><div class="n">Kingdom Come: Deliverance II</div><div class="m">Steam · appid 1771300</div></div>
-      <div class="score"><div class="b"><i class="mid" style="width:90%"></i></div><span>0.90</span></div>
-      <span>标题</span>
-      <span class="sug"><span class="tag warn">需人工</span></span>
-      <span><button class="btn-link">确认</button><button class="btn-link">忽略</button><button class="btn-link">搜索</button></span>
+      <div class="cand"><div class="n">巴士模拟器 27</div><div class="m">Steam · appid 2397320 · 疑似本体（SKU 含内容词）</div></div>
+      <div class="score"><div class="b"><i class="mid" style="width:100%"></i></div><span>1.00</span></div>
+      <span>name_en</span>
+      <span class="sug"><span class="tag warn">待确认 · 内容词</span></span>
+      <span><button class="btn-link">确认</button><button class="btn-link">换候选</button><button class="btn-link">忽略</button></span>
+      <span class="links"><a href="#" class="lnk">Steam ↗</a><a href="#" class="lnk">杉果 ↗</a><button class="btn-link">明细</button></span>
     </div>
     <div class="tr">
       <span class="cb"></span>
-      <div class="gname"><b>未知游戏（SKU 无法解析）</b><div class="en">—</div></div>
-      <span class="sku">4</span>
-      <div class="cand"><div class="n">无候选</div><div class="m">建议手动搜索</div></div>
-      <div class="score"><div class="b"><i class="lo" style="width:12%"></i></div><span>—</span></div>
-      <span>—</span>
-      <span class="sug"><span class="tag">无候选</span></span>
-      <span><button class="btn-link">手动搜索</button><button class="btn-link">忽略</button></span>
-    </div>
-  </div>
+      <div class="gname"><b>断箭</b><div class="en">Broken Arrow</div></div>
+      <span class="sku">1</span>
+      <div class="cand"><div class="n">断箭（Broken Arrow）</div><div class="m">Steam · appid 1604270 · 低分候选（0.71）</div></div>
+      <div class="score"><div class="b"><i class="lo" style="width:71%"></i></div><span>0.71</span></div>
+      <span>标题</span>
+      <span class="sug"><span class="tag">低于阈值 · 需人工</span></span>
+      <span><button class="btn-link">确认</button><button class="btn-link">换候选</button><button class="btn-link">忽略</button></span>
+      <span class="links"><a href="#" class="lnk">Steam ↗</a><a href="#" class="lnk">杉果 ↗</a><button class="btn-link">明细</button></span>
+    </div></div>
   <div class="foot"><span>共 24 组 · 第 1/3 页</span><div class="pager"><span class="pg">上一页</span><span class="pg on">1</span><span class="pg">2</span><span class="pg">3</span><span class="pg">下一页</span></div></div>
 
   <div class="empty"><div class="ico">📦</div><div>没有待对齐的组（新 SKU 会在杉果同步后进入队列）</div></div>
 </body>
 </html>
+
