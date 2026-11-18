@@ -80,7 +80,7 @@
 | **CQ** | 系统设置信息架构重构（平台卡片 + 常用/高级折叠 + 只看非默认/来源/恢复默认） | [SETTINGS-IA.md](SETTINGS-IA.md) | 待开发（2026-11-17 demo v2 已确认） | ✅ 本轮已给 |
 | **CS** | 对齐审核二次修复（事件循环阻塞观测 + 首屏后台化；补齐 CN 未进镜像问题；DB 侧已验证 91ms 无需索引） | [ALIGN-DB-SLOW.md](ALIGN-DB-SLOW.md) | 待开发（2026-11-18 复核修正；P0） | ✅ 本轮已给 |
 | **CT** | app-release-sync 404（私有仓库 + 无 token → 支持 GITHUB_TOKEN） | [APP-SYNC-404.md](APP-SYNC-404.md) | 待开发（2026-11-18 线上日志；P1） | ✅ 本轮已给 |
-| **CR** | 开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + API 契约字符串数组） | [APP-DEV-PUBLISHER-NAMES.md](APP-DEV-PUBLISHER-NAMES.md) | 待确认（2026-11-17 所有者截图反馈） | ✅ 本轮已给 |
+| **CR** | 开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + API 契约字符串数组） | [APP-DEV-PUBLISHER-NAMES.md](APP-DEV-PUBLISHER-NAMES.md) | 已发布 v2.24.1（2026-11-18，5673ee9；QA ✅ docs/QA-CR.md） | ✅ 本轮已给 |
 | **CE** | 杉果匹配器加固 + 误合并数据修复（完整标题计分/片段限制/数字一致性/内容词只进人工/`--apply` 二次确认） | [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) §9 | 已发布 v2.19.0（2026-11-16，12f4f42；QA 报告 docs/QA-CE.md） | ✅ 本轮已给 |
 | **AT** | 后台信息架构改版（新增改抽屉 / 操作日志 5 tab / 邮件与设置 tab / 价格走势线图） | [ADMIN-CONSOLE-IA.md](ADMIN-CONSOLE-IA.md) | 已发布 v2.4.0（2026-11-09） | ✅ 本轮已给 |
 | **AC** | 同步不可达的未保证项（AC1–AC11） | [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md) | AC-1 已发布 v1.18.0；AC-2/AC-3/AC-4 已发布 v2.1.0（2026-11-09） | ✅ 已在对话给出 |

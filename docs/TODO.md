@@ -2010,9 +2010,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **验收**：见规格 §3——配置 token 后 `app-sync` 成功落盘；无 token 时日志明确原因；`/api/app/latest` 的 `/app/dl/…` 200；
   token 只在容器 env、`npm run scan` 干净；`npm test` 全绿。
 
-## CR. 待开发：开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + 契约）
+## CR. ~~待开发：开发商/发行商名称脏数据修复（GetItems 归一化 + 历史清洗 + 契约）~~ → **已发布 v2.24.1（2026-11-18，5673ee9 + 2b5f88b）**
 
-**状态：质检通过（2026-11-17，5673ee9，lead 实现；QA ✅ docs/QA-CR.md 第 1 轮——通过 7 / 需人工确认 2：部署后脏行统计归零 + 抽查 3 款）**
+**状态：已发布 v2.24.1（2026-11-18，5673ee9；QA 报告 docs/QA-CR.md 第 1 轮 ✅ 放行——通过 7 / 需人工确认 2：部署后脏行统计归零 + 抽查 3 款）**
 **依赖：** 无（App 侧展示兜底 CM-1 已实现待发版）
 **解锁：** 无
 **规格**：[APP-DEV-PUBLISHER-NAMES.md](APP-DEV-PUBLISHER-NAMES.md)

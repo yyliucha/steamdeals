@@ -10,6 +10,7 @@
 - **候选预筛**：`src/match.js`（`buildCandidateIndex`/`indexTokens`/`preselectCandidates`）——归一化全等快路径 + 信息 token 召回、共享数降序截断 ≤2000；「组数 × 19.6 万」降到「组数 × ≤2000」。口径零变化：CE 13 条误匹配仍不进提案、正确样例仍命中（与 `test/match.test.js` 同源锁定）。
 - **匹配循环分片 + 20s 时间预算**：`src/align.js`（`proposeAlignGroupsBudgeted`）每 200 组 `setImmediate` 让出事件循环（计算期间 `/api/games/count`、`/api/site` 不被阻塞）；超时返回 `partial:true` 与已算部分，不 5xx。`proposeAlignGroups` 保持同步旧签名，CLI 零改动。
 - **接口分页 + 前端状态**：`GET /api/admin/align?page&pageSize=20&refresh=1`（非法参数回落 1..50，`parseAlignPage` 纯函数）；响应带 `generatedAt/cached/partial`；后台「对齐审核」显示生成时间/缓存状态、partial 黄色警告、刷新按钮强制重算（计算中禁点防叠加）。
+- **开发商/发行商名称脏数据修复（CR，服务端）**：`GetItems` 归一化对象数组 → 名称（`src/adapters/store-browse.js`）；迁移幂等清洗 `games.developers/publishers` 历史脏元素（JSON 对象文本 → 名称，`src/store/pg.js`，连跑两次不报错）；API 契约改字符串数组。与已发布的 App 侧展示兜底（CM-1 `NameListSerializer`）配合，双端不再出现原始 JSON。测试 `test/dev-publisher-names.test.js` 5 项进主链。
 
 ### 测试
 

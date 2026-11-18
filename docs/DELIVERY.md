@@ -209,9 +209,12 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   `frontend:build` ✓、`scan` 干净；HTTP 冒烟：缓存命中 7ms ≤200ms、45 组分页、计算期间 `/api/games/count` 与 `/api/site` 并发 200。
   质检：CN ✅（[QA-CN.md](QA-CN.md) 第 1 轮，通过 7 / 需人工确认 4：部署后 P95 观察 / 零 token 标题边界抽查 /
   confirm-ignore HTTP 级复验 / 前端页面目视）。
+  **CR 批同随本版本发布**（实现 5673ee9 + 2b5f88b）：开发商/发行商名称脏数据修复（GetItems 归一化 + 迁移幂等清洗历史脏元素 +
+  契约字符串数组）；QA ✅（[QA-CR.md](QA-CR.md) 第 1 轮，通过 7 / 需人工确认 2：部署后脏行统计归零 + 抽查 3 款游戏）。
   CI：待确认（tag 推送后记录 run id）。
   **服务器部署待执行**（升级到 `2.24.1`）；部署后：① 打开「对齐审核」两次，第二次应 ≤200ms 且显示「缓存」；
-  ② 点「刷新」观察重算与 partial 提示；③ 计算期间观察其它页面/接口不卡顿、容器不再重启。
+  ② 点「刷新」观察重算与 partial 提示；③ 计算期间观察其它页面/接口不卡顿、容器不再重启；
+  ④ CR：查脏行统计（如 `games` 里 developers/publishers 含 `{` 的行数）应归零，抽查黎明杀机等 3 款详情显示纯名称。
 - **v2.24.0 已发布**（tag `v2.24.0`）：CK 批 e2e 测试套件（`test/e2e/` 功能矩阵 49 行 + runner + 8 个 lib，
   零新增运行时依赖）+ CM 批 App 功能补齐（站点侧：e2e 矩阵 4 行与文档；App 仓库 `steamdeals-app` v2.20.0
   独立发布，app-v2.20.0 tag 等所有者指令）。详见 [TESTING-E2E.md](TESTING-E2E.md) / [E2E-SUITE.md](E2E-SUITE.md) / [APP-PARITY.md](APP-PARITY.md)。
