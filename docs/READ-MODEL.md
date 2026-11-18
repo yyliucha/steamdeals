@@ -259,3 +259,33 @@ on conflict (game_id, region) do update set ...;
 **部署状态（2026-11-11 复核）**：复核时生产 `https://sd.yyliucha.cn/api/site` 仍为 v2.10.0；本批已随
 **v2.10.1** 发布（`71d0f87` / `ffda3a9`）→ **待部署复测**：服务器升级到 v2.10.1 后，按本节 6 条
 `EXPLAIN (ANALYZE, BUFFERS)` 与 §9 三项门槛复测，结果回写本节与 [TODO.md](TODO.md) 的 AY 条目。
+
+## 13. 2026-11-18 修订（CO-2/B5）：双写一致性守卫——唯一写入路径 + 增量对账 + 每日自动修复
+
+**问题（[DESIGN-AUDIT.md](DESIGN-AUDIT.md) B5 行）**：快照靠 ingest 钩子维护，任何绕过钩子的写入
+（手动 SQL、新迁移、未来新增的写 offers/daily_prices 的代码）都会让快照静默陈旧——列表价与详情不一致，
+随机抽样对账对「刚被绕过」的行命中率低（陈旧行占比越小越难抽中）。
+
+**设计（三项，理由随行写清）**：
+
+1. **唯一写入路径（静态锁）**：`game_region_snapshot` 的全部 INSERT/UPDATE/DELETE 收敛进
+   `src/store/pg.js` 的 `SNAPSHOT_WRITE_SQL` 表 + `snapshotWrite()` 网关（标记块
+   `<snapshot-write-gateway>`）；`backfillGameRegionSnapshot`/`refreshGameRegionPrices`/
+   `refreshGameRegionHist`/`touchDailyAggregate`/`readModelRebuild`/`readModelCheck --fix` 一律经它执行。
+   `test/read-model-guard.test.js` 静态锁：src/ 下网关块之外出现任何直写语句即红（含反向自检）。
+   *理由*：双写一致性靠"没有第二个写入方"才成立——SQL 集中一处，代码评审与静态测试都能一眼锁住，
+   而不是靠约定。
+2. **增量校验（变更优先）**：`offers`/`daily_prices` 补 `updated_at`（写路径 stamp）；
+   `readModelCheck` 候选改「变更优先」——先取「底层数据比快照新」的疑似陈旧行（`o.updated_at > rs.updated_at`
+   或 `d.updated_at > rs.updated_at`，按快照最旧优先，上限 sample），不足 sample 再随机补齐。
+   *理由*：绕过双写造成的陈旧行**必然**满足"底层比快照新"，变更优先把这些行的发现时间从
+   「随机抽样可能数天」压到「下一次每日检查」；随机补齐保持对全表兜底覆盖（防快照行本身被直接篡改）。
+3. **每日自动修复**：调度 `readmodel` 任务加 `--fix`（`readmodel check --sample 200 --fix`）；手动
+   `readmodel check` 默认仍只报告不修（非零退出可观测）。
+   *理由*：快照是纯派生数据，修复走 `refresh*` 唯一写入路径、口径与对账一致、幂等，无人工判断点；
+   每日自动修复把不一致窗口上限压到 24 小时；`readmodel.check` 日志带 `suspect/diffs/fixed` 字段，修复不静默。
+
+**行为不变**：读路径、`READ_MODEL=legacy` 开关、`check` 默认只报告、`rebuild`、对账 12 字段口径全部不变；
+新增 `{ fixed, suspect }` 只做增量返回。验收：绕过 offers 写入 → check 检出 + fix 修复（锁住）；
+绕过 daily_prices 写入 → 同样检出修复；网关静态锁 + 反向自检；`test/game-search-read-model.test.js` +
+`test/read-model-guard.test.js` + `test/scheduler.test.js` 全绿。

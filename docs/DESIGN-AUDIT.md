@@ -26,7 +26,7 @@
 | B2 | **admin 列表接口慢** | `/api/admin/games` 2.1s、`/sync/status` 1.7s（线上实测） | 后台操作体感差 | 指标/搜索走读模型与索引；count 缓存 | **CO-2/B2（已发布 v2.24.4，75a7e7f）** |
 | B3 | **任务单槽 + 估算预算** | 23 个任务、重任务串行；AC-4 预算按理论值估 | 长任务挤占（steam-status 5h/轮） | 预算用实测耗时；任务依赖图与优先级 | 未开 |
 | B4 | **`server.js`/`pg.js` 巨石** | 4730 / 3987 行，路由+业务+渲染+SQL 混在一起 | 改动风险高、评审困难 | 按域拆分（routes/ 目录 + repository），渐进式 | 未开 |
-| B5 | **读模型双写一致性** | `game_region_snapshot` 靠 ingest 钩子维护；手动 SQL/迁移可能漏 | 列表价与详情不一致 | 保留 readmodel check 任务 + 入库唯一入口约束 | AV/AY（已有对账） |
+| B5 | **读模型双写一致性** | `game_region_snapshot` 靠 ingest 钩子维护；手动 SQL/迁移可能漏 | 列表价与详情不一致 | 保留 readmodel check 任务 + 入库唯一入口约束 | **CO-2/B5（已实现待发版，2026-11-18，5b1cbfb）** |
 
 ## C. P2 —— 一致性、权限与体验
 
