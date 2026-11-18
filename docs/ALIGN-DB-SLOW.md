@@ -1,6 +1,6 @@
 # 对齐审核二次修复：事件循环阻塞与首屏体验（CS，P0 事故追加）
 
-> 状态：**已确认待开发（2026-11-18，EXPLAIN 复核后修正：DB 侧 91ms，瓶颈在应用事件循环）**。
+> 状态：**已实现并发布 v2.24.3（2026-11-18，2a03188；QA 报告 docs/QA-CS-CV.md 两轮 ✅ 放行）**。
 > 关联：[TODO.md](TODO.md) CS 条目、[ALIGN-QUERY-PERF.md](ALIGN-QUERY-PERF.md)（CN 批：缓存/单飞/预筛/预算）、
 > [SYNC-FAILURE-MODES.md](SYNC-FAILURE-MODES.md)。
 

@@ -1,6 +1,6 @@
 # 查询口径修复：所有查询不再排除已拥有（CV，P0 体验）
 
-> 状态：**已确认待开发（2026-11-18，所有者口径：系统查询不排除已拥有）**。
+> 状态：**已实现并发布 v2.24.3（2026-11-18，站点 2a03188 + App 仓库 0945006/65eaa5d；QA 报告 docs/QA-CS-CV.md 两轮 ✅ 放行）**。
 > 关联：[TODO.md](TODO.md) CV 条目、[USER-ALERTS.md](USER-ALERTS.md) §1 #3（已拥有终态）、
 > [APP-PARITY.md](APP-PARITY.md)（App 与 Web 对齐）、[APP-API.md](APP-API.md)（App 契约）。
 

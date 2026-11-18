@@ -1,5 +1,18 @@
 # 变更日志
 
+## [2.24.3] - 2026-11-18
+
+P0 双修：对齐审核后台生成（不再队列恒空）+ 所有查询不排除已拥有（App 不再搜不到自己的游戏）。
+
+### 修复
+
+- **对齐审核后台生成（CS）**：冷缓存时 `GET /api/admin/align` 返回 `202 {generating, processed, total}`（前端 3s 轮询，完成后自动展示完整队列）——修复 v2.24.1/2.24.2 上线后「页面能打开但队列恒空」的 P0（根因：20s 预算计时起点含前处理，前处理超 20s 后匹配循环第一次检查即截断为空）。预算语义修正：`startedAt` 移到匹配循环开始前，后台计算算完为止（setImmediate 分片保证不阻塞事件循环），不再返回 partial 空结果；文案改「后台生成中（已处理 X/Y 组），完成后自动刷新」。`db.slow_query` 增加 `eventLoopLagMs` 观测（setImmediate 往返），区分 DB 时间与事件循环阻塞，防止再次误判为 DB 慢。
+- **所有查询不排除已拥有（CV）**：Web「全部/感兴趣/不感兴趣」列表与搜索显式传 `owned=include`（「已拥有」页签保持 only；服务端默认口径不变）；已拥有游戏显示 Steam 账号名徽标（前 2 个 +N）。App 同步：首页/搜索请求带 `owned=include`、卡片「已拥有 · 账号名」徽标、详情终态只留「去 Steam 购买」+ 标题下账号名（消费 `/api/games/:appid` 的 `owned_by`）。修复「安卓 App 搜索已拥有游戏 → 暂无数据」的 P0 体验事故。
+
+### 测试
+
+- `test/align-perf.test.js` 16 项（新增 CS 后台生成/进度上报/refresh 重算用例 + 反向自检）；`test/api.test.js` 28 项（新增 CV include/exclude/详情 owned_by 用例，CD 对齐审核用例适配 202 轮询模型）；App JVM 单测 23 项（新增 `OwnedByTextTest` 5 项）。HTTP 冒烟：CS 202→轮询 555ms 就绪→缓存 5ms→重算期间 count/site 并发 200；CV include/exclude 语义正确。
+
 ## [2.24.2] - 2026-11-18
 
 CR 迁移 22P02 线上事故热修：v2.24.1 升级后 bootstrap 崩溃重启循环。
