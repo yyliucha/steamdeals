@@ -245,7 +245,24 @@ function makeQuery(rawQuery, logger) {
     try {
       const result = normalizeResult(await rawQuery(sql, params));
       const elapsedMs = Date.now() - startedAt;
-      const fields = { sql: shorten(sql), params: params.length, rows: result.rows.length, elapsedMs };
+      // CS 批（docs/ALIGN-DB-SLOW.md §2 #5）：elapsedMs 是墙钟时间，含事件循环被同步计算阻塞的排队时长，
+      // 不能单独用来判 DB 慢。这里在查询完成后测一次 setImmediate 往返（lagMs）——若 lagMs 大，
+      // 说明事件循环仍被占用（真因在应用侧，不在 DB）。
+      const lagT0 = Date.now();
+      let eventLoopLagMs = 0;
+      try {
+        await new Promise((r) => setImmediate(r));
+        eventLoopLagMs = Date.now() - lagT0;
+      } catch {
+        /* 测不到也照常记录 */
+      }
+      const fields = {
+        sql: shorten(sql),
+        params: params.length,
+        rows: result.rows.length,
+        elapsedMs,
+        eventLoopLagMs,
+      };
       if (elapsedMs > SLOW_MS) logger?.warn('db.slow_query', fields);
       else logger?.debug('db.query', fields);
       return result;

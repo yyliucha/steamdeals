@@ -572,10 +572,9 @@ export function createApiServer({
     }
   };
 
-  // ---- CN 批（docs/ALIGN-QUERY-PERF.md）：对齐审核结果缓存 + single-flight + 20s 预算。
-  // 必须定义在请求 handler 之外（实例级）：缓存跨请求共享，否则每次请求新建 runner、缓存失效。
+  // ---- CN 批（docs/ALIGN-QUERY-PERF.md）+ CS 批（docs/ALIGN-DB-SLOW.md §2）：
+  // 结果缓存 + single-flight + 后台生成。定义在请求 handler 之外（实例级）：缓存跨请求共享。
   const ALIGN_CACHE_TTL_MS = 10 * 60 * 1000;
-  const ALIGN_BUDGET_MS = 20 * 1000;
   const alignSkuFile = () => process.env.ALIGN_SKU_FILE || resolve(process.cwd(), 'data', 'skus.json');
   const readAlignSkus = () => {
     try {
@@ -588,9 +587,10 @@ export function createApiServer({
     }
     return [];
   };
-  // 单次全量计算：候选索引建在计算内（缓存命中时完全不碰库）；匹配循环分片 + 20s 预算。
-  const computeAlignGroups = async () => {
-    const startedAt = Date.now();
+  // 单次全量计算：候选索引建在计算内（缓存命中时完全不碰库）；匹配循环 setImmediate 分片。
+  // CS 批：后台生成模型下不设 20s 硬截断（算完为止、分片保证不阻塞）；前处理不计入预算。
+  const computeAlignGroups = async ({ onProgress } = {}) => {
+    const wallStartedAt = Date.now();
     const align = await import('./align.js');
     const entries = readAlignSkus();
     const games = (await q('select id, steam_appid, name, name_en from games where steam_appid is not null')).rows;
@@ -602,11 +602,14 @@ export function createApiServer({
     const { groups, partial } = await align.proposeAlignGroupsBudgeted(inherit.items, games, {
       candidateIndex,
       maxCandidates: 2000,
-      budgetMs: ALIGN_BUDGET_MS,
-      startedAt,
-      shouldYield: () => new Promise((r) => setImmediate(r)),
+      budgetMs: Infinity, // CS 批：后台生成算完为止（partial 兜底仅防 future 回归）
+      startedAt: Date.now(), // 预算只约束匹配循环，前处理不计入（CS #2）
+      shouldYield: async (processed, totalGroups) => {
+        onProgress?.(processed, totalGroups);
+        await new Promise((r) => setImmediate(r));
+      },
     });
-    logger?.info('align.computed', { groups: groups.length, partial, ms: Date.now() - startedAt });
+    logger?.info('align.computed', { groups: groups.length, partial, ms: Date.now() - wallStartedAt });
     return { align, entries, games, groups, inherit, partial, generatedAt: Date.now() };
   };
   const alignRunner = createAlignRunner({ compute: computeAlignGroups, ttlMs: ALIGN_CACHE_TTL_MS });
@@ -4216,6 +4219,18 @@ export function createApiServer({
         if (!requireAdmin()) return;
         const refresh = url.searchParams.get('refresh') === '1';
         const { page, pageSize } = parseAlignPage(url.searchParams);
+        // CS 批（docs/ALIGN-DB-SLOW.md §2 #3）：后台生成——冷缓存触发后台计算并 202，
+        // 前端 3s 轮询直到就绪；缓存命中直接分页响应（≤1s）。
+        const bg = alignRunner.background({ refresh });
+        if (bg.generating) {
+          return json(res, 202, {
+            generating: true,
+            processed: bg.processed ?? 0,
+            total: bg.total ?? 0,
+            page,
+            pageSize,
+          });
+        }
         const result = await buildAlignGroups({ refresh });
         const { groups, inherit } = result;
         const rows = groups.map((g) => ({

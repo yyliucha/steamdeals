@@ -1,7 +1,7 @@
 <script setup>
 // CD 批（docs/SONKWO-STEAM-MATCH.md §4.4）：对齐审核——去重组队列 + 合并预览 + 确认/忽略/手动搜索。
 // CN 批（docs/ALIGN-QUERY-PERF.md §2/§3）：服务端缓存 + 分页读；本页显示生成时间/缓存状态，partial 时提示。
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import PaginationBar from './PaginationBar.vue';
 import { redirectToLogin } from '../utils/session.js';
@@ -22,21 +22,48 @@ function notifyError(e) { ElMessage.error(e?.message || String(e)); }
 const groups = ref([]);
 const total = ref(0);
 const inherited = ref(0);
-const meta = ref({ generatedAt: null, cached: false, partial: false });
+const meta = ref({ generatedAt: null, cached: false, partial: false, generating: false, processed: 0, total: 0 });
 const loading = ref(false);
 const refreshing = ref(false);
 const page = ref(1);
 const pageSize = ref(20);
+
+let pollTimer = null;
 
 async function load(opts = {}) {
   const { refresh = false } = opts;
   if (refresh) refreshing.value = true; else loading.value = true;
   try {
     const d = await api(`/api/admin/align?page=${page.value}&pageSize=${pageSize.value}${refresh ? '&refresh=1' : ''}`);
+    if (d.generating) {
+      // CS 批：后台生成中——保留空表 + 状态条，3s 轮询直到就绪后自动展示
+      meta.value = {
+        generatedAt: null,
+        cached: false,
+        partial: false,
+        generating: true,
+        processed: d.processed ?? 0,
+        total: d.total ?? 0,
+      };
+      groups.value = [];
+      total.value = 0;
+      inherited.value = 0;
+      clearTimeout(pollTimer);
+      pollTimer = setTimeout(() => load(), 3000);
+      return;
+    }
+    clearTimeout(pollTimer);
     groups.value = d.groups || [];
     total.value = d.total || 0;
     inherited.value = d.inherited || 0;
-    meta.value = { generatedAt: d.generatedAt ?? null, cached: d.cached ?? false, partial: d.partial ?? false };
+    meta.value = {
+      generatedAt: d.generatedAt ?? null,
+      cached: d.cached ?? false,
+      partial: d.partial ?? false,
+      generating: false,
+      processed: 0,
+      total: 0,
+    };
   } catch (e) { notifyError(e); } finally { loading.value = false; refreshing.value = false; }
 }
 
@@ -110,6 +137,7 @@ async function pickGame(game) {
 }
 
 onMounted(() => load());
+onUnmounted(() => clearTimeout(pollTimer));
 </script>
 
 <template>
@@ -120,8 +148,10 @@ onMounted(() => load());
         <el-button :loading="refreshing" :disabled="loading" @click="load({ refresh: true })">刷新</el-button>
       </div>
       <p v-if="inherited" class="align-inherit muted">本次自动继承已确认/已忽略映射 {{ inherited }} 条。</p>
-      <el-alert v-if="meta.partial" class="align-partial" type="warning" :closable="false"
-        title="匹配计算超时，当前为部分结果" description="服务端已按 20 秒预算截断计算，稍后点击「刷新」可继续（其余接口不受影响）。" />
+      <el-alert v-if="meta.generating" class="align-partial" type="info" :closable="false"
+        title="后台生成中（已处理 X/Y 组），完成后自动刷新" :description="`服务端正在后台计算对齐队列（${meta.processed}/${meta.total} 组），完成后本页自动展示；计算期间全站其它接口不受影响。`" />
+      <el-alert v-else-if="meta.partial" class="align-partial" type="warning" :closable="false"
+        title="计算未完成，当前为部分结果" description="稍后会自动重试并补全，请勿连续刷新。" />
       <p class="align-meta muted">生成于 {{ fmtDateTime(meta.generatedAt) }}（{{ meta.cached ? '缓存' : '本次计算' }}）</p>
       <el-table :data="groups" v-loading="loading" stripe>
         <el-table-column prop="name" label="杉果名（组）" min-width="220" show-overflow-tooltip />

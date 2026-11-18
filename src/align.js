@@ -109,6 +109,7 @@ export async function proposeAlignGroupsBudgeted(items, steamGames, {
   const groups = groupItems(items);
   const index = candidateIndex ?? (steamGames ? buildCandidateIndex(steamGames) : null);
   const t0 = startedAt ?? Date.now();
+  const totalGroups = groups.size;
   const out = [];
   let processed = 0;
   let partial = false;
@@ -133,7 +134,7 @@ export async function proposeAlignGroupsBudgeted(items, steamGames, {
     group.skuIds = group.items.map((i) => i.skuId);
     out.push(group);
     processed += 1;
-    if (shouldYield && processed % yieldEvery === 0) await shouldYield(processed);
+    if (shouldYield && processed % yieldEvery === 0) await shouldYield(processed, totalGroups);
   }
   // 队列按组计数；无候选在前还是按分数？稳定顺序：分数降序
   out.sort((a, b) => (b.best?.score ?? -1) - (a.best?.score ?? -1));

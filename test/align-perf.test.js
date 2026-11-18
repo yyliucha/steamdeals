@@ -77,6 +77,84 @@ test('CN：分页参数解析——非法/越界回落（page≥1；1≤pageSize
   assert.deepEqual(parseAlignPage(q('page=2.9&pageSize=2.9')), { page: 2, pageSize: 2 }, '小数截断与 parseInt 同语义');
 });
 
+// ── 四、后台生成（CS 批，docs/ALIGN-DB-SLOW.md §2 #3）──────────────────
+
+test('CS：background 冷缓存触发计算但立即返回 generating，完成后缓存就绪', async () => {
+  let computes = 0;
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const runner = createAlignRunner({
+    compute: async () => {
+      computes += 1;
+      await gate;
+      return { n: computes, generatedAt: Date.now() };
+    },
+    ttlMs: 60_000,
+  });
+  const s1 = runner.background(); // 冷缓存：触发计算、不等待
+  assert.equal(s1.generating, true);
+  assert.equal(runner.getState().computing, true, '后台计算已启动');
+  assert.equal(computes, 1);
+
+  const s2 = runner.background(); // 计算中：共享，不叠加
+  assert.equal(s2.generating, true);
+  assert.equal(computes, 1, '连续触发只算 1 次（single-flight）');
+
+  release();
+  await runner.run(); // 等待完成后缓存就绪
+  assert.equal(runner.getState().cached, true);
+  const s3 = runner.background();
+  assert.equal(s3.ready, true, '缓存就绪后 background 返回 ready');
+});
+
+test('CS：compute 进度经 onProgress 上报（processed/total）', async () => {
+  let captured = null;
+  const runner = createAlignRunner({
+    compute: async ({ onProgress }) => {
+      onProgress(40, 100);
+      onProgress(100, 100);
+      return { generatedAt: Date.now() };
+    },
+    ttlMs: 60_000,
+  });
+  runner.background();
+  await runner.run();
+  // 计算完成后进度清空；期间通过 getState 观测（此处断言回调链路在测试内被调用过）
+  assert.ok(true, 'onProgress 回调已由 compute 调用（captured 验证见下）');
+  const runner2 = createAlignRunner({
+    compute: async ({ onProgress }) => {
+      onProgress(40, 100);
+      await new Promise((r) => setImmediate(r));
+      onProgress(100, 100);
+      captured = runner2.getState();
+      return { generatedAt: Date.now() };
+    },
+    ttlMs: 60_000,
+  });
+  runner2.background();
+  await runner2.run();
+  assert.equal(captured.computing, true, '计算期间 getState 可见 computing');
+  assert.deepEqual(
+    { processed: captured.processed, total: captured.total },
+    { processed: 100, total: 100 },
+    '进度经 onProgress 上报',
+  );
+});
+
+test('CS：refresh 后台重算（缓存过期强制重算，ready 前 generating）', async () => {
+  let computes = 0;
+  const runner = createAlignRunner({
+    compute: async () => ({ n: ++computes, generatedAt: Date.now() }),
+    ttlMs: 60_000,
+  });
+  await runner.run();
+  assert.equal(computes, 1);
+  const s = runner.background({ refresh: true });
+  assert.equal(s.generating, true, 'refresh 强制重算');
+  await runner.run();
+  assert.equal(computes, 2);
+});
+
 // ── 二、候选预筛不改口径（match.js + CE 回归数据）─────────────────────
 
 const REGRESSION_CASES = [

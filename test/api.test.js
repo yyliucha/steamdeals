@@ -501,6 +501,47 @@ test('个人标记：已拥有按用户推导（手动 ∪ 绑定账号库），
   }
 });
 
+test('CV：owned=include 时已拥有游戏列表/搜索可见并带账号名；exclude 保持旧行为', async () => {
+  const { store, srv, base } = await setup();
+  const q = (sql, p) => store.query(sql, p);
+  const search = (body, cookie) =>
+    fetch(`${base}/api/games/search`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
+      body: JSON.stringify(body),
+    });
+  const baseParams = { page: 1, pageSize: 20, region: 'cn', type: 'all', sort: 'discount', q: '', interest: 'all', owned: 'include' };
+  try {
+    const alice = await login(base, 'alice', 'alice123456');
+    const aliceId = (await q('select id from users where username = $1', ['alice'])).rows[0].id;
+    // 绑定 Steam 账号 + 库内 413150（星露谷物语）→ 推导「已拥有」
+    await q('insert into steam_accounts (steam_id, persona_name, user_id) values ($1,$2,$3)', ['76561198000000099', 'Alice 主号', aliceId]);
+    await q('insert into steam_games (steam_id, appid) values ($1,$2)', ['76561198000000099', 413150]);
+
+    // include：列表可见 + owned/owned_by 账号名（CV 决策 1/3）
+    const inc = await (await search({ ...baseParams, owned: 'include' }, alice.cookie)).json();
+    const ownedRow = inc.games.find((g) => g.steam_appid === 413150);
+    assert.ok(ownedRow, 'owned=include 时已拥有游戏仍在列表');
+    assert.equal(ownedRow.owned, true, 'owned 推导为 true');
+    assert.ok(Array.isArray(ownedRow.owned_by) && ownedRow.owned_by.some((a) => a.name === 'Alice 主号'), '列表 owned_by 带账号名');
+
+    // 搜索同口径：关键词也能搜到已拥有（CV 现象回归）
+    const kw = await (await search({ ...baseParams, owned: 'include', q: '星露谷' }, alice.cookie)).json();
+    assert.ok(kw.games.some((g) => g.steam_appid === 413150), '搜索 include 时已拥有游戏可被搜到');
+
+    // exclude 保持旧行为（CV 决策 5：服务端默认口径不变，仅前端显式 include）
+    const exc = await (await search({ ...baseParams, owned: 'exclude' }, alice.cookie)).json();
+    assert.ok(!exc.games.some((g) => g.steam_appid === 413150), 'owned=exclude 仍排除已拥有');
+
+    // 详情接口返回 owned_by 账号名（CV 决策 6，App 消费）
+    const detail = await (await fetch(`${base}/api/games/413150`, { headers: { cookie: alice.cookie } })).json();
+    assert.ok(detail.game.owned_by.some((a) => a.name === 'Alice 主号'), '详情返回 owned_by 账号名');
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});
+
 test('「未标记」过滤：marks=unmarked 排除已标 感兴趣/不感兴趣，清除后恢复', async () => {
   const { store, srv, base } = await setup();
   const search = (body, cookie) =>
@@ -1178,7 +1219,17 @@ test('CD 对齐审核：去重组队列、确认写映射、忽略与决定继�
     ], null, 2));
     process.env.ALIGN_SKU_FILE = tmpFile;
     const cookie = (await login(base, 'admin', 'admin123456')).cookie;
-    const getQueue = async () => (await (await fetch(`${base}/api/admin/align`, { headers: { cookie } })).json()).groups;
+    // CS 批：冷缓存返回 202 {generating}，轮询直到 200 返回 groups
+    const getQueue = async () => {
+      for (let i = 0; i < 40; i += 1) {
+        const res = await fetch(`${base}/api/admin/align`, { headers: { cookie } });
+        const body = await res.json();
+        if (res.status === 200) return body.groups;
+        assert.equal(res.status, 202, `冷缓存应返回 202 generating，实际 ${res.status}`);
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      throw new Error('对齐审核后台生成超时（40 轮未就绪）');
+    };
 
     const first = await getQueue();
     const kernel = first.find((g) => g.name === '内核之心');
