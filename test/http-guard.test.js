@@ -71,12 +71,13 @@ test('B1 闸门：任务抛错释放槽位，后续任务不被卡死', async ()
   assert.equal(await gate.run(async () => 'fine'), 'fine', '错误任务之后槽位已释放');
 });
 
-test('B1 配置表：重型接口登记且并发 ≤2（admin 列表/对齐 ≤1，公开搜索 ≤2）', () => {
+test('B1 配置表：重型接口登记且并发 ≤2（admin 列表/对齐 ≤1，公开搜索 GET/POST 共用 ≤2）', () => {
   // 这条断言守的是"新增长查询接口必须显式登记并发上限"——改配置即改系统保护边界
   assert.deepEqual(HEAVY_GATE_CONFIG['GET /api/admin/games'], 1, '/api/admin/games 并发 ≤1');
   assert.deepEqual(HEAVY_GATE_CONFIG['GET /api/admin/align'], 1, '/api/admin/align 并发 ≤1');
-  assert.deepEqual(HEAVY_GATE_CONFIG['GET /api/games'], 2, '/api/games 并发 ≤2');
-  assert.deepEqual(HEAVY_GATE_CONFIG['POST /api/games/search'], 2, '/api/games/search 与 GET 同限');
+  assert.deepEqual(HEAVY_GATE_CONFIG['games-search'], 2, '/api/games 与 /api/games/search 共用一把闸 ≤2');
+  assert.ok(!('GET /api/games' in HEAVY_GATE_CONFIG) && !('POST /api/games/search' in HEAVY_GATE_CONFIG),
+    '公开搜索只在 games-search 登记一次（两路由共用，防止合计并发翻倍）');
   for (const [key, max] of Object.entries(HEAVY_GATE_CONFIG)) {
     assert.ok(max >= 1 && max <= 2, `${key} 并发上限在 1–2`);
   }

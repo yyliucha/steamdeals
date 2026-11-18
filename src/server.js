@@ -42,6 +42,8 @@ import { maskEmail } from './auth-routes.js';
 import { normalizeEmail } from './email-auth.js';
 import { auditJobs as auditSchedulerJobs, resetCircuit } from './scheduler.js';
 import { ipSessionKey, uaSessionKey } from './session-fingerprint.js';
+import { formatDateTime, yuanAmount } from './format.js';
+import * as appRateLimit from './app-ratelimit.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -141,14 +143,16 @@ export function isTimeoutExemptPath(path) {
 
 /**
  * B1 批（docs/DESIGN-AUDIT.md B1）：重型接口并发闸配置——
- * key = `${method} ${path}`（/api/games 的 POST 搜索与 GET 共用一把闸）；值 = 最大并发数。
- * 这些接口要么全表重查询、要么触发重计算，单接口并发 ≤1–2；排队超限/超时 503，日志可观测。
+ * key = 运行时闸门键（`GET /api/admin/games`、`GET /api/admin/align`、`games-search`）；
+ * 值 = 最大并发数。/api/games 的 GET 列表与 POST 搜索共用 `games-search` 一把闸（≤2），
+ * 避免两路由各自计数造成合计并发翻倍。这些接口要么全表重查询、要么触发重计算，
+ * 单接口并发 ≤1–2；排队超限/超时 503，日志可观测。
  */
 export const HEAVY_GATE_CONFIG = {
   'GET /api/admin/games': 1,
   'GET /api/admin/align': 1,
-  'GET /api/games': 2,
-  'POST /api/games/search': 2,
+  // GET /api/games 与 POST /api/games/search 共用这把闸（路由处 runGated('games-search', …)）
+  'games-search': 2,
 };
 
 /**
@@ -946,6 +950,36 @@ export function createApiServer({
           }
         }
         return json(res, 200, { banned, type, until }, { 'cache-control': 'no-store' });
+      }
+
+      // CO-3/C2（docs/DESIGN-AUDIT.md C2）：/api/app/* 设备维度限流（X-Device-Id 为键）。
+      // 封禁/黑名单豁免保持不变；这里补按设备独立窗口——同设备超限 429（带 retryAfterSec /
+      // Retry-After），不封禁、不影响其它设备；审计事件 app.device_rate_limited 落日志。
+      // /api/app/status 在上面的精确路由里已 return（仍只受全局基础限流，契约 §3 不变）；
+      // 无有效 X-Device-Id 的请求不进入本限流（仍受全局 IP 基础限流约束）。
+      if (appNamespace && !whitelisted && !adminBypass) {
+        const appDeviceId = devices.normalizeDeviceId(String(req.headers['x-device-id'] ?? ''));
+        if (appDeviceId) {
+          const deviceVerdict = appRateLimit.hitDevice(appDeviceId);
+          if (deviceVerdict.limited) {
+            logger?.warn('app.device_rate_limited', {
+              deviceId: appDeviceId,
+              ip,
+              path,
+              method: req.method ?? 'GET',
+              count: deviceVerdict.count,
+              max: deviceVerdict.max,
+              windowSec: deviceVerdict.windowSec,
+              retryAfterSec: deviceVerdict.retryAfterSec,
+            });
+            return json(
+              res,
+              429,
+              { error: '请求过于频繁，请稍后再试', retryAfterSec: deviceVerdict.retryAfterSec },
+              { 'cache-control': 'no-store', 'retry-after': String(deviceVerdict.retryAfterSec) },
+            );
+          }
+        }
       }
 
       // CA-1：/api/app/* 豁免设备封禁与 IP 黑名单（App 端自行按 /api/app/status 处理封禁提示）
@@ -1759,7 +1793,7 @@ export function createApiServer({
       if (path.startsWith('/api/admin/settings')) {
         if (!requireAdmin()) return;
         // BR 批：设置保存后立即热加载限流阈值（hydrate 写回 env → configureFromEnv 重配）
-        const handled = await handleSettingsRoutes({ path, req, res, q, store, logger, json, readBody, user, afterHydrate: () => ratelimit.configureFromEnv(process.env) });
+        const handled = await handleSettingsRoutes({ path, req, res, q, store, logger, json, readBody, user, afterHydrate: () => { ratelimit.configureFromEnv(process.env); appRateLimit.configureFromEnv(process.env); } });
         if (handled) return;
       }
 
@@ -3027,7 +3061,7 @@ export function createApiServer({
           (p) => new Date(p.day).getTime() >= cutoff,
         );
         const lines = ['date,price_cents,price,currency'];
-        for (const p of series) lines.push([p.day, p.price_cents, (p.price_cents / 100).toFixed(2), p.currency].join(','));
+        for (const p of series) lines.push([p.day, p.price_cents, yuanAmount(p.price_cents), p.currency].join(','));
         const body = '\uFEFF' + lines.join('\r\n');
         res.writeHead(200, {
           'content-type': 'text/csv; charset=utf-8',
@@ -3104,7 +3138,7 @@ export function createApiServer({
               vars: {
                 username: target.username,
                 action: '绑定邮箱',
-                time: `${String(expiryAt.getFullYear()).padStart(4, '0')}-${String(expiryAt.getMonth() + 1).padStart(2, '0')}-${String(expiryAt.getDate()).padStart(2, '0')} ${String(expiryAt.getHours()).padStart(2, '0')}:${String(expiryAt.getMinutes()).padStart(2, '0')}`,
+                time: formatDateTime(expiryAt),
                 code,
                 siteUrl: baseUrl(req),
                 contactEmail: appealEmail(),
@@ -3612,6 +3646,7 @@ export function createApiServer({
             logger?.warn('settings.hydrate_failed', { message: String(err.message).slice(0, 160) });
           });
           ratelimit.configureFromEnv(process.env); // BR 批：设置保存后立即热加载限流阈值
+          appRateLimit.configureFromEnv(process.env); // CO-3/C2：App 设备限流阈值同步热加载
         }
         return json(res, 200, { ok: true });
       }
@@ -4125,8 +4160,8 @@ export function createApiServer({
             r.name,
             r.platform,
             r.platform_name,
-            (r.was / 100).toFixed(2),
-            (r.now_price / 100).toFixed(2),
+            yuanAmount(r.was),
+            yuanAmount(r.now_price),
             pct,
             String(r.captured_at).slice(0, 19).replace('T', ' '),
           ].map(cell).join(','));
@@ -5279,6 +5314,8 @@ export function startApiServer({
         // 频率限制与白名单：内存计数 + 启动时从库里回填白名单/未到期封禁
         // BR 批：阈值来自 env（settings 水合后为 RATE_LIMIT_PAGE_MAX/API_MAX，DB > env > 默认）
         ratelimit.configureFromEnv(process.env);
+        // CO-3/C2：App 设备维度限流阈值同样来自 env（APP_DEVICE_RATE_*，settings 热加载）
+        appRateLimit.configureFromEnv(process.env);
         // CF 批：auto-ban 硬规则阈值同样来自 env（SECURITY_AUTOBAN_*，settings 热加载）
         autoBan.configureFromEnv(process.env);
         const loaded = await ratelimit.loadState(query);
