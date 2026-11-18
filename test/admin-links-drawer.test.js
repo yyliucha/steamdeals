@@ -15,12 +15,18 @@ test('nameCopyText：中英文两行 / 相同单行 / 缺失回退', () => {
   assert.equal(nameCopyText({ name: '', name_en: 'Only English' }), 'Only English');
 });
 
-test('AO 前端接线：点名字开抽屉、点图标复制、中英文复制、Check 反馈', () => {
+test('AO 前端接线：点名字弹详情（CW 批）、链接列开抽屉、点图标复制、中英文复制、Check 反馈', () => {
   const vue = read('../frontend/src/pages/AdminModules.vue');
   assert.match(vue, /import GameLinksDrawer/);
+  assert.match(vue, /import GameDetailDialog/);
   assert.match(vue, /import \{ nameCopyText \}/);
   assert.match(vue, /import \{ CopyDocument, Check, ArrowDown \}/);
-  assert.match(vue, /class="game-name" :title="row.name" @click="openGameLinks\(row\)"/);
+  // CW 批（docs/ADMIN-GAME-POPUP.md §3）：点游戏名改弹详情弹窗；链接抽屉入口保留在「链接」列（桌面与移动端）
+  assert.match(vue, /class="game-name" :title="row.name" @click="openGameDetail\(row\)"/);
+  assert.match(vue, /function openGameDetail\(row\)\{gameDetail\.visible=true;gameDetail\.appid=row\.steam_appid/);
+  assert.match(vue, /<GameDetailDialog v-model="gameDetail.visible"/);
+  assert.match(vue, /@click="openGameLinks\(row\)">\{\{ row.link_count \}\} 个/);
+  assert.match(vue, /@click="openGameLinks\(row\)">链接 \{\{ row.link_count \}\}/);
   assert.match(vue, /@click.stop="copyGameName\(row\)"/);
   assert.match(vue, /copiedGameId/);
   assert.match(vue, /<GameLinksDrawer v-model:visible="linksDrawer.visible"/);

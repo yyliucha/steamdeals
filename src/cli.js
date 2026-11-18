@@ -251,15 +251,33 @@ async function cmdAddSku() {
   const appid = flag('appid', null);
   const file = 'data/skus.json';
   const list = readJson(file, []);
-  let added = 0;
+  const newIds = [];
   for (const skuId of ids) {
     if (list.some((s) => String(s.skuId) === String(skuId))) continue;
-    list.push({ skuId: Number(skuId), appid: appid ? Number(appid) : null });
-    added += 1;
+    // A3 批（docs/DESIGN-AUDIT.md A3）：skus.json 只存 SKU 清单（appid 不再落文件），映射只写库
+    list.push({ skuId: Number(skuId), appid: null });
+    newIds.push(skuId);
   }
   writeFileSync(file, `${JSON.stringify(list, null, 2)}\n`, 'utf8');
-  logger.info('skus.updated', { added, total: list.length });
-  console.log(`SKU 列表新增 ${added} 条（共 ${list.length} 条）`);
+  if (appid != null && newIds.length) {
+    await withStore(async (store) => {
+      const q = (sql, p) => store.query(sql, p);
+      const target = (await q('select id from games where steam_appid = $1', [Number(appid)])).rows[0];
+      if (!target) throw new Error(`库里没有 appid ${appid}，先 add 或 seed`);
+      for (const skuId of newIds) {
+        await db.upsertSourceMap(q, {
+          platformCode: 'sonkwo',
+          productId: String(skuId),
+          gameId: Number(target.id),
+          method: 'manual',
+          confidence: 1,
+          decision: 'confirmed',
+        });
+      }
+    });
+  }
+  logger.info('skus.updated', { added: newIds.length, total: list.length, appid: appid ?? null });
+  console.log(`SKU 列表新增 ${newIds.length} 条（共 ${list.length} 条）${appid != null && newIds.length ? `，映射已写 game_source_map（appid ${appid}）` : ''}`);
 }
 
 async function cmdSyncSteam() {
@@ -642,6 +660,12 @@ async function cmdSyncSonkwo() {
     ? (rawLimit === 0 ? skus.length : rawLimit)
     : Number(flag('limit', skus.length));
   const targets = skus.slice(0, limit);
+  // A3 批（docs/DESIGN-AUDIT.md A3）：库映射（game_source_map confirmed）为唯一真相，
+  // skus.json 自带 appid 只读回落（旧数据兼容，DH 批计算时自动补写进库）。
+  const align = await import('./align.js');
+  const confirmedAppids = await withStore((store) =>
+    align.loadConfirmedAppids({ q: (sql, p) => store.query(sql, p), productIds: targets.map((t) => String(t.skuId)) }),
+  );
   logger.info('sync.start', { platform: sonkwo.code, skus: targets.length });
   const offers = [];
   const marks = [];
@@ -649,20 +673,21 @@ async function cmdSyncSonkwo() {
   let noMatch = 0;
   let failed = 0;
   for (const item of targets) {
+    const appid = align.resolveSkuAppid(confirmedAppids, item);
     try {
       const offer = await fetchSku(item.skuId, { logger });
       if (offer) {
-        if (item.appid) offer.steamAppid = Number(item.appid);
+        if (appid) offer.steamAppid = appid;
         offers.push(offer);
         matched += 1;
-        if (item.appid) marks.push({ appid: Number(item.appid), status: 'matched', externalId: String(item.skuId), ok: true });
+        if (appid) marks.push({ appid, status: 'matched', externalId: String(item.skuId), ok: true });
       } else {
         noMatch += 1;
-        if (item.appid) marks.push({ appid: Number(item.appid), status: 'nomatch', ok: false });
+        if (appid) marks.push({ appid, status: 'nomatch', ok: false });
       }
     } catch (err) {
       failed += 1;
-      if (item.appid) marks.push({ appid: Number(item.appid), status: 'failed', ok: false, error: String(err.message).slice(0, 200) });
+      if (appid) marks.push({ appid, status: 'failed', ok: false, error: String(err.message).slice(0, 200) });
       logger.error('sync.sku_failed', { skuId: item.skuId, err: serializeError(err) });
     }
     await sleep(Number(flag('rate', 1200)));
@@ -694,8 +719,8 @@ async function cmdSyncSonkwo() {
 }
 
 /**
- * CD 批：sonkwo 收尾的增量匹配——决定继承 + 去重组提案 + 自动应用「自动」级（写 skus.json 与
- * game_source_map）。返回 { proposals, auto, mapped, merged } 供日志与测试。
+ * CD 批：sonkwo 收尾的增量匹配——决定继承 + 去重组提案 + 自动应用「自动」级（A3 起只写
+ * game_source_map，skus.json 只读）。返回 { proposals, auto, mapped, merged } 供日志与测试。
  */
 async function runSonkwoMatchStep({ limit = 100, autoScore = 0.94 } = {}) {
   const skuFile = 'data/skus.json';
@@ -713,14 +738,8 @@ async function runSonkwoMatchStep({ limit = 100, autoScore = 0.94 } = {}) {
   await withStore((store) =>
     align.writeBackfilledMaps({ q: (sql, p) => store.query(sql, p), backfill: inherit.backfill, steamGames: games, logger }),
   );
-  if (inherit.inheritApplied) {
-    for (const item of items) {
-      const entry = entries.find((e) => Number(e.skuId) === item.skuId);
-      if (entry && item.appid) entry.appid = item.appid;
-    }
-    writeFileSync(skuFile, `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
-    logger.info('match.inherited', { applied: inherit.inheritApplied });
-  }
+  // A3 批：confirmed 继承只用于跳过队列，不再写回 skus.json（库为唯一真相）
+  if (inherit.inheritApplied) logger.info('match.inherited', { applied: inherit.inheritApplied });
   const groups = align.proposeAlignGroups(inherit.items.slice(0, limit), games, { autoScore });
   const auto = groups.filter((g) => g.auto);
   let mapped = 0;
@@ -1262,7 +1281,7 @@ async function cmdMatch() {
   );
   const orphanRows = await withStore((store) => align.loadOrphanSonkwoGames((sql, p) => store.query(sql, p)));
 
-  // 人工确认模式：match --confirm <skuId> <appid>（写 skus.json + game_source_map）
+  // 人工确认模式：match --confirm <skuId> <appid>（A3 起只写 game_source_map，不再写 skus.json）
   const confirmIdx = args.indexOf('--confirm');
   if (confirmIdx > -1) {
     const skuId = Number(args[confirmIdx + 1]);
@@ -1278,9 +1297,7 @@ async function cmdMatch() {
       const target = (await q('select id from games where steam_appid = $1', [appid])).rows[0];
       if (target) await db.upsertSourceMap(q, { platformCode: 'sonkwo', productId: String(skuId), gameId: Number(target.id), method: 'manual', confidence: 1, decision: 'confirmed' });
     });
-    entry.appid = appid;
-    writeFileSync(skuFile, `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
-    console.log(`已确认：${entry.name ?? skuId} → ${games.find((g) => g.steam_appid === appid)?.name ?? appid}`);
+    console.log(`已确认：${entry.name ?? skuId} → ${games.find((g) => g.steam_appid === appid)?.name ?? appid}（映射已写 game_source_map）`);
     if (result.merge?.merged) {
       console.log(`合并了孤立游戏行：搬 ${result.merge.moved} 条报价、丢弃 ${result.merge.dropped} 条重复`);
     }
@@ -1293,7 +1310,7 @@ async function cmdMatch() {
   const yes = flag('yes', false) === true;
   const limit = Number(flag('limit', 200));
 
-  // CD 批：决定继承——confirmed 回填 skus.json、ignored 自动跳过
+  // CD 批：决定继承——confirmed 回填、ignored 自动跳过（A3 起不再写回 skus.json）
   const items = align.loadSonkwoItems(entries, orphanRows);
   const maps = await withStore((store) => db.sourceMapsByProducts((sql, p) => store.query(sql, p), 'sonkwo', items.map((i) => String(i.skuId))));
   const inherit = align.applyMapInheritance(items, maps);
@@ -1393,10 +1410,9 @@ async function cmdMatch() {
     merged += res.merged;
     if (res.errors.length) logger.warn('match.merge_errors', { group: p.group.key, errors: res.errors });
   }
-  writeFileSync(skuFile, `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
   logger.info('match.applied', { mapped, merged });
   logger.info('match.summary', { unresolved: unresolved.length, groups: groups.length, auto: auto.length, mapped, merged });
-  console.log(`\n已写入 ${mapped} 条映射到 ${skuFile} 与 game_source_map（自动阈值 ${autoScore}）。其余请用 --confirm 或后台对齐审核。`);
+  console.log(`\n已写入 ${mapped} 条映射到 game_source_map（A3 起 skus.json 只读，不再写回；自动阈值 ${autoScore}）。其余请用 --confirm 或后台对齐审核。`);
 }
 
 /** 多区服对比：同一款游戏在各区服的报价并排展示（不同币种不折算）。 */

@@ -27,11 +27,12 @@ export function loadSonkwoItems(entries, orphanRows = []) {
 }
 
 /**
- * 决定继承：confirmed → 回填 skus.json 并返回 appid；ignored → 跳过。
+ * 决定继承：confirmed → 继承 appid；ignored → 跳过。
  * DH 批（docs/ALIGN-INTEGRITY.md §2 A1/B1）扩展：
  * - 库映射优先：ignored 自动跳过；confirmed 回填；pending（恢复为待处理）重新入队；
  * - 库无映射但 item.appid 已存在（skus.json 自带）→ 视为已解决、不入队，并列入 backfill
  *   （调用方负责补写 game_source_map + 日志 align.map_backfilled）。
+ * A3 批：confirmed 继承只改内存 item.appid 用于跳过队列，**不再写回 skus.json**（库为唯一真相）。
  * 返回 { items, inheritApplied, ignoredGroups, backfill }
  * （ignoredGroups = 被忽略的去重组数，DE 批「已忽略」chip 计数；backfill = [{ skuId, appid }]）。
  */
@@ -48,7 +49,7 @@ export function applyMapInheritance(items, maps) {
       continue; // 自动忽略，不再排队
     }
     if (m?.decision === 'confirmed' && m.game_id != null) {
-      item.appid = m.game_id; // 继承映射（调用方负责把 appid 写回 skus.json）
+      item.appid = m.game_id; // A3 批：仅内存继承（用于不入队）；不再写回 skus.json
       inheritApplied += 1;
       continue;
     }
@@ -117,6 +118,36 @@ export function skuIdsForGroupKey(entries, key) {
   return (entries ?? [])
     .filter((e) => e?.name && alignGroupKey(SONKWO, e.name) === key)
     .map((e) => String(e.skuId));
+}
+
+// ── A3 批（docs/DESIGN-AUDIT.md A3）：库为唯一真相、skus.json 只读兼容 ─────────
+
+/**
+ * 读路径：查库映射（仅 decision=confirmed 且目标 game 有 steam_appid），
+ * 返回 Map(productId → steam_appid)。杉果同步/回填统一走这里，不再把 skus.json 的 appid 当真相。
+ */
+export async function loadConfirmedAppids({ q, productIds }) {
+  const ids = (productIds ?? []).map(String);
+  if (!ids.length) return new Map();
+  const rows = (await q(
+    `select m.product_id, g.steam_appid
+       from game_source_map m
+       join games g on g.id = m.game_id
+      where m.platform_code = $1 and m.decision = 'confirmed'
+        and m.product_id = any($2::text[]) and g.steam_appid is not null`,
+    [SONKWO, ids],
+  )).rows;
+  return new Map(rows.map((r) => [String(r.product_id), Number(r.steam_appid)]));
+}
+
+/**
+ * 解析单个 SKU 的目标 appid：库映射（唯一真相）优先，skus.json 自带 appid 只读回落（旧数据兼容）。
+ * 纯函数，可在 sync/marks 两条路径共用，保证口径一致。
+ */
+export function resolveSkuAppid(confirmedMap, item) {
+  const fromMap = confirmedMap.get(String(item?.skuId));
+  if (fromMap != null) return Number(fromMap);
+  return item?.appid != null ? Number(item.appid) : null;
 }
 
 /**
@@ -297,7 +328,7 @@ export async function loadOrphanSonkwoGames(q) {
   return r.rows;
 }
 
-/** 确认一组：skus.json 写 appid + 映射落库（confirmed）+ 合并孤立行。返回操作结果。 */
+/** 确认一组：映射落库（confirmed，A3 起唯一写入路径）+ 合并孤立行。返回操作结果。 */
 export async function confirmGroup({ store, q, group, appid, steamGames, reviewedBy = null, method = 'manual', confidence = 1, mergeGame }) {
   const target = steamGames.find((g) => g.steam_appid === Number(appid));
   if (!target) throw new Error(`库里没有 appid ${appid}`);

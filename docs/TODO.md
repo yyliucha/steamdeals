@@ -25,7 +25,7 @@
 
 | 批次 | 子项 | 内容（对应审计编号） | 状态 |
 |---|---|---|---|
-| **CO-1** | A3 | `skus.json` 与 `game_source_map` 双真相源 → 以库为唯一真相、skus.json 只读兼容 | 待开发 |
+| **CO-1** | A3 | `skus.json` 与 `game_source_map` 双真相源 → 以库为唯一真相、skus.json 只读兼容 | 开发中 |
 | **CO-2** | B3 | 任务预算改**实测耗时**（AC-4 估算）；任务卡显示实际与估算差 | 待开发 |
 | **CO-4** | B4 | 巨石拆分（`server.js`/`pg.js`/`cli.js` 渐进拆 routes/repository，先一个域试点） | 待开发 |
 | **CO-4** | D4 | 移动/桌面双结构 `v-if` 渐进合并（CSS 优先） | 开发中 |

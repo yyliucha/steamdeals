@@ -62,8 +62,11 @@ const login = async (base, username, password) => {
 };
 
 test('匿名可看列表与详情，但不带用户信息', async () => {
-  const { store, srv, base } = await setup();
+  const { store, srv, base, q } = await setup();
   try {
+    // CW 批（docs/ADMIN-GAME-POPUP.md §3）：GAME_SELECT 补 header_image / release_date / heat_reviews，
+    // 后台详情弹窗靠 /api/games/:appid 的这三个字段渲染封面 / 发售日期 / Steam 评测数（不实时请求 Steam）
+    await q(`update games set header_image = 'https://cdn.example/413150/header.jpg', release_date = '2016-02-26', heat_reviews = 412345 where steam_appid = 413150`);
     const list = await fetch(`${base}/api/games`);
     assert.equal(list.status, 200);
     const body = await list.json();
@@ -81,6 +84,10 @@ test('匿名可看列表与详情，但不带用户信息', async () => {
     const d = await detail.json();
     assert.ok(d.offers.length >= 1, "详情应带报价");
     assert.ok(d.series.length >= 1, "详情应带价格序列");
+    assert.equal(d.game.header_image, 'https://cdn.example/413150/header.jpg', '详情应返回封面（弹窗封面用）');
+    assert.equal(d.game.release_date, '2016-02-26', '详情应返回 YYYY-MM-DD 发售日期字符串（弹窗元信息用）');
+    assert.equal(d.game.heat_reviews, 412345, '详情应返回 Steam 评测数（弹窗评测数用）');
+    assert.ok(d.dlc && typeof d.dlc.total === 'number', '详情应带 DLC 摘要（弹窗 DLC 数量用）');
 
     const me = await (await fetch(`${base}/api/me`)).json();
     assert.equal(me.user, null, '匿名时没有用户');
@@ -1247,10 +1254,11 @@ test('CD 对齐审核：去重组队列、确认写映射、忽略与决定继�
       body: JSON.stringify({ key: kernel.key, appid: 413150, method: 'manual' }),
     });
     assert.equal(confirm.status, 200, JSON.stringify(await confirm.json()));
+    // A3 批（docs/DESIGN-AUDIT.md A3）：确认只写库，skus.json 不再被写（appid 保持 null）
     const written = JSON.parse(readFileSync(tmpFile, 'utf8'));
-    assert.equal(written.find((e) => e.skuId === 5001).appid, 413150, 'skus.json 兼容回写');
+    assert.equal(written.find((e) => e.skuId === 5001).appid, null, 'skus.json 不再被写回（只读兼容）');
     const mapRow = (await q("select decision from game_source_map where platform_code = 'sonkwo' and product_id = '5001'")).rows[0];
-    assert.equal(mapRow.decision, 'confirmed', '映射落库 confirmed');
+    assert.equal(mapRow.decision, 'confirmed', '映射落库 confirmed（库为唯一真相）');
 
     const second = await getQueue();
     assert.ok(!second.some((g) => g.key === kernel.key), '已确认组不再排队（决定继承）');
@@ -1368,6 +1376,33 @@ test('DH 对齐数据完整性：skus.json 带 appid 自动补写不入队；已
     assert.ok(!ignoredAfter.groups.some((g) => g.key === fool.key), '恢复后不再出现在已忽略视图');
   } finally {
     delete process.env.ALIGN_SKU_FILE;
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('A3 读路径：库映射（confirmed）唯一真相、pending/ignored 不参与；skus.json 只读回落', async () => {
+  const { store, q, srv, base } = await setup();
+  try {
+    const align = await import('../src/align.js');
+    await q("insert into games (steam_appid, name) values (413150, '断箭') on conflict do nothing");
+    const gid = (await q("select id from games where steam_appid = 413150")).rows[0].id;
+    await q(
+      `insert into game_source_map (platform_code, product_id, game_id, decision)
+       values ('sonkwo','7001',$1,'confirmed'),('sonkwo','7002',$1,'pending'),('sonkwo','7003',null,'ignored')
+       on conflict (platform_code, product_id) do update set game_id = excluded.game_id, decision = excluded.decision`,
+      [gid],
+    );
+    const map = await align.loadConfirmedAppids({ q, productIds: ['7001', '7002', '7003', '7004'] });
+    assert.equal(map.size, 1, '只有 confirmed 进解析表（pending/ignored 不参与）');
+    assert.equal(map.get('7001'), 413150, 'confirmed 映射解析出 steam_appid');
+    // resolveSkuAppid 口径：库优先、文件回落、都无 null（sync marks 与报价共用）
+    assert.equal(align.resolveSkuAppid(map, { skuId: 7001, appid: 999 }), 413150, '库映射优先于 skus.json appid');
+    assert.equal(align.resolveSkuAppid(map, { skuId: 7004, appid: 888 }), 888, '库无映射回落 skus.json appid（旧数据兼容）');
+    assert.equal(align.resolveSkuAppid(map, { skuId: 7004, appid: null }), null, '两边都没有 → null');
+    // 空清单安全（sync 无 SKU 时不炸）
+    assert.equal((await align.loadConfirmedAppids({ q, productIds: [] })).size, 0);
+  } finally {
     await srv.close();
     await store.close();
   }

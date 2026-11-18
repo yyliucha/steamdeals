@@ -649,7 +649,7 @@ onUnmounted(() => clearTimeout(pollTimer));
         <div class="align-dlg-line"><b>组</b><span>{{ confirmDlg.row.name }}（{{ confirmDlg.row.skuCount }} 个 SKU）</span></div>
         <div class="align-dlg-line"><b>候选</b><span>{{ confirmDlg.data.target.name }}（appid {{ confirmDlg.data.target.steamAppid }}）<a class="lnk" :href="`https://store.steampowered.com/app/${confirmDlg.data.target.steamAppid}/`" target="_blank" rel="noopener noreferrer">Steam ↗</a></span></div>
         <div class="align-dlg-line"><b>将合并</b><span>{{ confirmDlg.data.orphans.length ? `该组包含 ${confirmDlg.data.orphans.length} 条孤儿游戏行（${confirmDlg.data.orphans.map((o) => o.name).join('、')}），确认后将合并到目标游戏` : '无孤立游戏行需要合并' }}</span></div>
-        <div class="align-dlg-line"><b>落地</b><span>写 skus.json + game_source_map（confirmed），同组新 SKU 自动继承</span></div>
+        <div class="align-dlg-line"><b>落地</b><span>写 game_source_map（confirmed），同组新 SKU 自动继承</span></div>
         <el-alert type="warning" :closable="false" title="确认后不可撤销；本次操作记入审计日志。" />
       </template>
       <template #footer>
@@ -670,7 +670,7 @@ onUnmounted(() => clearTimeout(pollTimer));
         </div>
         <div class="align-dlg-line"><b>将确认</b><span>{{ batchConfirmDlg.rows.length }} 组（共 {{ batchSkuTotal }} 个 SKU）</span></div>
         <div class="align-dlg-line"><b>将合并</b><span>{{ batchOrphans.count ? `将合并 ${batchOrphans.count} 条孤儿游戏行（${batchOrphans.names.join('、')}），确认后并入目标游戏` : '无孤立游戏行需要合并' }}</span></div>
-        <div class="align-dlg-line"><b>落地</b><span>写 skus.json + game_source_map（confirmed），同组新 SKU 自动继承</span></div>
+        <div class="align-dlg-line"><b>落地</b><span>写 game_source_map（confirmed），同组新 SKU 自动继承</span></div>
         <el-alert type="warning" :closable="false" title="确认后不可撤销；本次操作记入审计日志。" />
       </template>
       <template #footer>

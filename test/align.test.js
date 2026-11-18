@@ -87,6 +87,15 @@ test('DH 继承参考 skus.json appid：库无映射时不入队并列入补写�
   assert.equal(conflict.inheritApplied, 1, '已有 confirmed 映射时不再补写');
 });
 
+test('A3 读路径解析：库映射优先、skus.json 只读回落、都无则 null', () => {
+  // 库（game_source_map confirmed）为唯一真相；skus.json 自带 appid 只作旧数据回落
+  const confirmed = new Map([['7001', 413150]]);
+  assert.equal(align.resolveSkuAppid(confirmed, { skuId: 7001, appid: 999 }), 413150, '库映射优先于 skus.json appid');
+  assert.equal(align.resolveSkuAppid(confirmed, { skuId: 7002, appid: 888 }), 888, '库无映射回落 skus.json appid（旧数据兼容）');
+  assert.equal(align.resolveSkuAppid(confirmed, { skuId: 7002, appid: null }), null, '两边都没有 → null');
+  assert.equal(align.resolveSkuAppid(new Map(), { skuId: 7003 }), null, '缺字段安全返回 null');
+});
+
 test('CD ITAD 跳转反解：跟随重定向取最终 URL 反解 appid；非 Steam 返回 null', async () => {
   const fetchImpl = async (url) => {
     if (String(url).includes('itad.link/good')) return { url: 'https://store.steampowered.com/app/1091500/Cyberpunk/?cc=cn' };
@@ -184,4 +193,13 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   assert.match(alignAdmin, /确认恢复/, '恢复二次确认按钮（§5.2）');
   assert.match(alignAdmin, /确认后将合并到目标游戏/, '确认弹窗孤儿行合并提示（D1）');
   assert.match(alignAdmin, /最近处理/, '队列「最近处理」列（C1）');
+
+  // ── A3 批（docs/DESIGN-AUDIT.md A3）：库为唯一真相、skus.json 只读兼容 ──
+  assert.doesNotMatch(server, /writeFileSync\(alignSkuFile\(\)/, 'server 确认流程不再写 skus.json');
+  assert.match(server, /不再写回 skus\.json|只写 game_source_map/, 'server 确认注释锁（A3）');
+  assert.match(cli, /loadConfirmedAppids/, 'sync sonkwo 读库映射接线');
+  assert.match(cli, /resolveSkuAppid/, 'appid 解析统一走库优先+文件回落');
+  assert.doesNotMatch(cli, /entry\.appid = appid/, 'match 全路径不再写 skus.json 的 appid');
+  assert.match(cli, /映射已写 game_source_map/, '--confirm 落库文案');
+  assert.match(alignAdmin, /写 game_source_map（confirmed）/, '确认弹窗「落地」文案与 A3 一致');
 });

@@ -207,7 +207,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   CO-4/D1 设计 token 收敛（四族 CSS 变量 + 三个最重组件按 token 引用，视觉零变化）。
   QA：DG ✅ [QA-DG.md](QA-DG.md) 第 1 轮 / DI ✅ [QA-DI.md](QA-DI.md) 第 1 轮 / DJ ✅ [QA-DJ.md](QA-DJ.md) 第 1 轮 / A5 ✅ [QA-CO1-A5.md](QA-CO1-A5.md) 第 1 轮 / B5 ✅ [QA-B5.md](QA-B5.md) 第 1 轮 / D1 ✅ [QA-D1.md](QA-D1.md) 第 1 轮。
   验证（本机发版门禁，干净 worktree @ 271f65a）：主链四段全绿（test:1 212 / test:2 271 / test:3 210 / test:4 208，共 901 通过 0 失败）+ `node test/api.test.js` 31/31 + `frontend:build` ✓（2.89s）+ `scan` 干净；本批针对性测试全绿（match 47 / align 6 / serve 12 / budget 7 / scheduler 32 / game-search-read-model 12 / read-model-guard 2 / style-tokens 3）。
-  CI：待确认（tag 推送后盯 docker-hub / docker-tcr 双绿）。
+  CI：docker-hub run 44322883908 ✅（test 10m11s / smoke 45s / publish 全绿）；docker-tcr run 44322883903 ✅（test 7m42s / publish 16m38s、Verify manifests 全绿）。
   **服务器部署待执行**（升级到 `2.24.5`）；发版后 e2e 全量由独立报告会话按 steamdeals-test §2.3 执行（PDF 落 `F:\dsh\e2e-reports\`），不在本会话跑。
 - **v2.24.4 已发布**（tag `v2.24.4`，实现 9312054 / 75a7e7f / a54be76 / 89c8dfd / 318e678 + 729d0e9）：CP + CT + CO-2（B1/B2）+ CO-3（C2/C4/C5）+ DE 合并发版。
   CP 手机端识别三信号（UA 品牌特征 + `Sec-CH-UA-Mobile` + index.html `screen.width<=640` 兜底，小米桌面 UA 不再漏判）；

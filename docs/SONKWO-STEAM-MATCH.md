@@ -127,6 +127,7 @@ docker exec steamdeals node src/cli.js match --confirm <skuId> <steamAppId>
 
 - **映射落库**：新表 `game_source_map`（`platform_code + product_id` 唯一，字段：`game_id`、`match_method`、`confidence`、`decision(confirmed/ignored)`、`reviewed_by`、`reviewed_at`）；
 - `sync sonkwo` / 后续 ITAD 同步**优先读 DB 映射**，回落 `data/skus.json` 的 `appid`（兼容旧数据）；迁移时把 `skus.json` 现有 appid 灌入表中；
+- **A3 批（2026-11-18 已完成，docs/DESIGN-AUDIT.md A3）**：库为唯一真相——确认/忽略/`match --confirm`/`--apply`/`add-sku --appid` 一律只写 `game_source_map`，不再写回 `skus.json` 的 `appid`（只读回落保留）；同步读路径统一 `loadConfirmedAppids` + `resolveSkuAppid`（库优先、文件回落）；`skus.json` 仅作为 SKU 清单由 `add-sku`/`discover` 维护；
 - 合并沿用 `mergeGames`：只合并"无 appid 的孤立行"；有 appid 的冲突行记 `match.skip_merge` 交人工；快照随 `offer_id` 迁移；
 - 合并后 `sync sonkwo` 让报价挂到 Steam 游戏；`steam-status`/`backfill` 自然补齐 Steam 信息（零额外任务）；
 - 删除/忽略的组不再恢复；如需恢复走"重新生成候选"。

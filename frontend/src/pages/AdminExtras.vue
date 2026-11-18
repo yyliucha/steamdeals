@@ -17,12 +17,12 @@
     </template>
     <template v-else-if="section==='recycle'">
       <div class="module-card recycle-summary"><div><span class="muted">回收站</span><strong>{{ recycleGames.length }}</strong><small>款游戏</small></div><p>这里只做逻辑删除。恢复后会重新出现在前台目录，价格与历史数据会保留。</p><el-button :disabled="!recycleGames.length" @click="selectAllRecycle">全选当前筛选（{{ recycleGames.length }} 条）</el-button><el-button @click="loadRecycle">刷新</el-button></div>
-      <div v-if="!isMobile" class="module-card table-card"><BulkBar :count="sel.recycle.count" :actions="recycleBulkActions" :running="bulkRunning" hint="最多一次 1000 条" @run="(a)=>runBulk(a,sel.recycle,{refresh:loadRecycle})" @clear="sel.recycle.clear()"/><el-table ref="recycleTable" row-key="id" :data="pagedRecycleGames" v-loading="loading" stripe @selection-change="sel.recycle.onSelectionChange"><el-table-column type="selection" width="44"/><el-table-column prop="steam_appid" label="AppID" width="110"><template #default="{row}">{{ row.steam_appid||'—' }}</template></el-table-column><el-table-column label="游戏" min-width="220"><template #default="{row}"><strong>{{ row.name }}</strong><small>{{ row.name_en||' ' }}</small></template></el-table-column><el-table-column prop="app_type" label="类型" width="90"/><el-table-column label="平台" min-width="150"><template #default="{row}"><el-tag v-for="p in row.platform_names||[]" :key="p" size="small" class="tag-gap">{{ p }}</el-tag><span v-if="!row.platform_names?.length">—</span></template></el-table-column><el-table-column prop="offer_count" label="报价数" width="90" align="right"/><el-table-column label="删除时间" min-width="155"><template #default="{row}">{{ dateTime(row.deleted_at) }}</template></el-table-column><el-table-column label="操作" width="100" fixed="right"><template #default="{row}"><el-button link type="primary" @click="restoreGame(row)">恢复</el-button></template></el-table-column></el-table><PaginationBar v-model:page="recyclePage" v-model:page-size="recyclePageSize" :total="recycleGames.length"/></div>
+      <div v-if="!isMobile" class="module-card table-card"><BulkBar :count="sel.recycle.count" :actions="recycleBulkActions" :running="bulkRunning" hint="最多一次 1000 条" @run="(a)=>runBulk(a,sel.recycle,{refresh:loadRecycle})" @clear="sel.recycle.clear()"/><el-table ref="recycleTable" row-key="id" :data="pagedRecycleGames" v-loading="loading" stripe @selection-change="sel.recycle.onSelectionChange"><el-table-column type="selection" width="44"/><el-table-column prop="steam_appid" label="AppID" width="110"><template #default="{row}">{{ row.steam_appid||'—' }}</template></el-table-column><el-table-column label="游戏" min-width="220"><template #default="{row}"><div class="game-name-row"><button class="game-name" :title="row.name" @click="openGameDetail(row)">{{ row.name }}</button></div><small>{{ row.name_en||' ' }}</small></template></el-table-column><el-table-column prop="app_type" label="类型" width="90"/><el-table-column label="平台" min-width="150"><template #default="{row}"><el-tag v-for="p in row.platform_names||[]" :key="p" size="small" class="tag-gap">{{ p }}</el-tag><span v-if="!row.platform_names?.length">—</span></template></el-table-column><el-table-column prop="offer_count" label="报价数" width="90" align="right"/><el-table-column label="删除时间" min-width="155"><template #default="{row}">{{ dateTime(row.deleted_at) }}</template></el-table-column><el-table-column label="操作" width="100" fixed="right"><template #default="{row}"><el-button link type="primary" @click="restoreGame(row)">恢复</el-button></template></el-table-column></el-table><PaginationBar v-model:page="recyclePage" v-model:page-size="recyclePageSize" :total="recycleGames.length"/></div>
       <template v-else>
         <BulkBar :count="sel.recycle.count" :actions="recycleBulkActions" :running="bulkRunning" hint="最多一次 1000 条" @run="(a)=>runBulk(a,sel.recycle,{refresh:loadRecycle})" @clear="sel.recycle.clear()"/>
         <div class="game-card-list"><div v-for="g in pagedRecycleGames" :key="g.id" class="admin-card">
           <div class="admin-card-pick"><el-checkbox :model-value="sel.recycle.has(g)" @change="sel.recycle.toggle(g)">选择</el-checkbox></div>
-          <div class="admin-card-main"><strong>{{ g.name }}</strong><small>{{ g.name_en||' ' }} · AppID {{ g.steam_appid||'—' }} · {{ g.app_type||'—' }}</small><small class="muted">报价数 {{ g.offer_count }} · 删除于 {{ dateTime(g.deleted_at) }}</small><p class="admin-card-tags"><el-tag v-for="p in g.platform_names||[]" :key="p" size="small">{{ p }}</el-tag></p></div>
+          <div class="admin-card-main"><button class="game-name" :title="g.name" @click="openGameDetail(g)">{{ g.name }}</button><small>{{ g.name_en||' ' }} · AppID {{ g.steam_appid||'—' }} · {{ g.app_type||'—' }}</small><small class="muted">报价数 {{ g.offer_count }} · 删除于 {{ dateTime(g.deleted_at) }}</small><p class="admin-card-tags"><el-tag v-for="p in g.platform_names||[]" :key="p" size="small">{{ p }}</el-tag></p></div>
           <div class="admin-card-actions"><el-button link type="primary" @click="restoreGame(g)">恢复</el-button></div>
         </div><el-empty v-if="!pagedRecycleGames.length" description="回收站为空"/></div>
         <PaginationBar v-model:page="recyclePage" v-model:page-size="recyclePageSize" :total="recycleGames.length"/>
@@ -96,6 +96,7 @@
       <div class="module-card"><el-empty description="未知模块"/></div>
     </template>
       <BulkResultDialog v-model="bulkResult.visible" :result="bulkResult.result"/>
+      <GameDetailDialog v-model="recycleDetail.visible" :appid="recycleDetail.appid" :row="recycleDetail.row" deleted/>
   </div>
 </template>
 
@@ -107,6 +108,7 @@ import MailSettingsForm from '../components/MailSettingsForm.vue';
 import BulkBar from '../components/BulkBar.vue';
 import BulkResultDialog from '../components/BulkResultDialog.vue';
 import UserCreateDrawer from '../components/UserCreateDrawer.vue';
+import GameDetailDialog from '../components/GameDetailDialog.vue';
 // BM-3（docs/SESSION-MANAGEMENT.md §8.4.3）：401 统一软跳登录页
 import { redirectToLogin } from '../utils/session.js';
 import { useBulkSelection,promptBulkConfirm } from '../composables/useBulkSelection.js';
@@ -210,6 +212,10 @@ function isLocked(row){const t=row?.locked_until;return Boolean(t&&Date.parse(t)
 async function unlockUser(row){try{await api(`/api/admin/users/${encodeURIComponent(row.username)}/unlock`,body('POST',{}));ElMessage.success('已解锁');await loadUsers();}catch(e){notify(e);}}
 async function loadRecycle(){sel.recycle.clear();loading.value=true;try{const d=await api('/api/admin/games/deleted?limit=1000');recycleGames.value=d.games||[];}catch(e){notify(e);}finally{loading.value=false;}}
 async function restoreGame(row){await act(async()=>{const path=row.steam_appid?`/api/games/${row.steam_appid}/deleted`:`/api/games/id/${row.id}/deleted`;await api(path,body('POST',{deleted:false}));ElMessage.success('游戏已恢复');await loadRecycle();});}
+// CW 批（docs/ADMIN-GAME-POPUP.md §5.1）：回收站同样支持详情弹窗——
+// 已删除游戏的详情接口不再返回，弹窗用列表行数据渲染（组件 deleted 模式）
+const recycleDetail=reactive({visible:false,appid:null,row:null});
+function openGameDetail(row){recycleDetail.visible=true;recycleDetail.appid=row.steam_appid??null;recycleDetail.row=row;}
 async function loadSteam(){loading.value=true;try{const d=await api('/api/steam/accounts');steamAccounts.value=d.accounts||[];unownedAccounts.value=d.unowned||[];steamLimit.value=Number(d.limit)||5;if(activeAccount.value){const cur=steamAccounts.value.find((a)=>a.steam_id===activeAccount.value.steam_id);if(!cur){activeAccount.value=null;libraryGames.value=[];}}}catch(e){notify(e);}finally{loading.value=false;}}
 function bindSteam(){if(steamAccounts.value.length>=steamLimit.value)return;window.location.href='/api/auth/steam/start';}
 async function syncSteam(row,kind){if(!row.api_key_set)return ElMessage.warning('该账号未配置 API Key，请先在「API Key」里填写');await act(async()=>{const d=await api(`/api/steam/accounts/${encodeURIComponent(row.steam_id)}/${kind}/sync`,body('POST',{}));if(kind==='library')ElMessage.success(`已同步 ${d.total||0} 款游戏（差集清理 ${d.deleted||0} 条${d.typeUnknown>0?`，类型未知 ${d.typeUnknown} 款已尝试补全`:''}）`);else ElMessage.success(`已同步 ${d.total||0} 个愿望单（新增提醒 ${d.watches||0}，目录未命中 ${d.skipped||0}）`);await loadSteam();});}

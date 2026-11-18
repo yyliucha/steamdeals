@@ -4609,10 +4609,11 @@ export function createApiServer({
         const keys = Array.isArray(body?.keys) ? body.keys.map((k) => String(k ?? '')).filter(Boolean) : [];
         const method = body?.method || 'manual';
         // DE 批（docs/ALIGN-REVIEW-UI.md §2/§5）：批量确认——body.keys 用各组当前候选，
-        // 每组独立回执；写回 skus.json 与失效缓存合并到批尾一次完成。
+        // 每组独立回执；失效缓存合并到批尾一次完成。
+        // A3 批（docs/DESIGN-AUDIT.md A3）：确认只写 game_source_map（库为唯一真相），不再写回 skus.json。
         if (keys.length) {
           if (keys.length > 200) return json(res, 400, { error: '单次批量确认最多 200 组' });
-          const { align, entries, games, groups } = await buildAlignGroups();
+          const { align, games, groups } = await buildAlignGroups();
           const results = [];
           let totalMapped = 0;
           let totalMerged = 0;

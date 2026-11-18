@@ -1384,6 +1384,11 @@ const GAME_SELECT = `select g.id,
             g.adult_flag,
             g.mature_flag,
             g.steam_checked_at,
+            -- CW 批（docs/ADMIN-GAME-POPUP.md §3）：后台游戏详情弹窗用（封面/发售日期/Steam 评测数）；
+            -- release_date 按 YYYY-MM-DD 字符串语义走 ::text，避免 date 对象序列化成时区偏移的 ISO 串
+            g.header_image,
+            g.release_date::text as release_date,
+            g.heat_reviews,
             (select min(o.price_cents) from offers o
                join platforms p on p.code = o.platform_code
               where o.game_id = g.id and o.region = $1 and o.in_stock
