@@ -1,6 +1,8 @@
 # 个人资料编辑（Web + App）（CX，待开发）
 
-> 状态：**已确认待开发（2026-11-18，所有者确认 5 项决策；demo：[design/profile-web-2026-11-18.html](design/profile-web-2026-11-18.html) / [design/profile-android-2026-11-18.html](design/profile-android-2026-11-18.html)）**。
+> 状态：**已确认待开发（2026-11-18，所有者确认 5 项决策 + 我的资料口径）**。
+> Demo：编辑 [design/profile-web-2026-11-18.html](design/profile-web-2026-11-18.html) / [design/profile-android-2026-11-18.html](design/profile-android-2026-11-18.html)；
+> 我的资料（双账号卡片/统计，仅本人）[design/my-profile-web-2026-11-18.html](design/my-profile-web-2026-11-18.html) / [design/my-profile-android-2026-11-18.html](design/my-profile-android-2026-11-18.html)
 > 关联：[TODO.md](TODO.md) CX 条目、[AUTH-REDESIGN.md](AUTH-REDESIGN.md)（邮箱/密码）、
 > [APP-PARITY.md](APP-PARITY.md)（App 功能对齐）、[DATA-ISOLATION.md](DATA-ISOLATION.md)（CY：权限边界）。
 
@@ -25,6 +27,10 @@
 | 6 | **Steam 账号卡**：列出全部绑定账号（头像/昵称/SteamID/绑定时间/默认标记）；支持**设为默认、解绑、新增绑定**；解绑只停止后续检测，**历史「曾拥有」记录保留**。 |
 | 7 | **App 端**同样可看 Steam 账号列表，并支持**解绑 / 新增 / 更换**；新增绑定在系统浏览器打开站点 Steam 绑定流程，返回 App 刷新列表。 |
 | 8 | 前端展示处（评论/申诉/后台用户列表等）在有头像时显示头像，无头像回退首字/默认图。 |
+| 9 | **「我的资料」仅本人可见**：不提供任何访问他人资料的入口/URL；管理员同样只能看/改自己。 |
+| 10 | **必填项**：昵称、简介、**邮箱必填**；**管理员豁免**：昵称/简介可空，邮箱仍必填。老用户邮箱为空时不强制跳补全，保存/使用邮箱功能时提示。 |
+| 11 | **多 Steam 账号用卡片展示**：每个绑定账号一张卡（头像/昵称/SteamID/已拥有数/愿望单数/最近同步时间/操作），不合并成一行。 |
+| 12 | 资料页下半部展示**我的游戏库与统计**（仅本人）：每账号卡片 + 本站愿望单/到价提醒数量汇总。 |
 
 ## 3. 改动落点
 
@@ -60,3 +66,5 @@
 - 更换邮箱（验证码 + 双邮箱通知）；
 - 头像裁剪交互（服务端裁剪 vs 客户端裁剪的最终形态）；
 - 个人主页（他人可看的公开页：头像/昵称/简介 + 愿望单公开度）。
+
+
