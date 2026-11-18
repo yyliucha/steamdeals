@@ -85,7 +85,7 @@
 | **CW** | 后台「游戏目录」点游戏名弹详情（Steam 已同步数据 + 封面/发售/开发商 + 底部 Steam 商店跳转） | [ADMIN-GAME-POPUP.md](ADMIN-GAME-POPUP.md) | 待开发（2026-11-18 需求 + demo） | ✅ 本轮已给 |
 | **CX** | 个人资料编辑（Web + App；头像存库、双 Steam 账号默认头像、设为默认/解绑/新增换绑） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) | 待开发（2026-11-18 决策确认 + 双 demo） | ✅ 本轮已给 |
 | **CY** | 数据隔离（用户私有数据管理员只读；越权 403 + 审计；站点级/账号安全/申诉保留可写） | [DATA-ISOLATION.md](DATA-ISOLATION.md) | 待开发（2026-11-18 边界确认；P1） | ✅ 本轮已给 |
-| **CZ** | 二期：邮箱体系（更换邮箱验证码 + 邮箱验证码登录 + 忘记密码） | —（TODO CZ 条目） | 待开发（2026-11-18 立项；等沟通启动） | ⏳ 待沟通 |
+| **CZ** | 更换登录邮箱（邮箱体系收尾；验证码登录/忘记密码已实现，只做换邮箱+加固） | [EMAIL-CHANGE.md](EMAIL-CHANGE.md) | 待开发（2026-11-18 沟通完成 + demo） | ✅ 本轮已给 |
 | **DA** | CM-5：App 筛选/排序服务端化（折扣/史低/免费/未发售全库筛；站点 + App 方案 A） | [APP-FILTER-SERVER-SIDE.md](APP-FILTER-SERVER-SIDE.md) | 待开发（2026-11-18 方案 A 确认；规格已出） | ✅ 本轮已给 |
 | **DB** | 个人主页（公开资料页 `/u/:username`） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) §5 | 待开发（2026-11-18 立项；等沟通） | ⏳ 待沟通 |
 | **DC** | CM-6：App 公告角标（先核实登录态） | [APP-PARITY.md](APP-PARITY.md) §65 | 待开发（2026-11-18 立项；待核实） | ⏳ 待沟通 |
