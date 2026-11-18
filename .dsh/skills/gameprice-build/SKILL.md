@@ -10,7 +10,7 @@ description: SteamDeals/gameprice 的构建发版技能：收到所有者「构�
 >
 > **技能文件位置**：`.dsh/skills/gameprice-build/SKILL.md`，**随仓库提交、推 GitHub**；
 > 本机 DSH 扫描路径 `F:\dsh\.dsh\skills\gameprice-build` 是指向它的 junction（仅本机环境配置，不入库）。
-> **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/gameprice-skills`；修改后执行
+> **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/dsh-skills`；修改后执行
 > `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步（见该仓库 README）。
 > 别的机器 clone 后如需 DSH 发现该技能，按同样方式建 junction；**不要再维护第二份副本**。
 >

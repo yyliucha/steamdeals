@@ -10,7 +10,7 @@ description: SteamDeals/gameprice 项目「只聊需求」工作法：先用代�
 >
 > **技能文件位置**：`.dsh/skills/gameprice-requirements/SKILL.md`，**自 2026-11-09 起随仓库提交、推 GitHub**；
 > 本机 DSH 扫描路径 `F:\dsh\.dsh\skills\gameprice-requirements` 是指向它的 junction（仅本机配置，不入库）。
-> **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/gameprice-skills`；修改后执行
+> **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/dsh-skills`；修改后执行
 > `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步（见该仓库 README）。
 
 ## 0. 边界：这是聊需求，不是开发

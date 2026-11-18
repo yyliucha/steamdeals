@@ -10,7 +10,7 @@ description: SteamDeals/gameprice 的测试方法库与真实测试门槛：分�
 > **分工**：`gameprice-dev` 写代码 + 写测试（交付物）；**本技能给"怎么写、怎么写才算数"**；
 > `gameprice-qa` 判"测试是否真锁住行为"；`gameprice-build` 发版前确认测试与真实测试清单齐全。
 >
-> **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/gameprice-skills`；修改后执行
+> **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/dsh-skills`；修改后执行
 > `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步（见该仓库 README）。
 
 ## 0. 三条硬规则
