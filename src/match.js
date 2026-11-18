@@ -18,6 +18,10 @@
 //  4. 自动条件收紧为：完整归一化相等，或（完整 Dice ≥0.94 且无内容词 且数字一致
 //     且完整标题长度 ≥4）。
 //
+// DG 批（2026-11-18，docs/TODO.md DG 条目）：副标题感知——按 ：: - — / 切主标题，
+// 主标题精确/包含命中给 0.90–0.93 的分数 + 理由 subtitle（落在"需人工"区，不自动确认）；
+// 只在完整分低于自动阈值且不相等时启用，版次剥离后相等的标题仍走 1.0 自动，CE 口径不回退。
+//
 // 注意：这里只负责打分与自动判定，**不做落库决定**——阈值由调用方定，最终由人确认。
 
 const EDITION_WORDS = [
@@ -229,6 +233,66 @@ function isUsableFragment(fragment) {
   return !GENERIC_FRAGMENTS.test(compact);
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// DG 批（docs/TODO.md DG 条目）：副标题感知——
+// 「断箭: 俄罗斯国民近卫军」这类带副标题的标题整串打分会被副标题拉低，
+// 候选明明在库里（「断箭」）却因 <0.86 被丢弃。按 ：: - — / 切主标题，
+// 主标题精确/包含命中给 0.90–0.93 + 理由 subtitle（落在「需人工」区，不自动确认）。
+// ─────────────────────────────────────────────────────────────────────
+
+/** 副标题分隔符（DG 批）：全角/半角冒号、连字符、破折号、斜杠。 */
+const SUBTITLE_SPLIT_RE = /[:：\/—–-]/u;
+
+/** 拆主标题/副标题：按第一个分隔符切，返回 { main, subtitle }（原文；无分隔符时 subtitle 为空串）。 */
+export function splitSubtitle(raw) {
+  const text = String(raw ?? '');
+  const m = SUBTITLE_SPLIT_RE.exec(text);
+  if (!m) return { main: text.trim(), subtitle: '' };
+  return { main: text.slice(0, m.index).trim(), subtitle: text.slice(m.index + 1).trim() };
+}
+
+/** 副标题是否有信息量：剥掉版本/内容词后仍有 ≥2 个紧凑字符且非通用词。 */
+function meaningfulSubtitle(rawSub) {
+  const n = normalizeName(rawSub).replace(/\s+/g, '');
+  if (n.length < 2 || GENERIC_FRAGMENTS.test(n)) return null;
+  return n;
+}
+
+/** 主标题可用性：≥2 个紧凑字符、非通用词、非纯数字（防「代号」「星球大战」这类共享前缀）。 */
+function usableMain(normalizedMain) {
+  const m = String(normalizedMain ?? '').replace(/\s+/g, '');
+  if (m.length < 2) return null;
+  if (GENERIC_FRAGMENTS.test(m) || /^[0-9]+$/.test(m)) return null;
+  return m;
+}
+
+/**
+ * 副标题感知命中判定，返回 { score }（0.90–0.93）或 null。
+ * 命中条件（仅在数字一致、完整标题不相等、完整分低于自动阈值时评估，CE 口径不回退）：
+ *  1. 主标题精确命中对方完整归一化标题（「断箭: 俄罗斯国民近卫军」↔「断箭」）→ 0.92；
+ *  2. 双方都有副标题且主标题相等 → 0.92；
+ *  3. 包含命中：主标题是对方完整标题的真子串，且对方没有副标题、主标题 ≥4 字、
+ *     对方多出的部分 ≤8 字——防「星球大战」⊂「星球大战 绝地 陨落的武士团」
+ *     这类共享前缀被当成副标题命中（CE 13 条误匹配不回退的关键护栏）。
+ */
+function subtitleHit(titleA, titleB, normA, normB) {
+  const sa = splitSubtitle(titleA);
+  const sb = splitSubtitle(titleB);
+  const subA = sa.subtitle ? meaningfulSubtitle(sa.subtitle) : null;
+  const subB = sb.subtitle ? meaningfulSubtitle(sb.subtitle) : null;
+  if (!subA && !subB) return null;
+  const fullA = normA.replace(/\s+/g, '');
+  const fullB = normB.replace(/\s+/g, '');
+  const mainA = usableMain(normalizeName(sa.main));
+  const mainB = usableMain(normalizeName(sb.main));
+  if (mainA && mainA === fullB) return { score: 0.92 };
+  if (mainB && mainB === fullA) return { score: 0.92 };
+  if (subA && subB && mainA && mainB && mainA === mainB) return { score: 0.92 };
+  if (mainA && !subB && mainA.length >= 4 && fullB.includes(mainA) && fullB.length > mainA.length && fullB.length <= mainA.length + 8) return { score: 0.9 };
+  if (mainB && !subA && mainB.length >= 4 && fullA.includes(mainB) && fullA.length > mainB.length && fullA.length <= mainB.length + 8) return { score: 0.9 };
+  return null;
+}
+
 /**
  * 一对标题的完整判定（CE 加固核心）。
  * 返回：
@@ -271,6 +335,15 @@ export function evaluatePair(titleA, titleB, { autoScore = 0.94, fragmentFloor =
   if (contentWord) reasons.push('content_word');
   if (numbersOk && !contentWord && !equal) {
     reasons.push(fullScore < autoScore ? 'score_below_auto' : 'title_too_short');
+  }
+  // DG 批：副标题感知——主标题精确/包含命中给 0.90–0.93（覆盖片段加分，保证落在需人工区）。
+  // 只在不相等且完整分低于自动阈值时评估：版次剥离后相等的标题仍走 1.0 自动，不回退 CE 口径。
+  if (numbersOk && !equal && fullScore < autoScore) {
+    const sub = subtitleHit(titleA, titleB, a, b);
+    if (sub) {
+      score = sub.score;
+      reasons.push('subtitle');
+    }
   }
   return { score, fullScore, equal, auto, numbersOk, contentWord, reasons };
 }
@@ -414,8 +487,10 @@ export function indexTokens(normalizedName) {
 /**
  * 候选内存索引：归一化名快查表 + token 倒排表（候选 → token 命中数，用于排序截断）。
  * candidates: [{ name, nameEn }]（19.6 万行量级）；构建一次、多组复用。
+ * 默认字段是 DB 蛇形 name/name_en（DG 批：server.js 直接喂库行，旧默认只读 nameEn
+ * 驼峰，name_en 从未进索引 → 英文名 token 召回漏候选）。
  */
-export function buildCandidateIndex(candidates, { getFields = (c) => [c.name, c.nameEn] } = {}) {
+export function buildCandidateIndex(candidates, { getFields = (c) => [c.name, c.name_en ?? c.nameEn] } = {}) {
   const byNorm = new Map(); // 归一化名 → candidates[]
   const byToken = new Map(); // token → candidates[]
   const shared = new Map(); // candidate → token 命中数（排序截断用）

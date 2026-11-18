@@ -13,6 +13,8 @@ import {
   evaluatePair,
   extractNumbers,
   hasContentWord,
+  buildCandidateIndex,
+  preselectCandidates,
 } from '../src/match.js';
 
 test('归一化：去版本词、平台标注与标点', () => {
@@ -215,11 +217,19 @@ test('片段限制：共享短通用词不再产生 1.00 假高分', () => {
   assert.ok(scorePair('TCG卡牌店模拟器', 'Epic Cards Battle(TCG)') < 0.86, '共享「TCG」');
 });
 
-test('片段加分门：完整分 <0.8 时片段不生效', () => {
-  // 愚者不灭 vs 愚者不灭：荣光痴人版 —— 完整分 0.545，共同片段不得把分抬上去
-  const ev = evaluatePair('愚者不灭', '愚者不灭：荣光痴人版');
+test('片段加分门：完整分 <0.8 时片段不生效（空格变体，避开副标题分隔符）', () => {
+  // 愚者不灭 vs 愚者不灭 荣光痴人版（空格连接，不触发 DG 副标题规则）——
+  // 完整分 0.42，共同片段「愚者不灭」「荣光痴人版」都 <6 字，不得把分抬上去。
+  const ev = evaluatePair('愚者不灭', '愚者不灭 荣光痴人版');
   assert.equal(ev.score, ev.fullScore, '完整分 <0.8 时片段不得加分');
   assert.ok(ev.score < 0.86, `不应进提案，实际 ${ev.score}`);
+});
+
+test('DG 副标题：主标题精确命中 → 0.92 + subtitle 理由，只进人工', () => {
+  const ev = evaluatePair('愚者不灭', '愚者不灭：荣光痴人版');
+  assert.equal(ev.score, 0.92, '主标题「愚者不灭」精确命中 → 0.92');
+  assert.equal(ev.auto, false, '副标题命中只进人工，不自动确认');
+  assert.ok(ev.reasons.includes('subtitle'), `reasons 应含 subtitle，实际 ${ev.reasons}`);
 });
 
 test('extractNumbers：数字 / 序数 / 罗马数字 / 第X年', () => {
@@ -240,4 +250,85 @@ test('hasContentWord：内容词命中（只进人工审核的依据）', () => 
   assert.equal(hasContentWord('Borderlands: The Handsome Collection'), true, 'Collection');
   assert.equal(hasContentWord('捉鬼敢死队 重制版'), false, '重制版是版本词不是内容词');
   assert.equal(hasContentWord('愚者不灭'), false);
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// DG 批（docs/TODO.md DG 条目）：副标题感知 + 候选索引补 name_en。
+// 守的约束：断箭组（主标题 + 副标题）显示 0.90–0.93 候选并标「副标题」理由、
+// 不自动确认；版次剥离后相等的标题仍 1.0 自动；季票等内容词仍只进人工；
+// 蛇形 name_en 进候选索引（server.js 直接喂 DB 行的路径）。
+// ─────────────────────────────────────────────────────────────────────
+
+test('DG：断箭组——中文副标题主标题精确命中，0.92 + subtitle + 不自动', () => {
+  // 线上取证：孤儿行「断箭: 俄罗斯国民近卫军」候选「断箭」（appid 1604270）此前 <0.86 被丢
+  const candidates = [{ name: '断箭', steam_appid: 1604270 }];
+  const best = bestMatch('断箭: 俄罗斯国民近卫军', candidates);
+  assert.ok(best, '断箭组应显示候选');
+  assert.equal(best.candidate.steam_appid, 1604270);
+  assert.ok(best.score >= 0.90 && best.score <= 0.93, `副标题命中分数应在 0.90–0.93，实际 ${best.score}`);
+  assert.ok(best.reasons.includes('subtitle'), `应标「副标题」理由，实际 ${best.reasons}`);
+  assert.equal(best.auto, false, '副标题命中不自动确认（落需人工区）');
+});
+
+test('DG：英文副标题——Broken Arrow: Russian Guard 命中 Broken Arrow', () => {
+  const best = bestMatch('Broken Arrow: Russian Guard', [{ name: '断箭', nameEn: 'Broken Arrow', steam_appid: 1604270 }]);
+  assert.ok(best, '英文副标题主标题命中应有候选');
+  assert.equal(best.candidate.steam_appid, 1604270);
+  assert.ok(best.score >= 0.90 && best.score <= 0.93, `实际 ${best.score}`);
+  assert.ok(best.reasons.includes('subtitle'));
+  assert.equal(best.auto, false);
+});
+
+test('DG：全角冒号与破折号切分同样生效（纯中文命中）', () => {
+  const ev1 = evaluatePair('断箭：俄罗斯国民近卫军', '断箭');
+  assert.equal(ev1.score, 0.92, '全角冒号切分');
+  assert.ok(ev1.reasons.includes('subtitle'));
+  const ev2 = evaluatePair('断箭 - 俄罗斯国民近卫军', '断箭');
+  assert.equal(ev2.score, 0.92, '连字符切分');
+  assert.ok(ev2.reasons.includes('subtitle'));
+  const ev3 = evaluatePair('断箭 — 俄罗斯国民近卫军', '断箭');
+  assert.equal(ev3.score, 0.92, '破折号切分');
+});
+
+test('DG：带版本词的副标题仍命中（版本词剥掉后副标题仍有信息量）', () => {
+  const ev = evaluatePair('断箭：俄罗斯国民近卫军 豪华版', '断箭');
+  assert.equal(ev.score, 0.92);
+  assert.ok(ev.reasons.includes('subtitle'));
+  assert.equal(ev.auto, false);
+});
+
+test('DG：版次剥离后相等的标题仍 1.0 自动（副标题规则不回退 CE 口径）', () => {
+  const ev = evaluatePair('消逝的光芒：困兽 决定版', '消逝的光芒：困兽');
+  assert.equal(ev.score, 1, '决定版剥掉后完整归一化相等');
+  assert.equal(ev.auto, true, '版次相等仍自动');
+  assert.ok(!ev.reasons.includes('subtitle'), '完整相等时不标副标题理由');
+});
+
+test('DG：内容词副标题不触发副标题规则，仍提示内容词且不自动', () => {
+  // 副标题「季票」剥掉后无信息量 → 走正常规则：完整相等 + 内容词 → 分数 1.0、只进人工
+  const ev = evaluatePair('巴士模拟器 27 - 季票', '巴士模拟器 27');
+  assert.equal(ev.score, 1);
+  assert.equal(ev.auto, false, '季票是内容词，只进人工');
+  assert.ok(ev.reasons.includes('content_word'), '仍提示内容词');
+  assert.ok(!ev.reasons.includes('subtitle'), '纯内容词副标题不算副标题命中');
+});
+
+test('DG：共享前缀误匹配不触发副标题规则（CE 护栏）', () => {
+  // 双方都有副标题、主标题只是共享前缀（星球大战 绝地 vs 星球大战）时不得给 0.90+
+  const ev = evaluatePair('星球大战：前线 经典版', '星球大战 绝地：陨落的武士团');
+  assert.ok(ev.score < 0.86, `共享前缀不得抬进提案区，实际 ${ev.score}`);
+  assert.ok(!ev.reasons.includes('subtitle'));
+});
+
+test('DG：候选索引补 name_en——蛇形字段进索引，英文名 token 可召回', () => {
+  const index = buildCandidateIndex([
+    { name: '断箭', name_en: 'Broken Arrow', steam_appid: 1604270 },
+  ]);
+  // 英文副标题走英文 token 召回（旧默认只读 nameEn 驼峰，此用例会召回失败）
+  const pre = preselectCandidates(['Broken Arrow: Russian Guard'], index, { maxCandidates: 2000 });
+  assert.ok(pre.length >= 1, 'name_en 应进索引并召回候选');
+  assert.equal(pre[0].steam_appid, 1604270);
+  // 中文名路径不受影响
+  const preZh = preselectCandidates(['断箭：俄罗斯国民近卫军'], index, { maxCandidates: 2000 });
+  assert.equal(preZh[0].steam_appid, 1604270);
 });
