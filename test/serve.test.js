@@ -270,6 +270,70 @@ test('CA-5：手机跳转开关默认关闭；开启后前台 302 /app，豁免�
   }
 });
 
+// CP 批（docs/MOBILE-DETECT-FIX.md §4）：手机识别三信号——
+// 小米浏览器「桌面版网站」UA（X11 Linux + MiuiBrowser）必须跳；Sec-CH-UA-Mobile: ?1 的桌面 UA 壳跳；
+// PC Chrome（Windows NT + ?0）不跳；纯桌面 UA 带泛化 Mobile 字样（无移动品牌）不跳；
+// iPhone Safari / Android Chrome 保持 302 不回归。
+test('CP：小米桌面 UA / 客户端提示跳转，纯桌面 UA 不跳', async () => {
+  const frontend = mkdtempSync(join(tmpdir(), 'gp-frontend-'));
+  writeFileSync(join(frontend, 'index.html'), '<!doctype html><html><body>ok</body></html>');
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  const prev = process.env.APP_MOBILE_REDIRECT_ENABLED;
+  try {
+    process.env.APP_MOBILE_REDIRECT_ENABLED = '1';
+    const srv = await startApiServer({ query: q, frontendDir: frontend, port: 0, host: '127.0.0.1' });
+    const base = `http://127.0.0.1:${srv.port}`;
+    try {
+      const miui = await fetch(`${base}/`, {
+        headers: { 'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36 MiuiBrowser/17.0.10' },
+        redirect: 'manual',
+      });
+      assert.equal(miui.status, 302, '小米浏览器桌面 UA（X11 Linux + MiuiBrowser）→ 302');
+      assert.equal(miui.headers.get('location'), '/app', '跳转目标 /app');
+
+      const hint = await fetch(`${base}/`, {
+        headers: {
+          'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'sec-ch-ua-mobile': '?1',
+        },
+        redirect: 'manual',
+      });
+      assert.equal(hint.status, 302, 'Sec-CH-UA-Mobile: ?1（桌面 UA 壳）→ 302');
+
+      const pc = await fetch(`${base}/`, {
+        headers: {
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'sec-ch-ua-mobile': '?0',
+        },
+        redirect: 'manual',
+      });
+      assert.equal(pc.status, 200, 'PC Chrome → 200 不跳');
+
+      const deskMobile = await fetch(`${base}/`, {
+        headers: { 'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36' },
+        redirect: 'manual',
+      });
+      assert.equal(deskMobile.status, 200, '纯桌面 UA 带泛化 Mobile 字样（无移动品牌）→ 200 不跳');
+
+      for (const ua of [
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        'Mozilla/5.0 (Linux; Android 13; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+      ]) {
+        const r = await fetch(`${base}/`, { headers: { 'user-agent': ua }, redirect: 'manual' });
+        assert.equal(r.status, 302, `标准手机 UA 保持 302：${ua.slice(0, 40)}…`);
+      }
+    } finally {
+      await srv.close();
+    }
+  } finally {
+    if (prev === undefined) delete process.env.APP_MOBILE_REDIRECT_ENABLED;
+    else process.env.APP_MOBILE_REDIRECT_ENABLED = prev;
+    await store.close();
+  }
+});
+
 // CJ 现场回归（2026-11-17 线上 v2.22.0，docs/TODO.md CJ 条目）：/api/app/latest 的 apkPath 必须按
 // 文件真实存在性派生——data/app（GitHub 每小时同步）优先 /app/dl/<ver>.apk，否则镜像内 /app/<ver>.apk 存在
 // 时回落镜像路径（不能无条件 /app/dl/ 造成死链）；/app/dl/<file> 缺失时 302 兜底到 /app/<file>。

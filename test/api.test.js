@@ -1275,3 +1275,94 @@ test('CD 对齐审核：去重组队列、确认写映射、忽略与决定继�
     await store.close();
   }
 });
+
+// ---------------------------------------------------------------- B1 批（docs/DESIGN-AUDIT.md B1）
+// 统一请求超时（默认 15s，测试注入 80ms）+ 重型接口并发闸：
+// ① 慢查询超过阈值 → 503 + 日志 http.request_timeout；
+// ② /api/games 闸内峰值并发 ≤2，打满期间 /api/site 快速返回（其它接口 P95 不受影响）；
+// ③ 队列满（注入 maxQueue=0）→ 503 接口繁忙。
+
+test('B1：慢查询超时 → 503 + http.request_timeout 日志', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  const events = [];
+  const logger = { info: (e) => events.push(e), warn: (e) => events.push(e), error: () => {} };
+  const slowQ = async (sql, p) => {
+    if (/from games|from offers/i.test(sql)) await new Promise((r) => setTimeout(r, 500));
+    return q(sql, p);
+  };
+  const srv = await startApiServer({ query: slowQ, logger, requestTimeoutMs: 80, port: 0, host: '127.0.0.1' });
+  const base = `http://127.0.0.1:${srv.port}`;
+  try {
+    const res = await fetch(`${base}/api/games/stamp`);
+    assert.equal(res.status, 503, '慢查询超过阈值 → 503');
+    const body = await res.json();
+    assert.match(body.error, /请求超时/, '503 文案可读');
+    assert.ok(events.includes('http.request_timeout'), '日志 http.request_timeout 可观测');
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('B1：/api/games 并发闸 ≤2，打满期间 /api/site 不受影响', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  await ingestOffers(store, {
+    platform: { code: 'steam', name: 'Steam 国区', kind: 'official' },
+    offers: [{
+      platformCode: 'steam', platformProductId: '413150', steamAppid: 413150, title: '星露谷物语',
+      productType: 'official_direct', region: 'cn', currency: 'CNY', priceCents: 4800, originalCents: 4800,
+      discountPct: 0, inStock: true, buyUrl: 'https://store.steampowered.com/app/413150/', meta: {},
+    }],
+  });
+  const q = (sql, p) => store.query(sql, p);
+  let active = 0;
+  let peak = 0;
+  const gatedQ = async (sql, p) => {
+    if (/from games|join game_region_snapshot/i.test(sql)) {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((r) => setTimeout(r, 100));
+      active -= 1;
+    }
+    return q(sql, p);
+  };
+  const srv = await startApiServer({ query: gatedQ, port: 0, host: '127.0.0.1' });
+  const base = `http://127.0.0.1:${srv.port}`;
+  try {
+    const results = await Promise.all([0, 1, 2, 3, 4, 5].map(() => fetch(`${base}/api/games?region=cn`)));
+    for (const r of results) assert.equal(r.status, 200, '排队请求最终都成功');
+    assert.ok(peak <= 2, `闸内峰值并发 ${peak} ≤ 2`);
+    // 打满期间其它接口快速返回（闸门排队不阻塞事件循环）
+    const t0 = Date.now();
+    const site = await fetch(`${base}/api/site`);
+    assert.equal(site.status, 200);
+    assert.ok(Date.now() - t0 < 1500, '并发打满时 /api/site 仍快速返回');
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('B1：闸队列满（maxQueue=0）→ 503 接口繁忙，其余请求照常', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  const gatedQ = async (sql, p) => {
+    if (/from games|join game_region_snapshot/i.test(sql)) await new Promise((r) => setTimeout(r, 100));
+    return q(sql, p);
+  };
+  const srv = await startApiServer({ query: gatedQ, gateMaxQueue: 0, port: 0, host: '127.0.0.1' });
+  const base = `http://127.0.0.1:${srv.port}`;
+  try {
+    const results = await Promise.all([0, 1, 2].map(() => fetch(`${base}/api/games?region=cn`)));
+    const statuses = results.map((r) => r.status).sort();
+    assert.equal(statuses.filter((s) => s === 200).length, 2, '两个占满执行槽');
+    assert.equal(statuses.filter((s) => s === 503).length, 1, '队列已满的第三个 → 503');
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});

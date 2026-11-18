@@ -455,6 +455,13 @@ const ALTERS = [  'alter table games add column if not exists interested boolean
   'alter table games add column if not exists heat_reviews integer',
   'alter table games add column if not exists heat_at timestamptz',
   'create index if not exists idx_games_heat on games (heat desc)',
+  // B2 批（docs/DESIGN-AUDIT.md B2）：admin 列表接口提速的三条索引——
+  // ① 后台游戏列表 order by updated_at desc limit 20：原全表排序 19.6 万行，是 /api/admin/games 2.1s 的主因之一；
+  // ② 存活游戏部分索引：/api/admin/sync/status 的 sourceSyncStats count(*) 走 index-only，不再全表扫；
+  // ③ sync_runs 的 lateral join 按 (platform_code, started_at) 找最近 fetch_runs：是 /api/admin/sync/status 1.7s 的主因之一。
+  'create index if not exists idx_games_updated on games (updated_at desc nulls last, id desc)',
+  'create index if not exists idx_games_live on games (id) where not deleted',
+  'create index if not exists idx_fetch_runs_platform_started on fetch_runs (platform_code, started_at desc)',
   // 价格快照记录前价，报表直接算涨跌（老数据为 null，报表只看新数据）
   'alter table price_snapshots add column if not exists prev_price_cents integer',
   // 到价提醒来源：steam_wishlist 自动项可随愿望单/解绑清理

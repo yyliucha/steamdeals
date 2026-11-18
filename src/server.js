@@ -13,6 +13,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join, extname, resolve, sep } from 'node:path';
 import * as db from './store/pg.js';
+import { createConcurrencyGate } from './http-guard.js';
 import * as visitors from './visitors.js';
 import * as images from './images.js';
 import * as ratelimit from './ratelimit.js';
@@ -100,8 +101,55 @@ const escapeHtml = (value) =>
 const wantsHtml = (req) =>
   /text\/html/i.test(String(req.headers.accept ?? '')) && !String(req.url ?? '').startsWith('/api/');
 
-/** 手机 UA 粗判（日志用：下次"某个端不生效"时能直接区分 PC/移动端）。 */
-const isMobileUa = (req) => /mobile/i.test(String(req.headers['user-agent'] ?? ''));
+/**
+ * 手机 UA 判定（CP 批，docs/MOBILE-DETECT-FIX.md §2 决策 1/§3）——三信号：
+ * ① UA 移动特征（mobile/iphone/ipod/windows phone + 国产浏览器品牌）；
+ * ② 客户端提示 Sec-CH-UA-Mobile: ?1；
+ * ③ 前端 index.html 的 screen.width 兜底（服务端不可见，由内联脚本承担）。
+ * 国产浏览器「桌面版网站」模式把 UA 伪装成桌面串（小米 = X11; Linux x86_64 + MiuiBrowser），
+ * 品牌特征优先于桌面特征：桌面 UA 上带品牌仍判手机；纯桌面 UA（Windows NT/Macintosh/X11 Linux
+ * 且只有泛化 mobile 字样、无移动品牌）排除，避免误跳。
+ */
+const MOBILE_UA_RE = /mobile|android.+mobile|iphone|ipod|windows phone|miuibrowser|huaweibrowser|vivobrowser|heytapbrowser|oppobrowser/i;
+const MOBILE_BRAND_RE = /iphone|ipod|windows phone|android|miuibrowser|huaweibrowser|vivobrowser|heytapbrowser|oppobrowser/i;
+const DESKTOP_UA_RE = /windows nt|macintosh|x11; linux/i;
+
+/** 命中信号：'client_hint' | 'ua' | null（跳转日志记录命中来源，排查"某端不生效"用）。 */
+export function mobileHitSignal(req) {
+  const ua = String(req.headers['user-agent'] ?? '');
+  if (String(req.headers['sec-ch-ua-mobile'] ?? '') === '?1') return 'client_hint';
+  if (!MOBILE_UA_RE.test(ua)) return null;
+  if (DESKTOP_UA_RE.test(ua) && !MOBILE_BRAND_RE.test(ua)) return null;
+  return 'ua';
+}
+
+/** 手机 UA 粗判（跳转与日志用）。 */
+const isMobileUa = (req) => mobileHitSignal(req) !== null;
+
+/**
+ * B1 批（docs/DESIGN-AUDIT.md B1）：统一请求超时（默认 15s）的白名单豁免——
+ * 长连接/长任务路径不套看门狗：静态资源、图片代理、APK 下载、静态曲线页、CSV 导出、手动备份。
+ * 白名单范围是交付时需所有者确认的点之一。
+ */
+export function isTimeoutExemptPath(path) {
+  if (/\.(png|jpe?g|gif|webp|svg|ico|css|js|map|woff2?|ttf|otf|eot|json|xml|txt|md|apk|wasm|webmanifest)$/i.test(path)) return true;
+  if (path.startsWith('/img/') || path.startsWith('/app/dl/') || path.startsWith('/out/')) return true;
+  if (/\.csv$/.test(path)) return true;
+  if (path === '/api/admin/backup') return true;
+  return false;
+}
+
+/**
+ * B1 批（docs/DESIGN-AUDIT.md B1）：重型接口并发闸配置——
+ * key = `${method} ${path}`（/api/games 的 POST 搜索与 GET 共用一把闸）；值 = 最大并发数。
+ * 这些接口要么全表重查询、要么触发重计算，单接口并发 ≤1–2；排队超限/超时 503，日志可观测。
+ */
+export const HEAVY_GATE_CONFIG = {
+  'GET /api/admin/games': 1,
+  'GET /api/admin/align': 1,
+  'GET /api/games': 2,
+  'POST /api/games/search': 2,
+};
 
 /**
  * CJ 现场回归修复（2026-11-17 线上 v2.22.0）：/api/app/latest 的 apkPath 按文件真实存在性派生——
@@ -398,8 +446,39 @@ export function createApiServer({
   imgMissTtl = IMG_MISS_TTL, // 测试注入：负缓存 TTL 覆盖（避免等 24h）
   dlcFetchImpl = null, // BP 批测试注入：(appids, opts) => Promise<{items,failed}>；默认走 store-browse 的 fetchStoreItems
   dlcReadThrottleMs = 10 * 60_000, // BP 批测试注入：读路径回源的按游戏节流窗口（默认 10 分钟）
+  requestTimeoutMs = 15000, // B1 批测试注入：统一请求超时（白名单豁免见 isTimeoutExemptPath）
+  gateWaitMs = 15000, // B1 批测试注入：并发闸排队等待上限
+  gateMaxQueue = 20, // B1 批测试注入：并发闸队列长度上限（超出立即 503）
+  adminCacheTtlMs = 3000, // B2 批测试注入：/api/admin/games 短缓存 TTL
+  syncStatusTtlMs = 3000, // B2 批测试注入：/api/admin/sync/status 短缓存 TTL
 }) {
   const q = query;
+  // B1 批（docs/DESIGN-AUDIT.md B1）：重型接口并发闸——按 key 每实例一把闸，
+  // 排队超限/超时抛 GATE_BUSY / GATE_WAIT_TIMEOUT，路由层转 503。
+  const gates = new Map();
+  const gateFor = (key, max) => {
+    let g = gates.get(key);
+    if (!g) {
+      g = createConcurrencyGate({ max, maxQueue: gateMaxQueue, waitMs: gateWaitMs });
+      gates.set(key, g);
+    }
+    return g;
+  };
+  const runGated = async (key, max, fn, respond503) => {
+    try {
+      return await gateFor(key, max).run(fn);
+    } catch (err) {
+      if (err?.code === 'GATE_BUSY') {
+        logger?.warn('http.gate_rejected', { key, queue: gateMaxQueue });
+        return respond503('接口繁忙，请稍后再试');
+      }
+      if (err?.code === 'GATE_WAIT_TIMEOUT') {
+        logger?.warn('http.gate_wait_timeout', { key, waitMs: gateWaitMs });
+        return respond503('接口排队超时，请稍后再试');
+      }
+      throw err;
+    }
+  };
   // BP 批（docs/GAME-DLC.md §3.3）：读路径回源节流——按 steam_appid 记上次回源时间（进程内，
   // 重启会重置；与"打开详情"这种瞬时行为对齐，不需要持久化）。
   const dlcFillAttempts = new Map(); // appid -> lastAttemptMs
@@ -421,6 +500,20 @@ export function createApiServer({
   // 60 秒进程内缓存（原只缓存 priced，catalog 每次全表扫 198k 行 ≈76ms）。
   // 挂在每个服务实例闭包里（单实例；多副本各自缓存，数值偏差可接受）。
   const gameCountCache = { value: null, at: 0 };
+  // B2 批（docs/DESIGN-AUDIT.md B2）：admin 列表接口短缓存（TTL 3s，游戏写操作后立即失效）——
+  // 控制台翻页/切筛选在 3 秒内的重复请求直接命中，不再重跑 2.1s 重查询；契约与缓存未命中时完全一致。
+  // sync/status 同理（8s 轮询下相邻请求有收益；任务启停/熔断重置后立即失效，状态延迟 ≤3s）。
+  const adminGamesCache = { value: null, key: null, at: 0 };
+  const syncStatusCache = { value: null, at: 0 };
+  const invalidateAdminGamesCache = () => {
+    adminGamesCache.value = null;
+    adminGamesCache.key = null;
+    adminGamesCache.at = 0;
+  };
+  const invalidateSyncStatusCache = () => {
+    syncStatusCache.value = null;
+    syncStatusCache.at = 0;
+  };
   // AW 批（docs/IMAGE-FETCH.md §3.2）：图片负缓存也按实例隔离（测试多实例互不干扰）。
   const imgMissCache = new Map(); // appid/size -> { at, kind }
   // 手动同步的进程内状态：同一时刻只允许一个同步任务
@@ -618,6 +711,30 @@ export function createApiServer({
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     let path = url.pathname;      const appealPage = path === '/appeal' || path === '/appeal/';
+    // ---- B1 批（docs/DESIGN-AUDIT.md B1）：统一请求超时（默认 15s，白名单豁免长连接路径）----
+    // 超时先看响应是否已开始：还没发头 → 503 JSON（日志 http.request_timeout）；
+    // 已开始写 → destroy 连接（不补写状态码）。handler 结束后 finally 清掉定时器；
+    // timedOut 期间 writeHead/end 变 no-op，避免 handler 继续写时抛"headers already sent"。
+    const timeoutExempt = isTimeoutExemptPath(path);
+    let timedOut = false;
+    let timeoutTimer = null;
+    if (!timeoutExempt) {
+      const origHead = res.writeHead.bind(res);
+      const origEnd = res.end.bind(res);
+      res.writeHead = (...args) => (timedOut ? res : origHead(...args));
+      res.end = (...args) => (timedOut ? res : origEnd(...args));
+      timeoutTimer = setTimeout(() => {
+        timedOut = true;
+        logger?.warn('http.request_timeout', { path, ms: requestTimeoutMs });
+        if (!res.headersSent) {
+          origHead(503, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+          origEnd('{"error":"请求超时，请稍后再试"}');
+        } else if (!res.writableEnded) {
+          res.destroy();
+        }
+      }, requestTimeoutMs);
+      timeoutTimer.unref?.();
+    }
     // O-3（docs/APPEAL-SYSTEM.md §3.1 / §10.3）：申诉接口放行封禁拦截（与 /appeal 页同等待遇）——
     // 被封禁者必须能提交申诉、点邮件里的处理链接；其余拦截照旧。接口自身的限流在路由里做。
     const appealApi = path === '/api/appeal' || path === '/api/appeal/action';
@@ -1015,19 +1132,20 @@ export function createApiServer({
         // 无构建产物时回落到下方静态资源路径（保持旧行为）
       }
 
-      // ---- CA-5（docs/APP-NATIVE.md §5）：手机浏览器前台跳转 /app ----
+      // ---- CA-5（docs/APP-NATIVE.md §5）+ CP 批（docs/MOBILE-DETECT-FIX.md）：手机浏览器前台跳转 /app ----
       // 开关默认关闭（app.mobileRedirectEnabled / APP_MOBILE_REDIRECT_ENABLED，等原生 App（CG）发布后开启）。
       // 只对登记在 FRONTEND_PAGES 的前台页面生效；豁免后台/登录/注册/下载/封禁/申诉/初始化/改密。
       // 微信内置浏览器同样跳到 /app——下载页里有「右上角 → 在浏览器打开」提示（微信内不能直接下载 APK）。
       const MOBILE_REDIRECT_EXEMPT = /^\/(console|login|register|app|banned|appeal|setup|change-password)(\/|$)/;
+      const mobileSignal = mobileHitSignal(req);
       if (
         String(process.env.APP_MOBILE_REDIRECT_ENABLED ?? '') === '1' &&
         req.method === 'GET' &&
-        isMobileUa(req) &&
+        mobileSignal &&
         FRONTEND_PAGES.includes(path) &&
         !MOBILE_REDIRECT_EXEMPT.test(path)
       ) {
-        logger?.info('http.mobile_redirect', { ip, path });
+        logger?.info('http.mobile_redirect', { ip, path, signal: mobileSignal });
         res.writeHead(302, { location: '/app', 'cache-control': 'no-store', 'content-length': '0' });
         res.end();
         return;
@@ -1974,9 +2092,11 @@ export function createApiServer({
       }
 
       // ---- 游戏列表（匿名可读）：GET 保留旧接口；POST 用于游客本地标记筛选 ----
+      // B1 批（docs/DESIGN-AUDIT.md B1）：GET 与 POST 搜索共用一把并发闸（≤2）
       const guestSearchPost = path === '/api/games/search' && req.method === 'POST';
       if ((path === '/api/games' && req.method === 'GET') || guestSearchPost) {
         const body = guestSearchPost ? await readBody(req, 256 * 1024) : {};
+        return await runGated('games-search', 2, async () => {
         const getInput = (key) => guestSearchPost ? body?.[key] : url.searchParams.get(key);
         const oneOf = (key, allowed, fallback) => {
           const v = String(getInput(key) ?? '').trim();
@@ -2046,6 +2166,7 @@ export function createApiServer({
           q: keyword,
           type: typeFilter,
         });
+        }, (msg) => json(res, 503, { error: msg }));
       }
 
       // ---- 单个游戏（匿名可读）----
@@ -2640,6 +2761,14 @@ export function createApiServer({
       // ---- 管理员：游戏列表（分页 + 搜索 + 平台筛选 + 同步状态 + 回收站）----
       if (path === '/api/admin/games' && req.method === 'GET') {
         if (!requireAdmin()) return;
+        // B1 批（docs/DESIGN-AUDIT.md B1）：重查询接口并发闸（≤1）
+        return await runGated('GET /api/admin/games', 1, async () => {
+        // B2 批（docs/DESIGN-AUDIT.md B2）：短缓存命中直接返回（key = 完整 query；写操作后立即失效）
+        const gamesCacheKey = 'admin/games?' + url.search;
+        const gamesCacheNow = Date.now();
+        if (adminGamesCache.key === gamesCacheKey && adminGamesCache.value && gamesCacheNow - adminGamesCache.at < adminCacheTtlMs) {
+          return json(res, 200, adminGamesCache.value);
+        }
         const kw = String(url.searchParams.get('q') ?? '').trim();
         const page = Math.max(1, Number(url.searchParams.get('page') ?? 1) || 1);
         const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize') ?? 20) || 20, 5), 200);
@@ -2713,7 +2842,12 @@ export function createApiServer({
           platform ? [kw, pageSize, offset, platform] : [kw, pageSize, offset],
         );
         const total = cnt.rows[0]?.n ?? 0;
-        return json(res, 200, { total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), games: rows.rows });
+        const adminGamesPayload = { total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), games: rows.rows };
+        adminGamesCache.value = adminGamesPayload;
+        adminGamesCache.key = gamesCacheKey;
+        adminGamesCache.at = Date.now();
+        return json(res, 200, adminGamesPayload);
+        }, (msg) => json(res, 503, { error: msg }));
       }
 
       // ---- 管理员：单游戏全部平台链接（AG 批 docs/ADMIN-PLATFORM-LINKS.md §3-A，仅 http/https）----
@@ -2860,6 +2994,7 @@ export function createApiServer({
         if (!to) return json(res, 404, { error: '目标游戏不存在：' + toAppid });
         const result = await db.mergeGames(q, { fromGameId: from.id, toGameId: to.id, logger });
         logger?.info('api.game_merged', { fromAppid, toAppid, ...result, by: user.username });
+        invalidateAdminGamesCache();
         return json(res, 200, { result });
       }
 
@@ -2873,6 +3008,7 @@ export function createApiServer({
         const row = await db.setGameDeleted(q, { ...target, deleted: body.deleted !== false });
         if (!row) return json(res, 404, { error: '没有该游戏' });
         logger?.info('api.game_deleted', { ...target, deleted: row.deleted, by: user.username });
+        invalidateAdminGamesCache();
         return json(res, 200, { game: row });
       }
 
@@ -3101,6 +3237,7 @@ export function createApiServer({
         const row = await db.setGameBlocked(q, { steamAppid: Number(blockMatch[1]), blocked: Boolean(body.blocked) });
         if (!row) return json(res, 404, { error: '没有该游戏' });
         logger?.info('api.game_blocked', { appid: Number(blockMatch[1]), blocked: row.blocked, by: user.username });
+        invalidateAdminGamesCache();
         return json(res, 200, { game: row });
       }
 
@@ -3115,6 +3252,7 @@ export function createApiServer({
         });
         if (!row) return json(res, 404, { error: '没有该游戏' });
         logger?.info('api.game_description', { appid: Number(descMatch[1]), by: user.username });
+        invalidateAdminGamesCache();
         return json(res, 200, { game: row });
       }
 
@@ -3136,6 +3274,7 @@ export function createApiServer({
         }
         try {
           const job = await startSteamJob({ mode, args, by: user.username });
+          invalidateSyncStatusCache();
           return json(res, 202, { started: true, runId: job.runId, mode, pid: job.pid });
         } catch (err) {
           if (err.code === 'BUSY') return json(res, 409, { error: err.message, run: err.run });
@@ -3145,6 +3284,11 @@ export function createApiServer({
 
       if (path === '/api/admin/sync/status' && req.method === 'GET') {
         if (!requireAdmin()) return;
+        // B2 批（docs/DESIGN-AUDIT.md B2）：短缓存（TTL 3s）；任务启停/熔断重置后立即失效
+        const syncStatusNow = Date.now();
+        if (syncStatusCache.value && syncStatusNow - syncStatusCache.at < syncStatusTtlMs) {
+          return json(res, 200, syncStatusCache.value);
+        }
         const running = Boolean(syncChild);
         const last = await db.listSyncRuns(q, { limit: 1 }).catch(() => []);
         let schedule = null;
@@ -3158,7 +3302,7 @@ export function createApiServer({
         const { readBackfillProgress } = await import('./backfill.js');
         // CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.4）：四源状态汇总（matched/nomatch/failed/pending）
         const sourceStats = await db.sourceSyncStats(q).catch(() => null);
-        return json(res, 200, {
+        const syncStatusPayload = {
           running,
           run: running ? syncRun : null,
           output: syncOutput.slice(-6000),
@@ -3168,7 +3312,10 @@ export function createApiServer({
           sourceStats,
           // AC1（docs/SYNC-FAILURE-MODES.md）：该有但没有的任务，后台显式提示（缺 Key / 被 *_ENABLED=0 关闭）
           warnings: auditSchedulerJobs(process.env),
-        });
+        };
+        syncStatusCache.value = syncStatusPayload;
+        syncStatusCache.at = Date.now();
+        return json(res, 200, syncStatusPayload);
       }
 
       if (path === '/api/admin/sync/runs' && req.method === 'GET') {
@@ -3185,6 +3332,7 @@ export function createApiServer({
         if (!name) return json(res, 400, { error: '缺少任务名' });
         const handled = resetCircuit(name);
         logger?.info('api.circuit_reset', { name, by: user.username, handled });
+        invalidateSyncStatusCache();
         return json(res, 200, { ok: true, handled });
       }
 
@@ -3197,6 +3345,7 @@ export function createApiServer({
         try {
           const job = await startSteamJob({ mode: 'backfill', args: backfillArgs(params), params, by: user.username });
           logger?.info('api.backfill_started', { runId: job.runId, by: user.username, ...params });
+          invalidateSyncStatusCache();
           return json(res, 202, { started: true, runId: job.runId, pid: job.pid, params });
         } catch (err) {
           if (err.code === 'BUSY') return json(res, 409, { error: err.message, run: err.run });
@@ -3221,6 +3370,7 @@ export function createApiServer({
         }, 10000);
         killTimer.unref?.();
         logger?.warn('api.backfill_stop', { runId, pid: child.pid, by: user.username });
+        invalidateSyncStatusCache();
         return json(res, 202, { stopping: true, runId, pid: child.pid });
       }
 
@@ -4217,6 +4367,8 @@ export function createApiServer({
 
       if (path === '/api/admin/align' && req.method === 'GET') {
         if (!requireAdmin()) return;
+        // B1 批（docs/DESIGN-AUDIT.md B1）：对齐审核读接口并发闸（≤1；计算本体在 alignRunner 后台单飞）
+        return await runGated('GET /api/admin/align', 1, async () => {
         const refresh = url.searchParams.get('refresh') === '1';
         const { page, pageSize } = parseAlignPage(url.searchParams);
         // CS 批（docs/ALIGN-DB-SLOW.md §2 #3）：后台生成——冷缓存触发后台计算并 202，
@@ -4257,6 +4409,7 @@ export function createApiServer({
           computing: false,
           partial: Boolean(result.partial),
         });
+        }, (msg) => json(res, 503, { error: msg }));
       }
 
       // 合并预览：该组同归一化名的孤立游戏行（报价/快照数 + 不可撤销提示）
@@ -4451,6 +4604,8 @@ export function createApiServer({
         // 互斥回执（docs/BAN-AND-SECURITY-FIXES.md §4.1）：批量封/信任时带被互斥移除的对侧条目数
         if (Number.isFinite(outcome.removedFromWhitelist)) reply.removedFromWhitelist = outcome.removedFromWhitelist;
         if (Number.isFinite(outcome.removedFromBlacklist)) reply.removedFromBlacklist = outcome.removedFromBlacklist;
+        // B2 批：批量操作可能改 games 列表内容（封/恢复/删/停用等），短缓存立即失效
+        invalidateAdminGamesCache();
         return json(res, 200, reply);
       }
 
@@ -4483,8 +4638,11 @@ export function createApiServer({
 
       return json(res, 404, { error: 'not found' });
     } catch (err) {
-      logger?.error('api.error', { path, message: String(err.message).slice(0, 200) });
+      // B1 批：超时后 handler 继续跑完/抛错属预期，不再记 api.error 刷日志（超时本身已记 http.request_timeout）
+      if (!timedOut) logger?.error('api.error', { path, message: String(err.message).slice(0, 200) });
       return json(res, 500, { error: '服务器错误' });
+    } finally {
+      if (timeoutTimer) clearTimeout(timeoutTimer);
     }
   });
 
@@ -4948,8 +5106,13 @@ export function startApiServer({
   imgMissTtl = IMG_MISS_TTL,
   dlcFetchImpl = null,
   dlcReadThrottleMs = 10 * 60_000,
+  requestTimeoutMs = 15000,
+  gateWaitMs = 15000,
+  gateMaxQueue = 20,
+  adminCacheTtlMs = 3000,
+  syncStatusTtlMs = 3000,
 }) {
-  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, imgMissTtl, dlcFetchImpl, dlcReadThrottleMs });
+  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, imgMissTtl, dlcFetchImpl, dlcReadThrottleMs, requestTimeoutMs, gateWaitMs, gateMaxQueue, adminCacheTtlMs, syncStatusTtlMs });
   // 黑名单定时刷新（管理端增删后也会即时刷新；unref 不阻止进程退出）
   const blockTimer = setInterval(() => {
     visitors.refreshBlocklist(query).catch(() => {});

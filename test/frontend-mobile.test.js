@@ -127,3 +127,31 @@ test('CA-5：/app 页微信「在浏览器打开」提示 + 原生 App 文案（
   assert.match(appPage, /fetch\('\/api\/app\/latest'/, '版本信息接口不变（/api/app/latest）');
   assert.ok(!appPage.includes('TWA（Trusted Web Activity）'), '旧 TWA 描述文案已移除');
 });
+
+// ---------------------------------------------------------------- CP 批（docs/MOBILE-DETECT-FIX.md §3/§4）
+// 前端兜底三件套必须都在 index.html：screen.width<=640 判定、sessionStorage('mred') 防循环、
+// location.replace('/app')；豁免列表与服务端 MOBILE_REDIRECT_EXEMPT 逐字一致（漏同步即红）；
+// 服务端多信号：品牌特征 + sec-ch-ua-mobile 客户端提示存在。
+
+const indexHtml = readFileSync(ROOT + 'frontend/index.html', 'utf8');
+const serverSrc = readFileSync(ROOT + 'src/server.js', 'utf8');
+// 两边源码里必须是同一个正则字面量（豁免列表不变：console/login/register/app/banned/appeal/setup/change-password）
+const EXEMPT_LITERAL = '/^\\/(console|login|register|app|banned|appeal|setup|change-password)(\\/|$)/';
+
+test('CP：index.html 内联兜底脚本（screen.width + sessionStorage + replace）存在', () => {
+  assert.match(indexHtml, /screen\.width <= 640/, 'screen.width 兜底判定存在');
+  assert.match(indexHtml, /sessionStorage\.getItem\('mred'\)/, 'sessionStorage 防循环标记存在');
+  assert.match(indexHtml, /sessionStorage\.setItem\('mred', '1'\)/, '跳转前写标记（只跳一次）');
+  assert.match(indexHtml, /location\.replace\('\/app'\)/, 'location.replace 跳 /app');
+});
+
+test('CP：前端兜底豁免列表与服务端 MOBILE_REDIRECT_EXEMPT 一致', () => {
+  assert.ok(serverSrc.includes(EXEMPT_LITERAL), '服务端豁免正则存在');
+  assert.ok(indexHtml.includes(EXEMPT_LITERAL), '前端内联脚本豁免正则与服务端逐字一致');
+});
+
+test('CP：服务端多信号检测（品牌特征 + 客户端提示）存在', () => {
+  assert.match(serverSrc, /miuibrowser\|huaweibrowser\|vivobrowser\|heytapbrowser\|oppobrowser/i, '国产浏览器品牌特征');
+  assert.match(serverSrc, /sec-ch-ua-mobile/, '客户端提示信号');
+  assert.match(serverSrc, /signal: mobileSignal/, '跳转日志记录命中信号（ua|client_hint）');
+});

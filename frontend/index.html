@@ -25,6 +25,22 @@
       })();
     </script>
     <script>
+      // CP 批（docs/MOBILE-DETECT-FIX.md §2 决策 2/§3）：手机端识别前端兜底——
+      // 小米等「桌面版网站」模式把 UA 伪装成桌面串，服务端多信号也判不出时按屏幕宽度兜底：
+      // screen.width <= 640 且非豁免路径 → location.replace('/app')；
+      // sessionStorage 标记防循环（同一会话只跳一次）；豁免列表与服务端 MOBILE_REDIRECT_EXEMPT 一致；
+      // PC/平板（screen.width > 640）永不跳。
+      (function () {
+        try {
+          var EXEMPT = /^\/(console|login|register|app|banned|appeal|setup|change-password)(\/|$)/;
+          if (screen.width <= 640 && !EXEMPT.test(location.pathname) && !sessionStorage.getItem('mred')) {
+            sessionStorage.setItem('mred', '1');
+            location.replace('/app');
+          }
+        } catch (e) { /* 忽略 */ }
+      })();
+    </script>
+    <script>
       // 移动端真机适配（docs/MOBILE-VIEWPORT.md §3.1）：
       // 「桌面版网站」模式 / WebView 忽略 viewport 时，布局视口仍是 ~980px——单列模板已生效，
       // 但字号与点击区域按 980px 比例缩小。改写 viewport 固定设计宽度 390px；
