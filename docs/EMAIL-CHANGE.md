@@ -1,6 +1,7 @@
 # 更换登录邮箱（CZ 二期：邮箱体系收尾）（待开发）
 
-> 状态：**已确认待开发（2026-11-18，所有者 5 项决策已确认）**。
+> 状态：**已确认待开发（2026-11-18，所有者 5 项决策已确认；App 端同样支持）**。
+> Demo：[design/email-change-2026-11-18.html](design/email-change-2026-11-18.html)（Web）/ [design/email-change-android-2026-11-18.html](design/email-change-android-2026-11-18.html)（App）
 > 关联：[TODO.md](TODO.md) CZ 条目、[USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md)（CX 资料页）、
 > [AUTH-REDESIGN.md](AUTH-REDESIGN.md)（AK 批邮箱验证码登录取证）、`src/auth-routes.js`（现有 OTP 实现）。
 
@@ -35,7 +36,8 @@
 | `PATCH /api/admin/users/:id/email`（已有，保留） | 管理员重置邮箱；补审计 `admin.email_reset` + 通知（已有通知逻辑复用）。 |
 
 前端：`ProfilePage.vue` 邮箱行加「更换邮箱」按钮 → 对话框（新邮箱输入 + 发送验证码 + 6 位验证码 + 确认）；
-成功后跳登录页并提示。App 端本期显示「邮箱修改请到网页端完成」（无验证码 UI；如需要再单独立项）。
+成功后跳登录页并提示。**App 端（`ProfileEditScreen`）同样支持**：同一套接口，底部弹层两步完成（见 Android demo）；
+成功后清本地 token 并跳登录页。
 
 ## 4. 验收
 
@@ -45,9 +47,11 @@
 4. 24 小时内第二次换邮箱被 429 拒绝并给 `retryAfterSec`；
 5. 未验证邮箱用户可正常换；
 6. 管理员重置邮箱仍可用，且落审计 + 通知；
-7. `npm test`（`test/email-change.test.js`：成功/占用/过期/频控/会话清空/审计）/ `frontend:build` / `scan` 全绿。
+7. **App 端可完整完成换邮箱**（发送验证码 → 验证 → 清 token 跳登录），与 Web 共用接口；App 模拟器走通 + 截图；
+8. `npm test`（`test/email-change.test.js`：成功/占用/过期/频控/会话清空/审计）/ `frontend:build` / `scan` 全绿。
 
-## 5. 待确认
+## 5. 已确认（2026-11-18）
 
-1. App 端本期是否只放占位（建议：是，换邮箱在网页端完成）；
-2. 管理员重置邮箱是否需要二次确认（建议：需要，输入用户昵称确认）。
+1. **App 端本期就做更换邮箱**（不是占位）——同一套接口，底部弹层两步完成；
+2. 管理员重置邮箱保留，需二次确认（输入用户昵称确认）。
+

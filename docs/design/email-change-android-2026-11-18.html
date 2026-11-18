@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>更换邮箱（Android）demo</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#1b1b1f;display:flex;justify-content:center;padding:20px;font:14px/1.5 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+  .phone{width:392px;height:880px;background:#f7f5fb;border-radius:34px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.6);position:relative}
+  .status{display:flex;justify-content:space-between;padding:10px 20px 2px;color:#3a3550;font-size:11px}
+  .bar{display:flex;align-items:center;gap:14px;padding:8px 16px 10px}
+  .back{font-size:20px;color:#3a3550}
+  .bar h1{font-size:17px;margin:0;color:#241f38;font-weight:600}
+  .content{padding:4px 16px;opacity:.35;filter:blur(.5px)}
+  .card{background:#fff;border-radius:16px;padding:2px 14px;box-shadow:0 1px 2px rgba(36,31,56,.06)}
+  .row{padding:11px 0;border-bottom:1px solid #efeaf7;font-size:13.5px;color:#241f38}
+  .row:last-child{border-bottom:0}
+  .row .k{font-size:11px;color:#8a83a3;margin-bottom:2px}
+  .mask{position:absolute;inset:0;background:rgba(20,16,40,.45)}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:22px 22px 0 0;padding:16px 18px 22px;box-shadow:0 -10px 40px rgba(20,16,40,.25)}
+  .grab{width:38px;height:4px;border-radius:999px;background:#e2daf3;margin:0 auto 12px}
+  .sheet h2{font-size:16px;margin:0 0 4px;color:#241f38}
+  .sheet .sub{font-size:11.5px;color:#8a83a3;margin:0 0 12px}
+  .warn{background:#fff6e6;border:1px solid #f0d9a8;color:#7a5312;border-radius:12px;padding:9px 11px;font-size:11.5px;margin-bottom:12px}
+  .field{margin-bottom:11px}
+  .field .lbl{font-size:11px;color:#8a83a3;margin-bottom:4px}
+  .line{display:flex;gap:8px}
+  .box{flex:1;background:#faf8ff;border:1px solid #e2daf3;border-radius:12px;padding:10px 12px;font-size:13.5px;color:#241f38}
+  .box.ro{color:#8a83a3}
+  .btn{border:1px solid #ded4f7;background:#fbf9ff;color:#5f49d3;border-radius:12px;padding:0 13px;font-size:12px;white-space:nowrap}
+  .tip{font-size:10.5px;color:#8a83a3;margin-top:4px}
+  .primary{width:100%;border:0;border-radius:14px;padding:13px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(180deg,#7b65e8,#5f49d3);box-shadow:0 8px 20px rgba(95,73,211,.3);margin-top:6px}
+  .ghost{width:100%;border:0;background:transparent;color:#8a83a3;font-size:13px;padding:9px}
+  .steps{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#8a83a3;margin-bottom:12px}
+  .steps .d{width:20px;height:20px;border-radius:50%;background:#6750d8;color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center}
+  .steps .d.off{background:#e2daf3;color:#8a83a3}
+</style>
+</head>
+<body>
+  <div class="phone">
+    <div class="status"><span>08:12</span><span>5G ▮▮▮ 100</span></div>
+    <div class="bar"><span class="back">←</span><h1>编辑资料</h1></div>
+    <div class="content">
+      <div class="card">
+        <div class="row"><div class="k">昵称</div><div class="v">超级管理员</div></div>
+        <div class="row"><div class="k">邮箱</div><div class="v">admin@example.com <span style="font-size:11px;color:#8a83a3">已验证</span></div></div>
+      </div>
+    </div>
+    <div class="mask"></div>
+    <div class="sheet">
+      <div class="grab"></div>
+      <h2>更换登录邮箱</h2>
+      <p class="sub">验证新邮箱后生效</p>
+      <div class="steps"><span class="d">1</span>验证新邮箱 <span style="color:#c8b8f0">—</span> <span class="d off">2</span>完成</div>
+      <div class="warn">更换成功后所有设备会退出登录，需要用新邮箱重新登录；旧邮箱会收到安全通知。</div>
+      <div class="field"><div class="lbl">当前邮箱</div><div class="line"><div class="box ro">admin@example.com</div></div></div>
+      <div class="field"><div class="lbl">新邮箱</div>
+        <div class="line"><div class="box">new-mail@example.com</div><button class="btn">发送验证码</button></div>
+        <div class="tip">验证码 10 分钟内有效 · 每天最多更换 1 次</div>
+      </div>
+      <div class="field"><div class="lbl">验证码</div>
+        <div class="line"><div class="box">842193</div><button class="btn">重新发送（58s）</button></div>
+        <div class="tip">已发送到 new-mail@example.com · 5 次尝试机会</div>
+      </div>
+      <button class="primary">确认更换</button>
+      <button class="ghost">取消</button>
+    </div>
+  </div>
+</body>
+</html>

@@ -2127,7 +2127,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 **依赖：** CX（个人资料页）、现有邮件服务（SMTP 已配置）
 **解锁：** 无
 **规格**：[EMAIL-CHANGE.md](EMAIL-CHANGE.md)
-**Demo**：[design/email-change-2026-11-18.html](design/email-change-2026-11-18.html)
+**Demo**：[design/email-change-2026-11-18.html](design/email-change-2026-11-18.html)（Web）/ [design/email-change-android-2026-11-18.html](design/email-change-android-2026-11-18.html)（App）
 
 - **现状（代码核对）**：邮箱验证码登录（`/api/auth/email/request|verify` purpose=login）、忘记密码（purpose=reset）、
   邮箱验证码注册（`/api/auth/register/request|verify`）**都已实现**并有前端入口；**用户自助更换邮箱没有**——
@@ -2137,9 +2137,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   ⑤ **保留管理员重置邮箱能力**（安全兜底）+ 审计 + 通知用户。
 - **接口**：`POST /api/me/email/request`（不泄露占用）、`POST /api/me/email/verify`（占用在验证码通过后才提示 409；
   成功→更新 email/email_verified、删全部会话、审计 `auth.email_changed`、发两封邮件）；管理员重置接口保留。
-- **前端**：资料页邮箱行加「更换邮箱」→ 两步对话框（新邮箱+验证码）；App 本期显示"请到网页端修改"。
+- **前端**：资料页邮箱行加「更换邮箱」→ 两步对话框（新邮箱+验证码）；**App 端同样支持**（底部弹层两步，成功后清 token 跳登录）。
 - **验收**：见规格 §4——① 换成功双邮件 + email_verified；② 会话全清（当前 401 跳登录）；③ 验证码错误/过期/超次数提示；
-  ④ 24h 频控 429；⑤ 未验证可换；⑥ 管理员重置仍可用 + 审计；⑦ `npm test`（email-change 7 项）/ `frontend:build` / `scan` 全绿。
+  ④ 24h 频控 429；⑤ 未验证可换；⑥ 管理员重置仍可用 + 审计；⑦ App 端可完整走通换邮箱；⑧ npm test（email-change 7 项）/ frontend:build / scan 全绿。
 
 ## DA. 待开发：CM-5 App 筛选/排序服务端化（方案 A：站点 + App 一起做）
 
@@ -2179,4 +2179,6 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **范围**：App 首页/我的入口显示未读公告角标，点开进公告列表/详情；已读状态按用户记录。
 - **待核实**：`/api/announcements` 是否已返回未读数；App 是否有公告列表（当前无）。
 - **待沟通**：是否本期做；已读记录存服务端还是本地。
+
+
 
