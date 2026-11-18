@@ -244,13 +244,13 @@
   ⑤ `npm test` / `frontend:build` / `scan` 全绿。
 - **已确认（2026-11-18）**：补写=**自动**（计算时补写 + 日志 align.map_backfilled）；恢复已忽略=**需要二次确认**。
 
-## DK. 待开发（修 bug）：App 检查更新失败——apkPath 缺 GitHub 直链兜底
+## DK. 已实现待发版（修 bug）：App 检查更新失败——apkPath 缺 GitHub 直链兜底
 
-**状态：待开发（2026-11-19 线上取证定位）**
+**状态：已实现待发版（2026-11-19，站点 d65542f + App 仓库 8fb6328）**
 **优先级：** P1 —— App 更新链路不可用（有新版但提示失败）
 **依赖：** 无（CJ/BY 内置更新契约已发布）
 **解锁：** 无
-**涉及 App 仓库**：是（App 端提示分支）
+**涉及 App 仓库**：是（App 端提示分支；app-v 随本批）
 **规格**：本条目 + [APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md)（CJ 契约）+ [APP-NATIVE.md](APP-NATIVE.md)（内置更新）
 
 - **现象（2026-11-19 01:54 手机实测）**：「我的 → 检查更新」弹「检查更新失败，请稍后再试」；
@@ -271,6 +271,12 @@
 - **验收**：① 模拟 apkPath 缺失（data/app 无 APK、镜像无该版本）→ 接口返回 GitHub 直链（形如
   `/releases/download/app-v…/steamdeals-…apk`）且不为 null；② App 该分支提示新文案且不报「失败」（单测）；
   ③ 正常同步场景（data/app 有 APK）不回归；④ `npm test`（分段）+ `npm run scan` 全绿。
+- **实现（2026-11-19）**：A `src/app-release.js` 新增 `githubApkUrl`（版本不合法仍 null）+
+  `src/server.js` `/api/app/latest` 的 `apkPath = appApkPathFor(…) ?? githubApkUrl(…)`；
+  B App 端 `UpdateManager.decideUpdate` 纯函数——apkPath 缺失/非法返回 `Unavailable`（提示
+  「新版下载地址暂不可用，请到站点 /app 页下载」，网络失败仍是 `Failed`）+ `UpdateDialogHost` 新分支 +
+  `UpdateManagerTest` 9 项；C apk_download 失败带 `apkFailed` 标记、`cmdAppSync` 抛错 → 任务健康条显红；
+  D（同批追加）same_version 跳过加 APK 存在性检查（APK 缺失重新下载补齐，每小时自愈）。
 
 
 

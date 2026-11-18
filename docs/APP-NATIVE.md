@@ -147,7 +147,10 @@ create index if not exists idx_api_tokens_user on api_tokens (user_id);
 - 沿用 [MOBILE-APP-UPDATE.md](MOBILE-APP-UPDATE.md) 的**交互与元数据契约**（`latest.json` + `versionCode/notes/minVersionCode`、Wi-Fi 默认、SHA-256 校验、系统安装确认），
   但实现放在**原生 App 内**（不再需要 TWA 的 LauncherActivity 改造）；
 - 检查时机：启动 + 回前台（24h 节流）+「我的 → 检查更新」；
-- 下载源：站点优先、GitHub Release 兜底；同签名覆盖安装。
+- 下载源：站点优先、GitHub Release 兜底；同签名覆盖安装；
+- **DK 批（2026-11-19）**：下载地址不可用（`apkPath` 缺失/非法）单独提示
+  「新版下载地址暂不可用，请到站点 /app 页下载」（`UpdateManager.decideUpdate` → `Unavailable`），
+  不再笼统报「检查更新失败」；网络失败仍是 Failed。
 
 ### 4.4 功能对齐矩阵（Web 与 App 的差异，2026-11-17 核对）
 
