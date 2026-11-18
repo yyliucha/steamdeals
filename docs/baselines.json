@@ -1,0 +1,7 @@
+{
+  "comment": "CO-4/D6 基线门禁阈值与测量记录（scripts/baseline-gate.mjs 读取；env GATE_* 可覆盖）。阈值先设宽松防误报：coverage 为当前主链实测值下调的安全余量，perf 为 pglite 种子数据下关键查询的宽松上限。records 由本地 `node scripts/baseline-gate.mjs --mode=perf --record` 追加。",
+  "coverage": { "lines": 60, "branches": 50, "functions": 50 },
+  "perf": { "gamesP95Ms": 150, "gamesSearchP95Ms": 300 },
+  "e2e": { "rowMs": 30000 },
+  "records": []
+}

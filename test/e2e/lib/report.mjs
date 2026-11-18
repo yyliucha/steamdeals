@@ -109,6 +109,17 @@ ${budgetNote}
 <p>本报告覆盖 R1（本地全栈 + headless Edge + Android 模拟器/真机 + 公网只读）。R2（所有者目视：真机微信/邮箱客户端/字体触控）与
 R3（部署）清单见 docs/DELIVERY.md「部署后验证」表；本套件不代替 R2/R3，只提供 R1 自动证据。</p>
 <p style="color:#888">生成自 test/e2e/runner.mjs · 报告目录 F:\\dsh\\e2e-reports\\（仓库外，不入库）</p>
+<script type="application/json" id="e2e-results">${JSON.stringify({
+    label: run.label,
+    gitHash: run.gitHash,
+    startedAt: run.startedAt,
+    passed: run.passed,
+    failed: run.failed,
+    skipped: run.skipped,
+    truncated: run.truncated ?? 0,
+    budgetExceeded: Boolean(run.budgetExceeded),
+    rows: (run.rows ?? []).map((r) => ({ id: r.id, name: r.name, status: r.status, durationMs: r.durationMs ?? null })),
+  }).replaceAll('</', '<\\/')}</script>
 </body></html>`;
 }
 

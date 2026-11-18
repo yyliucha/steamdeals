@@ -20,6 +20,9 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: node scripts/check-html-syntax.mjs web/index.html web/console.html web/setup.html
+      # CO-4/D6 基线门禁（docs/DESIGN-AUDIT.md D6 行）：主链覆盖率阈值 + 关键查询性能散点；阈值 env 可调
+      - run: node scripts/baseline-gate.mjs --mode=coverage
+      - run: node scripts/baseline-gate.mjs --mode=perf
 
   smoke:
     needs: test

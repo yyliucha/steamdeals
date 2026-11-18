@@ -14,7 +14,7 @@
 | 4 | 移动端：**默认 Android 模拟器 `steamdeals35`（API 35，WHPX）**；真机用 `--device=real`。**设备未连接/掉线 → 立即中断**并提示连接步骤（USB 模式选“传输文件(MTP)”、开发者选项开 USB 调试与 USB 调试（安全设置）、手机点允许）。 |
 | 5 | 后台测试从**新建用户**开始：`e2e_<时间戳>`（强密码走密码策略）→ 登录/改密 → 后台 13 模块 → 前台行为 → **彻底删除**并断言用户不存在；**开场先清理 `e2e_%` 孤儿账号**，只删该前缀。 |
 | 6 | 邮件真实收件：163 测试邮箱凭据放**仓库外** `F:\dsh\e2e-secrets\mail.env`（脚本只读环境变量，严禁入库）；优先 IMAP 拉取断言，网页邮箱登录仅兜底。 |
-| 7 | 报告：运行结束生成 HTML → Edge `--print-to-pdf` → 输出 **`F:\dsh\e2e-reports\<日期>-<提交短哈希>.pdf`**（仓库外，**不提交 GitHub**）；含矩阵逐行结果/失败截图/Console/耗时/skip 原因。 |
+| 7 | 报告：运行结束生成 HTML → Edge `--print-to-pdf` → 输出 **`F:\dsh\e2e-reports\<日期>-<提交短哈希>.pdf`**（仓库外，**不提交 GitHub**）；含矩阵逐行结果/失败截图/Console/耗时/skip 原因；**HTML 内嵌 `e2e-results` JSON（行级 status/durationMs），供 CO-4/D6 基线门禁联动**（`node scripts/baseline-gate.mjs --mode=e2e --e2e-report=<HTML>`：失败行/超时行即红）。 |
 | 8 | 微信内置浏览器**不做**客户端自动化（条款/封号风险）：用 Edge 设微信 UA 做页面级自动断言；真机微信只留一次性人工确认。 |
 | 9 | 部署后**公网只读验收**可自动跑（`--online`）：`/api/site` 版本、页面 dump-dom、截图、关键接口 200、TTFB——不碰服务器/生产库。 |
 | 10 | 不新增运行时依赖；e2e 仅用 Node 内置能力 + Edge + adb 子进程。 |
