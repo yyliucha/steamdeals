@@ -192,7 +192,7 @@
 
 ## DC. 待开发：App 公告角标与公告列表（CM-6）
 
-**状态：待开发（2026-11-18 沟通完成；3 项口径已确认）**
+**状态：开发中（2026-11-18 沟通完成；3 项口径已确认）**
 **来源：** [APP-PARITY.md](APP-PARITY.md) §65
 **依赖：** 站点 `GET /api/announcements` + `POST /api/announcements/read`（均已实现）、App 登录态
 
