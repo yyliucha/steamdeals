@@ -563,6 +563,21 @@ create index if not exists idx_user_search_logs_user on user_search_logs (user_i
   for (const ddl of ALTERS) {
     await store.exec(ddl);
   }
+  // CR 批（docs/APP-DEV-PUBLISHER-NAMES.md §3 CR-2）：历史脏元素清洗（幂等）——
+  // GetItems 旧实现把对象数组原样写进 text[]，元素成了 `{"name":…,"creator_clan_account_id":…}` 文本；
+  // 这里解析取 name，去空/去重保序/上限 20/单条截断 200（与 store-browse.namesFromList 同口径）。无脏行不更新。
+  for (const col of ['developers', 'publishers']) {
+    await store.query(
+      `update games set ${col} = (
+         select array_agg(n order by first_ord) from (
+           select n, min(ord) as first_ord from (
+             select left(case when left(btrim(e), 1) = '{' then nullif(btrim(btrim(e)::jsonb ->> 'name'), '') else nullif(btrim(e), '') end, 200) as n, ord
+               from unnest(${col}) with ordinality as t(e, ord)
+           ) x where n is not null group by n order by min(ord) limit 20
+         ) y
+       ) where ${col} is not null and exists (select 1 from unnest(${col}) e where left(btrim(e), 1) = '{')`,
+    );
+  }
   await store.query(
     `insert into platforms (code, name, kind) values
        ('steam',   'Steam 国区', 'official'),

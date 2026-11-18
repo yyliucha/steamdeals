@@ -63,6 +63,47 @@ export function normalizeItemType(rawType) {
 }
 
 /** GetItems 的 store_item → 与 appdetails 一致的 items 结构。 */
+/**
+ * CR 批（docs/APP-DEV-PUBLISHER-NAMES.md）：GetItems 的 basic_info.developers/publishers 是对象数组
+ * `[{name, creator_clan_account_id}]`，入库前必须归一化成纯名称字符串数组，否则 node-pg 会把对象
+ * JSON.stringify 进 text[]（生产实测：`{"name":"Behaviour Interactive Inc.",...}` 被当名称显示）。
+ * 口径（所有者 2026-11-17 确认）：字符串去首尾空白；对象取 name；过滤空值；去重保序；单条截断 200；上限 20。
+ */
+export const NAME_LIST_MAX = 20;
+export const NAME_ITEM_MAX = 200;
+export function namesFromList(value) {
+  if (!Array.isArray(value)) return null;
+  const out = [];
+  const seen = new Set();
+  for (const item of value) {
+    let name = null;
+    if (typeof item === 'string') {
+      name = item.trim();
+      // 历史脏元素（JSON 对象文本）在这里也兜一层：`{"name":"X"}` → X
+      if (name.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(name);
+          name = typeof parsed?.name === 'string' ? parsed.name.trim() : '';
+        } catch {
+          name = '';
+        }
+      }
+    } else if (item && typeof item === 'object' && typeof item.name === 'string') {
+      name = item.name.trim();
+    }
+    if (!name) continue;
+    const clipped = name.slice(0, NAME_ITEM_MAX);
+    if (seen.has(clipped)) continue;
+    seen.add(clipped);
+    out.push(clipped);
+    if (out.length >= NAME_LIST_MAX) break;
+  }
+  return out.length ? out : null;
+}
+
+/**
+ * GetItems 的 store_item → 与 appdetails 一致的 items 结构。
+ */
 export function mapStoreItem(item) {
   if (!item || !item.appid) return null;
   const basic = item.basic_info ?? {};
@@ -87,8 +128,8 @@ export function mapStoreItem(item) {
     isFree: item.is_free === true ? true : final == null ? null : final === 0,
     headerImage: null,
     releaseDate: null,
-    developers: Array.isArray(basic.developers) ? basic.developers : null,
-    publishers: Array.isArray(basic.publishers) ? basic.publishers : null,
+    developers: namesFromList(basic.developers),
+    publishers: namesFromList(basic.publishers),
     genres: Array.isArray(basic.genres) ? basic.genres.map((g) => g?.description ?? g).filter(Boolean) : null,
     description: stripHtml(basic.short_description ?? basic.detailed_description ?? ''),
     tags: null,
@@ -169,3 +210,4 @@ export async function fetchStoreItems(appids, { key, country = 'CN', language = 
 
 /** 继续跑只会更糟的状态：方法错误（405）、被限流/风控（403/429）。 */
 export const FATAL_STATUSES = new Set([403, 405, 429]);
+
