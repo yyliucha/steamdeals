@@ -1,6 +1,8 @@
 // CI-1（docs/ALERT-MAIL-APPEAL-UX.md §3）：价格提醒邮件 HTML 化——
 // 复用 CB 批每日报表的品牌风格（600px 内联 CSS + table 布局），每条提醒一张卡片；
 // 所有动态字段 HTML 转义、无外部资源；webhook/企微仍用纯文本（调用方只多传 html）。
+import { formatDayUtc, yuanAmount } from './format.js';
+
 const esc = (value) =>
   String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -9,12 +11,12 @@ const esc = (value) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-const money = (cents) => (cents == null ? null : `¥${(Number(cents) / 100).toFixed(2)}`);
+const money = (cents) => (cents == null ? null : `¥${yuanAmount(cents)}`);
 
 const REASON_LABEL = { target: '达到目标价', hist_low: '新史低', wishlist: '愿望单' };
 
 export function renderAlertsHtml(hits, { now = new Date(), siteUrl = 'https://sd.yyliucha.cn' } = {}) {
-  const dateStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+  const dateStr = formatDayUtc(now);
   const cards = (hits ?? []).map((h) => {
     const url = h.steamAppid ? `https://store.steampowered.com/app/${h.steamAppid}/` : null;
     const rows = [

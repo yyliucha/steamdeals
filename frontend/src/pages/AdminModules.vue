@@ -131,6 +131,7 @@ import { redirectToLogin } from '../utils/session.js';
 import { useListPagination } from '../composables/useListPagination.js';
 import { useTheme } from '../composables/useTheme.js';
 import { fmtDateTime as dateTime } from '../utils/siteTime.js';
+import { yuanAmount } from '../utils/money.js';
 import { isMailSettingKey } from '../utils/settings.js';
 import { copyText } from '../utils/clipboard.js';
 import { compareIp } from '../utils/ipSort.js';
@@ -354,7 +355,7 @@ const syncWarnings=computed(()=>syncStatus.value?.warnings||[]);
 function fmtDur(ms){if(ms==null)return '—';const s=Math.round(ms/1000);if(s<60)return s+' 秒';const m=Math.floor(s/60);if(m<60)return m+' 分';const h=Math.floor(m/60);return h+' 小时 '+(m%60)+' 分';}
 function api(path,options={}){return fetch(path,{credentials:'same-origin',...options,headers:{'content-type':'application/json',...(options.headers||{})}}).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{}if(r.status===401){redirectToLogin();throw new Error(d.error||'登录已过期');}if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);return d;});}
 function json(method,body){return {method,body:JSON.stringify(body)};}
-function price(cents){return cents==null?'—':`¥${(Number(cents)/100).toFixed(2)}`;}
+function price(cents){return cents==null?'—':`¥${yuanAmount(cents)}`;}
 function notifyError(e){ElMessage.error(e?.message||String(e));}async function run(action){saving.value=true;try{await action();}catch(e){notifyError(e);}finally{saving.value=false;}}
 // 批量执行：高危动作先让用户手输条数（服务端还会再校验 confirmCount），成功后弹结果并刷新列表。
 async function runBulk(action,selection,{options,refresh}={}){

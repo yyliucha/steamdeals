@@ -20,7 +20,7 @@ async function fresh() {
 }
 
 test('设置定义完整：58 项、7 个密钥、关键分组都在', () => {
-  assert.equal(settings.SETTINGS.length, 86, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项');
+  assert.equal(settings.SETTINGS.length, 88, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项');
   assert.equal(settings.SETTINGS.filter((d) => d.secret).length, 7);
   const tz = settings.SETTINGS.find((d) => d.key === 'system.timezone');
   assert.ok(tz, '要有 system.timezone（时区设置化）');

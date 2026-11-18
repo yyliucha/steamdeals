@@ -10,6 +10,7 @@
 //   node src/probe.js --url "https://example.com/x" --rounds 1
 //   node src/probe.js --url-file urls.txt --rounds 1 --interval 600
 import { readFileSync } from 'node:fs';
+import { formatDayUtc } from './format.js';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fetchJson, sleep } from './http.js';
@@ -25,7 +26,7 @@ function flag(name, fallback = null) {
 
 const rounds = Number(flag('rounds', 1));
 const intervalSec = Number(flag('interval', 0));
-const out = flag('out', `data/probe-${new Date().toISOString().slice(0, 10)}.jsonl`);
+const out = flag('out', `data/probe-${formatDayUtc(new Date())}.jsonl`);
 const target = flag('target', null);
 const appids = String(flag('appids', '730,1091500,1245620,271590,413150')).split(',').map(Number);
 

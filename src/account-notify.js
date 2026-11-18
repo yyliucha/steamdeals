@@ -11,6 +11,7 @@ import { sendMail } from './notify.js';
 import { smtpConfig, isSmtpConfigured } from './email-auth.js';
 import * as db from './store/pg.js';
 import { maskEmail } from './auth-routes.js';
+import { formatDateTime } from './format.js';
 
 /** 8 类账号通知事件白名单（与 mail-templates 的 TEMPLATE_EVENTS 里账号通知部分一致）。 */
 export const NOTIFY_ACTIONS = [
@@ -39,8 +40,7 @@ export function timeInZone(now = new Date(), tz = process.env.TZ || 'Asia/Shangh
     if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value)) throw new Error('unexpected format');
     return value;
   } catch {
-    const p = (n) => String(n).padStart(2, '0');
-    return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+    return formatDateTime(now);
   }
 }
 

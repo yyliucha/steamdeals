@@ -85,6 +85,20 @@ export const SETTINGS = [
   def('app.mobileRedirectEnabled', 'APP_MOBILE_REDIRECT_ENABLED', 'site', '手机浏览器前台跳转 /app', 'bool', false, {
     help: '开启后手机浏览器访问前台页面（/ 等）跳转到 App 下载页；/console、/login、/register、/app、/banned、/appeal、/setup、/change-password 与 /api/* 豁免。',
   }),
+  // CO-3/C2（docs/DESIGN-AUDIT.md C2）：/api/app/* 设备维度限流——X-Device-Id 为键，
+  // 每个设备独立窗口，超限 429（不封禁）；豁免封禁/黑名单的设计取舍不变。
+  def('app.deviceRateMax', 'APP_DEVICE_RATE_MAX', 'site', 'App 设备限流（次/窗口）', 'int', 300, {
+    min: 10,
+    max: 100000,
+    advanced: true,
+    help: '同一设备（X-Device-Id）在窗口内允许的 /api/app/* 请求数；超限返回 429 并记审计日志，不封禁设备。正常使用无感（全局 IP 限流 150 次/分钟更严）。',
+  }),
+  def('app.deviceRateWindowSec', 'APP_DEVICE_RATE_WINDOW_SEC', 'site', 'App 设备限流窗口（秒）', 'int', 60, {
+    min: 10,
+    max: 3600,
+    advanced: true,
+    help: '设备限流的滑动窗口长度；配合「App 设备限流（次/窗口）」使用。',
+  }),
   def('steamStatus.rateMs', 'STEAM_STATUS_RATE_MS', 'sources', 'Steam 状态判定限速（毫秒）', 'int', 1500, {
     min: 0,
     max: 30000,

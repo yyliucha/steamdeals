@@ -3,6 +3,7 @@
 // 按所有者要求删掉「日期表格 / 移动卡片 / 分页」（与趋势线重复），把空间给趋势线；史低位置画虚线参考线。
 // 纯前端：detail.series 已含全量每日最低（跨官方平台、国区 cn、按天升序）。
 import { computed, ref } from 'vue';
+import { CURRENCY_SYMBOLS, yuanAmount } from '../utils/money.js';
 
 const props = defineProps({
   series: { type: Array, default: () => [] },
@@ -10,8 +11,7 @@ const props = defineProps({
   currency: { type: String, default: 'CNY' },
 });
 
-const CURRENCY_SYMBOL = { CNY: '¥', USD: '$', HKD: 'HK$', TWD: 'NT$', EUR: '€', GBP: '£', JPY: 'JP¥' };
-const money = (cents) => (cents == null ? '—' : `${CURRENCY_SYMBOL[String(props.currency ?? '').toUpperCase()] || ''}${(Number(cents) / 100).toFixed(2)}`);
+const money = (cents) => (cents == null ? '—' : `${CURRENCY_SYMBOLS[String(props.currency ?? '').toUpperCase()] || ''}${yuanAmount(cents)}`);
 const range = ref('90');
 
 const asc = computed(() => props.series);

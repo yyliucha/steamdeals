@@ -33,6 +33,11 @@ export function fmtDateTime(value) {
   }
 }
 
+/** 日期字段（后端下发的 ISO 时间戳字符串）→ YYYY-MM-DD 展示（沿用 slice(0,10) 口径，CO-3/C4 收敛点）。 */
+export function fmtDay(value) {
+  return String(value ?? '').slice(0, 10);
+}
+
 /** 启动时从 /api/me 取一次站点时区（失败静默，保持默认）。 */
 export function bootstrapSiteTimezone() {
   fetch('/api/me', { credentials: 'same-origin' })

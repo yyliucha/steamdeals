@@ -7,6 +7,7 @@ import { copyText } from '../utils/clipboard.js';
 import { nameCopyText } from '../utils/gameNames.js';
 import { pickLowestLink } from '../utils/linkPrices.js';
 import { fmtDateTime } from '../utils/siteTime.js';
+import { CURRENCY_SYMBOLS, yuanAmount } from '../utils/money.js';
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -17,7 +18,6 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'copied']);
 
 const REGION_LABELS = { cn: '国区', hk: '港区', tw: '台区', us: '美区', jp: '日区', gb: '英区', de: '德区', fr: '法区' };
-const CURRENCY_SYMBOL = { CNY: '¥', USD: '$', HKD: 'HK$', TWD: 'NT$', EUR: '€', GBP: '£', JPY: 'JP¥' };
 const PLATFORM_DOT = { steam: 'steam', gog: 'gog', sonkwo: 'sonkwo', humble: 'humble', itad: 'itad' };
 
 function regionLabel(code) {
@@ -26,8 +26,8 @@ function regionLabel(code) {
 }
 function money(cents, currency) {
   if (cents == null) return '—';
-  const symbol = CURRENCY_SYMBOL[String(currency ?? '').toUpperCase()] || (String(currency ?? '') ? String(currency) : '');
-  return `${symbol}${(Number(cents) / 100).toFixed(2)}`;
+  const symbol = CURRENCY_SYMBOLS[String(currency ?? '').toUpperCase()] || (String(currency ?? '') ? String(currency) : '');
+  return `${symbol}${yuanAmount(cents)}`;
 }
 function relDay(value) {
   if (!value) return '';

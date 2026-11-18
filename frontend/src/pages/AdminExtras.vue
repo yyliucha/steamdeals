@@ -114,6 +114,7 @@ import { useListPagination } from '../composables/useListPagination.js';
 import { copyText } from '../utils/clipboard.js';
 import { ElMessage,ElMessageBox } from 'element-plus';
 import { fmtDateTime as dateTime } from '../utils/siteTime.js';
+import { yuanAmount } from '../utils/money.js';
 const props=defineProps({section:{type:String,required:true},me:{type:Object,default:null}});
 const route=useRoute(),router=useRouter();
 // 窄屏（手机）：其余表格由 .m-console 的「左右滑动查看更多」提示覆盖（docs/MOBILE-FIX.md §3D）
@@ -160,7 +161,7 @@ function notify(e){ElMessage.error(e?.message||String(e));}
 // AJ 批：账号变更通知回执（docs/USER-LIFECYCLE.md 验收 6/7）——删除/改邮箱是字符串，
 // PATCH/重置密码是 { status, error }；发送成功不打扰，跳过与失败要提示
 function toastNotify(d){const n=d?.notify;if(!n)return;if(typeof n==='string'){if(n==='skipped_no_email')ElMessage.info('该用户未绑定邮箱，未发送通知');return;}if(n.status==='sent')return;if(n.status==='skipped_no_email')ElMessage.info('已保存（该用户未绑定邮箱，未发送通知）');else if(n.status==='skipped_disabled')ElMessage.info('已保存（通知模板已停用，未发送）');else if(n.status==='failed')ElMessage.warning(`已保存，但通知发送失败：${n.error||''}`);}
-function price(v){return v==null?'—':`¥${(Number(v)/100).toFixed(2)}`;}
+function price(v){return v==null?'—':`¥${yuanAmount(v)}`;}
 async function act(fn){saving.value=true;try{await fn();}catch(e){notify(e);}finally{saving.value=false;}}
 // 批量执行：高危动作先手输条数（服务端还要校验 confirmCount），成功后弹结果并刷新列表。
 async function runBulk(action,selection,{options,refresh}={}){

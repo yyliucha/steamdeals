@@ -3,6 +3,7 @@
 // 动态字段（游戏名/平台名/日期）全部 HTML 转义；金额整数分 → ¥x.xx；折扣取整；
 // 链接全部由代码构造（站内首页/站内搜索/Steam 商店），不从数据取 URL。
 import { esc, fmtYuan } from './report.js';
+import { formatDay } from './format.js';
 
 const BAR_MAX_PX = 110; // 迷你柱状条最大宽度（px）
 const CELL = 'padding:7px 10px;border-bottom:1px solid #e8ebf1;font-size:13px;line-height:1.6;color:#202a3d';
@@ -30,7 +31,7 @@ export function renderPriceReport({ report, daily = [], siteUrl = 'https://sd.yy
   const topRises = (report?.topRises ?? []).slice(0, 3);
 
   const pad2 = (n) => String(n).padStart(2, '0');
-  const dateLabel = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+  const dateLabel = formatDay(now);
   const subject = `${siteName} 价格报表 · ${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} | 降价 ${drops} / 新史低 ${newLows}`;
 
   // ---- 纯文本（保持原口径，multipart fallback 与 webhook/企微共用）----

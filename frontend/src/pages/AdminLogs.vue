@@ -199,7 +199,7 @@ import { redirectToLogin } from '../utils/session.js';
 import { ElMessage } from 'element-plus';
 import PaginationBar from '../components/PaginationBar.vue';
 import { useListPagination } from '../composables/useListPagination.js';
-import { fmtDateTime as dateTime } from '../utils/siteTime.js';
+import { fmtDateTime as dateTime, fmtDay } from '../utils/siteTime.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -267,7 +267,7 @@ const delRange = ref(null);
 const delPager = useListPagination(computed(() => {
   const [from, to] = delRange.value || [null, null];
   return deletions.value.filter((d) => {
-    const day = String(d.created_at || '').slice(0, 10);
+    const day = fmtDay(d.created_at || '');
     if (from && day < from) return false;
     if (to && day > to) return false;
     return true;

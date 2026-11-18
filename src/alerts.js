@@ -1,6 +1,8 @@
 // 降价提醒：判定 + 简报。投递实现见 src/notify.js。
 //
 // 判定是纯函数（行 → 命中列表），因为它决定"要不要打扰用户"，必须能单测。
+import { yuanAmount } from './format.js';
+
 export const REASON = {
   TARGET: 'target', // 到设定的目标价
   HIST_LOW: 'hist_low', // 没设目标，跌到史低
@@ -11,7 +13,7 @@ export const REASON_LABEL = {
   [REASON.HIST_LOW]: '跌至史低',
 };
 
-const yuan = (cents) => (cents == null ? '—' : `¥${(Number(cents) / 100).toFixed(2)}`);
+const yuan = (cents) => (cents == null ? '—' : `¥${yuanAmount(cents)}`);
 
 /**
  * 从 watchCandidates 的行里挑出需要提醒的。

@@ -109,7 +109,7 @@ App 把 `svg` 渲染成位图显示；登录时回传 `token` 与用户输入。
 ```json
 { "games": [ { "id": 1, "steam_appid": 3008130, "name": "...", "name_en": "...",
                "current_low": 19800, "current_original": 29800, "currency": "CNY",
-               "discount_pct": 33, "heat": 123, "wishlisted": false, "interested": null, "owned": null } ],
+               "discount": 33, "heat": 123, "wishlisted": false, "interested": null, "owned": null } ],
   "total": 200508, "page": 1, "pageSize": 20, "pages": 10026,
   "sort": "discount", "owned": "exclude", "interest": "all", "q": "", "type": "all" }
 ```
@@ -129,16 +129,18 @@ App 把 `svg` 渲染成位图显示；登录时回传 `token` 与用户输入。
 `GET /api/app/games/:appid`（匿名可读；登录后返回个人标记）
 
 ```json
-{ "game": { "id", "steam_appid", "name", "name_en", "header_image", "description", "...": "..." },
+{ "game": { "id", "steam_appid", "name", "name_en", "description", "...": "..." },
   "offers": [ { "platform_code": "steam", "platform_name": "Steam", "region": "cn",
                 "price_cents": 19800, "original_cents": 29800, "discount_pct": 33,
                 "buy_url": "https://..." } ],
   "series": [ { "day": "2026-11-16", "price_cents": 19800 } ],
   "dlc": { "total": 24, "synced": true, "filled": 20 },
-  "flags": { "interested": null, "owned": null, "wishlisted": false } | null }
+  "watch": { "targetCents": 19800, "note": "...", "createdAt": "..." } | null }
 ```
 
 > 字段以现有 `/api/games/:appid` 返回为准；App 不新增服务端字段（CA-1 只做前缀/鉴权）。
+> 封面图不经此字段下发，App 用 `/img/steam/<appid>/header` 代理路径（§4.3 修复：原
+> `header_image` / `flags` 与实际实现漂移，2026-11-18 以代码为准改为 `watch`）。
 
 ### 4.4 DLC 列表
 

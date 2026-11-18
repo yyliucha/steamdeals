@@ -3,6 +3,7 @@
 // 纯前端手写 SVG（与 PriceHistoryReport.vue 同风格，不引图表库）；
 // 数据来自 /api/admin/reports/price 的 series（随列表一次返回，悬停零额外请求）。
 import { computed } from 'vue';
+import { CURRENCY_SYMBOLS, yuanAmount } from '../utils/money.js';
 
 const props = defineProps({
   points: { type: Array, default: () => [] },
@@ -10,9 +11,8 @@ const props = defineProps({
   currency: { type: String, default: 'CNY' },
 });
 
-const CURRENCY_SYMBOL = { CNY: '¥', USD: '$', HKD: 'HK$', TWD: 'NT$', EUR: '€', GBP: '£', JPY: 'JP¥' };
 const money = (cents) =>
-  cents == null ? '—' : `${CURRENCY_SYMBOL[String(props.currency ?? '').toUpperCase()] || ''}${(Number(cents) / 100).toFixed(2)}`;
+  cents == null ? '—' : `${CURRENCY_SYMBOLS[String(props.currency ?? '').toUpperCase()] || ''}${yuanAmount(cents)}`;
 
 const low7 = computed(() => (props.points.length ? Math.min(...props.points.map((p) => p.price_cents)) : null));
 

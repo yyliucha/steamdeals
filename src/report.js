@@ -6,17 +6,20 @@
 //   - 所有来自数据库的文本都必须 esc()，价格数据来自第三方站点，不能当可信输入
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+// CO-3/C4（docs/DESIGN-AUDIT.md C4）：金额/日期统一口径——fmtYuan / fmtDate 保留旧签名（既有调用方与测试不变），
+// 实现收敛到 src/format.js（全仓唯一 /100 落点 + YYYY-MM-DD 口径）。
+import { formatMoney, formatDayText, yuanRounded } from './format.js';
 
 const OFFICIAL_FILTER_NOTE = '仅统计官方 / 授权分销渠道';
 
 export const esc = (value) =>
   String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
-export const fmtYuan = (cents) => (cents == null || Number.isNaN(cents) ? '—' : `¥${(Number(cents) / 100).toFixed(2)}`);
+export const fmtYuan = (cents) => formatMoney(cents, 'CNY');
 
 export const fmtPct = (pct) => (pct == null || Number(pct) <= 0 ? '—' : `-${Number(pct)}%`);
 
-export const fmtDate = (day) => String(day ?? '').slice(0, 10);
+export const fmtDate = (day) => formatDayText(day);
 
 /** 取"好看"的刻度步长：1/2/5 × 10ⁿ，避免出现 ¥83、¥141 这种标签。 */
 export function niceStep(range, targetTicks = 4) {
@@ -61,7 +64,7 @@ export function projectSeries(series, { width, height, padding, targetTicks = 4 
   return { points, xMin, xMax, yMin, yMax, step, xOf, yOf };
 }
 
-const yLabel = (v) => `¥${Math.round(v / 100)}`;
+const yLabel = (v) => `¥${yuanRounded(v)}`;
 
 /** 折线图（带面积填充、网格、史低虚线、首尾价格标注）。 */
 export function lineChart(series, { width = 760, height = 240, histLow = null, label = '价格轨迹' } = {}) {

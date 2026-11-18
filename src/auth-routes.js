@@ -27,6 +27,7 @@ import { baseUrl } from './steam-login.js';
 import { appealEmailFrom } from './appeal.js';
 import { renderTemplate, resolveTemplate } from './mail-templates.js';
 import { passwordPolicyError } from './password-policy.js';
+import { formatDateTime } from './format.js';
 
 export function maskEmail(email) {
   const v = String(email ?? '');
@@ -130,7 +131,7 @@ export async function handleEmailAuth({ path, req, res, q, logger, json, readBod
         vars: {
           username: target.username,
           action: purpose === 'reset' ? '重置密码' : '登录',
-          time: `${String(expiryAt.getFullYear()).padStart(4, '0')}-${String(expiryAt.getMonth() + 1).padStart(2, '0')}-${String(expiryAt.getDate()).padStart(2, '0')} ${String(expiryAt.getHours()).padStart(2, '0')}:${String(expiryAt.getMinutes()).padStart(2, '0')}`,
+          time: formatDateTime(expiryAt),
           code,
           siteUrl: baseUrl(req),
           contactEmail: appealEmailFrom(process.env),
@@ -348,7 +349,7 @@ export async function handleEmailAuth({ path, req, res, q, logger, json, readBod
         vars: {
           username,
           action: '注册账号',
-          time: `${String(expiryAt.getFullYear()).padStart(4, '0')}-${String(expiryAt.getMonth() + 1).padStart(2, '0')}-${String(expiryAt.getDate()).padStart(2, '0')} ${String(expiryAt.getHours()).padStart(2, '0')}:${String(expiryAt.getMinutes()).padStart(2, '0')}`,
+          time: formatDateTime(expiryAt),
           code,
           siteUrl: baseUrl(req),
           contactEmail: appealEmailFrom(process.env),

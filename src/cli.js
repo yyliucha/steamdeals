@@ -34,6 +34,7 @@ import { describeProxy, decideProxy, parseProxy, redactProxy } from './proxy.js'
 import { passwordPolicyError } from './password-policy.js';
 import { startStaticServer } from './serve.js';
 import * as settings from './settings.js';
+import { yuanAmount, formatDayUtc } from './format.js';
 
 // 统一成 { code, name, kind, ..., searchOffer } 的形状，供 syncByTitle 复用
 const gog = { ...gogDescriptor, searchOffer: gogSearch, fetchById: gogFetchById };
@@ -85,7 +86,7 @@ if (!explicitTarget) {
 // 容器启动时数据库可能还没就绪（compose 里 db 先起、app 随后），所以支持"等库"：
 // DB_WAIT_SEC=60 表示最多等 60 秒，每 2 秒重连一次。
 const dbWaitSec = Number(flag('wait-db', process.env.DB_WAIT_SEC ?? 0));
-const yuan = (c) => (c == null ? '-' : `¥${(c / 100).toFixed(2)}`);
+const yuan = (c) => (c == null ? '-' : `¥${yuanAmount(c)}`);
 const width = (s) => {
   let w = 0;
   for (const ch of String(s)) w += /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/.test(ch) ? 2 : 1;
@@ -588,10 +589,10 @@ async function printSyncPriceReport(sinceMs, limit = 5) {
     console.log(`\n本次价格变动：降价 ${rep.drops} 条 / 涨价 ${rep.rises} 条`);
     for (const d of rep.topDrops) {
       const pct = d.was > 0 ? Math.round((d.drop_cents / d.was) * 100) : 0;
-      console.log(`  ↓ ¥${(d.was / 100).toFixed(2)} → ¥${(d.now_price / 100).toFixed(2)}（-${pct}%）${d.name} · ${d.platform_name}`);
+      console.log(`  ↓ ¥${yuanAmount(d.was)} → ¥${yuanAmount(d.now_price)}（-${pct}%）${d.name} · ${d.platform_name}`);
     }
     for (const r of rep.topRises.slice(0, limit)) {
-      console.log(`  ↑ ¥${(r.was / 100).toFixed(2)} → ¥${(r.now_price / 100).toFixed(2)}  ${r.name} · ${r.platform_name}`);
+      console.log(`  ↑ ¥${yuanAmount(r.was)} → ¥${yuanAmount(r.now_price)}  ${r.name} · ${r.platform_name}`);
     }
     logger.info('sync.price_report', { hours: rep.hours, changed: rep.changed, drops: rep.drops, rises: rep.rises });
     return `降价 ${rep.drops} 条 / 涨价 ${rep.rises} 条`;
@@ -1603,7 +1604,7 @@ async function cmdUser() {
       return;
     }
     for (const u of users) {
-      const created = u.created_at ? new Date(u.created_at).toISOString().slice(0, 10) : '';
+      const created = u.created_at ? formatDayUtc(new Date(u.created_at)) : '';
       console.log(`${String(u.username).padEnd(18)} ${String(u.role).padEnd(6)} ${created}`);
     }
     return;
@@ -2544,7 +2545,7 @@ async function cmdHeat() {
             steamAppid: appid,
             heat,
             heatReviews: total,
-            releaseDate: rel ? rel.toISOString().slice(0, 10) : null,
+            releaseDate: rel ? formatDayUtc(rel) : null,
           });
         });
         if (ok) {
@@ -2641,7 +2642,7 @@ async function cmdReport() {
     for (const r of rows) {
       const pct = r.was > 0 ? (((r.was - r.now_price) / r.was) * 100).toFixed(1) : '';
       console.log([r.steam_appid ?? '', r.name, r.platform, r.platform_name,
-        (r.was / 100).toFixed(2), (r.now_price / 100).toFixed(2), pct,
+        yuanAmount(r.was), yuanAmount(r.now_price), pct,
         String(r.captured_at).slice(0, 19).replace('T', ' ')].map(cell).join(','));
     }
     return;
@@ -2653,7 +2654,7 @@ async function cmdReport() {
   if (!rep.changed) {
     console.log('（没有变动：要么价格没变，要么快照是在加入 prev_price_cents 之前写的）');
   } else {
-    const fmt = (x) => `¥${(x / 100).toFixed(2)}`;
+    const fmt = (x) => `¥${yuanAmount(x)}`;
     const when = (t) => String(t).slice(0, 16).replace('T', ' ');
     console.log('\n降价 Top：');
     for (const d of rep.topDrops) {

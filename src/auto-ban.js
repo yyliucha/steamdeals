@@ -12,6 +12,7 @@
 //
 // 内存窗口与 ratelimit.js 同款设计：只为触发判定，落库只在真封那一刻。
 import { matchesIpEntry } from './visitors.js';
+import { formatDay } from './format.js';
 
 export const DEFAULT_UA_PATTERNS = [
   'sqlmap', 'nikto', 'masscan', 'zgrab', 'nuclei', 'wpscan', 'gobuster', 'dirbuster', 'metasploit', 'acunetix', 'nessus',
@@ -98,8 +99,7 @@ const boundedSet = (map, key, value, max = 5000) => {
 };
 
 function dayKey(now) {
-  const d = new Date(now);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return formatDay(new Date(now));
 }
 
 /**

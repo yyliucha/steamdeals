@@ -2,24 +2,9 @@
 //
 // 关键前提：**不同币种不做汇率折算**。折算需要实时汇率，猜一个静态汇率会把
 // 比较结果做错；宁可并排展示、明确告知不可直接比较。
-
-const SYMBOLS = {
-  CNY: '¥',
-  USD: '$',
-  HKD: 'HK$',
-  TWD: 'NT$',
-  JPY: 'JP¥',
-  RUB: '₽',
-  TRY: '₺',
-  ARS: 'ARS$',
-  EUR: '€',
-};
-
-export function formatMoney(cents, currency = 'CNY') {
-  if (cents == null || Number.isNaN(Number(cents))) return '—';
-  const symbol = SYMBOLS[currency] ?? `${currency} `;
-  return `${symbol}${(Number(cents) / 100).toFixed(2)}`;
-}
+// CO-3/C4（docs/DESIGN-AUDIT.md C4）：formatMoney 签名与输出不变，实现收敛到 src/format.js。
+import { formatMoney } from './format.js';
+export { formatMoney };
 
 /**
  * 按区服分组，组内按价格升序，并标出该区最低。

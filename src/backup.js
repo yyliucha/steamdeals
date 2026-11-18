@@ -7,6 +7,7 @@ import { gzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import * as db from './store/pg.js';
 import { purgeOldCodes } from './email-auth.js';
+import { formatDayUtc } from './format.js';
 
 export const BACKUP_TABLES = [
   'platforms',
@@ -62,7 +63,7 @@ export async function createBackup(q, { dir = 'data/backup', keep = 7, viewDays 
     logger?.warn('backup.purge_codes_skipped', { message: String(err.message).slice(0, 120) });
   }
 
-  const stamp = new Date().toISOString().slice(0, 10);
+  const stamp = formatDayUtc(new Date());
   const file = `${dir}/backup-${stamp}.json.gz`;
   writeFileSync(file, gzipSync(JSON.stringify({ generatedAt: new Date().toISOString(), dump })));
 

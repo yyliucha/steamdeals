@@ -9,6 +9,7 @@
 //
 // `backend: 'auto'` 会先探官方（短超时），失败再回落镜像，并把实际用的后端记进日志。
 import { fetchJson } from '../http.js';
+import { formatDayUtc } from '../format.js';
 
 // Steam 官方分类 id → 中文名。只收录确定的那几个，未知 id 原样保留为 genre:<id>，
 // 宁可显示得少，也不瞎猜名字（Steam 的分类 id 表不是公开稳定的文档）。
@@ -94,7 +95,7 @@ export function extractAppId(input) {
 
 const toDate = (unixSeconds) => {
   const n = Number(unixSeconds);
-  return Number.isFinite(n) && n > 0 ? new Date(n * 1000).toISOString().slice(0, 10) : null;
+  return Number.isFinite(n) && n > 0 ? formatDayUtc(new Date(n * 1000)) : null;
 };
 
 /** 官方 appdetails(basic) 条目 → 归一化元数据。 */
