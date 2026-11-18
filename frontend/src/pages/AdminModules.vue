@@ -354,7 +354,7 @@ const syncWarnings=computed(()=>syncStatus.value?.warnings||[]);
 function fmtDur(ms){if(ms==null)return '—';const s=Math.round(ms/1000);if(s<60)return s+' 秒';const m=Math.floor(s/60);if(m<60)return m+' 分';const h=Math.floor(m/60);return h+' 小时 '+(m%60)+' 分';}
 // B3 批（docs/DESIGN-AUDIT.md B3）：任务卡「实际 vs 估算」——估算取实测（sync_runs 平均），无实测回落理论值并标注
 function estimateText(row){const e=row.estimate;if(!e)return '—';const sec=e.obsSec??e.estSec;return fmtDur(Math.round(sec*1000))+(e.obsSec==null?'（理论）':'');}
-function deltaText(row){if(row.lastElapsedMs==null||!row.estimate)return null;const est=(row.estimate.obsSec??row.estimate.estSec)*1000;const d=row.lastElapsedMs-Math.round(est);const sign=d>=0?'+':'';return sign+fmtDur(Math.abs(d));}
+function deltaText(row){if(row.lastElapsedMs==null||!row.estimate)return null;const est=(row.estimate.obsSec??row.estimate.estSec)*1000;const d=row.lastElapsedMs-Math.round(est);const sign=d>=0?'+':'-';return sign+fmtDur(Math.abs(d));}
 function estimateOver(row){if(row.lastElapsedMs==null||!row.estimate)return false;return row.lastElapsedMs>(row.estimate.obsSec??row.estimate.estSec)*1000;}
 function api(path,options={}){return fetch(path,{credentials:'same-origin',...options,headers:{'content-type':'application/json',...(options.headers||{})}}).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{}if(r.status===401){redirectToLogin();throw new Error(d.error||'登录已过期');}if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);return d;});}
 function json(method,body){return {method,body:JSON.stringify(body)};}

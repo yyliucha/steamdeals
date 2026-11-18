@@ -513,7 +513,7 @@ export function jobRuntimeEstimates(jobs, env = process.env, observed = null) {
 /**
  * AC-4：总时长超过 24 小时（1440 分钟）时自动降频——只缩 steam-status 的每日限额
  * （唯一可调的大项），把总量压回预算内并记 `scheduler.budget_exceeded` 告警。
- * B3 批：observed（sync_runs 实测平均秒）参与预算；缩量仍按理论每款速率折算（限额是可调旋钮）。
+ * B3 批：observed（sync_runs 实测平均秒）参与预算；缩量每款速率同样优先用实测折算（有实测按实测/限额，无实测按理论 2×rate）。
  * 返回 { jobs, budget, adjusted }，jobs 是调整后的副本。
  */
 export function applySteamBudget(jobs, env = process.env, logger = null, observed = null) {
@@ -540,7 +540,7 @@ export function applySteamBudget(jobs, env = process.env, logger = null, observe
     totalMin: Math.round(budget.total),
     targetMin: 1440,
     adjustedSteamStatusLimit: newLimit,
-    source: observed ? 'observed' : 'theoretical', // B3 批：标注预算来源
+    source: observed && observed.size ? 'observed' : 'theoretical', // B3 批：标注预算来源（无实测样本回落理论）
   });
   return { jobs: adjusted, budget, adjusted: true };
 }

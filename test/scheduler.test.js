@@ -523,6 +523,7 @@ test('B3：writeStatusFile 带 estimate 字段，前端任务卡显示实际/估
   assert.match(admin, /估算 \{\{ estimateText\(row\) \}\}/, '任务卡显示估算');
   assert.match(admin, /deltaText\(row\)/, '任务卡显示实际与估算差');
   assert.match(admin, /j\.estimate/, 'taskRows 透传 estimate 字段');
+  assert.match(admin, /（理论）/, '无实测样本时估算标注「理论」');
 });
 
 test('AC-9/BL-1：回填候选新游戏优先 + 四态排除 + 默认每天 5000（静态断言）', () => {
