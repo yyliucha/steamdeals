@@ -153,6 +153,7 @@ gh auth switch --user boxiang-sun_shortcut          # 切回默认账号
 🎯 推算：本次发布范围 <TODO 编号列表>（N 个新功能条目 / 修复批 → 档位：小版本 / 大版本；指定版本则写「所有者指定」）
 🔖 tag：vX.Y.Z 已推送，main 已同步（<release 短哈希> + CI 记录 <短哈希>）
 ✅ 验证：本批相关测试全绿（<文件列表>）/ frontend:build / scan 干净 / api.test.js N 项（动过 API 时）
+🧪 测试报告：F:\dsh\e2e-reports\<日期>-<短哈希>.pdf（e2e 全量 X 通过 / Y 失败 / Z skip；本机仓库外，不入库）
 🚀 CI：docker-hub <run-id>（test/smoke/publish 全绿）；docker-tcr <run-id>（test/publish 全绿）
 🖥 服务器：待部署人员按 docs/DELIVERY.md 升级到 X.Y.Z（开发侧不执行）
 ⚠️ 未发布/未纳入：<编号> —— 原因：<质检打回 / 未质检 / 不在本批>
