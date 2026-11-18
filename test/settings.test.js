@@ -296,6 +296,11 @@ test('CQ meta：sources/site/advanced 全有 section+tier；6 张平台卡每卡
   assert.ok(site.keys.includes('system.timezone'), '时区在站点常用（§2.3）');
   const recommend = sections.find((s) => s.group === 'site' && s.id === 'recommend');
   assert.ok(recommend, '推荐与评分折叠存在');
+  // 质检打回项：推荐与评分折叠 4 项（口味权重进折叠），行为开关放卡体常用
+  const recAdv = byGroup.site.filter((d) => d.section === 'recommend' && d.tier === 'advanced');
+  assert.equal(recAdv.length, 4, '推荐与评分折叠 4 项');
+  assert.ok(recAdv.some((d) => d.key === 'personal.tasteWeight'), '口味权重在折叠内');
+  assert.equal(settings.SETTING_MAP.get('personal.behaviorLogEnabled').tier, 'primary', '行为开关在折叠外');
 });
 
 test('CQ isDefaultValue：int/bool/enum/string 类型敏感比较，null 视作默认', () => {
@@ -368,4 +373,9 @@ test('CQ 前端接线（静态）：只看非默认/折叠/恢复本组默认/�
   const server = readFileSync(new URL('../src/settings-routes.js', import.meta.url), 'utf8');
   assert.match(server, /api\/admin\/settings\/restore/, '恢复接口路由');
   assert.match(server, /settings\.restored/, '恢复审计');
+  // 质检打回项静态锁：只看非默认过滤折叠内项 / bool 摘要开·关 / 紧凑行每字段恢复入口
+  assert.match(admin, /'开':'关'/, 'bool 摘要显示开/关而非 true/false');
+  assert.match(admin, /kind:'foldBody',sec,fields:adv/, '折叠展开项与折叠计数同用过滤后的 adv（只看非默认生效）');
+  assert.match(admin, /↺/, '紧凑行每个字段都有恢复入口');
+  assert.match(admin, /en\[0\]\.key/, '卡头启用开关取第一个 .enabled（杉果卡启用状态）');
 });

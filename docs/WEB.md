@@ -108,8 +108,9 @@ POST /api/setup/complete
 
 | 接口 | 说明 |
 |---|---|
-| `GET /api/admin/settings` | 字段定义 + 值 + `sources`（database/env/default）+ 密钥 `hasValue` |
+| `GET /api/admin/settings` | 字段定义 + 值 + `sources`（database/env/default）+ 密钥 `hasValue`；CQ 批起带 `sections`/`plainGroups`/`isDefault`（渲染 meta） |
 | `POST /api/admin/settings` | `{ values: { "sources.steam.enabled": false, ... } }` |
+| `POST /api/admin/settings/restore` | `{ keys: [...] }` 恢复默认（删库覆盖行，来源回落 env→default，审计 `settings.restored`；单行/分组恢复共用） |
 
 - 密钥字段：`GET` 不回显；`POST` 空字符串/省略 = 保持，`null` = 清除
 - 保存后写库、递增 `settings.revision`；调度器轮询到 revision 变化后重新水合 `.env` 并重建任务表
@@ -126,6 +127,7 @@ POST /api/setup/complete
 | `GET /api/setup/status` / `GET /api/setup/schema` | ✅（仅未初始化时） | ✅ | ✅ |
 | `POST /api/setup/complete` | ✅（仅未初始化时；始终要求初始化口令） | ✅ | ✅ |
 | `GET/POST /api/admin/settings` | ❌ 401 | ❌ 403 | ✅ |
+| `POST /api/admin/settings/restore` | ❌ 401 | ❌ 403 | ✅ |
 | `POST /api/prefs` | ❌ 401 | ✅ | ✅ |
 | `POST /api/games/:appid/interest` | ❌ 401 | ❌ 403 | ✅ |
 | `POST /api/games/:appid/owned` | ❌ 401 | ❌ 403 | ✅ |
