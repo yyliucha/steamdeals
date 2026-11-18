@@ -1,6 +1,6 @@
 # 测试环境隔离与主链分段（DI，待开发）
 
-> 状态：**开发中（2026-11-18 认领）**。
+> 状态：**质检通过（2026-11-18，实现 3acd1b8；QA docs/QA-DI.md 第 1 轮 ✅ 放行）**。
 > 关联：[TODO.md](TODO.md) DI 条目、[test/serve.test.js](../test/serve.test.js) CJ-回归用例、`package.json` test 主链。
 
 ## 1. 已确认的决策（2026-11-18 所有者拍板）
