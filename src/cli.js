@@ -709,6 +709,10 @@ async function runSonkwoMatchStep({ limit = 100, autoScore = 0.94 } = {}) {
   const items = align.loadSonkwoItems(entries, orphanRows);
   const maps = await withStore((store) => db.sourceMapsByProducts((sql, p) => store.query(sql, p), 'sonkwo', items.map((i) => String(i.skuId))));
   const inherit = align.applyMapInheritance(items, maps);
+  // DH 批（docs/ALIGN-INTEGRITY.md §2 A1）：skus.json 已带 appid、库无映射 → 自动补写 + 日志 align.map_backfilled
+  await withStore((store) =>
+    align.writeBackfilledMaps({ q: (sql, p) => store.query(sql, p), backfill: inherit.backfill, steamGames: games, logger }),
+  );
   if (inherit.inheritApplied) {
     for (const item of items) {
       const entry = entries.find((e) => Number(e.skuId) === item.skuId);
@@ -1293,6 +1297,10 @@ async function cmdMatch() {
   const items = align.loadSonkwoItems(entries, orphanRows);
   const maps = await withStore((store) => db.sourceMapsByProducts((sql, p) => store.query(sql, p), 'sonkwo', items.map((i) => String(i.skuId))));
   const inherit = align.applyMapInheritance(items, maps);
+  // DH 批（docs/ALIGN-INTEGRITY.md §2 A1）：skus.json 已带 appid、库无映射 → 自动补写 + 日志 align.map_backfilled
+  await withStore((store) =>
+    align.writeBackfilledMaps({ q: (sql, p) => store.query(sql, p), backfill: inherit.backfill, steamGames: games, logger }),
+  );
   if (inherit.inheritApplied) {
     for (const item of items) {
       const entry = entries.find((e) => Number(e.skuId) === item.skuId);

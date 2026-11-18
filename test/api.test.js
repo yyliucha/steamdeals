@@ -1276,6 +1276,87 @@ test('CD 对齐审核：去重组队列、确认写映射、忽略与决定继�
   }
 });
 
+test('DH 对齐数据完整性：skus.json 带 appid 自动补写不入队；已忽略可列/恢复；审阅记录含操作人', async () => {
+  const { store, q, srv, base } = await setup();
+  const tmpFile = join(tmpdir(), `align-dh-${Date.now()}.json`);
+  try {
+    // 6001 断箭类：skus.json 已带 appid、库无映射；6002 普通待处理 SKU
+    writeFileSync(tmpFile, JSON.stringify([
+      { skuId: 6001, appid: 413150, name: '断箭' },
+      { skuId: 6002, appid: null, name: '愚者不灭' },
+    ], null, 2));
+    process.env.ALIGN_SKU_FILE = tmpFile;
+    const cookie = (await login(base, 'admin', 'admin123456')).cookie;
+    await q("insert into games (steam_appid, name) values (413150, '断箭') on conflict do nothing");
+    const getQueue = async () => {
+      for (let i = 0; i < 40; i += 1) {
+        const res = await fetch(`${base}/api/admin/align`, { headers: { cookie } });
+        const body = await res.json();
+        if (res.status === 200) return body.groups;
+        assert.equal(res.status, 202, '冷缓存应返回 202 generating');
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      throw new Error('对齐审核后台生成超时（40 轮未就绪）');
+    };
+
+    // A1：断箭组（skus.json 已带 appid）不再入队，且库无映射被自动补写为 confirmed
+    const first = await getQueue();
+    assert.ok(!first.some((g) => g.name === '断箭'), 'skus.json 已带 appid 的组不再入队（断箭场景）');
+    const back = (await q("select decision, match_method, game_id from game_source_map where platform_code = 'sonkwo' and product_id = '6001'")).rows[0];
+    assert.ok(back, '库无映射时自动补写');
+    assert.equal(back.decision, 'confirmed', '补写为 confirmed');
+    assert.equal(back.match_method, 'skus_backfill', '补写方式 skus_backfill');
+    assert.ok(Number.isFinite(Number(back.game_id)), '补写指向 games.id');
+
+    // B1：忽略「愚者不灭」→ 出现在已忽略视图（组名/SKU/操作人/时间）；恢复后重新入队
+    const fool = first.find((g) => g.name === '愚者不灭');
+    assert.ok(fool, '愚者不灭在队列');
+    const ignore = await fetch(`${base}/api/admin/align/ignore`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ key: fool.key }),
+    });
+    assert.equal(ignore.status, 200);
+    const ignoredRes = await fetch(`${base}/api/admin/align/ignored`, { headers: { cookie } });
+    assert.equal(ignoredRes.status, 200);
+    const ignoredBody = await ignoredRes.json();
+    const ignoredRow = ignoredBody.groups.find((g) => g.key === fool.key);
+    assert.ok(ignoredRow, '已忽略视图包含该组');
+    assert.ok(ignoredRow.skus.includes('6002'), '返回组内 SKU');
+    assert.equal(ignoredRow.ignoredBy, 'admin', '返回操作人');
+    assert.ok(ignoredRow.ignoredAt, '返回忽略时间');
+
+    const restore = await fetch(`${base}/api/admin/align/restore`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ key: fool.key }),
+    });
+    assert.equal(restore.status, 200, JSON.stringify(await restore.json()));
+    const after = await getQueue();
+    assert.ok(after.some((g) => g.key === fool.key), '恢复后该组重新回到待处理队列');
+    const restoredRow = (await q("select decision, game_id, reviewed_by from game_source_map where platform_code = 'sonkwo' and product_id = '6002'")).rows[0];
+    assert.equal(restoredRow.decision, 'pending', '恢复后映射行变 pending');
+    assert.equal(restoredRow.game_id, null, '恢复后清空 game_id');
+    assert.ok(restoredRow.reviewed_by != null, '恢复操作人落库');
+
+    // C1：审阅记录——恢复动作可查（操作人 + 时间 + 动作）
+    const histRes = await fetch(`${base}/api/admin/align/history?key=${encodeURIComponent(fool.key)}`, { headers: { cookie } });
+    assert.equal(histRes.status, 200);
+    const hist = await histRes.json();
+    const pendingRecord = hist.records.find((r) => r.decision === 'pending');
+    assert.ok(pendingRecord, '审阅记录含恢复（pending）动作');
+    assert.equal(pendingRecord.username, 'admin', '审阅记录含操作人');
+
+    // 已忽略视图在恢复后不再包含该组
+    const ignoredAfter = await (await fetch(`${base}/api/admin/align/ignored`, { headers: { cookie } })).json();
+    assert.ok(!ignoredAfter.groups.some((g) => g.key === fool.key), '恢复后不再出现在已忽略视图');
+  } finally {
+    delete process.env.ALIGN_SKU_FILE;
+    await srv.close();
+    await store.close();
+  }
+});
+
 // ---------------------------------------------------------------- B1 批（docs/DESIGN-AUDIT.md B1）
 // 统一请求超时（默认 15s，测试注入 80ms）+ 重型接口并发闸：
 // ① 慢查询超过阈值 → 503 + 日志 http.request_timeout；

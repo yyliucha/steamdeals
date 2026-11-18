@@ -201,7 +201,7 @@ const chips = computed(() => {
     { key: 'high', label: '高置信', n: c?.auto ?? 0 },
     { key: 'manual', label: '需人工', n: c?.manual ?? 0 },
     { key: 'none', label: '无候选', n: c?.noCandidate ?? 0 },
-    { key: 'ignored', label: '已忽略', n: c?.ignored ?? 0 },
+    { key: 'ignored', label: '已忽略', n: ignored.total }, // DH 批：真实已忽略组数（GET /api/admin/align/ignored）
   ];
 });
 
@@ -397,7 +397,66 @@ async function pickGame(game) {
   }
 }
 
-onMounted(() => load());
+// ── DH 批（docs/ALIGN-INTEGRITY.md）：已忽略视图 / 恢复为待处理（二次确认）/ 审阅记录抽屉 ──
+const view = ref('queue'); // queue | ignored
+const ignored = reactive({ rows: [], total: 0, loading: false });
+
+async function loadIgnored() {
+  ignored.loading = true;
+  try {
+    const d = await api('/api/admin/align/ignored');
+    ignored.rows = d.groups || [];
+    ignored.total = d.total ?? 0;
+  } catch (e) {
+    notifyError(e);
+  } finally {
+    ignored.loading = false;
+  }
+}
+function showIgnoredView() {
+  view.value = 'ignored';
+  loadIgnored();
+}
+function onChip(c) {
+  if (c.key === 'ignored') { showIgnoredView(); return; }
+  filter.value = c.key;
+  view.value = 'queue';
+}
+async function restoreIgnored(row) {
+  try {
+    // §5.2：恢复已忽略需要二次确认（避免误恢复大批量）
+    await ElMessageBox.confirm(
+      `恢复「${row.name}」（${row.skus.length} 个 SKU）为待处理？该组会重新回到对齐队列等待处理。本次操作记入审计日志。`,
+      '恢复已忽略组',
+      { type: 'warning', confirmButtonText: '确认恢复', cancelButtonText: '取消' },
+    );
+    const r = await api('/api/admin/align/restore', { method: 'POST', body: JSON.stringify({ key: row.key }) });
+    ElMessage.success(`已恢复 ${r.restored} 个 SKU 为待处理`);
+    await loadIgnored();
+    await load();
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') notifyError(e);
+  }
+}
+
+const ACTION_TEXT = { confirmed: '确认', ignored: '忽略', pending: '恢复' };
+const history = reactive({ visible: false, row: null, records: [], loading: false });
+async function openHistory(row) {
+  history.row = row;
+  history.records = [];
+  history.loading = true;
+  history.visible = true;
+  try {
+    const d = await api(`/api/admin/align/history?key=${encodeURIComponent(row.key)}`);
+    history.records = d.records || [];
+  } catch (e) {
+    notifyError(e);
+  } finally {
+    history.loading = false;
+  }
+}
+
+onMounted(() => { load(); loadIgnored(); });
 onUnmounted(() => clearTimeout(pollTimer));
 </script>
 
@@ -439,17 +498,19 @@ onUnmounted(() => clearTimeout(pollTimer));
       <span class="align-banner-hint">{{ generating.failed ? '将自动重试' : usingStale ? '（完成后自动刷新，可先用旧结果）' : '（完成后自动刷新）' }}</span>
     </div>
 
-    <!-- 工具栏：搜索 + 5 筛选 chip + 批量确认/忽略 -->
+    <!-- 工具栏：搜索 + 5 筛选 chip + 批量确认/忽略（批量只在队列视图显示） -->
     <div class="align-toolbar">
       <el-input v-model="query" class="align-search" clearable placeholder="搜索杉果 SKU 名 / 候选游戏名" />
-      <button v-for="c in chips" :key="c.key" type="button" class="align-chip" :class="{ on: filter === c.key }" @click="filter = c.key">{{ c.label }} <strong>{{ c.n }}</strong></button>
-      <el-button size="small" type="primary" plain :disabled="!selectedRows.length" :loading="batchConfirmDlg.submitting" @click="openBatchConfirm">批量确认{{ selectedRows.length ? `（${selectedRows.length}）` : '' }}</el-button>
-      <el-button size="small" type="danger" plain :disabled="!selectedRows.length" :loading="batchIgnoreDlg.submitting" @click="openBatchIgnore">批量忽略{{ selectedRows.length ? `（${selectedRows.length}）` : '' }}</el-button>
+      <button v-for="c in chips" :key="c.key" type="button" class="align-chip"
+        :class="{ on: c.key === 'ignored' ? view === 'ignored' : (view === 'queue' && filter === c.key) }"
+        @click="onChip(c)">{{ c.label }} <strong>{{ c.n }}</strong></button>
+      <el-button v-if="view === 'queue'" size="small" type="primary" plain :disabled="!selectedRows.length" :loading="batchConfirmDlg.submitting" @click="openBatchConfirm">批量确认{{ selectedRows.length ? `（${selectedRows.length}）` : '' }}</el-button>
+      <el-button v-if="view === 'queue'" size="small" type="danger" plain :disabled="!selectedRows.length" :loading="batchIgnoreDlg.submitting" @click="openBatchIgnore">批量忽略{{ selectedRows.length ? `（${selectedRows.length}）` : '' }}</el-button>
     </div>
 
-    <!-- 表格 -->
+    <!-- 表格：队列视图 / 已忽略视图（DH 批：已忽略 chip 切换视图，恢复为待处理需二次确认） -->
     <div class="module-card table-card align-card" v-loading="loading">
-      <el-table v-if="displayedRows.length > 0" ref="alignTable" class="align-table" row-key="key" :data="pagedRows" :empty-text="' '" stripe
+      <el-table v-if="view === 'queue' && displayedRows.length > 0" ref="alignTable" class="align-table" row-key="key" :data="pagedRows" :empty-text="' '" stripe
         @selection-change="onSelection">
         <el-table-column type="expand" width="30">
           <template #default="{ row }">
@@ -509,6 +570,12 @@ onUnmounted(() => clearTimeout(pollTimer));
             <el-tag :type="suggest(row).type" size="small" effect="light">{{ suggest(row).text }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="最近处理" min-width="172">
+          <template #default="{ row }">
+            <span v-if="row.lastReviewed" class="muted">{{ row.lastReviewed.action }} · {{ row.lastReviewed.by || '系统' }} · {{ fmtMin(row.lastReviewed.at) }}</span>
+            <span v-else class="muted">—</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="196" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" :disabled="!row.candidate" @click="openConfirm(row)">确认</el-button>
@@ -516,30 +583,56 @@ onUnmounted(() => clearTimeout(pollTimer));
             <el-button link type="danger" @click="ignoreGroup(row)">忽略</el-button>
           </template>
         </el-table-column>
-        <el-table-column label="链接 / 明细" width="190" fixed="right">
+        <el-table-column label="链接 / 明细" width="232" fixed="right">
           <template #default="{ row }">
             <span class="align-links">
               <a v-if="row.candidate?.steamUrl" :href="row.candidate.steamUrl" target="_blank" rel="noopener noreferrer" class="lnk">Steam ↗</a>
               <a :href="row.skuUrls[0]" target="_blank" rel="noopener noreferrer" class="lnk">杉果 ↗</a>
               <el-button link type="primary" @click="toggleDetail(row)">明细</el-button>
+              <el-button link @click="openHistory(row)">记录</el-button>
             </span>
           </template>
         </el-table-column>
       </el-table>
 
-      <!-- 分页（前端分页：翻页保留筛选） -->
-      <PaginationBar v-if="displayedRows.length > 0" v-model:page="page" v-model:page-size="pageSize" :total="filteredRows.length" />
+      <!-- DH 批：已忽略视图（组名/SKU/忽略时间/操作人/恢复二次确认） -->
+      <el-table v-else-if="view === 'ignored'" class="align-table" row-key="key" :data="ignored.rows" v-loading="ignored.loading" stripe>
+        <el-table-column label="杉果名（组）" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }"><div class="align-gname"><b>{{ row.name }}</b></div></template>
+        </el-table-column>
+        <el-table-column label="SKU" min-width="190">
+          <template #default="{ row }">
+            <span class="align-links">
+              <a v-for="id in row.skus" :key="id" class="lnk" :href="`https://www.sonkwo.hk/sku/${id}`" target="_blank" rel="noopener noreferrer">SKU {{ id }} ↗</a>
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="忽略时间" min-width="155">
+          <template #default="{ row }"><span class="muted">{{ row.ignoredAt ? fmtMin(row.ignoredAt) : '—' }}</span></template>
+        </el-table-column>
+        <el-table-column label="操作人" width="110">
+          <template #default="{ row }"><span class="muted">{{ row.ignoredBy || '系统' }}</span></template>
+        </el-table-column>
+        <el-table-column label="操作" width="100" fixed="right">
+          <template #default="{ row }"><el-button link type="primary" @click="restoreIgnored(row)">恢复</el-button></template>
+        </el-table-column>
+      </el-table>
+
+      <!-- 分页（前端分页：翻页保留筛选；仅队列视图） -->
+      <PaginationBar v-if="view === 'queue' && displayedRows.length > 0" v-model:page="page" v-model:page-size="pageSize" :total="filteredRows.length" />
 
       <!-- 空态互斥：仅「已完成且 0 组」显示；生成中/加载中/加载失败不显示；筛选无命中给轻提示 -->
-      <el-empty v-if="!generating.active && !loading && !loadError && displayedRows.length === 0"
+      <el-empty v-if="view === 'ignored' && !ignored.loading && ignored.rows.length === 0"
+        description="没有已忽略的组（忽略的组会在这里列出，可恢复为待处理）" />
+      <el-empty v-else-if="view === 'queue' && !generating.active && !loading && !loadError && displayedRows.length === 0"
         description="没有待对齐的组（新 SKU 会在杉果同步后进入队列）" />
-      <p v-else-if="displayedRows.length > 0 && filteredRows.length === 0" class="align-filter-empty muted">
-        没有符合当前筛选的组（{{ filter === 'ignored' ? '已忽略的组不在待对齐队列中' : '可调整搜索或筛选条件' }}）。
+      <p v-else-if="view === 'queue' && displayedRows.length > 0 && filteredRows.length === 0" class="align-filter-empty muted">
+        没有符合当前筛选的组（可调整搜索或筛选条件）。
       </p>
-      <p v-else-if="generating.active && displayedRows.length === 0" class="align-filter-empty muted">
+      <p v-else-if="view === 'queue' && generating.active && displayedRows.length === 0" class="align-filter-empty muted">
         后台生成中，完成后自动展示队列…
       </p>
-      <p v-else-if="loadError && displayedRows.length === 0" class="align-filter-empty muted">
+      <p v-else-if="view === 'queue' && loadError && displayedRows.length === 0" class="align-filter-empty muted">
         队列加载失败，请点「刷新」重试。
       </p>
     </div>
@@ -550,7 +643,7 @@ onUnmounted(() => clearTimeout(pollTimer));
       <template v-else-if="confirmDlg.data">
         <div class="align-dlg-line"><b>组</b><span>{{ confirmDlg.row.name }}（{{ confirmDlg.row.skuCount }} 个 SKU）</span></div>
         <div class="align-dlg-line"><b>候选</b><span>{{ confirmDlg.data.target.name }}（appid {{ confirmDlg.data.target.steamAppid }}）<a class="lnk" :href="`https://store.steampowered.com/app/${confirmDlg.data.target.steamAppid}/`" target="_blank" rel="noopener noreferrer">Steam ↗</a></span></div>
-        <div class="align-dlg-line"><b>将合并</b><span>{{ confirmDlg.data.orphans.length ? `孤儿游戏行 ${confirmDlg.data.orphans.length} 条（${confirmDlg.data.orphans.map((o) => o.name).join('、')}）` : '无孤立游戏行需要合并' }}</span></div>
+        <div class="align-dlg-line"><b>将合并</b><span>{{ confirmDlg.data.orphans.length ? `该组包含 ${confirmDlg.data.orphans.length} 条孤儿游戏行（${confirmDlg.data.orphans.map((o) => o.name).join('、')}），确认后将合并到目标游戏` : '无孤立游戏行需要合并' }}</span></div>
         <div class="align-dlg-line"><b>落地</b><span>写 skus.json + game_source_map（confirmed），同组新 SKU 自动继承</span></div>
         <el-alert type="warning" :closable="false" title="确认后不可撤销；本次操作记入审计日志。" />
       </template>
@@ -571,7 +664,7 @@ onUnmounted(() => clearTimeout(pollTimer));
           </div>
         </div>
         <div class="align-dlg-line"><b>将确认</b><span>{{ batchConfirmDlg.rows.length }} 组（共 {{ batchSkuTotal }} 个 SKU）</span></div>
-        <div class="align-dlg-line"><b>将合并</b><span>{{ batchOrphans.count ? `孤儿游戏行 ${batchOrphans.count} 条（${batchOrphans.names.join('、')}）` : '无孤立游戏行需要合并' }}</span></div>
+        <div class="align-dlg-line"><b>将合并</b><span>{{ batchOrphans.count ? `将合并 ${batchOrphans.count} 条孤儿游戏行（${batchOrphans.names.join('、')}），确认后并入目标游戏` : '无孤立游戏行需要合并' }}</span></div>
         <div class="align-dlg-line"><b>落地</b><span>写 skus.json + game_source_map（confirmed），同组新 SKU 自动继承</span></div>
         <el-alert type="warning" :closable="false" title="确认后不可撤销；本次操作记入审计日志。" />
       </template>
@@ -608,6 +701,20 @@ onUnmounted(() => clearTimeout(pollTimer));
       </ul>
       <template #footer><el-button @click="search.visible = false">关闭</el-button></template>
     </el-dialog>
+
+    <!-- DH 批：审阅记录抽屉（操作人/时间/动作，确认/忽略/恢复） -->
+    <el-drawer v-model="history.visible" title="审阅记录" size="min(480px, 92vw)">
+      <div v-if="history.loading" class="muted">加载中…</div>
+      <div v-else class="history-list">
+        <div v-if="history.row" class="align-dlg-line"><b>组</b><span>{{ history.row.name }}（{{ history.row.skuCount }} 个 SKU）</span></div>
+        <el-empty v-if="!history.records.length" description="暂无处理记录" :image-size="48" />
+        <div v-for="r in history.records" :key="`${r.product_id}-${r.reviewed_at ?? 'null'}-${r.decision}`" class="history-item">
+          <el-tag :type="r.decision === 'ignored' ? 'danger' : r.decision === 'pending' ? 'warning' : 'success'" size="small">{{ ACTION_TEXT[r.decision] || r.decision }}</el-tag>
+          <span class="mono">SKU {{ r.product_id }}</span>
+          <span class="muted">{{ r.username || '系统' }} · {{ r.reviewed_at ? fmtMin(r.reviewed_at) : '—' }}</span>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -696,4 +803,7 @@ onUnmounted(() => clearTimeout(pollTimer));
 .align-results{list-style:none;margin:12px 0 0;padding:0}
 .align-results li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);font-size:13px}
 .align-results small{display:block;font-size:11px}
+.history-list{display:flex;flex-direction:column;gap:8px}
+.history-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;font-size:12px;flex-wrap:wrap}
+.history-item .muted{margin-left:auto}
 </style>

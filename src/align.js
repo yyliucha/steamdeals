@@ -28,31 +28,146 @@ export function loadSonkwoItems(entries, orphanRows = []) {
 
 /**
  * 决定继承：confirmed → 回填 skus.json 并返回 appid；ignored → 跳过。
- * 返回 { items, inheritApplied, ignoredGroups }（ignoredGroups = 被忽略的去重组数，DE 批「已忽略」chip 计数）。
+ * DH 批（docs/ALIGN-INTEGRITY.md §2 A1/B1）扩展：
+ * - 库映射优先：ignored 自动跳过；confirmed 回填；pending（恢复为待处理）重新入队；
+ * - 库无映射但 item.appid 已存在（skus.json 自带）→ 视为已解决、不入队，并列入 backfill
+ *   （调用方负责补写 game_source_map + 日志 align.map_backfilled）。
+ * 返回 { items, inheritApplied, ignoredGroups, backfill }
+ * （ignoredGroups = 被忽略的去重组数，DE 批「已忽略」chip 计数；backfill = [{ skuId, appid }]）。
  */
 export function applyMapInheritance(items, maps) {
   const out = [];
   let inheritApplied = 0;
   const ignoredKeys = new Set();
+  const backfill = [];
   for (const item of items) {
     const m = maps.get(String(item.skuId));
-    if (!m) {
-      out.push(item);
-      continue;
-    }
-    if (m.decision === 'ignored') {
+    if (m?.decision === 'ignored') {
       const k = alignGroupKey(SONKWO, item.name);
       if (k) ignoredKeys.add(k);
       continue; // 自动忽略，不再排队
     }
-    if (m.decision === 'confirmed' && m.game_id != null) {
+    if (m?.decision === 'confirmed' && m.game_id != null) {
       item.appid = m.game_id; // 继承映射（调用方负责把 appid 写回 skus.json）
       inheritApplied += 1;
       continue;
     }
+    if (m?.decision === 'pending') {
+      out.push(item); // DH 批：恢复为待处理后重新入队（即使 skus.json 已带 appid）
+      continue;
+    }
+    if (m == null && item.appid != null) {
+      backfill.push({ skuId: item.skuId, appid: item.appid }); // DH 批：库无映射 → 计算时自动补写
+      continue; // skus.json 已带 appid → 视为已解决，不再排队
+    }
     out.push(item);
   }
-  return { items: out, inheritApplied, ignoredGroups: ignoredKeys.size };
+  return { items: out, inheritApplied, ignoredGroups: ignoredKeys.size, backfill };
+}
+
+/**
+ * DH 批（docs/ALIGN-INTEGRITY.md §2 A1/§5.1）：补写「skus.json 已带 appid、库无映射」的组——
+ * 计算时自动写 game_source_map（confirmed，method=skus_backfill），不设人工按钮。
+ * 目标游戏必须已在 games 表（按 steam_appid 反查 id）；找不到只告警不写。
+ */
+export async function writeBackfilledMaps({ q, backfill, steamGames, logger }) {
+  let written = 0;
+  for (const { skuId, appid } of backfill ?? []) {
+    const target = steamGames.find((g) => Number(g.steam_appid) === Number(appid));
+    if (!target) {
+      logger?.warn('align.map_backfill_missing_game', { skuId, appid });
+      continue;
+    }
+    try {
+      await db.upsertSourceMap(q, {
+        platformCode: SONKWO,
+        productId: String(skuId),
+        gameId: Number(target.id),
+        method: 'skus_backfill',
+        confidence: 1,
+        decision: 'confirmed',
+        reviewedBy: null,
+      });
+      written += 1;
+    } catch (err) {
+      logger?.warn('align.map_backfill_failed', { skuId, appid, error: String(err?.message ?? err) });
+    }
+  }
+  if (written) logger?.info('align.map_backfilled', { written });
+  return written;
+}
+
+/**
+ * DH 批（docs/ALIGN-INTEGRITY.md §2 B1）：恢复已忽略组为待处理——decision 改 pending、清 game_id，
+ * 保留/更新操作痕迹（reviewed_by/reviewed_at），下一轮计算该组重新入队。
+ */
+export async function restoreIgnoredGroup({ q, skuIds, reviewedBy = null }) {
+  const r = await q(
+    `update game_source_map
+        set decision = 'pending', game_id = null,
+            reviewed_by = coalesce($2::int, reviewed_by), reviewed_at = now()
+      where platform_code = $1 and product_id = any($3::text[]) and decision = 'ignored'`,
+    [SONKWO, reviewedBy ?? null, skuIds.map(String)],
+  );
+  return r.rowCount ?? 0;
+}
+
+/** DH 批：按组键找当前 skus.json 里的 SKU 列表（恢复/审阅记录共用）。 */
+export function skuIdsForGroupKey(entries, key) {
+  return (entries ?? [])
+    .filter((e) => e?.name && alignGroupKey(SONKWO, e.name) === key)
+    .map((e) => String(e.skuId));
+}
+
+/**
+ * DH 批（docs/ALIGN-INTEGRITY.md §2 B1/§3）：已忽略组列表——按去重组键聚合，
+ * 返回 [{ key, name, skus, ignoredAt, ignoredBy }]（可选 qFilter 过滤组名/SKU）。
+ */
+export async function loadIgnoredGroups({ q, entries, qFilter = '' }) {
+  const rows = (await q(
+    `select m.product_id, m.reviewed_by, m.reviewed_at, u.username
+       from game_source_map m
+       left join users u on u.id = m.reviewed_by
+      where m.platform_code = $1 and m.decision = 'ignored'
+      order by m.reviewed_at desc nulls last`,
+    [SONKWO],
+  )).rows;
+  const nameBySku = new Map((entries ?? []).filter((e) => e?.name).map((e) => [String(e.skuId), e.name]));
+  const groups = new Map();
+  for (const row of rows) {
+    const name = nameBySku.get(String(row.product_id)) ?? `SKU ${row.product_id}`;
+    const key = alignGroupKey(SONKWO, name) ?? `sku:${row.product_id}`;
+    if (!groups.has(key)) groups.set(key, { key, name, skus: [], ignoredAt: null, ignoredBy: null });
+    const g = groups.get(key);
+    g.skus.push(String(row.product_id));
+    if (!g.ignoredAt || (row.reviewed_at != null && new Date(row.reviewed_at) > new Date(g.ignoredAt))) {
+      g.ignoredAt = row.reviewed_at;
+      g.ignoredBy = row.username ?? null;
+    }
+  }
+  let out = [...groups.values()];
+  const qq = String(qFilter ?? '').trim().toLowerCase();
+  if (qq) {
+    out = out.filter((g) => g.name.toLowerCase().includes(qq) || g.skus.some((s) => String(s).includes(qq)));
+  }
+  return out;
+}
+
+/**
+ * DH 批（docs/ALIGN-INTEGRITY.md §2 C1/§3）：某组的处理记录（操作人/时间/动作，按 SKU 行返回，
+ * 时间倒序）。decision=confirmed/ignored/pending 分别对应确认/忽略/恢复。
+ */
+export async function loadGroupHistory({ q, entries, key }) {
+  const skuIds = skuIdsForGroupKey(entries, key);
+  if (!skuIds.length) return [];
+  return (await q(
+    `select m.product_id, m.game_id, m.decision, m.match_method, m.reviewed_by, m.reviewed_at, u.username
+       from game_source_map m
+       left join users u on u.id = m.reviewed_by
+      where m.platform_code = $1 and m.product_id = any($2::text[])
+      order by m.reviewed_at desc nulls last`,
+    [SONKWO, skuIds],
+  )).rows;
 }
 
 /** 按去重组键把 items 分组（同步、纯内存；预算版与旧版共用）。 */

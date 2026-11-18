@@ -61,6 +61,32 @@ test('CD 决定继承：confirmed 回填 appid；ignored 自动跳过不再排�
   assert.equal(items[0].appid, 111, 'confirmed 继承 appid');
 });
 
+test('DH 继承参考 skus.json appid：库无映射时不入队并列入补写；pending（恢复）重新入队', () => {
+  // A1：断箭类——skus.json 已带 appid、库无映射 → 视为已解决不入队，列入 backfill 由调用方补写
+  // B1：恢复为 pending 的组 → 即使 skus.json 带 appid 也要重新入队等待人工处理
+  const items = [
+    { skuId: 10, name: '断箭', appid: 1604270, titles: ['断箭'] },
+    { skuId: 11, name: '内核之心', appid: 1604270, titles: ['内核之心'] },
+    { skuId: 12, name: '血色序曲', appid: null, titles: ['血色序曲'] },
+  ];
+  const maps = new Map([['11', { decision: 'pending', game_id: null }]]);
+  const r = align.applyMapInheritance(items, maps);
+  assert.equal(r.backfill.length, 1, '库无映射且带 appid → 一条补写');
+  assert.equal(r.backfill[0].skuId, 10, '补写对象是 skuId 10');
+  assert.equal(r.backfill[0].appid, 1604270, '补写内容来自 skus.json 的 appid');
+  assert.equal(r.items.length, 2, '断箭不入队、血色序曲入队、pending 重新入队');
+  assert.ok(!r.items.some((i) => i.skuId === 10), 'skus.json 已带 appid 的组不再入队（断箭场景）');
+  assert.ok(r.items.some((i) => i.skuId === 11), 'pending（恢复为待处理）重新入队');
+  // confirmed 映射优先于 skus.json 自带 appid（库是唯一真相）
+  const conflict = align.applyMapInheritance(
+    [{ skuId: 20, name: '愚者不灭', appid: 999, titles: ['愚者不灭'] }],
+    new Map([['20', { decision: 'confirmed', game_id: 111 }]]),
+  );
+  assert.equal(conflict.items.length, 0);
+  assert.equal(conflict.backfill.length, 0);
+  assert.equal(conflict.inheritApplied, 1, '已有 confirmed 映射时不再补写');
+});
+
 test('CD ITAD 跳转反解：跟随重定向取最终 URL 反解 appid；非 Steam 返回 null', async () => {
   const fetchImpl = async (url) => {
     if (String(url).includes('itad.link/good')) return { url: 'https://store.steampowered.com/app/1091500/Cyberpunk/?cc=cn' };
@@ -142,4 +168,20 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   assert.match(alignAdmin, /疑似本体/, '候选疑似本体提示');
   assert.match(alignAdmin, /api\/admin\/align\/confirm/, '确认接线');
   assert.match(alignAdmin, /api\/admin\/align\/preview/, '单组合并预览接线');
+
+  // ── DH 批（docs/ALIGN-INTEGRITY.md §2/§3）：继承参考 appid、补写映射、已忽略视图/恢复、审阅记录 ──
+  assert.match(server, /align\.writeBackfilledMaps/, '计算时自动补写映射（A1）');
+  assert.match(server, /align\.map_backfilled/, '补写映射日志 align.map_backfilled（A1）');
+  assert.match(server, /\/api\/admin\/align\/ignored' && req\.method === 'GET'/, '已忽略视图接口（B1）');
+  assert.match(server, /\/api\/admin\/align\/restore' && req\.method === 'POST'/, '恢复为待处理接口（B1）');
+  assert.match(server, /\/api\/admin\/align\/history' && req\.method === 'GET'/, '审阅记录接口（C1）');
+  assert.match(server, /align\.restored/, '恢复审计 align.restored（B1）');
+  assert.match(server, /lastReviewed/, '队列行带最近处理（C1）');
+  assert.match(cli, /align\.writeBackfilledMaps/, 'CLI 匹配步同样自动补写（A1）');
+  assert.match(alignAdmin, /api\/admin\/align\/ignored/, '前端已忽略视图接线（B1）');
+  assert.match(alignAdmin, /api\/admin\/align\/restore/, '前端恢复接线（B1）');
+  assert.match(alignAdmin, /api\/admin\/align\/history/, '前端审阅记录接线（C1）');
+  assert.match(alignAdmin, /确认恢复/, '恢复二次确认按钮（§5.2）');
+  assert.match(alignAdmin, /确认后将合并到目标游戏/, '确认弹窗孤儿行合并提示（D1）');
+  assert.match(alignAdmin, /最近处理/, '队列「最近处理」列（C1）');
 });

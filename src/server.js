@@ -693,8 +693,22 @@ export function createApiServer({
     const games = (await q('select id, steam_appid, name, name_en from games where steam_appid is not null')).rows;
     const orphanRows = await align.loadOrphanSonkwoGames(q);
     const items = align.loadSonkwoItems(entries, orphanRows);
-    const maps = await db.sourceMapsByProducts(q, 'sonkwo', items.map((i) => String(i.skuId)));
+    const allSkuIds = items.map((i) => String(i.skuId));
+    const maps = await db.sourceMapsByProducts(q, 'sonkwo', allSkuIds);
     const inherit = align.applyMapInheritance(items, maps);
+    // DH 批（docs/ALIGN-INTEGRITY.md §2 A1/§5.1）：skus.json 已带 appid、库无映射 →
+    // 计算时自动补写 game_source_map（confirmed，method=skus_backfill）+ 日志 align.map_backfilled。
+    const backfilled = await align.writeBackfilledMaps({ q, backfill: inherit.backfill, steamGames: games, logger });
+    // DH 批（§2 C1）：每组「最近处理」——队列里的组只可能是 pending（恢复为待处理）留下的痕迹
+    const reviewedBySku = new Map(
+      (await q(
+        `select m.product_id, m.decision, m.reviewed_by, m.reviewed_at, u.username
+           from game_source_map m
+           left join users u on u.id = m.reviewed_by
+          where m.platform_code = 'sonkwo' and m.product_id = any($1::text[])`,
+        [allSkuIds],
+      )).rows.map((r) => [String(r.product_id), r]),
+    );
     const candidateIndex = buildCandidateIndex(games);
     const { groups, partial } = await align.proposeAlignGroupsBudgeted(inherit.items, games, {
       candidateIndex,
@@ -707,7 +721,16 @@ export function createApiServer({
         await new Promise((r) => setImmediate(r));
       },
     });
-    logger?.info('align.computed', { groups: groups.length, partial, ms: Date.now() - wallStartedAt });
+    for (const g of groups) {
+      const traces = g.skuIds
+        .map((id) => reviewedBySku.get(String(id)))
+        .filter((r) => r?.decision === 'pending' && r.reviewed_at != null)
+        .sort((a, b) => new Date(b.reviewed_at) - new Date(a.reviewed_at));
+      if (traces.length) {
+        g.lastReviewed = { by: traces[0].username ?? null, at: traces[0].reviewed_at, action: '恢复' };
+      }
+    }
+    logger?.info('align.computed', { groups: groups.length, partial, backfilled, ms: Date.now() - wallStartedAt });
     return { align, entries, games, groups, inherit, partial, generatedAt: Date.now() };
   };
   const alignRunner = createAlignRunner({ compute: computeAlignGroups, ttlMs: ALIGN_CACHE_TTL_MS });
@@ -727,6 +750,7 @@ export function createApiServer({
       skuUrls: g.skuIds.map((id) => `https://www.sonkwo.hk/sku/${id}`),
       auto: g.auto,
       score: best?.score ?? null,
+      lastReviewed: g.lastReviewed ?? null, // DH 批：最近处理（操作人/时间/动作；恢复为待处理的组可见）
       method: best?.method ?? null,
       matchedField: best?.matchedField ?? null,
       contentWord: Boolean(best?.contentWord),
@@ -4676,6 +4700,42 @@ export function createApiServer({
           return json(res, 200, { ok: true, ...ignored });
         }
         return json(res, 400, { error: '缺少 key 或 keys' });
+      }
+
+      // ---- DH 批（docs/ALIGN-INTEGRITY.md §2 B1/C1、§3）：已忽略视图 / 恢复为待处理 / 审阅记录 ----
+      if (path === '/api/admin/align/ignored' && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const align = await import('./align.js');
+        const entries = readAlignSkus();
+        const qFilter = String(url.searchParams.get('q') ?? '').trim().slice(0, 60);
+        const groups = await align.loadIgnoredGroups({ q, entries, qFilter });
+        return json(res, 200, { groups, total: groups.length });
+      }
+
+      if (path === '/api/admin/align/restore' && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const align = await import('./align.js');
+        const body = await readBody(req);
+        const key = String(body?.key ?? '').trim();
+        if (!key) return json(res, 400, { error: '缺少 key' });
+        const entries = readAlignSkus();
+        const skuIds = align.skuIdsForGroupKey(entries, key);
+        if (!skuIds.length) return json(res, 404, { error: '没有该组（可能已不在 skus.json）' });
+        const restored = await align.restoreIgnoredGroup({ q, skuIds, reviewedBy: user.id });
+        if (!restored) return json(res, 404, { error: '该组没有已忽略的映射' });
+        alignRunner.invalidate(); // 恢复后该组重新入队，下一次 GET 重算（CN 批）
+        logger?.info('align.restored', { by: user.username, key, skus: restored });
+        return json(res, 200, { ok: true, restored });
+      }
+
+      if (path === '/api/admin/align/history' && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const align = await import('./align.js');
+        const key = String(url.searchParams.get('key') ?? '').trim();
+        if (!key) return json(res, 400, { error: '缺少 key' });
+        const entries = readAlignSkus();
+        const records = await align.loadGroupHistory({ q, entries, key });
+        return json(res, 200, { records });
       }
 
       if (path === '/api/admin/align/search' && req.method === 'GET') {
