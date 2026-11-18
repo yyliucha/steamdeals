@@ -75,7 +75,7 @@
 | **CL** | 用户级到价提醒（列表页 + 已拥有终态隐藏 + 后台全站清单 + 详情页三段式 UI） | [USER-ALERTS.md](USER-ALERTS.md) | 已发布 v2.23.0（2026-11-17，e196382；QA ✅ docs/QA-CL.md） | ✅ 本轮已给 |
 | **CM** | App 功能补齐（开发商 JSON 修复 / DLC 列表 / 价格历史区间与指标 / 复制名；CM-5 筛选服务端化二期） | [APP-PARITY.md](APP-PARITY.md) | 已发布 v2.24.0（站点侧，2026-11-17；QA docs/QA-CM.md ✅；App 侧 app-v2.20.0 待指令） | ✅ 本轮已给 |
 | **CN** | 对齐审核查询拖垮站点（缓存 + 候选预筛 + 单飞 + 时间预算 + 分页） | [ALIGN-QUERY-PERF.md](ALIGN-QUERY-PERF.md) | 已发布 v2.24.1（2026-11-17，5c723aa + 2060586；QA ✅ docs/QA-CN.md） | ✅ 本轮已给 |
-| **CO** | 设计审计技术债清理（15 项 → CO-1~CO-4 四批，每日至少推进 1 条） | [DESIGN-AUDIT.md](DESIGN-AUDIT.md) | CO-2 已发布 v2.24.4（2026-11-18，75a7e7f，QA docs/QA-CP-CT-CO2.md：B1 统一超时+并发闸、B2 admin 列表提速）；CO-3 已发布 v2.24.4（2026-11-18，89c8dfd，QA docs/QA-CO3.md：C2 设备限流、C4 日期金额 helper、C5 契约校验）；CO-1/A5 已发布 v2.24.5（2026-11-18，c4e2695，QA docs/QA-CO1-A5.md 第 1 轮 ✅：任务失败健康条显红 + 失败原因可见 + 可选邮件告警）；CO-2/B5 已发布 v2.24.5（2026-11-18，5b1cbfb，QA docs/QA-B5.md 第 1 轮 ✅：快照唯一写入路径 + 增量对账 + 每日自动修复）；CO-4/D1 已发布 v2.24.5（2026-11-18，2ee09af，QA docs/QA-D1.md 第 1 轮 ✅：四族设计 token 落 main.css + 三个最重组件试点）；CO-1/A3 已实现待发版（2026-11-18，6a9ecc3）；B3/B4/D4/E4/D6 待开发；E1 文档归档已完成（不进版本） | ✅ 本轮已给 |
+| **CO** | 设计审计技术债清理（15 项 → CO-1~CO-4 四批，每日至少推进 1 条） | [DESIGN-AUDIT.md](DESIGN-AUDIT.md) | CO-2 已发布 v2.24.4（2026-11-18，75a7e7f，QA docs/QA-CP-CT-CO2.md：B1 统一超时+并发闸、B2 admin 列表提速）；CO-3 已发布 v2.24.4（2026-11-18，89c8dfd，QA docs/QA-CO3.md：C2 设备限流、C4 日期金额 helper、C5 契约校验）；CO-1/A5 已发布 v2.24.5（2026-11-18，c4e2695，QA docs/QA-CO1-A5.md 第 1 轮 ✅：任务失败健康条显红 + 失败原因可见 + 可选邮件告警）；CO-2/B5 已发布 v2.24.5（2026-11-18，5b1cbfb，QA docs/QA-B5.md 第 1 轮 ✅：快照唯一写入路径 + 增量对账 + 每日自动修复）；CO-4/D1 已发布 v2.24.5（2026-11-18，2ee09af，QA docs/QA-D1.md 第 1 轮 ✅：四族设计 token 落 main.css + 三个最重组件试点）；CO-1/A3 质检通过（2026-11-18，QA docs/QA-CO1-A3.md ✅；实现 6a9ecc3）；B3/B4/D4/E4/D6 待开发；E1 文档归档已完成（不进版本） | ✅ 本轮已给 |
 | **CP** | 手机端识别增强（Sec-CH-UA-Mobile + 前端 screen.width 兜底，修小米浏览器桌面 UA 漏判） | [MOBILE-DETECT-FIX.md](MOBILE-DETECT-FIX.md) | 已发布 v2.24.4（2026-11-18，75a7e7f；QA docs/QA-CP-CT-CO2.md 第 1 轮） | ✅ 本轮已给 |
 | **CQ** | 系统设置信息架构重构（平台卡片 + 常用/高级折叠 + 只看非默认/来源/恢复默认） | [SETTINGS-IA.md](SETTINGS-IA.md) | 待开发（2026-11-17 demo v2 已确认） | ✅ 本轮已给 |
 | **CS** | 对齐审核二次修复（事件循环阻塞观测 + 首屏后台化；补齐 CN 未进镜像问题；DB 侧已验证 91ms 无需索引） | [ALIGN-DB-SLOW.md](ALIGN-DB-SLOW.md) | 已发布 v2.24.3（2026-11-18，2a03188；QA ✅ docs/QA-CS-CV.md） | ✅ 本轮已给 |
@@ -83,10 +83,10 @@
 | **CU** | 到价提醒治理（无报价标记 / 站点级按 Steam 愿望单反查并迁移 / 史低抽检 / Steam 刷新频率评估） | [USER-ALERTS-GOVERNANCE.md](USER-ALERTS-GOVERNANCE.md) | 待开发（2026-11-18 实测后合并立项） | ✅ 本轮已给 |
 | **CV** | 所有查询不再排除已拥有（列表+搜索 owned=include；已拥有显示账号与终态按钮；App 对齐） | [APP-SEARCH-OWNED.md](APP-SEARCH-OWNED.md) | 已发布 v2.24.3（2026-11-18，站点 2a03188 + App 0945006；QA ✅ docs/QA-CS-CV.md） | ✅ 本轮已给 |
 | **CW** | 后台「游戏目录」点游戏名弹详情（Steam 已同步数据 + 封面/发售/开发商 + 底部 Steam 商店跳转） | [ADMIN-GAME-POPUP.md](ADMIN-GAME-POPUP.md) | 待开发（2026-11-18 需求 + demo） | ✅ 本轮已给 |
-| **CX** | 个人资料编辑（Web + App；头像存库、双 Steam 账号默认头像、设为默认/解绑/新增换绑） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) | 开发中（2026-11-18 决策确认 + 双 demo） | ✅ 本轮已给 |
+| **CX** | 个人资料编辑（Web + App；头像存库、双 Steam 账号默认头像、设为默认/解绑/新增换绑） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) | 已实现待发版（2026-11-18 决策确认 + 双 demo） | ✅ 本轮已给 |
 | **CY** | 数据隔离（用户私有数据管理员只读；越权 403 + 审计；站点级/账号安全/申诉保留可写） | [DATA-ISOLATION.md](DATA-ISOLATION.md) | 待开发（2026-11-18 边界确认；P1） | ✅ 本轮已给 |
 | **CZ** | 更换登录邮箱（邮箱体系收尾；验证码登录/忘记密码已实现，只做换邮箱+加固） | [EMAIL-CHANGE.md](EMAIL-CHANGE.md) | 待开发（2026-11-18 沟通完成 + demo） | ✅ 本轮已给 |
-| **DA** | CM-5：App 筛选/排序服务端化（折扣/史低/免费/未发售全库筛；站点 + App 方案 A） | [APP-FILTER-SERVER-SIDE.md](APP-FILTER-SERVER-SIDE.md) | 已实现待发版（2026-11-18，站点 b46669a + App 4334823） | ✅ 本轮已给 |
+| **DA** | CM-5：App 筛选/排序服务端化（折扣/史低/免费/未发售全库筛；站点 + App 方案 A） | [APP-FILTER-SERVER-SIDE.md](APP-FILTER-SERVER-SIDE.md) | 质检通过（2026-11-18，QA docs/QA-DA.md 第 1 轮 ✅；实现站点 b46669a + App 4334823） | ✅ 本轮已给 |
 | **DB** | ~~个人主页（公开资料页）~~ → **已过时**：合并进 CX（仅本人可见的「我的资料」） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) | 已过时（2026-11-18 取消公开页） | — |
 | **DC** | CM-6：App 公告角标与公告列表（铃铛入口/全量未读/游客本地已读） | —（TODO DC 条目） | 待开发（2026-11-18 沟通完成） | ✅ 本轮已给 |
 | **DE** | 对齐审核页改版（统计卡/进度条/搜索筛选/批量/空态互斥） | [ALIGN-REVIEW-UI.md](ALIGN-REVIEW-UI.md) | 已发布 v2.24.4（2026-11-18，318e678 + 修复 729d0e9；QA docs/QA-DE.md——通过 7/偏差 1 已修/需人工确认 1） | ✅ 本轮已给 |
