@@ -73,7 +73,7 @@ create index if not exists idx_game_dlc_appid on game_dlc (appid);
 | `dlc_appids` | `steam-status` 每轮逐 appdetails 后（[steam-status.js:116](gameprice/src/steam-status.js#L116)）；`backfill` 的 appdetails 回退路径同 | **零额外请求**（同一次响应） |
 | DLC 明细（名称/价格） | ① `steam-status` 每轮收尾：取「`dlc_appids` 非空、`game_dlc` 缺 name/price」的游戏，最多 `STEAM_DLC_FILL_GAMES`（默认 50）个，`GetItems` 批量补（最多 `STEAM_DLC_FILL_BATCH`=30 批 ×100 条/轮）；② 抽屉打开时读路径回源（见 3.3） | ① 每轮 ≤30 次 GetItems ≈ 秒级；② 每游戏 ≤3 批、10 分钟节流 |
 
-- **合并评估**（`gameprice-requirements` §4.1）：不新建任务——`dlc_appids` 与 appdetails 同响应必须合并；
+- **合并评估**（`steamdeals-requirements` §4.1）：不新建任务——`dlc_appids` 与 appdetails 同响应必须合并；
   明细用 `GetItems`（与 `backfill` 同一接口），放在 `steam-status` 收尾做，量小且天然限速；
 - 日志：`steam.status.dlc_written { appid, dlc }`、`steam.dlc.filled { games, dlcs, batches }`；
 - 429：沿用 `http.js` 全局冷却；命中时本轮跳过明细补齐（下一轮继续），不影响 `dlc_appids` 写入。
@@ -185,3 +185,4 @@ create index if not exists idx_game_dlc_appid on game_dlc (appid);
 2. `STEAM_DLC_FILL_GAMES=50` / `STEAM_DLC_FILL_BATCH=30` 的默认值是否合适；
 3. 购买链接默认 `https://store.steampowered.com/app/<appid>/`（不带区服参数，Steam 会按访客区服跳转）是否可接受；
 4. **列表位置与密度**：默认放在详情弹窗最下方（价格历史之后）、每页 10 条；若想更靠上/每页更少，改一处即可。
+

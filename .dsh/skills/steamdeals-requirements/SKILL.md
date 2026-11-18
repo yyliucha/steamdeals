@@ -1,5 +1,5 @@
 ---
-name: gameprice-requirements
+name: steamdeals-requirements
 description: SteamDeals/gameprice 项目「只聊需求」工作法：先用代码证据核对现状，再用澄清清单锁范围与验收，产出可交接的 docs 规格文档；需求确认后必须在 docs/TODO.md 建条目（含状态行）、在 docs/REQUIREMENTS-INDEX.md 加行，并给出一份只含"条目编号/规格/验收要点"的开发描述（流程见 docs/HANDOVER.md）。适用于在本项目提新功能、改造、排期或方案取舍的讨论；不写业务代码、不跑构建与采集、不提交发版。
 ---
 
@@ -16,8 +16,8 @@ description: SteamDeals/gameprice 项目「只聊需求」工作法：先用代�
 > **路径基准**：下文所有项目路径（`docs/…`、`src/…`、`frontend/…`）都相对**仓库根目录**
 > `F:\dsh\gameprice`，不是本 SKILL.md 所在目录。开场先确认当前工作目录在仓库根（`git rev-parse --show-toplevel`）。
 >
-> **技能文件位置**：`.dsh/skills/gameprice-requirements/SKILL.md`，**自 2026-11-09 起随仓库提交、推 GitHub**；
-> 本机 DSH 扫描路径 `F:\dsh\.dsh\skills\gameprice-requirements` 是指向它的 junction（仅本机配置，不入库）。
+> **技能文件位置**：`.dsh/skills/steamdeals-requirements/SKILL.md`，**自 2026-11-09 起随仓库提交、推 GitHub**；
+> 本机 DSH 扫描路径 `F:\dsh\.dsh\skills\steamdeals-requirements` 是指向它的 junction（仅本机配置，不入库）。
 > **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/dsh-skills`；修改后执行
 > `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步（见该仓库 README）。
 
@@ -179,7 +179,7 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
   `msedge --headless=new --disable-gpu --window-size=1180,1560 --screenshot=<png> file:///<html>`；
 - 规格 §4（前端/后台）必须引用 demo 路径，§验收里必须有一条「与 demo 一致」；
 - 规格里必须附一张 **「demo 状态 ↔ 自动化断言」对照表**（每个关键状态一行：`状态 | 断言点 | 预期`）——
-  开发据此加 e2e 矩阵行（见 `gameprice-test` §2），质检据此逐行核对；页面类验收 =
+  开发据此加 e2e 矩阵行（见 `steamdeals-test` §2），质检据此逐行核对；页面类验收 =
   「与 demo 一致」+「对照表逐行有断言」；
 - **没有 demo 的页面类需求视为没设计完**，不得派发给开发会话。
 
@@ -205,7 +205,7 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
 ```
 【任务】SteamDeals 开发：<编号> <条目名>
 【仓库】F:\dsh\gameprice（HEAD <sha>，版本 <x.y.z>）；先 git pull
-【技能】先加载 gameprice-dev；完工调用 gameprice-qa
+【技能】先加载 steamdeals-dev；完工调用 steamdeals-qa
 【条目】docs/TODO.md 的 <编号>（现状态：待开发）
 【规格】<规格文件路径>（自己读；验收以规格 §验收 为准）
 【范围】<一句话>；不做：<界外 1-2 条>
@@ -242,7 +242,7 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
 
 ```
 新需求已入待办：docs/TODO.md 的 <编号>（状态：待开发）。先读 docs/HANDOVER.md → 该条目 → 规格；
-做完改状态为「已实现待发版」，调 gameprice-qa，按 HANDOVER §3 汇报「已做/未做/状态更新」。
+做完改状态为「已实现待发版」，调 steamdeals-qa，按 HANDOVER §3 汇报「已做/未做/状态更新」。
 ```
 
 **不要把规格正文、验收清单、代码落点再贴一遍**——TODO 与规格里已有，复制只会造成两处分叉。
@@ -306,3 +306,4 @@ pm run frontend:build` / 任何 `sync` `backfill` `heat` 采集命令，不连�
 7. **"零日志"先怀疑观测开关**：nginx 可能是 `access_log off;`，应用侧有日志级别过滤。
 8. **每条命令写清"看什么 + 怎么判读 + 预期值"**，不要丢一堆命令让人猜。
 9. **按"最快定位"排序**：第一条就能区分大部分可能（例：先读 `data/scheduler-status.json` 判断调度器是否存活）。
+

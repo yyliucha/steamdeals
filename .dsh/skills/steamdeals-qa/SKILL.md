@@ -1,6 +1,6 @@
 ---
-name: gameprice-qa
-description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，按该条目对应的 docs 规格「验收」逐条核对开发交付（需求→改动清单→代码双层核对；后端/前端/测试/文档四方一致；测试要"真锁住"行为而非只看全绿），只判不改、不提交、不碰服务器，产出 docs/QA-*.md 并支持打回复检；检查完必须把 docs/TODO.md 该条目改成"质检通过/质检打回"，并汇报"已检查/未检查"清单；每轮必须输出「功能清单」表（用户视角、一条功能一行、罗列本批全部功能，报告与对话各一份）供所有者验收。由 gameprice-dev 在提交推 main 后直接调用，打回项补齐才算交付。
+name: steamdeals-qa
+description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，按该条目对应的 docs 规格「验收」逐条核对开发交付（需求→改动清单→代码双层核对；后端/前端/测试/文档四方一致；测试要"真锁住"行为而非只看全绿），只判不改、不提交、不碰服务器，产出 docs/QA-*.md 并支持打回复检；检查完必须把 docs/TODO.md 该条目改成"质检通过/质检打回"，并汇报"已检查/未检查"清单；每轮必须输出「功能清单」表（用户视角、一条功能一行、罗列本批全部功能，报告与对话各一份）供所有者验收。由 steamdeals-dev 在提交推 main 后直接调用，打回项补齐才算交付。
 ---
 
 # 质检（SteamDeals / gameprice）
@@ -16,14 +16,14 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
 > **路径基准**：下文 `docs/…`、`src/…`、`frontend/…`、`test/…` 都相对**仓库根** `F:\dsh\gameprice`，
 > 不是本 SKILL.md 所在目录。开场先 `git rev-parse --show-toplevel` 确认在仓库根。
 >
-> **技能文件位置**：`.dsh/skills/gameprice-qa/SKILL.md`，**自 2026-11-09 起随仓库提交、推 GitHub**；
-> 本机 DSH 扫描路径 `F:\dsh\.dsh\skills\gameprice-qa` 是指向它的 junction（仅本机环境配置，不入库）。
+> **技能文件位置**：`.dsh/skills/steamdeals-qa/SKILL.md`，**自 2026-11-09 起随仓库提交、推 GitHub**；
+> 本机 DSH 扫描路径 `F:\dsh\.dsh\skills\steamdeals-qa` 是指向它的 junction（仅本机环境配置，不入库）。
 > **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/dsh-skills`；修改后执行
 > `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步（见该仓库 README）。
 > 别的机器 clone 后如需 DSH 发现该技能，按同样方式建 junction；**不要再维护第二份副本**。
 >
-> **分工**：`gameprice-requirements` 出需求与开发描述 → `gameprice-dev` 实现并验证 →
-> **`gameprice-qa` 验收核对**。结论只有三档：✅ 放行 / ⚠️ 有条件放行 / ❌ 打回。
+> **分工**：`steamdeals-requirements` 出需求与开发描述 → `steamdeals-dev` 实现并验证 →
+> **`steamdeals-qa` 验收核对**。结论只有三档：✅ 放行 / ⚠️ 有条件放行 / ❌ 打回。
 
 ## 0. 边界：只判不改
 
@@ -35,15 +35,15 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
 | 打回复检（§8），多轮留痕 | 替开发"顺手修"任何东西 |
 
 - QA 报告 `docs/QA-<TOPIC>.md` **默认不提交**（所有者要求存档时才提交）。
-- 引用不重复：验证命令以 `gameprice-dev` §7 为准；"没跑过不许说做完"引用 `verify-before-done`。
+- 引用不重复：验证命令以 `steamdeals-dev` §7 为准；"没跑过不许说做完"引用 `verify-before-done`。
 - 若同会话质检出现放水（放行后仍有漏功能），改用**独立裁判**：新开会话，只传规格路径 + 基线/HEAD 哈希，
   不带开发会话的任何结论。
 
 ## 1. 触发与适用
 
-- `gameprice-dev` 在「提交推 main」之后**必须**调用本技能；❌ 打回项补齐并复检通过，才算交付。
+- `steamdeals-dev` 在「提交推 main」之后**必须**调用本技能；❌ 打回项补齐并复检通过，才算交付。
 - **何时用**：开发完成后初检、打回复检后。
-- **何时不用**：需求讨论阶段（那是 `gameprice-requirements` 的事，质检不参与方案取舍）。
+- **何时不用**：需求讨论阶段（那是 `steamdeals-requirements` 的事，质检不参与方案取舍）。
 - **输入来自待办清单（2026-11-06 所有者要求）**：开发者说"做完了"时必须给出 **TODO 编号**；
   质检按该编号在 [docs/TODO.md](../../../docs/TODO.md) 找到条目与规格，不接受"你去看我提交"这种转述。
 - **检查完必须回写状态**：把该条目从 `待质检` 改成 `质检通过` 或 `质检打回`（打回时在条目里写一句打回摘要），
@@ -92,7 +92,7 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
    - **四方一致**：后端接口 / 前端消费 / 测试断言 / 文档描述，同一条目四处联动缺一即漏；
    - **测试"真锁住"**：打开测试文件看断言是否锁住该行为；"测试全绿" ≠ "测试覆盖了本条目"。
 5. **查多**：diff 全量过目；需求外改动单列「风险提醒」，不直接判错。
-6. **亲自重跑验证**（以 `gameprice-dev` §7 为准）：
+6. **亲自重跑验证**（以 `steamdeals-dev` §7 为准）：
    ```powershell
    cd F:\dsh\gameprice
    node test/<本批相关>.test.js  # 本批相关测试文件重跑（相关优先，2026-11-18 起）
@@ -166,13 +166,13 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
 - 打回清单严重度：漏验收 = 必修；偏差 = 必修或说明；风险 = 记录即可。
 - QA 文档默认**不进 git**；相对链接必须指向真实文件（`test/docs.test.js` 会校验 docs 断链）。
 
-## 6. 纪律固定检查项（每条都查，对应 gameprice-dev §0/§8 硬规则）
+## 6. 纪律固定检查项（每条都查，对应 steamdeals-dev §0/§8 硬规则）
 
 1. `git tag --list`：无擅自新增 tag（硬规则 5，打 tag = 触发构建）；
 2. diff 是否碰部署/服务器配置（compose 文件、DEPLOY 相关、凭据）；
 3. 构建产物（`frontend/dist/`、`*.log`、`data/*-pgdata/`、`out/`、`logs/`）是否进了提交；
 4. 是否按要求推 `main`（开发描述【红线】要求）；
-5. 文档收尾：`docs/PROJECT-OVERVIEW.md` 是否同步（gameprice-dev §6 必改项，"代码新、文档旧"即漏）。
+5. 文档收尾：`docs/PROJECT-OVERVIEW.md` 是否同步（steamdeals-dev §6 必改项，"代码新、文档旧"即漏）。
 
 ## 7. 典型漏项清单（优先按此排查；发现新漏项模式就追加，skill 越用越准）
 
@@ -196,7 +196,7 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
 ## 9. 汇报格式（对话里给）
 
 ```
-🧪 质检（gameprice-qa）第 N 轮
+🧪 质检（steamdeals-qa）第 N 轮
 结论：✅ 放行 / ⚠️ 有条件放行 / ❌ 打回（通过 X / 缺失 Y / 偏差 Z / 需人工确认 W）
 证据：<重跑的命令 + 关键输出行>
 
@@ -222,3 +222,4 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
 7. **TODO 状态回写了吗**：该编号现在是 `质检通过` 还是 `质检打回`？与报告结论一致吗？
 8. **"已检查/未检查"两行写了吗**？没检查的必须写原因，不许沉默略过。
 9. **功能清单表出了吗**：覆盖本批全部功能、一条功能一行、状态与打回清单一致、对话里也原样贴了？
+

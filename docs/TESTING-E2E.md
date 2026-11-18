@@ -1,7 +1,7 @@
 # e2e 测试套件使用说明（CK 批）
 
 > 入口：[test/e2e/runner.mjs](../test/e2e/runner.mjs) + [test/e2e/matrix.json](../test/e2e/matrix.json)。
-> 规格与验收：[E2E-SUITE.md](E2E-SUITE.md)；测试方法库：[gameprice-test 技能](../.dsh/skills/gameprice-test/SKILL.md)。
+> 规格与验收：[E2E-SUITE.md](E2E-SUITE.md)；测试方法库：[steamdeals-test 技能](../.dsh/skills/steamdeals-test/SKILL.md)。
 
 ## 1. 怎么跑
 
@@ -81,5 +81,6 @@ node test/e2e/runner.mjs --online --expect-version=2.22.0   # 部署后公网只
   App 安装/覆盖安装/启动/更新检查/六屏走查、线上只读）。
 - App 登录/愿望单等**写操作**与真机微信渲染属 R2（所有者目视人工项）——TWA 硬编码指向公网站点，
   e2e 不对生产库做写操作；矩阵中对应行在无外网时按环境 skip 并写明原因。
-- 每批次的 R1 自动证据由本套件产出，R2/R3 清单仍按 [gameprice-test](../.dsh/skills/gameprice-test/SKILL.md) §5.2
+- 每批次的 R1 自动证据由本套件产出，R2/R3 清单仍按 [steamdeals-test](../.dsh/skills/steamdeals-test/SKILL.md) §5.2
   落 `docs/DELIVERY.md`「部署后验证」表，本套件不代替 R2/R3。
+

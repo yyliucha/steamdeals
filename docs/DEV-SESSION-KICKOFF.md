@@ -118,7 +118,7 @@ npm run scan             # 密钥扫描
 |---|---|---|
 | 开工 | `待开发` →（被占用时）`开发中` | 开发 |
 | 代码写完 + 本地验证通过 | `已实现待发版`（补提交哈希 + APK 版本/指纹） | 开发 |
-| 交质检 | `待质检` | 开发 → 调 `gameprice-qa` |
+| 交质检 | `待质检` | 开发 → 调 `steamdeals-qa` |
 | 质检结论 | `质检通过` / `质检打回`（打回写摘要，修完重检） | 质检 |
 | 所有者发「构建 vX.Y.Z」后 | 站点侧 `已发布 vX.Y.Z`；App 侧另记 `app-vX.Y.Z` | 开发 / 部署 |
 
@@ -151,7 +151,8 @@ npm run scan             # 密钥扫描
 按 docs/TODO.md 的 BS（状态：待开发）开工。
 先读 docs/HANDOVER.md → docs/MOBILE-APP-TWA.md；
 顺序按规格 §9（工具链 → 三个静态白名单+测试 → SW → /app 下载页 → Bubblewrap 打包 → 真机验收 → Release → 收尾标注 MOBILE-PWA 旧决策）。
-做完改 BS 状态为「已实现待发版」+ 补 APK versionCode/SHA-256，调 gameprice-qa，按 HANDOVER §3 汇报「已做/未做/状态更新」。
+做完改 BS 状态为「已实现待发版」+ 补 APK versionCode/SHA-256，调 steamdeals-qa，按 HANDOVER §3 汇报「已做/未做/状态更新」。
 ```
+
 
 

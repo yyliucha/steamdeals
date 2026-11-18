@@ -1,7 +1,7 @@
 # QA：STEAM-DLC 方案 A（第 1 轮 · 演练）
 
-> 基线 `c08833e` → 交付 `09fe7dd`；判据 [docs/STEAM-DLC.md](STEAM-DLC.md) §4 改动清单 + §5 验收四条 + gameprice-dev 纪律项。
-> 演练性质：回顾性质检（交付时 gameprice-qa 尚不存在；当前 repo 已到 v1.16.2，规格已标"方案 A 已实现并发布 v1.8.0"）。
+> 基线 `c08833e` → 交付 `09fe7dd`；判据 [docs/STEAM-DLC.md](STEAM-DLC.md) §4 改动清单 + §5 验收四条 + steamdeals-dev 纪律项。
+> 演练性质：回顾性质检（交付时 steamdeals-qa 尚不存在；当前 repo 已到 v1.16.2，规格已标"方案 A 已实现并发布 v1.8.0"）。
 > 结论：**⚠️ 有条件放行 —— 通过 13 / 缺失 0 / 偏差 0 / 需人工确认 2**（另有风险记录 2 条）
 
 | # | 条目（规格 §4/§5） | 检查手段 | 证据（文件:行） | 判定 |
@@ -27,7 +27,7 @@
 | 未碰部署/服务器配置 | diff 仅 5 个源码/测试文件 | ✅ |
 | 构建产物未进提交 | diff 无 dist/logs/data | ✅ |
 | 已推 main | 09fe7dd 在 main 历史 | ✅ |
-| PROJECT-OVERVIEW.md 同步 | 09fe7dd 未改该文件；当前 HEAD 全库 grep，PROJECT-OVERVIEW.md 中 DLC 零命中——账号库 DLC 统计/方案 A 从未进入项目总览（gameprice-dev §6 必改项） | ⚠️ 风险记录 |
+| PROJECT-OVERVIEW.md 同步 | 09fe7dd 未改该文件；当前 HEAD 全库 grep，PROJECT-OVERVIEW.md 中 DLC 零命中——账号库 DLC 统计/方案 A 从未进入项目总览（steamdeals-dev §6 必改项） | ⚠️ 风险记录 |
 
 ## 查多（需求外改动）
 
@@ -44,9 +44,10 @@
 
 ## 风险记录（不阻塞）
 
-1. PROJECT-OVERVIEW.md 未记录账号库 DLC 统计与方案 A（gameprice-dev §6 必改项的历史欠账）。
+1. PROJECT-OVERVIEW.md 未记录账号库 DLC 统计与方案 A（steamdeals-dev §6 必改项的历史欠账）。
 2. cli.js 需求外注释改动（无害）。
 
 ## 复检记录
 
 第 1 轮（2026-11-06，演练）：无打回项，结论 ⚠️ 有条件放行；两条 🔎 事后由所有者随 v1.8.0 发布默认关闭。
+

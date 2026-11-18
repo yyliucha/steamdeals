@@ -45,5 +45,6 @@
 先读 HANDOVER §10.1 探测 TODO/INDEX 是否被占用；按顺序：TODO 改「开发中」→ 实现（src/account-notify.js 的
 notifyUserAction + 8 类事件接入 PATCH users / email / password / DELETE，含 AH 遗留的 DELETE 响应 notify 字段）→
 npm test / frontend:build / scan → TODO「已实现待发版」+ INDEX 同步 + 🔓 解锁 → git add <具体文件> 提交推 main →
-gameprice-qa 质检（出功能清单）→ 质检通过回写。不打 tag、不触发构建。
+steamdeals-qa 质检（出功能清单）→ 质检通过回写。不打 tag、不触发构建。
 ```
+

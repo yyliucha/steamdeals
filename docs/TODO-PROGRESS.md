@@ -221,9 +221,9 @@ jobs:
 
 - `docs/TODO.md` 顶部说明补一句：**“改完状态后运行 `npm run todo:progress` 更新 README 摘要；CI `docs-progress` 会校验。”**
 - 三个 skill 各补一步：
-  - `gameprice-dev` §6（文档收尾）：改完 TODO 状态后跑脚本；
-  - `gameprice-qa`（改状态为「质检通过/质检打回」后）：跑脚本；
-  - `gameprice-requirements` §6（建/改 TODO 条目后）：跑脚本。
+  - `steamdeals-dev` §6（文档收尾）：改完 TODO 状态后跑脚本；
+  - `steamdeals-qa`（改状态为「质检通过/质检打回」后）：跑脚本；
+  - `steamdeals-requirements` §6（建/改 TODO 条目后）：跑脚本。
 - `docs/PROJECT-OVERVIEW.md`：在「功能与代码落点」表补一行（脚本、README 块、CI、测试）。
 - `docs/DELIVERY.md`：只在“当前状态/验证”里补一句 CI 名称，不改发版流程。
 
@@ -275,3 +275,4 @@ jobs:
 
 **验收**：连做三条状态翻页（开发 → 质检 → 发版），每次提交后 `docs-progress` 都绿；
 若故意只改 TODO 不生成，`--check` 退出 1 且提示跑 `npm run todo:progress`。
+

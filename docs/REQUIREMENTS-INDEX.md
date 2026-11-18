@@ -119,7 +119,7 @@
 
 | 内容 | 落点 |
 |---|---|
-| 需求 skill 三条规则：① 设计/排查阶段分开决定是否给命令；② §9 排查命令规范；③ 需求确认后**必须**产出开发描述 | `.dsh/skills/gameprice-requirements/SKILL.md`（自 2026-11-09 起随仓库提交） |
+| 需求 skill 三条规则：① 设计/排查阶段分开决定是否给命令；② §9 排查命令规范；③ 需求确认后**必须**产出开发描述 | `.dsh/skills/steamdeals-requirements/SKILL.md`（自 2026-11-09 起随仓库提交） |
 
 ## 未落实项（本轮对账结论）
 
@@ -135,6 +135,7 @@
 9. **AO**（后台游戏列 + 链接抽屉改版）2026-11-09 入 TODO，规格 [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md)；单批，纯前端；
 10. **AP**（价格历史报表）2026-11-09 入 TODO，规格 [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md)；单批，纯前端；
 11. **AQ / AR**（后台列表排序 / 按 IP 合并）2026-11-09 入 TODO，规格 [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md)；AR 依赖 AQ、下一期开发。
+
 
 
 

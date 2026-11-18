@@ -141,7 +141,7 @@ resolveSession(q, token, req)  // 每请求最多一次，结果缓存到局部�
   - BK-3 扩展：`or (last_seen_at is not null and last_seen_at < now() - make_interval(days => $idle))`（空闲超时的兜底清理，
     `idle=0`（关闭）时跳过该分支）；
 - `cmdPrune`（`src/cli.js:2044`）输出追加「登录会话 N 条」，日志 `maintenance.cleanup` 带 `sessions`；
-- 合并评估（`gameprice-requirements` §4.1）：无外部请求、与访问记录同属本地运维清理、`prune` 已并过 `steam_account_logs` 先例
+- 合并评估（`steamdeals-requirements` §4.1）：无外部请求、与访问记录同属本地运维清理、`prune` 已并过 `steam_account_logs` 先例
   → **并入，不新建定时任务**；`sessions` 是每会话一行的小表，单轮顺序扫描可忽略；每周跑一次足够（过期行最多多留 7 天）。
 
 ### 3.6 B 组正确性修复（BK-1）
@@ -357,4 +357,5 @@ update sessions set last_seen_at = now() where last_seen_at is null;
 3. 不做前端路由鉴权重构（不加 `beforeEach` 登录检查）；
 4. 心跳不做"自动续期/刷新会话"，只做"发现失效并跳转"；
 5. 不做"登录失效原因"的服务端审计接口（`session.idle_expired` / `bound_mismatch` 日志沿用）。
+
 

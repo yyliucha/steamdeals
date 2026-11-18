@@ -80,7 +80,7 @@ docker exec steamdeals node src/cli.js match --confirm <skuId> <steamAppId>
 ### 4.1 调度（不新增独立任务）
 
 - 在现有 `sonkwo` 任务收尾追加一步 `match`（增量：只处理 `skus.json` 里 `appid=null` 的条目，单轮 `limit` 默认 100）；
-  或调度器新增 `match` 任务（每 6 小时），**优先合并进 sonkwo 任务**（`gameprice-requirements` §4.1）；
+  或调度器新增 `match` 任务（每 6 小时），**优先合并进 sonkwo 任务**（`steamdeals-requirements` §4.1）；
 - 失败不影响 sonkwo 价格采集；日志 `match.proposals` / `match.applied` 已有，补 `match.summary`。
 
 ### 4.2 匹配算法增强

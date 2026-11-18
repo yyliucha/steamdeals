@@ -144,12 +144,13 @@ create index if not exists appeals_action_token on appeals (action_token_hash);
 
 ## 9. 开发红线
 
-认领 [TODO.md](TODO.md) 的 O → BQ 状态；改动必须真跑 `npm test` / `npm run frontend:build` / `npm run scan` 并贴输出；不碰服务器、不动生产数据、**不擅自打 tag / 发版**；交付后状态改「已实现待发版」并调 `gameprice-qa` 质检，按 `docs/HANDOVER.md` §3 汇报「已做 / 未做 / 状态更新」。
+认领 [TODO.md](TODO.md) 的 O → BQ 状态；改动必须真跑 `npm test` / `npm run frontend:build` / `npm run scan` 并贴输出；不碰服务器、不动生产数据、**不擅自打 tag / 发版**；交付后状态改「已实现待发版」并调 `steamdeals-qa` 质检，按 `docs/HANDOVER.md` §3 汇报「已做 / 未做 / 状态更新」。
 
 ## 10. 派活模板（复制给开发会话）
 
 ```
 新需求已入待办：docs/TODO.md 的 O（状态：待开发）→ BQ（依赖阻塞，O 完成后解阻塞）。
 先读 docs/HANDOVER.md → docs/DEV-BRIEF-APPEAL.md → docs/APPEAL-SYSTEM.md（§1–§9 / §10）；
-按 DEV-BRIEF 第 6 节的 6 步顺序做，做完把状态改成「已实现待发版」，调 gameprice-qa，按 HANDOVER §3 汇报。
+按 DEV-BRIEF 第 6 节的 6 步顺序做，做完把状态改成「已实现待发版」，调 steamdeals-qa，按 HANDOVER §3 汇报。
 ```
+

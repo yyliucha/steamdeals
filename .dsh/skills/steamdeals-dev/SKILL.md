@@ -1,6 +1,6 @@
 ---
-name: gameprice-dev
-description: F:\dsh\gameprice（SteamDeals 跨平台游戏比价）的开发规范：排期与状态唯一来源是 docs/TODO.md（开工先认领编号、完工把条目状态改成"已实现待发版"），完整流程见 docs/HANDOVER.md；职责只到"代码改动 + 测试用例"，不碰服务器、不碰生产数据、不擅自发版；任何改动必须真跑改动相关测试 / frontend:build / scan 并贴输出（主链全量按需、由 CI 自动兜底），且同步更新 docs/PROJECT-OVERVIEW.md，最后等"构建 vX.Y.Z"人工指令；提交推 main 后直接调用 gameprice-qa 质检（不必等所有者发话，需核对它的「功能清单」表），打回项补齐才算交付；每次结束必须汇报"已做哪些 TODO 编号 / 未做哪些及原因"；TODO 被其他会话占用时按 §1.1 立即停手并上报所有者，不自行等待/覆盖。动 gameprice 代码前必读。
+name: steamdeals-dev
+description: F:\dsh\gameprice（SteamDeals 跨平台游戏比价）的开发规范：排期与状态唯一来源是 docs/TODO.md（开工先认领编号、完工把条目状态改成"已实现待发版"），完整流程见 docs/HANDOVER.md；职责只到"代码改动 + 测试用例"，不碰服务器、不碰生产数据、不擅自发版；任何改动必须真跑改动相关测试 / frontend:build / scan 并贴输出（主链全量按需、由 CI 自动兜底），且同步更新 docs/PROJECT-OVERVIEW.md，最后等"构建 vX.Y.Z"人工指令；提交推 main 后直接调用 steamdeals-qa 质检（不必等所有者发话，需核对它的「功能清单」表），打回项补齐才算交付；每次结束必须汇报"已做哪些 TODO 编号 / 未做哪些及原因"；TODO 被其他会话占用时按 §1.1 立即停手并上报所有者，不自行等待/覆盖。动 gameprice 代码前必读。
 ---
 
 # gameprice 开发规范（职责范围：只做开发）
@@ -16,15 +16,15 @@ description: F:\dsh\gameprice（SteamDeals 跨平台游戏比价）的开发规�
 > **路径基准**：下文 `docs/…`、`src/…`、`frontend/…`、`test/…` 都相对**仓库根** `F:\dsh\gameprice`，
 > 不是本 SKILL.md 所在目录。开工先 `cd F:\dsh\gameprice` 并确认 `git rev-parse --show-toplevel`。
 >
-> **技能文件位置**：`.dsh/skills/gameprice-dev/SKILL.md`，**自 2026-11-09 起随仓库提交、推 GitHub**；
-> 本机 DSH 扫描路径 `F:\dsh\.dsh\skills\gameprice-dev` 是指向它的 junction（仅本机环境配置，不入库）。
+> **技能文件位置**：`.dsh/skills/steamdeals-dev/SKILL.md`，**自 2026-11-09 起随仓库提交、推 GitHub**；
+> 本机 DSH 扫描路径 `F:\dsh\.dsh\skills\steamdeals-dev` 是指向它的 junction（仅本机环境配置，不入库）。
 > **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/dsh-skills`；修改后执行
 > `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步（见该仓库 README）。
 > 别的机器 clone 后如需 DSH 发现该技能，按同样方式建 junction；**不要再维护第二份副本**。
 >
-> **分工**：聊需求、定方案、写规格用 `gameprice-requirements`；本技能只负责把规格变成代码 + 测试；
-> 验收核对用 `gameprice-qa`（提交推 main 后**直接调用**、不用问所有者；它会输出「功能清单」表；打回项补齐才算交付）；
-> 构建发版用 `gameprice-build`（收到所有者「构建」指令后加载执行，版本号自动推算，本技能 §8 已改为引用它）。
+> **分工**：聊需求、定方案、写规格用 `steamdeals-requirements`；本技能只负责把规格变成代码 + 测试；
+> 验收核对用 `steamdeals-qa`（提交推 main 后**直接调用**、不用问所有者；它会输出「功能清单」表；打回项补齐才算交付）；
+> 构建发版用 `steamdeals-build`（收到所有者「构建」指令后加载执行，版本号自动推算，本技能 §8 已改为引用它）。
 > 拿到的是交接单（`docs/<TOPIC>.md` + TODO 条目）时，先按它的「范围 / 落点 / 验收」核对，再动手。
 
 项目：包名 `steamdeals`（当前版本以 `package.json` 为准）。Node ≥22.5（ESM）+ PostgreSQL 15 + Vue 3/Vite/Element Plus + Docker Compose。
@@ -172,17 +172,17 @@ node --check src/xxx.js         # 新增/大改文件先过语法
 立即 `git add <具体路径>`（**不要 `git add -A`**——工作区常有其它会话的改动；技能文件已随仓库提交，
 改技能就单独 `git add .dsh/skills/<name>/SKILL.md`）→ `git commit -m "<type>(<scope>): <摘要>"`
 （feat/fix/refactor/test/docs/chore，见 CONTRIBUTING 提交规范）→ `git push origin main`。
-然后**立刻直接调用 `gameprice-qa`**（**不等所有者发话、不问"要不要质检"**）：把 TODO 编号 + 规格路径 +
+然后**立刻直接调用 `steamdeals-qa`**（**不等所有者发话、不问"要不要质检"**）：把 TODO 编号 + 规格路径 +
 基线/HEAD 哈希交给质检（同会话加载 skill 即可）；质检会产出「功能清单」表（用户视角、一条功能一行），
 你按那张表核对"是不是真的都交付了"；
 ❌ 打回项必须补齐（修复照常提交推 main）并复检通过，拿到 ✅/⚠️ 结论后，
 才把「待发版」状态写进 `docs/DELIVERY.md` 末尾「当前状态」，停手等指令，**不要提前改版本号**。
 
-**听到「构建」指令后 → 加载 `gameprice-build` 技能执行**（2026-11-10 起发版职责独立成技能）：
+**听到「构建」指令后 → 加载 `steamdeals-build` 技能执行**（2026-11-10 起发版职责独立成技能）：
 
 - 发版全流程（版本号自动推算 / 构建门禁 / 文档落地 / 验证 / 提交推 main / 打 tag 推 tag / 盯 CI / 汇报）以
-  `gameprice-build` 的 SKILL.md 为准，本技能不再重复维护这段；
-- 版本号规则（所有者 2026-11-17 修订，以 `gameprice-build` §1 为准）：只说「构建」时自动推算——
+  `steamdeals-build` 的 SKILL.md 为准，本技能不再重复维护这段；
+- 版本号规则（所有者 2026-11-17 修订，以 `steamdeals-build` §1 为准）：只说「构建」时自动推算——
   修复/文档 → **小版本 +1**（X.Y.Z+1）、含新功能 → **大版本 +1**（X.Y+1.0，不论条目数/diff 大小）、
   主版本 X.0.0 必须点名；**禁止跳号**（旧「跳一小版本」档已删除）；「构建 vX.Y.Z」用指定版本；**任何构建都必须有版本号**；
 - 构建门禁：只有 `质检通过` 的条目进版本，存在 `质检打回` / 未质检条目时拒绝构建并列出；
@@ -217,13 +217,14 @@ node --check src/xxx.js         # 新增/大改文件先过语法
 ```
 ✅ 改动：<文件清单> + 一句话说清做了什么
 ✅ 验证：<命令> → <关键输出> → 通过 / 未通过（附原因）
-🧪 质检：gameprice-qa 第 N 轮 → ✅ 放行（通过 X / 缺失 0 / 需人工确认 W；报告 docs/QA-*.md 未提交）
+🧪 质检：steamdeals-qa 第 N 轮 → ✅ 放行（通过 X / 缺失 0 / 需人工确认 W；报告 docs/QA-*.md 未提交）
 📋 功能清单：见质检汇报的「功能清单」表（本批全部功能，一条一行）
 🔖 提交：<短哈希> 已提交并推 main（推 main 不触发构建）
 📄 文档：docs/PROJECT-OVERVIEW.md 已同步（改了哪些表/段落）
-⏸ 待命：未打 tag、未触发构建，等"构建"指令（版本号由 gameprice-build 自动推算）
+⏸ 待命：未打 tag、未触发构建，等"构建"指令（版本号由 steamdeals-build 自动推算）
 ```
 
-**发版完成**：汇报格式以 `gameprice-build` 技能的 §4 为准（版本号 + 推算依据 + tag/CI + 服务器待部署 + 未发布条目清单）。
+**发版完成**：汇报格式以 `steamdeals-build` 技能的 §4 为准（版本号 + 推算依据 + tag/CI + 服务器待部署 + 未发布条目清单）。
 
 任何没跑过的验证都要明说"未验证，仅目检"——这是本项目最忌讳的失败模式（历史上出现过三次"代码看着对、数据其实错"）。
+

@@ -6,7 +6,7 @@
 
 ## 0. 开工前必读
 
-- 流程与硬规则：[docs/HANDOVER.md](HANDOVER.md)、[docs/DELIVERY.md](DELIVERY.md)（六步：认领 → 代码+测试 → 验证 → 文档同步 → 提交推 main → 调用 gameprice-qa 质检并回写 TODO）。
+- 流程与硬规则：[docs/HANDOVER.md](HANDOVER.md)、[docs/DELIVERY.md](DELIVERY.md)（六步：认领 → 代码+测试 → 验证 → 文档同步 → 提交推 main → 调用 steamdeals-qa 质检并回写 TODO）。
 - 状态唯一来源 [docs/TODO.md](TODO.md)：开工先认领编号（状态 → 开发中），完工改「已实现待发版」，质检后改「质检通过」；写 TODO/INDEX 前先探测是否被其他会话占用（§1.1）。
 - **不打 tag、不构建、不发版**（硬规则 5，等所有者「构建 vX.Y.Z」）；不碰服务器（硬规则 4）。
 - 验证基线：`npm test` 67 文件/549 项全绿 + `node test/api.test.js` 22 项 + `npm run frontend:build` + `npm run scan`。
@@ -76,5 +76,6 @@
 
 1. `npm test` + `node test/api.test.js`（动过 API 时）+ `npm run frontend:build` + `npm run scan` 全绿并贴输出；
 2. 文档同步：TODO（状态行）/ REQUIREMENTS-INDEX / PROJECT-OVERVIEW（加行）/ DELIVERY（待发版 bullet）/ 规格文档状态；
-3. 提交推 main（`feat(范围): 摘要`）后调用 gameprice-qa 质检（核对「功能清单」表），回写 TODO → 质检通过；
+3. 提交推 main（`feat(范围): 摘要`）后调用 steamdeals-qa 质检（核对「功能清单」表），回写 TODO → 质检通过；
 4. 结束汇报：已做哪些编号 / 未做哪些及原因。
+

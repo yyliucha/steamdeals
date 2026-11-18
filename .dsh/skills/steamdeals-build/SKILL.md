@@ -1,5 +1,5 @@
 ---
-name: gameprice-build
+name: steamdeals-build
 description: SteamDeals/gameprice 的构建发版技能：收到所有者「构建（vX.Y.Z）」指令后加载执行——版本号必须连续递增、禁止跳号（修复 → 小版本 +1，含新功能 → 大版本 +1，主版本 X.0.0 需所有者点名）、构建门禁（只有「质检通过」的条目进版本，存在质检打回/未质检则拒绝）、文档落地（CHANGELOG/README/PROJECT-OVERVIEW/TODO/REQUIREMENTS-INDEX/DELIVERY）、验证（本批相关测试 + frontend:build / scan / api.test；全量主链由 CI 自动兜底）、提交推 main、打 annotated tag 推 tag、盯 CI 双绿、按 HANDOVER §3 汇报；不擅自打 tag、不碰服务器、不提前改版本号。
 ---
 
@@ -16,14 +16,14 @@ description: SteamDeals/gameprice 的构建发版技能：收到所有者「构�
 > **路径基准**：下文 `docs/…`、`src/…`、`test/…`、`package.json` 都相对**仓库根** `F:\dsh\gameprice`，
 > 不是本 SKILL.md 所在目录。开工先 `git rev-parse --show-toplevel` 确认在仓库根。
 >
-> **技能文件位置**：`.dsh/skills/gameprice-build/SKILL.md`，**随仓库提交、推 GitHub**；
-> 本机 DSH 扫描路径 `F:\dsh\.dsh\skills\gameprice-build` 是指向它的 junction（仅本机环境配置，不入库）。
+> **技能文件位置**：`.dsh/skills/steamdeals-build/SKILL.md`，**随仓库提交、推 GitHub**；
+> 本机 DSH 扫描路径 `F:\dsh\.dsh\skills\steamdeals-build` 是指向它的 junction（仅本机环境配置，不入库）。
 > **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/dsh-skills`；修改后执行
 > `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步（见该仓库 README）。
 > 别的机器 clone 后如需 DSH 发现该技能，按同样方式建 junction；**不要再维护第二份副本**。
 >
-> **分工**：`gameprice-dev` 实现并验证 → `gameprice-qa` 验收核对（TODO 改「质检通过」）→
-> **`gameprice-build` 发布**（本技能）。构建命令由**所有者**发出；本技能负责把「质检通过」的条目打成镜像版本。
+> **分工**：`steamdeals-dev` 实现并验证 → `steamdeals-qa` 验收核对（TODO 改「质检通过」）→
+> **`steamdeals-build` 发布**（本技能）。构建命令由**所有者**发出；本技能负责把「质检通过」的条目打成镜像版本。
 
 ## 0. 触发与前置
 
@@ -167,3 +167,4 @@ gh auth switch --user boxiang-sun_shortcut          # 切回默认账号
 - QA 报告 `docs/QA-*.md` 默认**不进 git**，但 TODO/DELIVERY 会引用它们——引用即可，不必把报告提交（所有者另有指示除外）。
 - 首次构建含 `READ_MODEL`/回填类迁移时，在 DELIVERY 条目里注明「首次启动会慢一次/需人工关注」的部署提示。
 - `npm version` 不带 `--no-git-tag-version` 会自己打 tag 并触发构建——永远加 `--no-git-tag-version`，tag 由 §3.5 显式打。
+

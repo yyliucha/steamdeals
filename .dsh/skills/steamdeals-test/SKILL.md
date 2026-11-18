@@ -1,5 +1,5 @@
 ---
-name: gameprice-test
+name: steamdeals-test
 description: SteamDeals/gameprice 的测试方法库与真实测试门槛：分层策略（纯函数 / pglite 数据层 / 真 HTTP / 前端编译级与 headless 渲染）、断言质量三原则（断言行为、反向自检、注释约束）、项目踩坑模式库、全量 e2e 与冒烟两档（功能矩阵 + 后台建删 e2e_ 测试账号 + headless Edge + Android 模拟器/真机 adb + 公网只读验收）、真实测试即上线门槛（R1 自动 / R2 所有者目视 / R3 部署）、报告生成 PDF 不入库；写测试、排查测试失败、判断"测试是否真锁住行为"时使用。
 ---
 
@@ -15,8 +15,8 @@ description: SteamDeals/gameprice 的测试方法库与真实测试门槛：分�
 
 > **路径基准**：下文 `docs/…`、`src/…`、`test/…` 都相对**仓库根** `F:\dsh\gameprice`。
 >
-> **分工**：`gameprice-dev` 写代码 + 写测试（交付物）；**本技能给"怎么写、怎么写才算数"**；
-> `gameprice-qa` 判"测试是否真锁住行为"；`gameprice-build` 发版前确认测试与真实测试清单齐全。
+> **分工**：`steamdeals-dev` 写代码 + 写测试（交付物）；**本技能给"怎么写、怎么写才算数"**；
+> `steamdeals-qa` 判"测试是否真锁住行为"；`steamdeals-build` 发版前确认测试与真实测试清单齐全。
 >
 > **技能镜像**：同一份文件镜像在私有仓库 `yyliucha/dsh-skills`；修改后执行
 > `pwsh F:\dsh\gameprice-skills\sync.ps1` 同步（见该仓库 README）。
@@ -245,6 +245,7 @@ HTML 报告 → msedge --headless=new --disable-gpu --print-to-pdf="F:\dsh\e2e-r
 
 ## 12. 与其它技能的衔接
 
-- `gameprice-dev`：交付时按 §2 加测试、按 §5.2 写「真实测试」段、贴命令与输出。
-- `gameprice-qa`：按 §3/§10 判"是否真锁住"、按 §5.2 核对真实测试清单完整性、报告里复现矩阵覆盖情况。
-- `gameprice-build`：发版前确认 `npm run e2e` 全量通过 + 真实测试清单已回填，否则拒绝构建。
+- `steamdeals-dev`：交付时按 §2 加测试、按 §5.2 写「真实测试」段、贴命令与输出。
+- `steamdeals-qa`：按 §3/§10 判"是否真锁住"、按 §5.2 核对真实测试清单完整性、报告里复现矩阵覆盖情况。
+- `steamdeals-build`：发版前确认 `npm run e2e` 全量通过 + 真实测试清单已回填，否则拒绝构建。
+

@@ -1,20 +1,20 @@
 # 开发会话交接：BF / BG / AY（2026-11-11）
 
 > 用途：把三个待办丢进**一个合并开发会话**（推荐，见 §1），或按附录拆成三个独立会话。每个提示自包含；
-> 但都必须先读 [HANDOVER.md](HANDOVER.md) 并加载 `gameprice-dev` 技能（项目硬规则以它为准）。
+> 但都必须先读 [HANDOVER.md](HANDOVER.md) 并加载 `steamdeals-dev` 技能（项目硬规则以它为准）。
 >
 > 当前看板（2026-11-11）：`进行中 1`（AY 质检通过待发版）· `接下来 2`（BF、BG 待开发）· 已发布 v2.10.0。
 > 三个会话的**写集互不重叠**（BF：后端 DDL/读写；BG：前端抽屉 + 测试；AY：只读复测 + 文档），可并行。
 
 ## 0. 共用规则（合并会话/拆分会话开头都要遵守）
 
-1. 工作目录 `F:\dsh\gameprice`；先读 `docs/HANDOVER.md`，按 `gameprice-dev` 技能流程做。
+1. 工作目录 `F:\dsh\gameprice`；先读 `docs/HANDOVER.md`，按 `steamdeals-dev` 技能流程做。
 2. **`docs/TODO.md` 是唯一事实源**：开工把条目状态改「开发中」，完工改「已实现待发版」，绝不改别人的条目。
 3. 只做代码 + 测试；不碰服务器、不碰生产数据；**没有「构建 vX.Y.Z」指令不打 tag、不触发 CI**。
 4. 验证三件套必须真跑并贴输出：`npm test`、`npm run frontend:build`（动前端时）、`npm run scan`；
    另外 `node test/api.test.js`（动后端时）与 `npm run todo:progress:check`。
 5. 提交前先 `git status`：**只 `git add` 自己改的文件**，绝不 `git add -A`（工作区常有其他会话的未提交文档/QA 报告）。
-6. 同步 `docs/PROJECT-OVERVIEW.md`；提交推 main 后**直接调用 `gameprice-qa`** 质检（技能会按条目出报告并改状态）。
+6. 同步 `docs/PROJECT-OVERVIEW.md`；提交推 main 后**直接调用 `steamdeals-qa`** 质检（技能会按条目出报告并改状态）。
 7. 结束按 HANDOVER §3 汇报：`✅ 已做 / ⏳ 未做 / 📄 状态更新 / 🧪 质检 / 🔖 提交`，并说明「未做哪些及原因」。
 
 ---
@@ -26,7 +26,7 @@
 BF（数据库遗留对象清理）、BG（站点通知页误报未保存）、AY（搜索性能部署后复测与收尾）。
 
 第一步（必读）：
-- docs/HANDOVER.md + 加载 gameprice-dev 技能（项目硬规则以它为准）；
+- docs/HANDOVER.md + 加载 steamdeals-dev 技能（项目硬规则以它为准）；
 - 规格：docs/DB-LEGACY-CLEANUP.md（BF）、docs/UNSAVED-GUARD.md §11（BG）、docs/READ-MODEL.md §9+§12（AY）；
 - 开工前 git status + 检查 TODO/INDEX 是否正被其他会话编辑（2 分钟内写入则停手上报）；
   只 git add 自己改的文件，绝不 git add -A（工作区常有其他会话的未提交 QA 报告/文档）。
@@ -67,7 +67,7 @@ BF（数据库遗留对象清理）、BG（站点通知页误报未保存）、A
 3) docs(perf): AY 复测记录（若已部署）
 提交前 git status 核对只含自己的文件；推 main。
 
-质检：三个条目都推送后，调用 gameprice-qa 一次，覆盖 BF + BG（+ AY 若已完成复测）；按其报告处理打回项。
+质检：三个条目都推送后，调用 steamdeals-qa 一次，覆盖 BF + BG（+ AY 若已完成复测）；按其报告处理打回项。
 汇报：按 HANDOVER §3 输出「已做/未做/状态更新/质检/提交」，逐条列 BF、BG、AY 的结论与阻塞。
 注意：不碰服务器、不动生产数据、没有「构建 vX.Y.Z」指令不发版。
 ```
@@ -75,7 +75,7 @@ BF（数据库遗留对象清理）、BG（站点通知页误报未保存）、A
 ### 1.1 依赖与并行说明
 
 - BF、BG 互不依赖，可同会话连续做；AY 的「复测」依赖下个版本构建 + 部署，未部署时只记录阻塞，不臆测结果。
-- 三个条目在 `docs/TODO.md` 里各自独立，状态分别回写；一次 `gameprice-qa` 覆盖多条。
+- 三个条目在 `docs/TODO.md` 里各自独立，状态分别回写；一次 `steamdeals-qa` 覆盖多条。
 
 ---
 
@@ -85,7 +85,7 @@ BF（数据库遗留对象清理）、BG（站点通知页误报未保存）、A
 你是 SteamDeals（F:\dsh\gameprice）的开发会话，任务 = TODO 条目 BF。
 
 先读：docs/HANDOVER.md → docs/TODO.md 的 BF 条目 → docs/DB-LEGACY-CLEANUP.md（规格，已提交）。
-按 gameprice-dev 技能流程做：开工把 BF 状态改「开发中」，完工改「已实现待发版」。
+按 steamdeals-dev 技能流程做：开工把 BF 状态改「开发中」，完工改「已实现待发版」。
 
 范围（代码与库同步清理，规格 §3/§5）：
 - A 组（立即做）：
@@ -111,7 +111,7 @@ BF（数据库遗留对象清理）、BG（站点通知页误报未保存）、A
 
 注意：
 - 生产库现有这些列/表要等部署侧执行清理 SQL 才消失；代码必须能容忍「列还在」的过渡期（不读不写即可）；
-- 只 git add 自己改的文件；提交推 main 后调用 gameprice-qa 按 BF 判；
+- 只 git add 自己改的文件；提交推 main 后调用 steamdeals-qa 按 BF 判；
 - 不要碰服务器、不要发布。
 ```
 
@@ -123,7 +123,7 @@ BF（数据库遗留对象清理）、BG（站点通知页误报未保存）、A
 你是 SteamDeals（F:\dsh\gameprice）的开发会话，任务 = TODO 条目 BG（BUG）。
 
 先读：docs/HANDOVER.md → docs/TODO.md 的 BG 条目 → docs/UNSAVED-GUARD.md §11（规格，已提交）。
-按 gameprice-dev 技能流程做：开工把 BG 状态改「开发中」，完工改「已实现待发版」。
+按 steamdeals-dev 技能流程做：开工把 BG 状态改「开发中」，完工改「已实现待发版」。
 
 根因（规格已定位）：frontend/src/components/AnnouncementDrawer.vue 里
   let snapshot = '';  // 初始为空串 → 页面挂载/抽屉关闭时 isDirty() 恒 true
@@ -139,7 +139,7 @@ BF（数据库遗留对象清理）、BG（站点通知页误报未保存）、A
 
 注意：
 - 只 git add 自己改的文件（工作区常有其他会话的未提交 QA 报告/文档）；
-- 提交推 main 后调用 gameprice-qa 按 BG 判；不要碰服务器、不要发布。
+- 提交推 main 后调用 steamdeals-qa 按 BG 判；不要碰服务器、不要发布。
 ```
 
 ---
@@ -167,7 +167,7 @@ BF（数据库遗留对象清理）、BG（站点通知页误报未保存）、A
 1) 关键词查询仍全扫 → 确认生产 pg_trgm 索引存在且表达式一致；确认候选查询真的走了 Bitmap Index Scan；
 2) 列表仍外部排序 → 确认 games_heat_live 已建、谓词匹配（not deleted/adult/blocked）、必要时 ANALYZE games；
 3) count 仍慢 → 检查 60s 缓存是否生效（进程重启后首访冷）；必要时评估给列表 count 加缓存（需先提需求）；
-4) 任何新改动都按正常开发流程：改代码/迁移 → npm test/build/scan → 提交推 main → gameprice-qa。
+4) 任何新改动都按正常开发流程：改代码/迁移 → npm test/build/scan → 提交推 main → steamdeals-qa。
 
 注意：不改业务语义（total/排序/筛选必须与现实现一致，复用 test/game-search-read-model.test.js）；
 只 git add 自己改的文件；不要碰服务器执行 DDL（建索引由版本 migrate 自动做）。
@@ -184,3 +184,4 @@ BF（数据库遗留对象清理）、BG（站点通知页误报未保存）、A
 | AY | **下个版本构建 + 部署** | 是（等部署那一段） | 代码已合入 main；未部署前只能做只读核对 |
 
 > 三者改完后，建议一次构建（如 v2.11.0）包含 BF + BG，AY 的复测在新版本部署后进行。
+

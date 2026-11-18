@@ -1,7 +1,7 @@
 # e2e 测试套件（功能矩阵 + headless Edge + Android 模拟器/真机 + 公网只读 + PDF 报告）（已实现并发布 v2.24.0）
 
 > 状态：**已实现并发布 v2.24.0（2026-11-17，test(e2e) 65af42b；QA ✅ docs/QA-E2E-SUITE-CK.md 第 1 轮）**。使用说明见 [TESTING-E2E.md](TESTING-E2E.md)。
-> 关联：[gameprice-test](../.dsh/skills/gameprice-test/SKILL.md)（测试方法库与真实测试门槛）、
+> 关联：[steamdeals-test](../.dsh/skills/steamdeals-test/SKILL.md)（测试方法库与真实测试门槛）、
 > [TODO.md](TODO.md) CK 条目、[HANDOVER.md](HANDOVER.md)（流程与状态词）、[DELIVERY.md](DELIVERY.md)（部署后验证）。
 
 ## 1. 已确认的决策（所有者 2026-11-17 逐项确认）
@@ -102,3 +102,4 @@ test/e2e/
 ## 10. 待确认问题
 
 无（三项已并入 §1 #11–#13：后台矩阵深度、App 覆盖安装旧版包、`--online` 部署后跑）。
+
