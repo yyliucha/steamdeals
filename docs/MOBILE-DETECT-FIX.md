@@ -1,6 +1,6 @@
 # 手机端识别增强（桌面模式 UA 漏判 → 前端兜底）（已实现待发版）
 
-> 状态：**已实现待发版（2026-11-18，75a7e7f；三信号判定 + index.html 兜底，待质检）**。
+> 状态：**已实现并发布 v2.24.4（2026-11-18，75a7e7f；QA docs/QA-CP-CT-CO2.md 第 1 轮 ✅）**。
 > 关联：[TODO.md](TODO.md) CP 条目、[APP-NATIVE.md](APP-NATIVE.md) §5（手机前台 → `/app` 策略）、
 > [MOBILE-VIEWPORT.md](MOBILE-VIEWPORT.md)（Z 批"桌面版网站"模式的判定先例）。
 

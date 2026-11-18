@@ -1,5 +1,24 @@
 # 变更日志
 
+## [2.24.4] - 2026-11-18
+
+CP + CT + CO-2（B1/B2）+ CO-3（C2/C4/C5）+ DE 合并发版：手机识别、App 同步修复、请求治理与后台提速、App 接口设备限流与契约守卫、对齐审核页改版。
+
+### 修复
+
+- **手机端识别增强（CP）**：服务端三信号判定——UA 品牌特征（MiuiBrowser/HuaweiBrowser/VivoBrowser/HeyTapBrowser/OppoBrowser）+ `Sec-CH-UA-Mobile: ?1` + 纯桌面 UA 排除；`index.html` 内联 `screen.width <= 640` 兜底跳转（`sessionStorage('mred')` 防循环）。修复小米浏览器「桌面版网站」模式伪装桌面 UA 导致手机打不开下载页的漏判；豁免列表（console/login/register/app/banned/appeal/setup/change-password 与 /api/*）不变，PC/平板永不跳。
+- **app-release-sync 404（CT）**：`/releases/latest` 对该 release 返回 404 → 改走 `GET /repos/{repo}/releases?per_page=10` 取第一条非 draft/prerelease（latest 仅兜底）；仓库已公开，token 可选；失败日志区分 `app.sync_http_404` / `app.sync_no_release` / `app.sync_no_assets`。
+- **统一请求超时 + 重型接口并发闸（CO-2/B1）**：统一 15s 看门狗（超时 503 + `http.request_timeout` 日志，长连接白名单豁免静态资源/图片代理/APK 下载/静态曲线页/CSV 导出/手动备份）+ `HEAVY_GATE_CONFIG` 并发闸（admin 游戏列表/对齐 ≤1、公开搜索 GET+POST 共用 ≤2），排队满/超时 503，超时与闸门均有日志可观测。
+- **admin 列表接口提速（CO-2/B2）**：`/api/admin/games` 排序走有序索引（`idx_games_updated`）、存活计数走部分索引（`idx_games_live`）、`/sync/status` lateral join 走 `idx_fetch_runs_platform_started` + 两端点 3s 短缓存（写操作立即失效）；返回契约逐字段不变；本地 pglite 60k 合成数据实测列表 SQL -94%。
+- **App 接口设备维度限流（CO-3/C2）**：`/api/app/*` 保持封禁/黑名单豁免，新增以 `X-Device-Id` 为键的独立滑动窗口限流（超限 429 + `Retry-After`，不封禁，审计 `app.device_rate_limited`；设置 `app.deviceRateMax`/`app.deviceRateWindowSec` 热加载）。
+- **日期/金额统一 helper（CO-3/C4）**：后端 `src/format.js`（`formatMoney`/`formatDay`/`formatDateTime` 等）+ 前端 `utils/money.js`、`siteTime.fmtDay`，全仓散落 `/100` 与手拼日期收敛，行为不变、调用方签名不变。
+- **对齐审核页改版（DE）**：头部状态徽标 + 生成时间 / 5 统计卡 / 生成中进度条（total 分组后立即上报，不再 0/0，可先用旧结果）/ 搜索 + 5 筛选 chip / 批量确认·忽略（二次确认 + 审计）/ 分数色条 + 建议徽标 + 明细展开面板 / 前端筛选分页 / 空态互斥（仅「已完成且 0 组」）；接口 202 补 `total`+`cachedRows`（stale 旧结果分页）+`failed/error`、200 补 `counts`、预览/确认/忽略支持批量 `keys`（≤200、逐组回执）。
+
+### 测试
+
+- 新增 `test/app-release.test.js`（6 项）、`test/http-guard.test.js`（7 项）、`test/admin-cache.test.js`（3 项）、`test/app-device-ratelimit.test.js`（4 项）、`test/format.test.js`（8 项）、`test/money-format.test.js`（5 项）、`test/app-contract.test.js`（APP-API 契约逐字段守卫）进主链；`test/align-perf.test.js`（+6 项 stale/失败态/onGrouped/topN/counts/ignoredGroups）、`test/align.test.js`、`test/api.test.js`（B1 并发闸 HTTP 级用例 + DE 202 轮询全流程）扩展；CP 四组 UA HTTP 用例与前后端豁免一致断言。
+- QA：CP/CT/CO-2 ✅ docs/QA-CP-CT-CO2.md 第 1 轮（通过 15/需人工确认 2：红米真机 + 线上四组 UA，部署后）；CO-3 ✅ docs/QA-CO3.md 第 1 轮（放行）；DE ⚠️ 有条件放行 docs/QA-DE.md 第 1 轮（通过 7/偏差 1 已修/需人工确认 1：移动端目视，部署后）。
+
 ## [2.24.3] - 2026-11-18
 
 P0 双修：对齐审核后台生成（不再队列恒空）+ 所有查询不排除已拥有（App 不再搜不到自己的游戏）。

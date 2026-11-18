@@ -1,6 +1,6 @@
 # 对齐审核页改版（DE，待开发）
 
-> 状态：**已确认待开发（2026-11-18，所有者：页面太丑，重新设计布局；demo 已出；§6 三条待确认已拍板）**。
+> 状态：**已实现并发布 v2.24.4（2026-11-18，318e678 + 偏差修复 729d0e9；QA docs/QA-DE.md 第 1 轮 ⚠️ 有条件放行——通过 7/偏差 1 已修/需人工确认 1：移动端目视）**。
 > 关联：[TODO.md](TODO.md) DE 条目、[ALIGN-QUERY-PERF.md](ALIGN-QUERY-PERF.md)（CN）、[ALIGN-DB-SLOW.md](ALIGN-DB-SLOW.md)（CS 后台生成）。
 > Demo：[design/align-review-redesign-2026-11-18.html](design/align-review-redesign-2026-11-18.html)
 

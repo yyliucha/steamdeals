@@ -1,6 +1,6 @@
 # app-release-sync 404 修复：改用 releases 列表接口（CT，P1）
 
-> 状态：**已实现待发版（2026-11-18，9312054；releases 列表主路径 + latest 兜底 + 可选 token + 日志区分，待质检）**。
+> 状态：**已实现并发布 v2.24.4（2026-11-18，9312054；QA docs/QA-CP-CT-CO2.md 第 1 轮 ✅）**。
 > 关联：[TODO.md](TODO.md) CT 条目、[APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md)（CJ 批：运行时同步）。
 
 ## 1. 现象与根因（2026-11-18 实测）

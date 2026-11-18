@@ -195,20 +195,23 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-18 更新，v2.24.3 已发布：CS 对齐审核后台生成 + CV 查询不排除已拥有）
+### 当前状态（2026-11-18 更新，v2.24.4 已发布：CP + CT + CO-2 + CO-3 + DE）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
-- **DE 对齐审核页改版：质检通过待发版**（2026-11-18，提交 318e678 + 偏差修复 729d0e9；QA ⚠️ 有条件放行 [QA-DE.md](QA-DE.md) 第 1 轮——通过 7/偏差 1（已修）/需人工确认 1）：
-  页面按 demo 重做（头部状态徽标 + 生成时间 / 5 统计卡 / 生成中进度条（total 分组后立即上报、可先用旧结果）/ 搜索 + 5 筛选 chip /
-  批量确认忽略（二次确认 + 审计）/ 分数色条 + 建议徽标 + 链接明细展开面板 / 前端筛选分页 / 空态互斥）；接口 202 补
-  `total`+`cachedRows`（stale 旧结果）+ 失败态、完成补 `counts`；预览/确认/忽略支持批量 `keys`。
-  部署后待所有者确认：移动端与 demo 整体视觉一致性目视、线上首刷 202 stale 与失败重试闭环。
-- **CP + CT + CO-2（B1/B2）批次：质检通过待发版**（2026-11-18，提交 9312054 / 75a7e7f / a54be76；QA ✅ [QA-CP-CT-CO2.md](QA-CP-CT-CO2.md) 第 1 轮——通过 15/需人工确认 2）：
+- **v2.24.4 已发布**（tag `v2.24.4`，实现 9312054 / 75a7e7f / a54be76 / 89c8dfd / 318e678 + 729d0e9）：CP + CT + CO-2（B1/B2）+ CO-3（C2/C4/C5）+ DE 合并发版。
   CP 手机端识别三信号（UA 品牌特征 + `Sec-CH-UA-Mobile` + index.html `screen.width<=640` 兜底，小米桌面 UA 不再漏判）；
   CT app-release-sync 改 releases 列表接口（第一条非 draft/prerelease、latest 兜底、匿名可用、失败日志区分）；
   CO-2/B1 统一 15s 请求超时（长连接白名单豁免）+ 重型接口并发闸（admin 游戏列表/对齐 ≤1、公开搜索共用 ≤2，排队满/超时 503）；
-  CO-2/B2 admin 列表提速（`idx_games_updated`/`idx_games_live`/`idx_fetch_runs_platform_started` 三索引 + 两端点 3s 短缓存与写失效，契约不变；
-  压测列表 SQL -92%）。部署后待所有者确认：红米真机 CP 验收、线上四组 UA 复测、B1 超时白名单范围、B2 生产 PG 同口径复核。
+  CO-2/B2 admin 列表提速（三索引 + 两端点 3s 短缓存与写失效，契约不变，压测列表 SQL -92%）；
+  CO-3 C2 `/api/app/*` 设备维度限流（`X-Device-Id` 滑动窗口，超限 429 不封禁 + 审计）/
+  C4 日期金额统一 helper（后端 format.js + 前端 money.js）/ C5 APP-API 契约漂移 CI 逐字段守卫；
+  DE 对齐审核页按 demo 改版（状态徽标/统计卡/进度条/搜索筛选/批量确认忽略/空态互斥；接口 202 `total`+`cachedRows`+`failed`、200 `counts`、批量 `keys`）。
+  QA：CP/CT/CO-2 ✅ [QA-CP-CT-CO2.md](QA-CP-CT-CO2.md) 第 1 轮（通过 15/需人工确认 2）；CO-3 ✅ [QA-CO3.md](QA-CO3.md) 第 1 轮（放行）；DE ⚠️ 有条件放行 [QA-DE.md](QA-DE.md) 第 1 轮（通过 7/偏差 1 已修/需人工确认 1）。
+  验证（本机发版门禁）：本批相关测试全绿（frontend-mobile / serve / app-release / app-release-sync / http-guard / admin-cache /
+  app-device-ratelimit / format / money-format 全过，align-perf 22/22、align 6/6、settings 8/8、setup 4/4、app-contract 2/2、
+  api.test.js 31/31）；`frontend:build` ✓（1.59s）；`scan` 干净。
+  CI 待确认（tag 推送后补 run id）。
+  **服务器部署待执行**（升级到 `2.24.4`）；部署后待所有者确认：① 红米真机 CP 验收 + 线上四组 UA 复测；② DE 移动端与 demo 整体视觉一致性目视、线上首刷 202 stale 与失败重试闭环；③ B1 超时白名单范围、B2 生产 PG 同口径复核。
 - **v2.24.3 已发布**（tag `v2.24.3`，站点 2a03188/cbb3a02 + App 仓库 0945006/65eaa5d）：P0 双修——
   CS：对齐审核后台生成（冷缓存 202 {generating,processed,total} + 前端 3s 轮询，完成后自动展示；预算只约束匹配循环、
   后台算完为止不再 partial 空结果；slow_query 增 eventLoopLagMs）；CV：所有查询不排除已拥有（Web/App 列表与搜索
