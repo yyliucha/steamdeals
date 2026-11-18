@@ -2210,11 +2210,12 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **现状**：提醒只由 `alerts` 定时任务触发（每 360 分钟）；后台每行只有「删除」，没有手动发送。
 - **需求**：每行加「推送」→ 确认弹窗（游戏/用户/当前价/史低/上次提醒/渠道）→ 立即发送；
   **强制推送**（未达条件也发）与**更新最近提醒时间**（写 `last_notified`，默认勾选）两个选项；无通道时按钮禁用。
-- **接口**：`POST /api/admin/watchlist/:id/push { force, mark }`，复用 `evaluateAlerts`/`renderDigest`/`notify`；
-  同 watch 60 秒频控；审计 `admin.alert_pushed`；（可选）批量 `POST /api/admin/watchlist/push { ids }`。
+- **接口**：`POST /api/admin/watchlist/:id/push { force, mark }`（单条）与 `POST /api/admin/watchlist/push { ids }`（批量合并一封邮件），
+  复用 `evaluateAlerts`/`renderDigest`/`notify`；**5 分钟**频控；审计 `admin.alert_pushed`。
 - **验收**：见规格 §4——达标/未达标/强制/mark 去重/频控 429/无通道禁用/审计落库/`npm test`+`frontend:build`+`scan` 全绿。
-- **待确认**：① 用户级提醒是否允许管理员推送（建议只站点级，与 CY 一致）；② mark 默认勾选；③ 是否批量；
-  ④ 频控 60 秒还是 5 分钟。
+- **已确认（2026-11-18）**：① **只有管理员能推**，用户级提醒**不可推**（只站点级）；② mark **默认勾选**；
+  ③ **支持一键推送/批量**，批量**只发一封邮件**（正文列出所有勾选游戏）；④ 频控 **5 分钟**。
+
 
 
 
