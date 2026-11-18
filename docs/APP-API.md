@@ -201,7 +201,59 @@ App 把 `svg` 渲染成位图显示；登录时回传 `token` 与用户输入。
 6. 测试：前缀重写不影响 Web；`/api/app/status` 命中 IP/设备；公开接口匿名；用户接口 401；限流 429；
 7. `/api/app/latest` 新字段缺失时返回 null，不 5xx；旧客户端不受影响。
 
-## 8. 待确认（不阻塞）
+## 8. 个人资料（CX，docs/USER-PROFILE-EDIT.md）
+
+管理员与普通用户同一套接口，只能改自己；Web 与 App 共用。
+
+### 8.1 当前用户（扩展）
+
+`GET /api/app/me` 的 `user` 在 CA-1 基础上**新增本人资料字段**（昵称/简介/头像元信息/邮箱验证态）：
+
+```json
+{ "user": { "id": 1, "username": "...", "role": "user", "mustChangePassword": false,
+            "email": "a@example.com", "emailVerified": true,
+            "displayName": "昵称", "bio": "简介", "avatarSource": "steam:7656119…|custom|null",
+            "avatarMime": "image/png|null", "avatarUpdatedAt": "…", "createdAt": "…" } | null,
+  "prefs": { "theme": "dark", "email_alerts": true, "...": "..." } | null, "timezone": "Asia/Shanghai" }
+```
+
+### 8.2 保存资料
+
+`PATCH /api/app/me/profile`（Bearer）
+
+```json
+{ "displayName": "昵称（2–20 字；管理员可为空串=清空）", "bio": "简介（≤200 字）",
+  "theme": "light|dark|null（跟随系统）", "emailAlerts": true }
+```
+
+- 校验失败 400（昵称 2–20 / 简介 1–200，管理员昵称/简介可空）；`null` 字段 = 保持现值；
+- 用户名/邮箱/角色/userId 一律忽略（只改 session 用户自己）；
+- 200 返回 `{ "user": {…同上}, "prefs": {…} }`。
+
+### 8.3 头像
+
+- `POST /api/app/me/avatar`（Bearer）：`{ "dataUrl": "data:image/png;base64,…" }`——客户端裁剪 256×256，
+  只接受 PNG/JPEG/WebP/GIF，dataUrl ≤512KB，服务端校验魔数；413 超限、400 格式/魔数不符。
+  200 `{ "avatarSource": "custom", "avatarMime": "image/png", "avatarUpdatedAt": "…" }`；
+- `DELETE /api/app/me/avatar`（Bearer）：移除自定义头像 → `avatarSource` 回 null；
+- `GET /api/app/avatar/:userId`（公开）：`custom` → 输出字节（ETag/长缓存）；`steam:<id>` → 302 到该账号
+  Steam 头像；无头像 404（客户端回退首字）。
+
+### 8.4 Steam 账号卡
+
+- `GET /api/app/me/library`（Bearer）：每账号一张卡 + 5 项统计：
+  `{ "accounts": [ { "steamId", "name", "avatar", "owned", "wishlist", "lastSyncedAt", "boundAt", "isDefault" } ],
+     "stats": { "ownedTotal", "wishlistTotal", "siteWishlist", "alerts", "histLowHits" } }`
+  （Android 不显示 `lastSyncedAt`，其余同 Web）；
+- `POST /api/app/steam/accounts/:steamId/default`（Bearer）：设为默认账号（头像默认取该账号）；
+- `DELETE /api/app/steam/accounts/:steamId`（Bearer）：解绑（保留历史「曾拥有」；解绑默认账号会清空头像来源）；
+- `GET /api/app/steam/accounts/:steamId/library?q=&page=&pageSize=`（Bearer）：库条目（返回 `games` 数组）；
+- `GET /api/app/steam/accounts/:steamId/wishlist?q=&page=&pageSize=`（Bearer）：愿望单条目（返回 `items` 数组）。
+  条目行：`{ "appid", "name", "name_en", "playtime_minutes", "last_played_at", "synced_at", "in_db", "current_low", "hist_low" }`，
+  附 `total/page/pageSize` 分页；
+- **新增绑定**：App 在系统浏览器打开 `<站点>/console/steam`（绑定流程复用站点会话），返回 App 后刷新列表。
+
+## 9. 待确认（不阻塞）
 
 1. 注册/邮箱验证码是否在 App 第一期开放（接口先预留）；
 2. App 命名空间是否单独设置更宽松的限流阈值（默认沿用全局 150/分钟）；

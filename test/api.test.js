@@ -144,6 +144,13 @@ test('登录才能存偏好；普通用户不能改游戏标记；管理员可�
     assert.equal(meBody.prefs.tab, 'off', '/api/me 要把页签带回来');
     // DA 批（docs/APP-FILTER-SERVER-SIDE.md §3）：steamBound 随 /api/me 返回（App「已拥有」chip 显隐依据）
     assert.equal(meBody.steamBound, false, '未绑定 Steam 时 steamBound=false');
+    // CX 批（docs/USER-PROFILE-EDIT.md §3）：/api/me 带完整本人资料字段（昵称/简介/头像元信息/邮箱验证态）
+    assert.equal(meBody.user.email, null, '未绑邮箱回显 null');
+    assert.equal(meBody.user.emailVerified, false);
+    assert.equal(meBody.user.displayName, null, '新用户昵称为空');
+    assert.equal(meBody.user.bio, null);
+    assert.equal(meBody.user.avatarSource, null, '未设置头像来源');
+    assert.equal(meBody.prefs.email_alerts, true, '到价提醒邮件开关默认开启');
 
     // 非法值归一化
     const prefs3 = await fetch(`${base}/api/prefs`, {

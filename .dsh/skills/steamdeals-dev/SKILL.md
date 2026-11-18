@@ -126,6 +126,9 @@ git status --short; git log --oneline -5; node -p "require('./package.json').ver
 - **必改 `docs/TODO.md`**：本批条目的 `**状态：…**` 改成 `已实现待发版`（打回后改回 `开发中`），并补提交哈希；
   状态词口径与终态移入规则见 [HANDOVER.md](HANDOVER.md) §1（**本技能不重复列清单**）；
   dev 不写终态——`已发布 vX.Y.Z` / `已过时` 由 build 发布时 / 需求会话判定过时时移入 [DONE.md](DONE.md)。
+- **双仓库条目（2026-11-19 起）**：本批涉及 App 仓库（steamdeals-app）时，把「**涉及 App 仓库**：是
+  （app-vX.Y.Z 随本批）」写进 TODO 条目，并在交付汇报注明 App 仓库提交哈希——站点构建时会联动
+  `steamdeals-app-build` 同步发 App 版。
 - **README 不再维护进度摘要**（2026-11-12 起）：进度只在 `docs/TODO.md`，README 只有一条指向它的链接，
   没有生成块、没有 `docs-progress` 门禁，也没有 `todo:progress` 命令。
 - **解锁下游**：扫一遍 TODO，把 `依赖：` 指向本条的条目从 `依赖阻塞` 改成 `待开发`，并在汇报里给 `🔓 解锁` 行。

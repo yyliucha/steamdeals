@@ -116,9 +116,15 @@ export function baseUrl(req) {
   return proto + '://' + host;
 }
 
-/** 生成跳转到 Steam 的授权地址。state 用于防 CSRF（绑定到当前站点用户会话，5 分钟过期）。 */
-export function buildLoginUrl(base, state = null) {
-  const returnTo = state ? `${base}/api/auth/steam/callback?state=${encodeURIComponent(state)}` : `${base}/api/auth/steam/callback`;
+/** 生成跳转到 Steam 的授权地址。state 用于防 CSRF（绑定到当前站点用户会话，5 分钟过期）。
+ *  extra 里可带站内回跳参数（如 back=profile）——它们进 return_to，Steam 回调时原样带回。 */
+export function buildLoginUrl(base, state = null, extra = {}) {
+  const returnToParams = new URLSearchParams();
+  if (state) returnToParams.set('state', state);
+  for (const [k, v] of Object.entries(extra ?? {})) {
+    if (v !== undefined && v !== null) returnToParams.set(k, String(v));
+  }
+  const returnTo = `${base}/api/auth/steam/callback${returnToParams.size ? '?' + returnToParams.toString() : ''}`;
   const params = new URLSearchParams({
     'openid.ns': 'http://specs.openid.net/auth/2.0',
     'openid.mode': 'checkid_setup',

@@ -43,6 +43,8 @@ export function evaluateAlerts(rows, { now = new Date() } = {}) {
       watchId: Number(row.watch_id),
       userId: row.user_id == null ? null : Number(row.user_id),
       userEmail: row.user_email ?? null,
+      // CX 批（docs/USER-PROFILE-EDIT.md §2 #5）：到价提醒邮件开关——false 时用户级提醒跳过邮件投递
+      userEmailAlerts: row.user_email_alerts !== false,
       gameId: Number(row.game_id),
       steamAppid: row.steam_appid ?? null,
       name: row.name,
@@ -102,7 +104,7 @@ export function toPayload(hits, { now = new Date() } = {}) {
 
 /**
  * 把 hits 按 user_id 分组（CL 批 docs/USER-ALERTS.md §3.3）。
- * 返回 { site: hits[], users: [{ userId, email, hits }] }——users 按 userId 升序保证投递顺序稳定。
+ * 返回 { site: hits[], users: [{ userId, email, emailAlerts, hits }] }——users 按 userId 升序保证投递顺序稳定。
  */
 export function groupAlertsByUser(hits) {
   const site = [];
@@ -112,7 +114,15 @@ export function groupAlertsByUser(hits) {
       site.push(h);
     } else {
       const key = String(h.userId);
-      if (!byUser.has(key)) byUser.set(key, { userId: h.userId, email: h.userEmail ?? null, hits: [] });
+      if (!byUser.has(key)) {
+        byUser.set(key, {
+          userId: h.userId,
+          email: h.userEmail ?? null,
+          // 同用户同库同一开关值；任一命中带 false 即按关闭处理（保守：不打扰优先）
+          emailAlerts: h.userEmailAlerts !== false,
+          hits: [],
+        });
+      }
       byUser.get(key).hits.push(h);
     }
   }

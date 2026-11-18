@@ -1,6 +1,6 @@
-# 个人资料编辑（Web + App）（CX，待开发）
+# 个人资料编辑（Web + App）（CX，已实现待发版）
 
-> 状态：**已确认待开发（2026-11-18，所有者确认 5 项决策 + 我的资料口径）**。
+> 状态：**已实现待发版（2026-11-18 晚完成；待质检/发版）**。所有者确认 5 项决策 + 我的资料口径。
 > Demo：编辑 [design/profile-web-2026-11-18.html](design/profile-web-2026-11-18.html) / [design/profile-android-2026-11-18.html](design/profile-android-2026-11-18.html)；
 > 我的资料（双账号卡片/统计，仅本人）[design/my-profile-web-2026-11-18.html](design/my-profile-web-2026-11-18.html) / [design/my-profile-android-2026-11-18.html](design/my-profile-android-2026-11-18.html)
 > 关联：[TODO.md](TODO.md) CX 条目、[AUTH-REDESIGN.md](AUTH-REDESIGN.md)（邮箱/密码）、

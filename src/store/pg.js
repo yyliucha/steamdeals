@@ -372,6 +372,24 @@ create index if not exists appeals_contact on appeals (contact);
 create index if not exists appeals_action_token on appeals (action_token_hash);
 `;
 
+// CY 批（docs/DATA-ISOLATION.md §3）：通用审计表——管理员越权写用户私有数据时落
+// action='admin.forbidden_write'（target 形如 watchlist:123），只记动作/目标/操作者快照，
+// 不存被改数据内容；actor 冗余存用户名，用户被删除后记录仍可读。
+const AUDIT_LOGS_DDL = `
+create table if not exists audit_logs (
+  id         bigserial primary key,
+  actor_id   integer references users(id) on delete set null,
+  actor      text,
+  action     text not null,
+  target     text,
+  detail     jsonb,
+  ip         text,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_audit_logs_time on audit_logs (created_at desc);
+create index if not exists idx_audit_logs_action on audit_logs (action, created_at desc);
+`;
+
 // CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.1）：每游戏 × 每源的采集推进状态——
 // pending（无行即待处理）/ matched（命中外部条目）/ nomatch（未命中，7 天重试窗口）/ failed（退避）。
 const SOURCE_SYNC_DDL = `
@@ -444,6 +462,15 @@ const ALTERS = [  'alter table games add column if not exists interested boolean
   'alter table user_prefs add column if not exists tab text not null default \'all\'',
   // 主题偏好：'light' | 'dark' | null（null = 跟随系统）
   'alter table user_prefs add column if not exists theme text',
+  // CX 批（docs/USER-PROFILE-EDIT.md §3）：头像存库（bytea + mime + source）与个人简介。
+  // avatar_source：null = 无头像（前端回退首字）；'custom' = 自定义上传；'steam:<steamId>' = 默认取该绑定账号的 Steam 头像。
+  'alter table users add column if not exists avatar_bytes bytea',
+  'alter table users add column if not exists avatar_mime text',
+  'alter table users add column if not exists avatar_source text',
+  'alter table users add column if not exists avatar_updated_at timestamptz',
+  'alter table users add column if not exists bio text',
+  // 到价提醒邮件开关（true=发邮件；用户关闭后其用户级提醒跳过邮件投递）
+  'alter table user_prefs add column if not exists email_alerts boolean not null default true',
   // 逻辑删除：不真删数据，只打标记；前台与后台默认列表都排除，回收站里能看到并恢复
   'alter table games add column if not exists deleted boolean not null default false',
   'alter table games add column if not exists deleted_at timestamptz',
@@ -529,6 +556,8 @@ export async function migrate(store, { logger = null } = {}) {
   await store.exec(USER_SCHEMA);
   // 申诉系统（O/BQ）：users 表已建，可直接带外键建表（幂等，每次启动跑一次）
   await store.exec(APPEALS_DDL);
+  // CY 批（docs/DATA-ISOLATION.md §3）：管理员越权写审计表（幂等）
+  await store.exec(AUDIT_LOGS_DDL);
   // CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.1）：四源推进状态表 + 从既有 offers 回填 matched
   await store.exec(SOURCE_SYNC_DDL);
   // CA-1（docs/APP-NATIVE.md §3.1）：App Bearer Token 表（幂等）
@@ -2157,7 +2186,9 @@ export async function listAllWatchesAdmin(q, { region = 'cn', page = 1, pageSize
 /** 关注列表 + 当前价 + 史低 + user_id/邮箱，供 alerts 判定与分组。 */
 export async function watchCandidates(q, { region = 'cn' } = {}) {
   const r = await q(
-    `select w.id as watch_id, w.user_id, u.email as user_email, w.target_cents, w.note, w.last_notified_cents, w.last_notified_at,
+    `select w.id as watch_id, w.user_id, u.email as user_email,
+            coalesce(p.email_alerts, true) as user_email_alerts,
+            w.target_cents, w.note, w.last_notified_cents, w.last_notified_at,
             g.id as game_id, g.steam_appid, coalesce(nullif(g.name, ''), nullif(g.name_en, ''), 'appid:' || g.steam_appid) as name,
             g.name_en,
             (select min(o.price_cents) from offers o
@@ -2171,6 +2202,7 @@ export async function watchCandidates(q, { region = 'cn' } = {}) {
        from watchlist w
        join games g on g.id = w.game_id
        left join users u on u.id = w.user_id
+       left join user_prefs p on p.user_id = u.id
       where w.region = $1
       order by g.name asc nulls last`,
     [region],
@@ -2289,6 +2321,184 @@ export async function updateUser(q, { username, displayName = undefined, role = 
     params,
   );
   return r.rows[0] ?? null;
+}
+
+// ---------------------------------------------------------------- CX 批（docs/USER-PROFILE-EDIT.md §3）：个人资料
+
+/**
+ * 本人资料完整视图（不含 avatar_bytes 原图；头像走 GET /api/avatar/:userId）。
+ * 本批只对本人调用——「我的资料」无他人入口，管理员同样只能看自己。
+ */
+export async function getUserPublic(q, userId) {
+  const r = await q(
+    `select id, username, display_name, email, email_verified, role, created_at,
+            bio, avatar_source, avatar_mime, avatar_updated_at
+       from users where id = $1`,
+    [userId],
+  );
+  return r.rows[0] ?? null;
+}
+
+/** 保存本人资料（昵称 / 简介）；只改传入的字段（undefined 保持现值）。校验在 server 层。 */
+export async function updateUserProfile(q, { userId, displayName = undefined, bio = undefined }) {
+  const sets = [];
+  const params = [];
+  if (displayName !== undefined) {
+    params.push(displayName);
+    sets.push(`display_name = $${params.length}`);
+  }
+  if (bio !== undefined) {
+    params.push(bio);
+    sets.push(`bio = $${params.length}`);
+  }
+  if (sets.length) {
+    params.push(userId);
+    await q(`update users set ${sets.join(', ')} where id = $${params.length}`, params);
+  }
+  return getUserPublic(q, userId);
+}
+
+/** 头像行（自定义上传时含 bytes；source='steam:<id>' 时由 GET /api/avatar 302 到 Steam CDN）。 */
+export async function avatarOfUser(q, userId) {
+  const r = await q(
+    'select id, avatar_bytes, avatar_mime, avatar_source, avatar_updated_at from users where id = $1',
+    [userId],
+  );
+  return r.rows[0] ?? null;
+}
+
+/** 存自定义头像（客户端已裁剪 256×256；bytes 为 Buffer，mime 白名单在 server 层校验）。 */
+export async function setUserAvatar(q, { userId, bytes, mime }) {
+  await q(
+    'update users set avatar_bytes = $2, avatar_mime = $3, avatar_source = $4, avatar_updated_at = now() where id = $1',
+    [userId, bytes, mime, 'custom'],
+  );
+  return avatarOfUser(q, userId);
+}
+
+/** 移除自定义头像：清空 bytes/mime/source（前端回退首字/Steam 默认选择器可重新选）。 */
+export async function clearUserAvatar(q, userId) {
+  await q(
+    'update users set avatar_bytes = null, avatar_mime = null, avatar_source = null, avatar_updated_at = now() where id = $1',
+    [userId],
+  );
+  return avatarOfUser(q, userId);
+}
+
+/** 设为默认 Steam 账号 = 头像默认取该账号（users.avatar_source = 'steam:<steamId>'）。 */
+export async function setDefaultSteamAccount(q, { userId, steamId }) {
+  await q('update users set avatar_source = $2, avatar_updated_at = now() where id = $1', [userId, 'steam:' + steamId]);
+  return getUserPublic(q, userId);
+}
+
+/** 绑定/认领新账号后：用户从未设置过头像来源时自动把新账号设为默认（CX §2 #3 默认取 Steam 头像）。 */
+export async function setDefaultSteamAccountIfUnset(q, { userId, steamId }) {
+  await q(
+    "update users set avatar_source = $2, avatar_updated_at = now() where id = $1 and avatar_source is null",
+    [userId, 'steam:' + steamId],
+  );
+}
+
+/** 解绑/删除默认账号后收口：avatar_source 指向它时清空（无头像，回退首字）。 */
+export async function clearDefaultSteamIfMatches(q, { userId, steamId }) {
+  await q("update users set avatar_source = null where id = $1 and avatar_source = $2", [userId, 'steam:' + steamId]);
+}
+
+/**
+ * 我的游戏库与统计（CX §2 #12/#14）：每账号一卡数据由 listUserAccounts 提供（steam-accounts.js），
+ * 这里只算 5 项汇总：已拥有合计 / 愿望单合计 / 本站愿望单 / 到价提醒 / 史低命中。
+ * 史低命中口径与 alerts.evaluateAlerts 的 HIST_LOW 一致：当前在售最低价 ≤ 史低（官方渠道）。
+ */
+export async function userLibraryStats(q, userId) {
+  const row = (
+    await q(
+      `select
+         (select coalesce(sum(n), 0)::int from
+            (select count(*)::int as n from steam_games g join steam_accounts a on a.steam_id = g.steam_id
+              where a.user_id = $1 group by g.steam_id) x) as owned_total,
+         (select coalesce(sum(n), 0)::int from
+            (select count(*)::int as n from steam_wishlist w join steam_accounts a on a.steam_id = w.steam_id
+              where a.user_id = $1 group by w.steam_id) x) as wishlist_total,
+         (select count(*)::int from user_wishlist where user_id = $1) as site_wishlist,
+         (select count(*)::int from watchlist where user_id = $1 and region = 'cn') as alerts,
+         (select count(*)::int from watchlist w
+            join games g on g.id = w.game_id
+           where w.user_id = $1 and w.region = 'cn' and not g.deleted
+             and (select min(o.price_cents) from offers o
+                    join platforms p on p.code = o.platform_code
+                   where o.game_id = g.id and o.region = 'cn' and o.in_stock
+                     and p.kind in ${OFFICIAL_KINDS}) is not null
+             and (select min(o.price_cents) from offers o
+                    join platforms p on p.code = o.platform_code
+                   where o.game_id = g.id and o.region = 'cn' and o.in_stock
+                     and p.kind in ${OFFICIAL_KINDS})
+                 <= (select min(d.min_price_cents) from daily_prices d
+                      join platforms p on p.code = d.platform_code
+                     where d.game_id = g.id and d.region = 'cn'
+                       and p.kind in ${OFFICIAL_KINDS})) as hist_low_hits`,
+      [userId],
+    )
+  ).rows[0];
+  return {
+    ownedTotal: Number(row?.owned_total ?? 0),
+    wishlistTotal: Number(row?.wishlist_total ?? 0),
+    siteWishlist: Number(row?.site_wishlist ?? 0),
+    alerts: Number(row?.alerts ?? 0),
+    histLowHits: Number(row?.hist_low_hits ?? 0),
+  };
+}
+
+/**
+ * 某绑定账号的库 / 愿望单条目（CX §2 #13 弹窗）：搜索（游戏名/英文名/AppID）+ 分页。
+ * kind = 'library' | 'wishlist'；只返回本人名下账号（server 层先过所有权检查）。
+ */
+export async function userLibraryItems(q, { steamId, kind, kw = '', page = 1, pageSize = 10 }) {
+  const isWishlist = kind === 'wishlist';
+  const like = kw ? `%${kw}%` : null;
+  const params = [steamId];
+  const cond = ['src.steam_id = $1'];
+  if (like) {
+    params.push(like);
+    params.push(kw);
+    cond.push(
+      `(coalesce(g.name, src.name) ilike $2 or coalesce(nullif(g.name_en, ''), g.name_en) ilike $2 or cast(src.appid as text) = $3)`,
+    );
+  }
+  const whereSql = 'where ' + cond.join(' and ');
+  const src = isWishlist
+    ? `steam_wishlist src left join games g on g.steam_appid = src.appid`
+    : `steam_games src left join games g on g.steam_appid = src.appid`;
+  const total = (await q(`select count(*)::int as n from ${src} ${whereSql}`, params)).rows[0]?.n ?? 0;
+  const safePage = Math.max(1, Number.isInteger(page) ? page : 1);
+  const safeSize = Math.min(Math.max(Number.isInteger(pageSize) ? pageSize : 10, 1), 500);
+  const offset = (safePage - 1) * safeSize;
+  params.push(safeSize, offset);
+  // steam_wishlist 没有 playtime/last_played 列：愿望单模式下这两列置 null（列形状保持一致）
+  const playCols = isWishlist ? 'null as playtime_minutes, null as last_played_at' : 'src.playtime_minutes, src.last_played_at';
+  const rows = (
+    await q(
+      `select src.appid,
+              coalesce(g.name, src.name) as name,
+              g.name_en,
+              ${playCols},
+              src.synced_at,
+              g.steam_appid is not null as in_db,
+              (select min(o.price_cents) from offers o
+                 join platforms p on p.code = o.platform_code
+                where o.game_id = g.id and o.region = 'cn' and o.in_stock
+                  and p.kind in ${OFFICIAL_KINDS}) as current_low,
+              (select min(d.min_price_cents) from daily_prices d
+                 join platforms p on p.code = d.platform_code
+                where d.game_id = g.id and d.region = 'cn'
+                  and p.kind in ${OFFICIAL_KINDS}) as hist_low
+         from ${src}
+        ${whereSql}
+        order by ${isWishlist ? 'src.synced_at desc nulls last, src.appid' : 'src.playtime_minutes desc nulls last, src.appid'}
+        limit $${params.length - 1} offset $${params.length}`,
+      params,
+    )
+  ).rows;
+  return { steamId, kind, items: rows, total: Number(total), page: safePage, pageSize: safeSize };
 }
 
 /** 改密码：踢掉该用户所有会话，旧 cookie 立即失效；AK-3 起不再顺带启用账号（启用/禁用是独立动作）。 */
@@ -2641,11 +2851,11 @@ export function normalizePrefs(prefs = {}) {
 }
 
 export async function getPrefs(q, userId) {
-  const r = await q('select hide_uninterested, sort, tab, theme from user_prefs where user_id = $1', [userId]);
+  const r = await q('select hide_uninterested, sort, tab, theme, email_alerts from user_prefs where user_id = $1', [userId]);
   const row = r.rows[0];
-  if (!row) return { hide_uninterested: false, sort: 'discount', tab: 'all', theme: null };
+  if (!row) return { hide_uninterested: false, sort: 'discount', tab: 'all', theme: null, email_alerts: true };
   const { tab, sort } = normalizePrefs({ tab: row.tab, sort: row.sort });
-  return { hide_uninterested: row.hide_uninterested === true, sort, tab, theme: row.theme ?? null };
+  return { hide_uninterested: row.hide_uninterested === true, sort, tab, theme: row.theme ?? null, email_alerts: row.email_alerts === true };
 }
 
 export async function savePrefs(q, userId, prefs = {}) {
@@ -2655,15 +2865,18 @@ export async function savePrefs(q, userId, prefs = {}) {
   const sort = prefs.sort === undefined ? existing.sort : normalizePrefs(prefs).sort;
   // theme：'light'/'dark' 显式选择；null 显式回到「跟随系统」；缺省保持
   const theme = prefs.theme === 'light' || prefs.theme === 'dark' ? prefs.theme : prefs.theme === null ? null : existing.theme;
+  // CX 批：到价提醒邮件开关（缺省保持现值）
+  const emailAlerts = prefs.email_alerts === undefined ? existing.email_alerts : Boolean(prefs.email_alerts);
   await q(
-    `insert into user_prefs (user_id, hide_uninterested, sort, tab, theme) values ($1, $2, $3, $4, $5)
+    `insert into user_prefs (user_id, hide_uninterested, sort, tab, theme, email_alerts) values ($1, $2, $3, $4, $5, $6)
      on conflict (user_id) do update set
        hide_uninterested = excluded.hide_uninterested,
        sort = excluded.sort,
        tab = excluded.tab,
-       theme = excluded.theme`,
+       theme = excluded.theme,
+       email_alerts = excluded.email_alerts`,
     // hide_uninterested 是旧字段：tab=on 等价于"隐藏不感兴趣"，保留兼容老客户端
-    [userId, tab === 'on', sort, tab, theme],
+    [userId, tab === 'on', sort, tab, theme, emailAlerts],
   );
   return getPrefs(q, userId);
 }
@@ -4360,6 +4573,18 @@ export async function deleteSessionsOfUsers(q, ids = []) {
   if (!list.length) return 0;
   const r = await q('delete from sessions where user_id = any($1::integer[])', [list]);
   return r.rowCount ?? 0;
+}
+
+/** CY 批（docs/DATA-ISOLATION.md §3）：写一条通用审计（永不抛出——审计失败不能影响主流程）。 */
+export async function writeAuditLog(q, { actorId = null, actor = null, action, target = null, detail = null, ip = null }) {
+  try {
+    await q(
+      'insert into audit_logs (actor_id, actor, action, target, detail, ip) values ($1, $2, $3, $4, $5::jsonb, $6)',
+      [actorId, actor, String(action), target == null ? null : String(target), detail ?? null, ip ?? null],
+    );
+  } catch {
+    // 审计表未建好 / 写入失败：只吞掉，不影响主流程（与 steam_account_logs 同一先例）
+  }
 }
 
 /** 写一条批量操作审计；keys_sample 最多留 50 个键。 */

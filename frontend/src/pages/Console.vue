@@ -11,7 +11,7 @@
         <el-empty v-if="!visibleGroups.length" :image-size="44" description="没有匹配的功能" />
       </nav>
       <div class="admin-bottom">
-        <div class="bottom-actions"><el-tag v-if="user" type="success" effect="plain">{{ user.display_name || user.username }}</el-tag><el-button text @click="router.push('/')">返回网站 ↗</el-button></div>
+        <div class="bottom-actions"><el-tag v-if="user" type="success" effect="plain"><UserAvatar :user-id="user.id" :name="user.display_name || user.username" :size="18" class="tag-avatar" />{{ user.display_name || user.username }}</el-tag><el-button text @click="router.push('/')">返回网站 ↗</el-button></div>
       </div>
     </aside>
     <!-- BW 批（docs/MOBILE-REDESIGN.md §5.1）：手机端侧栏收进 ☰ 抽屉，沿用 5 分组 13 模块 -->
@@ -26,7 +26,7 @@
         <el-empty v-if="!visibleGroups.length" :image-size="44" description="没有匹配的功能" />
       </nav>
       <div class="admin-bottom">
-        <div class="bottom-actions"><el-tag v-if="user" type="success" effect="plain">{{ user.display_name || user.username }}</el-tag><el-button text @click="router.push('/')">返回网站 ↗</el-button></div>
+        <div class="bottom-actions"><el-tag v-if="user" type="success" effect="plain"><UserAvatar :user-id="user.id" :name="user.display_name || user.username" :size="18" class="tag-avatar" />{{ user.display_name || user.username }}</el-tag><el-button text @click="router.push('/')">返回网站 ↗</el-button></div>
       </div>
     </el-drawer>
     <main class="admin-content">
@@ -41,10 +41,11 @@
             </div>
           </div>
         </div>
-        <div class="header-actions"><el-button v-if="isMobile" text class="theme-btn m-bell" title="站点通知" @click="goAnnouncements">🔔</el-button><span class="header-version" :title="versionTitle" @click="loadVersion(true)">v{{ verInfo.current || '—' }}<em v-if="verInfo.updateAvailable && verInfo.latest"> ↑ 新版 v{{ String(verInfo.latest).replace(/^v/i, '') }} 可用</em></span><el-button text class="theme-btn" :title="themeMode === 'dark' ? '切换亮色' : '切换暗色'" @click="toggleTheme">{{ themeMode === 'dark' ? '🌞' : '🌙' }}</el-button></div>
+        <div class="header-actions"><el-button v-if="isMobile" text class="theme-btn m-bell" title="站点通知" @click="goAnnouncements">🔔</el-button><span v-if="user?.role==='admin'" class="header-version" :title="versionTitle" @click="loadVersion(true)">v{{ verInfo.current || '—' }}<em v-if="verInfo.updateAvailable && verInfo.latest"> ↑ 新版 v{{ String(verInfo.latest).replace(/^v/i, '') }} 可用</em></span><el-button text class="theme-btn" :title="themeMode === 'dark' ? '切换亮色' : '切换暗色'" @click="toggleTheme">{{ themeMode === 'dark' ? '🌞' : '🌙' }}</el-button></div>
       </header>
       <AdminModules v-if="nativeSections.includes(selected)" :section="selected" />
       <AdminLogs v-else-if="selected === 'op-logs'" />
+      <ProfilePage v-else-if="selected === 'profile'" @profile-updated="loadMe" />
       <AdminExtras v-else :section="selected" :me="user" />
     </main>
   </div>
@@ -58,6 +59,8 @@ import { ElMessage } from 'element-plus';
 import AdminModules from './AdminModules.vue';
 import AdminExtras from './AdminExtras.vue';
 import AdminLogs from './AdminLogs.vue';
+import ProfilePage from './ProfilePage.vue';
+import UserAvatar from '../components/UserAvatar.vue';
 import { useTheme } from '../composables/useTheme.js';
 import { fmtDateTime } from '../utils/siteTime.js';
 import { requestLeave, bypassNextGuard, hasDirtySources } from '../composables/useUnsavedGuard.js';
@@ -93,7 +96,7 @@ const nativeSections=['games','visitors','announcements','wishlist','watchlist',
 const groups=[
   {name:'内容运营',items:[{id:'games',label:'游戏管理',glyph:'▦',description:'维护游戏目录、采集计划与数据回填'},{id:'recycle',label:'回收站',glyph:'▤',description:'查看并恢复已删除的游戏'},{id:'announcements',label:'站点通知',glyph:'▱',description:'发布和管理网站公告'},{id:'wishlist',label:'愿望单',glyph:'★',description:'全站用户愿望单，可查看与删除'},{id:'watchlist',label:'到价提醒',glyph:'🔔',description:'全站到价提醒清单（用户级 + 站点级），可查看与清理'}]},
   {name:'访问与安全',items:[{id:'visitors',label:'访问记录',glyph:'◉',description:'流量、异常请求和访问控制'},{id:'appeals',label:'申诉管理',glyph:'❧',description:'解封申诉的受理与处理'}]},
-  {name:'账号与服务',items:[{id:'users',label:'用户管理',glyph:'♙',description:'管理账号、角色与登录权限'},{id:'steam',label:'Steam 账号',glyph:'◈',description:'绑定多个 Steam 账号，同步游戏库与愿望单'},{id:'sessions',label:'登录会话',glyph:'⟳',description:'查看在线会话、踢下线'},{id:'mail',label:'邮件服务',glyph:'✉',description:'配置 SMTP、邮件模板与发送测试'}]},
+  {name:'账号与服务',items:[{id:'profile',label:'个人资料',glyph:'👤',description:'编辑个人资料、头像与 Steam 账号绑定（仅本人可见）'},{id:'users',label:'用户管理',glyph:'♙',description:'管理账号、角色与登录权限'},{id:'steam',label:'Steam 账号',glyph:'◈',description:'绑定多个 Steam 账号，同步游戏库与愿望单'},{id:'sessions',label:'登录会话',glyph:'⟳',description:'查看在线会话、踢下线'},{id:'mail',label:'邮件服务',glyph:'✉',description:'配置 SMTP、邮件模板与发送测试'}]},
   {name:'日志审计',items:[{id:'op-logs',label:'操作日志',glyph:'☰',description:'用户删除 / 批量操作 / Steam 账号 / 邮件发送 / 运行与同步的审计记录'}]},
   {name:'系统',items:[{id:'settings',label:'系统设置',glyph:'⚙',description:'数据源、网络代理与提醒配置'},{id:'stats',label:'数据统计',glyph:'▥',description:'价格变化、缓存、备份与访问排行'}]},
 ];
@@ -112,10 +115,24 @@ watch(()=>route.query.section,(v)=>{
     router.replace({path:'/console',query:{section:LEGACY_SECTION[id].section,tab:LEGACY_SECTION[id].tab}}).catch(()=>{});
     return;
   }
+  // CX 批：普通用户直开任意管理 section → 强制回「个人资料」（接口另有 requireAdmin 兜底）
+  if(user.value&&user.value.role!=='admin'&&id!=='profile'){
+    selected.value='profile';
+    router.replace({path:'/console',query:{section:'profile'}}).catch(()=>{});
+    return;
+  }
   if(id&&groups.some(g=>g.items.some(i=>i.id===id)))selected.value=id;
 });
 const selectedItem=computed(()=>groups.flatMap(g=>g.items.map(i=>({...i,group:g.name}))).find(i=>i.id===selected.value)||groups[0].items[0]);
-const visibleGroups=computed(()=>{const q=filter.value.trim().toLocaleLowerCase();return groups.map(g=>({...g,items:g.items.filter(i=>!q||`${i.label} ${i.description} ${g.name}`.toLocaleLowerCase().includes(q))})).filter(g=>g.items.length);});
+// CX 批（docs/USER-PROFILE-EDIT.md §2 #9）：普通用户进控制台只看得到「个人资料」（仅本人；无他人入口）
+const visibleGroups=computed(()=>{
+  const q=filter.value.trim().toLocaleLowerCase();
+  return groups.map(g=>({...g,items:g.items.filter(i=>{
+    const allowed=!user.value||user.value.role==='admin'||i.id==='profile';
+    const matches=!q||`${i.label} ${i.description} ${g.name}`.toLocaleLowerCase().includes(q);
+    return allowed&&matches;
+  })})).filter(g=>g.items.length);
+});
 // AN 批（docs/UNSAVED-GUARD.md §4.3）：切菜单前先过离开确认——不要先改 selected 再拦
 async function select(item){ if(item.id===selected.value)return; if(!(await requestLeave()))return; selected.value=item.id; navDrawer.value=false; await router.replace({path:'/console',query:{section:item.id}}); if(item.id==='appeals')loadAppealsPending(); }
 // BW 批：手机顶栏通知铃 → 站点通知模块
@@ -151,15 +168,34 @@ async function loadVersion(force){
 onMounted(async()=>{try{
   applyMobile();
   if(typeof window!=='undefined'&&window.matchMedia){const mq=window.matchMedia('(max-width: 768px)');const on=()=>{applyMobile();};mq.addEventListener?mq.addEventListener('change',on):mq.addListener(on);}
+  const data=await loadMe();
+  if(!data.user){ElMessage.warning('请先登录');bypassNextGuard();router.replace('/login');return;}
+  if(data.user.must_change_password){ElMessage.warning('请先修改初始密码');bypassNextGuard();router.replace('/change-password?forced=1');return;}
+  const isAdminUser=data.user.role==='admin';
+  // CX 批：普通用户只开放「个人资料」（仅本人）；其余模块与入口不渲染
+  if(!isAdminUser){selected.value='profile';router.replace({path:'/console',query:{section:'profile'}}).catch(()=>{});}
   // 旧书签映射也要在直开时生效（watch 不触发首帧）
   const legacy=LEGACY_SECTION[selected.value];
   if(legacy){selected.value=legacy.section;router.replace({path:'/console',query:{...legacy}}).catch(()=>{});}
   else if(selected.value==='mail'&&route.query.tab==='records'){router.replace({path:'/console',query:{section:'op-logs',tab:'mail'}}).catch(()=>{});}
-  const valid=groups.some(g=>g.items.some(i=>i.id===selected.value));if(!valid)selected.value='games';const res=await fetch('/api/me',{credentials:'same-origin'});const data=await res.json();user.value=data.user||null;if(user.value?.must_change_password){ElMessage.warning('请先修改初始密码');bypassNextGuard();router.replace('/change-password?forced=1');return;}if(user.value?.role!=='admin'){ElMessage.warning('此页面需要管理员账号登录');bypassNextGuard();router.replace('/');return;}const st=data.prefs?.theme;if(st==='light'||st==='dark'){if(theme.storedMode()!==st)theme.set(st);}else if(theme.storedMode()){fetch('/api/prefs',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({theme:theme.storedMode()})}).catch(()=>{});}}catch{ElMessage.error('无法验证管理员身份');bypassNextGuard();router.replace('/');return;}loadVersion(false);loadAppealsPending();});
+  const valid=groups.some(g=>g.items.some(i=>i.id===selected.value));
+  if(!valid)selected.value=isAdminUser?'games':'profile';
+  const st=data.prefs?.theme;if(st==='light'||st==='dark'){if(theme.storedMode()!==st)theme.set(st);}else if(theme.storedMode()){fetch('/api/prefs',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({theme:theme.storedMode()})}).catch(()=>{});}
+}catch{ElMessage.error('无法验证登录身份');bypassNextGuard();router.replace('/');return;}
+if(user.value?.role==='admin'){loadVersion(false);loadAppealsPending();}});
+
+// 拉取当前用户（进入控制台 / 个人资料保存后刷新侧栏显示名）
+async function loadMe(){
+  const res=await fetch('/api/me',{credentials:'same-origin'});
+  const data=await res.json();
+  user.value=data.user||null;
+  return data;
+}
 </script>
 
 <style scoped>
 .theme-btn{font-size:17px}
+.tag-avatar{vertical-align:middle;margin-right:5px}
 .nav-dirty{color:var(--warn);font-size:9px;margin-left:auto;line-height:1}
 .nav-count{min-width:18px;margin-left:auto;padding:0 5px;border-radius:999px;background:var(--warn);color:#fff;font-size:10px;line-height:17px;text-align:center;font-weight:700}
 .header-actions{display:flex;align-items:center;gap:12px;min-width:0}

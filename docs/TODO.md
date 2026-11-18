@@ -16,7 +16,7 @@
 
 ## CO. 待开发：设计审计技术债清理（21 项 → 4 批，每日推进）
 
-**状态：已发布子项（CO-2 B1/B2、CO-3 C2/C4/C5、CO-1 A5、CO-2 B5、CO-4 D1）已移入 [DONE.md](DONE.md)；A3 已实现待发版（6a9ecc3）；剩余 B3/B4/D4/E4/D6 待开发（源清单 [DESIGN-AUDIT.md](DESIGN-AUDIT.md)，每条含证据与建议）；E1 文档归档已完成（不进版本）**
+**状态：已发布子项（CO-2 B1/B2、CO-3 C2/C4/C5、CO-1 A5、CO-2 B5、CO-4 D1）已移入 [DONE.md](DONE.md)；A3 质检通过（2026-11-18，QA docs/QA-CO1-A3.md）；剩余 B3/B4/D4/E4/D6 待开发（源清单 [DESIGN-AUDIT.md](DESIGN-AUDIT.md)，每条含证据与建议）；E1 文档归档已完成（不进版本）**
 **依赖：** 无（A2/A4/C1/D5 已分别由 CL/CJ/CK 覆盖，本批只做"未开"的 15 项）
 **解锁：** 无
 **推进规则**：每个开发会话**至少认领 1 条**（开工把该行改「开发中」），当天实现+测试+提交，
@@ -25,7 +25,7 @@
 
 | 批次 | 子项 | 内容（对应审计编号） | 状态 |
 |---|---|---|---|
-| **CO-1** | A3 | `skus.json` 与 `game_source_map` 双真相源 → 以库为唯一真相、skus.json 只读兼容 | 已实现待发版（2026-11-18，6a9ecc3） |
+| **CO-1** | A3 | `skus.json` 与 `game_source_map` 双真相源 → 以库为唯一真相、skus.json 只读兼容 | 质检通过（2026-11-18，QA docs/QA-CO1-A3.md 第 1 轮 ✅；实现 6a9ecc3 + 随行提交） |
 | **CO-2** | B3 | 任务预算改**实测耗时**（AC-4 估算）；任务卡显示实际与估算差 | 待开发 |
 | **CO-4** | B4 | 巨石拆分（`server.js`/`pg.js`/`cli.js` 渐进拆 routes/repository，先一个域试点） | 待开发 |
 | **CO-4** | D4 | 移动/桌面双结构 `v-if` 渐进合并（CSS 优先） | 已实现待发版 |
@@ -101,10 +101,11 @@
   `heat_reviews` 随 `GAME_SELECT` 返回）；简介保持 4 行截断 + 展开。
 
 
-## CX. 开发中：个人资料编辑（Web + App；头像存库/双 Steam 账号/换绑）
+## CX. 已实现待发版：个人资料编辑（Web + App；头像存库/双 Steam 账号/换绑）
 
-**状态：开发中（2026-11-18 晚开工；所有者 5 项决策已确认；两个 demo 已出）**
+**状态：已实现待发版（2026-11-18 晚完成；提交哈希见交付汇报；所有者 5 项决策已确认；两个 demo 已出）**
 **依赖：** 无（CY 的数据隔离可并行）
+**涉及 App 仓库**：是（app-v2.20.0 随本批）
 **解锁：** 无
 **规格**：[USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md)
 **Demo**：[design/profile-web-2026-11-18.html](design/profile-web-2026-11-18.html) / [design/profile-android-2026-11-18.html](design/profile-android-2026-11-18.html)
@@ -128,7 +129,7 @@
 
 ## CY. 待开发：数据隔离（用户私有数据管理员只读）
 
-**状态：待开发（2026-11-18，所有者确认边界）**
+**状态：开发中（2026-11-18 晚开工，会话声明；所有者确认边界）**
 **优先级：** P1（安全/合规）
 **依赖：** CX（个人资料页）
 **解锁：** 无
@@ -150,6 +151,7 @@
 **状态：待开发（2026-11-18 沟通完成；5 项决策已确认；规格已出）**
 **来源：** [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) §5、[APP-NATIVE.md](APP-NATIVE.md) §6 第 4 条
 **依赖：** CX（个人资料页）、现有邮件服务（SMTP 已配置）
+**涉及 App 仓库**：是（app-vX.Y.Z 随本批）
 **解锁：** 无
 **规格**：[EMAIL-CHANGE.md](EMAIL-CHANGE.md)
 **Demo**：[design/email-change-2026-11-18.html](design/email-change-2026-11-18.html)（Web）/ [design/email-change-android-2026-11-18.html](design/email-change-android-2026-11-18.html)（App）
@@ -167,11 +169,12 @@
   ④ 24h 频控 429；⑤ 未验证可换；⑥ 管理员重置仍可用 + 审计；⑦ App 端可完整走通换邮箱；⑧ npm test（email-change 7 项）/ frontend:build / scan 全绿。
 
 
-## DA. 已实现待发版：CM-5 App 筛选/排序服务端化（方案 A：站点 + App 一起做）
+## DA. 质检通过：CM-5 App 筛选/排序服务端化（方案 A：站点 + App 一起做）
 
-**状态：已实现待发版（2026-11-18，站点 b46669a + App 4334823；验收 1/2/2b/3/4/5 本地+模拟器验证通过，P95 ≤500ms 待部署后线上抽测）**
+**状态：质检通过（2026-11-18，QA docs/QA-DA.md 第 1 轮 ✅ 放行：通过 6/缺失 0/偏差 0/需人工确认 2——App 空态目视、部署后 P95 ≤500ms 抽测；实现站点 b46669a + App 4334823）**
 **来源：** [APP-PARITY.md](APP-PARITY.md) §57（CM-5）、[APP-NATIVE.md](APP-NATIVE.md) §4.4（"筛选 ⚠️ 本地按已加载数据"）
 **依赖：** 无（站点 `/api/games` 已支持 sort=discount/price/name/score、type、released；需扩展筛选参数）
+**涉及 App 仓库**：是（app-v2.20.0 随本批；App 依赖本批站点 `/api/games` 参数）
 **解锁：** 无
 **规格**：[APP-FILTER-SERVER-SIDE.md](APP-FILTER-SERVER-SIDE.md)
 
@@ -192,6 +195,7 @@
 **状态：开发中（2026-11-18 沟通完成；3 项口径已确认）**
 **来源：** [APP-PARITY.md](APP-PARITY.md) §65
 **依赖：** 站点 `GET /api/announcements` + `POST /api/announcements/read`（均已实现）、App 登录态
+**涉及 App 仓库**：是（app-vX.Y.Z 随本批；纯 App 端）
 
 - **现状（代码核对）**：后端已齐——`announcements`（active/starts_at/ends_at）、`announcement_reads(user_id, announcement_id)`、
   读接口返回公告 + 当前用户 `readIds`（游客空数组）、已读上报接口；**App 端没有公告列表/角标**。
