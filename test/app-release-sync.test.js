@@ -72,13 +72,16 @@ test('CJ 接线：cli 命令/调度默认参数/下载路由白名单/GitHub 兜
   const cli = readFileSync(join(root, 'src', 'cli.js'), 'utf8');
   const sched = readFileSync(join(root, 'src', 'scheduler.js'), 'utf8');
   const server = readFileSync(join(root, 'src', 'server.js'), 'utf8');
+  // CO-4/B4：/api/app/latest 已随 App 域抽到 src/routes/app.js——readLatestMeta 断言指向新文件。
+  const appRoutes = readFileSync(join(root, 'src', 'routes', 'app.js'), 'utf8');
   const page = readFileSync(join(root, 'frontend', 'src', 'pages', 'AppDownloadPage.vue'), 'utf8');
   assert.match(cli, /app-sync/, 'CLI 命令');
   assert.match(sched, /name: 'app-release-sync'/, '调度任务');
   assert.match(sched, /APP_RELEASE_SYNC_INTERVAL_MIN, 15/, 'DR 批（docs/APP-INSTANT-UPDATE.md）：默认 15 分钟（原 CJ 60 分钟）');
   assert.ok(!/STEAM_HEAVY = new Set\(\[[\s\S]{0,300}'app-release-sync'/.test(sched), '轻任务不进 STEAM_HEAVY');
   assert.ok(server.includes('steamdeals-[\\d.]+'), '下载路由白名单（仅 steamdeals-x.y.z.apk）');
-  assert.match(server, /readLatestMeta/, 'latest 优先读 data/app');
+  assert.match(appRoutes, /readLatestMeta\(process\.env\.APP_DATA_DIR \?\? 'data\/app', file\)/, 'latest 优先读 data/app（在 routes/app.js）');
+  assert.match(appRoutes, /appApkPathFor\(data\?\.version, frontendDir\) \?\? githubApkUrl\(data\?\.version\)/, 'apkPath 派生：data/app → 镜像 → GitHub 直链（在 routes/app.js）');
   assert.match(server, /application\/vnd\.android\.package-archive/, 'APK Content-Type');
   assert.match(server, /50 \* 1024 \* 1024/, '≤50MB 上限');
   assert.match(server, /req\.method === 'HEAD'/, 'HEAD 可用');

@@ -212,3 +212,21 @@ export function githubApkUrl(version, repo = 'yyliucha/steamdeals-app') {
   if (!version || !/^\d+\.\d+\.\d+$/.test(version)) return null;
   return `https://github.com/${repo}/releases/download/app-v${version}/steamdeals-${version}.apk`;
 }
+
+/**
+ * CO-4/B4（docs/DESIGN-AUDIT.md B4）：从 src/server.js 移入（原 appApkPathFor，签名不变）——
+ * CJ 现场回归修复（2026-11-17 线上 v2.22.0）：/api/app/latest 的 apkPath 按文件真实存在性派生：
+ * data/app（GitHub Release 每小时同步）优先 → `/app/dl/<ver>.apk`；
+ * 否则镜像内 app/<ver>.apk 存在 → 回落 `/app/<ver>.apk`（旧路径，isFrontendPublicFile 白名单内）；
+ * 都没有 → null（BY 契约：缺失字段不报错，由调用方再走 githubApkUrl 兜底）。
+ * APP_DATA_DIR 可覆盖 data 目录（测试隔离/运维）。
+ */
+export function appApkPathFor(version, frontendDir, cwd = process.cwd()) {
+  if (!version || !/^\d+\.\d+\.\d+$/.test(version)) return null;
+  const name = `steamdeals-${version}.apk`;
+  const synced = resolve(cwd, process.env.APP_DATA_DIR ?? 'data/app', name);
+  if (existsSync(synced)) return `/app/dl/${name}`;
+  const mirror = resolve(frontendDir ?? 'frontend/dist', 'app', name);
+  if (existsSync(mirror)) return `/app/${name}`;
+  return null;
+}

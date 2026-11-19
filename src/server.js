@@ -53,6 +53,10 @@ import { auditJobs as auditSchedulerJobs, resetCircuit } from './scheduler.js';
 import { ipSessionKey, uaSessionKey } from './session-fingerprint.js';
 import { formatDateTime, yuanAmount } from './format.js';
 import * as appRateLimit from './app-ratelimit.js';
+// CO-4/B4（docs/DESIGN-AUDIT.md B4）：App 域路由已抽到 src/routes/app.js——
+// handleAppPreflight 在拦截链之前（封禁自查），handleAppRoutes 在认证上下文就绪后（主段）。
+// 拆分模式与后续域步骤见 docs/ARCHITECTURE.md「域路由拆分模式」。
+import { handleAppPreflight, handleAppRoutes } from './routes/app.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -168,21 +172,9 @@ export const HEAVY_GATE_CONFIG = {
 };
 
 /**
- * CJ 现场回归修复（2026-11-17 线上 v2.22.0）：/api/app/latest 的 apkPath 按文件真实存在性派生——
- * data/app（GitHub Release 每小时同步）优先 → `/app/dl/<ver>.apk`；
- * 否则镜像内 app/<ver>.apk 存在 → 回落 `/app/<ver>.apk`（旧路径，isFrontendPublicFile 白名单内）；
- * 都没有 → null（BY 契约：缺失字段不报错）。
- * APP_DATA_DIR 可覆盖 data 目录（测试隔离/运维）。
+ * CO-4/B4（docs/DESIGN-AUDIT.md B4）：/api/app/latest 的 apkPath 派生已随 App 域抽到
+ * src/app-release.js（appApkPathFor，签名不变）；本文件的调用点已移入 src/routes/app.js。
  */
-export function appApkPathFor(version, frontendDir, cwd = process.cwd()) {
-  if (!version || !/^\d+\.\d+\.\d+$/.test(version)) return null;
-  const name = `steamdeals-${version}.apk`;
-  const synced = resolve(cwd, process.env.APP_DATA_DIR ?? 'data/app', name);
-  if (existsSync(synced)) return `/app/dl/${name}`;
-  const mirror = resolve(frontendDir ?? 'frontend/dist', 'app', name);
-  if (existsSync(mirror)) return `/app/${name}`;
-  return null;
-}
 
 // 仅被封禁者可见的页面：未封禁访问一律 302 回首页（docs/BAN-AND-SECURITY-FIXES.md §3）。
 // 以后新增同类页面必须登记进这里——测试会遍历它，漏登记直接红。
@@ -565,7 +557,8 @@ export function createApiServer({
   let syncStopRequested = false; // 后台点了"停止"，子进程退出后记为 cancelled
   // DR 批（docs/APP-INSTANT-UPDATE.md §3.1）：App 手动同步 single-flight——并发请求共享同一 Promise，
   // GitHub 只被请求一轮（验收 §4.1「并发两次只跑一次」）。
-  let appSyncInFlight = null;
+  // CO-4/B4：状态持有对象按引用传给 src/routes/app.js（该域路由读写 appSync.inFlight）。
+  const appSync = { inFlight: null };
 
   // Steam 绑定 state 的进程内登记表：随机串 → { userId, expiresAt }，5 分钟过期。
   // 必须放在请求处理器之外：/start 签发、/callback 消费，跨两次请求共享（steam-login.js 实现）。
@@ -951,27 +944,9 @@ export function createApiServer({
         return json(res, 200, state, { 'cache-control': 'no-store' });
       }
 
-      // CA-1（docs/APP-API.md §3）：App 启动封禁检查——无副作用、匿名、豁免封禁拦截，
-      // 只在滥用时受全局 API 基础限流（429）。检查顺序：IP 黑名单 → 设备封禁（X-Device-Id）。
-      if (path === '/api/app/status' && req.method === 'GET') {
-        const appDeviceId = devices.normalizeDeviceId(String(req.headers['x-device-id'] ?? ''));
-        let banned = false;
-        let type = null;
-        let until = null;
-        if (!whitelisted) {
-          const ipBlocked = ip && visitors.blockedBy(ip) ? true : false;
-          const devBan = appDeviceId ? devices.isBanned({ deviceId: appDeviceId }) : null;
-          if (ipBlocked) {
-            banned = true;
-            type = 'ip';
-          } else if (devBan) {
-            banned = true;
-            type = 'device';
-            until = devBan.until ? new Date(devBan.until).toISOString() : null;
-          }
-        }
-        return json(res, 200, { banned, type, until }, { 'cache-control': 'no-store' });
-      }
+      // CO-4/B4（docs/DESIGN-AUDIT.md B4）：App 域预检段（/api/app/status）已抽到 src/routes/app.js。
+      // 调用位置不能动：必须在设备维度限流与封禁拦截链之前（契约 §3：仍只受全局基础限流）。
+      if (await handleAppPreflight({ path, req, res, json, ip, whitelisted })) return;
 
       // CO-3/C2（docs/DESIGN-AUDIT.md C2）：/api/app/* 设备维度限流（X-Device-Id 为键）。
       // 封禁/黑名单豁免保持不变；这里补按设备独立窗口——同设备超限 429（带 retryAfterSec /
@@ -1652,101 +1627,34 @@ export function createApiServer({
         return true;
       };
 
-      // ---- CA-1（docs/APP-NATIVE.md §3.2）：App Token 认证 ----
-      // POST /api/auth/token：用户名 + 密码 + 图形验证码（必填）+ rememberMe。
-      // 失败限流/账号锁定与 Web 登录共用同一套计数（loginIpFails 20 次/15 分钟 → 429；账号 5 次锁 15 分钟）。
-      // 明文 token 只在本响应出现一次；库中只存哈希，审计日志只记 user_id/IP/设备名。
-      if (path === '/api/auth/token' && req.method === 'POST') {
-        const body = await readBody(req);
-        const username = String(body.username ?? '').trim();
-        const password = String(body.password ?? '');
-        const deviceName = String(body.deviceName ?? '').trim().slice(0, 64) || null;
-        // 验证码校验放在密码之前：没通过就不消耗密码尝试次数
-        if (captcha.enabled()) {
-          const okCaptcha = await captcha.verify(q, body.captchaToken, body.captchaAnswer);
-          if (!okCaptcha) {
-            logger?.warn('api.token_captcha_failed', { ip, username: username.slice(0, 32) });
-            return json(res, 400, { error: '验证码错误或已过期，请重新输入' });
-          }
-        }
-        const now = Date.now();
-        const ipEntry = loginIpFails.get(ip) ?? { count: 0, windowStart: now };
-        if (now - ipEntry.windowStart >= 15 * 60_000) {
-          ipEntry.count = 0;
-          ipEntry.windowStart = now;
-        }
-        if (ipEntry.count >= 20) {
-          // CF 批：被 429 挡下的尝试也计入凭据爆破计数（≥50 次自动临时封）
-          if (autoBanScope) {
-            const t = autoBan.recordCredentialFail(ip);
-            if (t) await tryAutoBan(t, `登录凭据爆破：15 分钟失败 ${t.count} 次`);
-          }
-          const retryAfterSec = Math.ceil((ipEntry.windowStart + 15 * 60_000 - now) / 1000);
-          logger?.warn('auth.ip_throttled', { ip, count: ipEntry.count, via: 'token' });
-          return json(res, 429, { error: '尝试次数过多，请稍后再试', retryAfterSec });
-        }
-        loginIpFails.set(ip, ipEntry);
-
-        const found = await db.findUserByName(q, username);
-        if (found && found.locked_until && Date.parse(found.locked_until) > now) {
-          if (autoBanScope) {
-            const t = autoBan.recordCredentialFail(ip);
-            if (t) await tryAutoBan(t, `登录凭据爆破：15 分钟失败 ${t.count} 次`);
-          }
-          logger?.warn('auth.token_rejected_locked', { username });
-          return json(res, 429, {
-            error: '尝试次数过多，请稍后再试',
-            lockedUntil: found.locked_until,
-            retryAfterSec: Math.max(1, Math.ceil((Date.parse(found.locked_until) - now) / 1000)),
-          });
-        }
-        if (!found || found.disabled || !db.verifyPassword(password, found.password_hash)) {
-          // CF 批：失败计入凭据爆破计数（≥50 次自动临时封；20 次起只 429 不变）
-          if (autoBanScope) {
-            const t = autoBan.recordCredentialFail(ip);
-            if (t) await tryAutoBan(t, `登录凭据爆破：15 分钟失败 ${t.count} 次`);
-          }
-          const reason = !found ? 'unknown' : found.disabled ? 'disabled' : 'bad_password';
-          if (found && !found.disabled) {
-            const updated = await q('update users set failed_login_count = failed_login_count + 1 where id = $1 returning failed_login_count', [
-              found.id,
-            ]);
-            const attempts = Number(updated.rows[0]?.failed_login_count ?? 0);
-            if (attempts >= 5) {
-              const locked = await q("update users set locked_until = now() + interval '15 minutes' where id = $1 returning locked_until", [
-                found.id,
-              ]);
-              logger?.warn('auth.token_locked', { username, until: locked.rows[0]?.locked_until });
-            }
-          }
-          ipEntry.count += 1;
-          loginIpFails.set(ip, ipEntry);
-          logger?.warn('auth.token_failed', { username: username.slice(0, 32), reason });
-          return json(res, 401, { error: '用户名或密码错误' });
-        }
-        await q('update users set failed_login_count = 0, locked_until = null where id = $1', [found.id]);
-        const days = body.rememberMe ? 30 : 7;
-        const issued = await db.insertApiToken(q, { userId: found.id, name: deviceName, days });
-        logger?.info('auth.token_issued', { userId: found.id, username: found.username, deviceName: deviceName ?? null, ip, days });
-        return json(res, 200, {
-          token: issued.token,
-          expiresAt: issued.expiresAt,
-          user: {
-            id: found.id,
-            username: found.username,
-            role: found.role,
-            mustChangePassword: Boolean(found.must_change_password),
-          },
-        });
-      }
-
-      // POST /api/auth/token/revoke：撤销当前 Bearer token（退出登录）；无 Bearer / token 失效一律 401。
-      if (path === '/api/auth/token/revoke' && req.method === 'POST') {
-        if (!bearer || !user) return json(res, 401, { error: 'login_required' });
-        const revoked = await db.revokeApiToken(q, bearer);
-        logger?.info('auth.token_revoked', { userId: user.id, ip, revoked });
-        return json(res, 200, { ok: true });
-      }
+      // ---- CO-4/B4（docs/DESIGN-AUDIT.md B4）：App 域路由主段已抽到 src/routes/app.js ----
+      // ctx 字段契约（路由上下文注入模式）见 docs/ARCHITECTURE.md「域路由拆分模式」；
+      // loginIpFails 与 Web 登录共用同一计数 Map（按引用传递，两边写同一份）；
+      // appSync 是单飞状态持有对象（{ inFlight }，按引用传递让模块读写同一份）。
+      if (
+        await handleAppRoutes({
+          path,
+          req,
+          res,
+          q,
+          logger,
+          json,
+          readBody,
+          ip,
+          user,
+          bearer,
+          captcha,
+          requireAdmin,
+          frontendDir,
+          appSyncDir,
+          appSyncFetchImpl,
+          appSync,
+          loginIpFails,
+          autoBanScope,
+          tryAutoBan,
+        })
+      )
+        return;
 
       // ---- BK 批（docs/SESSION-MANAGEMENT.md §3.3/§3.4）：会话列表 / 踢下线 / 退出其它设备 ----
       if (path === '/api/admin/sessions' && req.method === 'GET') {
@@ -2337,32 +2245,7 @@ export function createApiServer({
       // ---- 游戏数量（匿名可读）：库内总数 + 已有价格数，前台"实时数量"靠它 ----
       // AV 批（docs/READ-MODEL.md §5.2）：priced 改读读模型（distinct game_id，跨区服去重口径不变）
       // + 60 秒进程内缓存；READ_MODEL=legacy 保留旧查询。catalog 口径不变。
-      // ---- CJ 批（docs/APP-AUTO-UPDATE-PAGE.md §3）：优先读 data/app/latest.json（每小时同步），缺失回落镜像文件 ----
-      if (path === '/api/app/latest' && req.method === 'GET') {
-        const { readLatestMeta, githubApkUrl } = await import('./app-release.js');
-        const file = process.env.APP_LATEST_FILE ?? resolve(frontendDir ?? 'frontend/dist', 'app', 'latest.json');
-        const { data } = readLatestMeta(process.env.APP_DATA_DIR ?? 'data/app', file);
-        try {
-          // BY 批（docs/MOBILE-APP-UPDATE.md §3）：versionCode/minVersionCode/notes 透传，
-          // 缺失时返回 null 不报错（旧清单/旧客户端不受影响）；notes 兼容旧字符串格式（按单条处理）。
-          // CJ 现场回归修复：apkPath 按文件真实存在性派生（data/app → 镜像 → null），不再无条件 /app/dl/。
-          // DK 批（docs/TODO.md DK A）：本地与镜像都没有 → GitHub Release 直链兜底（不再 null）。
-          return json(res, 200, {
-            version: data.version ?? null,
-            versionCode: data.versionCode == null ? null : Number(data.versionCode),
-            minVersionCode: data.minVersionCode == null ? null : Number(data.minVersionCode),
-            notes: data.notes == null ? null : (Array.isArray(data.notes) ? data.notes : [data.notes]),
-            apkPath: appApkPathFor(data?.version, frontendDir) ?? githubApkUrl(data?.version),
-            sha256: data.sha256 ?? null,
-            size: data.size == null ? null : Number(data.size),
-            releasedAt: data.releasedAt ?? null,
-          });
-        } catch (err) {
-          logger?.warn?.('api.app_latest_missing', { file, message: String(err?.message ?? err).slice(0, 120) });
-          return json(res, 200, { version: null, versionCode: null, minVersionCode: null, notes: null, apkPath: null, sha256: null, size: null, releasedAt: null });
-        }
-      }
-
+      // （CO-4/B4：CJ 批 /api/app/latest 已随 App 域抽到 src/routes/app.js）
       if (path === '/api/games/count' && req.method === 'GET') {
         if (process.env.READ_MODEL === 'legacy') {
           const priced = (await q('select count(*)::int as n from (select distinct game_id from daily_prices) x')).rows[0]?.n ?? 0;
@@ -3869,106 +3752,7 @@ export function createApiServer({
         }
       }
 
-      // ---- DR 批（docs/APP-INSTANT-UPDATE.md §3.1）：App 版本卡状态（只读）+ 管理员立即同步 ----
-      if (path === '/api/admin/app-sync/status' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const { readLatestMeta } = await import('./app-release.js');
-        const appDir = appSyncDir ?? process.env.APP_DATA_DIR ?? 'data/app';
-        const file = process.env.APP_LATEST_FILE ?? resolve(frontendDir ?? 'frontend/dist', 'app', 'latest.json');
-        const { data, source } = readLatestMeta(appDir, file);
-        let lastSyncAt = null;
-        try {
-          const p = join(resolve(process.cwd(), appDir), 'latest.json');
-          if (existsSync(p)) lastSyncAt = new Date(statSync(p).mtimeMs).toISOString();
-        } catch { /* 无本地文件 */ }
-        let lastError = null;
-        try {
-          lastError = await db.lastFailedSyncRun(q, 'app-sync');
-        } catch { /* sync_runs 缺失时忽略 */ }
-        return json(res, 200, {
-          latest: data
-            ? {
-                version: data.version ?? null,
-                versionCode: data.versionCode == null ? null : Number(data.versionCode),
-                releasedAt: data.releasedAt ?? null,
-              }
-            : null,
-          source,
-          lastSyncAt,
-          lastError,
-          syncing: Boolean(appSyncInFlight),
-        });
-      }
-
-      if (path === '/api/admin/app-sync' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const appDir = appSyncDir ?? process.env.APP_DATA_DIR ?? 'data/app';
-        const syncedAt = new Date().toISOString();
-        // single-flight：并发请求共用同一个进行中的 Promise（验收 §4.1「并发两次只跑一次」）
-        const startedHere = !appSyncInFlight;
-        if (!appSyncInFlight) {
-          appSyncInFlight = (async () => {
-            const { syncAppRelease } = await import('./app-release.js');
-            return syncAppRelease({
-              repo: process.env.APP_RELEASE_SYNC_REPO ?? 'yyliucha/steamdeals-app',
-              keep: Number(process.env.APP_RELEASE_SYNC_KEEP ?? 3),
-              dir: appDir,
-              force: true,
-              logger,
-              fetchImpl: appSyncFetchImpl,
-            });
-          })().finally(() => {
-            appSyncInFlight = null;
-          });
-        }
-        let result;
-        try {
-          result = await appSyncInFlight;
-        } catch (err) {
-          const message = String(err?.message ?? err).slice(0, 120);
-          if (startedHere) logger?.warn('app.sync_manual', { by: user.username, reason: 'exception', message });
-          else logger?.info('app.sync_manual_joined', { by: user.username, reason: 'exception' });
-          await db
-            .writeAuditLog(q, {
-              actorId: user.id,
-              actor: user.username,
-              action: 'admin.app_sync',
-              target: 'app-release-sync',
-              detail: { outcome: 'exception', message, joined: !startedHere },
-              ip,
-            })
-            .catch(() => {});
-          return json(res, 502, { ok: false, reason: 'exception', syncedAt });
-        }
-        const reason = result.apkFailed ?? (result.synced ? null : result.reason);
-        if (startedHere) {
-          logger?.info('app.sync_manual', {
-            by: user.username,
-            version: result.version ?? null,
-            reason: reason ?? null,
-            synced: result.synced,
-          });
-        } else {
-          logger?.info('app.sync_manual_joined', { by: user.username, version: result.version ?? null, reason: reason ?? null });
-        }
-        await db
-          .writeAuditLog(q, {
-            actorId: user.id,
-            actor: user.username,
-            action: 'admin.app_sync',
-            target: 'app-release-sync',
-            detail: { version: result.version ?? null, reason: reason ?? null, synced: result.synced, joined: !startedHere },
-            ip,
-          })
-          .catch(() => {});
-        return json(res, result.synced ? 200 : 502, {
-          ok: result.synced,
-          version: result.version ?? null,
-          apk: result.apk ?? null,
-          reason: reason ?? null,
-          syncedAt,
-        });
-      }
+      // （CO-4/B4：DR 批 /api/admin/app-sync、/api/admin/app-sync/status 已随 App 域抽到 src/routes/app.js）
 
       if (path === '/api/admin/sync/status' && req.method === 'GET') {
         if (!requireAdmin()) return;

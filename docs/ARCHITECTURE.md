@@ -19,7 +19,8 @@
 ```
 adapters/   ── 只负责"把某个平台的数据变成 RawOffer"，不做入库决策
 ingest.js   ── 只负责"怎么落库"（判重、快照、日聚合），不关心数据从哪来
-store/      ── 只负责"SQL 与连接"，不含业务判断
+store/      ── 只负责"SQL 与连接"，不含业务判断（域 SQL 抽到 store/<domain>-repository.js）
+routes/     ── 域路由：只负责 HTTP 输入输出编排，SQL 一律走 store/（拆分模式见 §15）
 report.js   ── 只负责"把查询结果渲染成静态 HTML"，不查库（数据由调用方传入）
 cli.js      ── 只负责"编排与输出"，不写 SQL
 scheduler   ── 只负责"什么时候跑"，不关心跑什么
@@ -368,3 +369,91 @@ GOG 的 catalog 接口接受 `countryCode` + `currencyCode`，是目前唯一能
 4. **提醒只有 webhook 出口**，没有邮件、没有企业微信/钉钉的模板适配。
 5. **ITAD 结构未用真 key 验证**：有 shape mismatch 日志兜底，但首次接入仍需要人盯一次。
 6. **熔断状态不持久化**：调度器重启即清零（见 §9 的取舍说明）。
+
+## 15. 域路由拆分模式（CO-4/B4：巨石拆分试点，后续域照此复制）
+
+背景：`server.js`/`pg.js` 曾经是 4730/3987 行的巨石（路由 + 业务 + 渲染 + SQL 混在一起），
+改动风险高、评审困难（[DESIGN-AUDIT.md](DESIGN-AUDIT.md) B4）。拆分是**渐进式**的：一次一个域，
+外部契约（路径/参数/响应/错误码）零变化，全部以"先抽出、后瘦身"的方式推进。
+
+### 15.1 目录约定
+
+| 落点 | 内容 | 规则 |
+|---|---|---|
+| `src/routes/<domain>.js` | 该域的全部路由处理器 | 只做 HTTP 输入输出编排；**不写 SQL 字面量**（走 repository） |
+| `src/store/<domain>-repository.js` | 该域专属 SQL（DDL + 查询函数） | 函数签名与拆分前一致；只含本域 SQL，通用 SQL 留在 pg.js |
+| `src/store/pg.js` | 聚合壳 + 通用 SQL | 域 repository 用 `export { … } from './<domain>-repository.js'` re-export，**旧 `db.*` 导入签名永远不变** |
+
+拆分期间 `pg.js` 同时承担两职：通用 SQL 的实库 + 域 SQL 的 re-export 壳。
+域拆完它自然只剩聚合壳；**任何一步都不允许删除 re-export**（`test/app-token.test.js` 有静态锁）。
+
+### 15.2 路由上下文注入（RouteContext，一次定死）
+
+路由模块**不 import server.js**（避免循环依赖），宿主把请求期上下文打包成 `ctx` 传入。
+`ctx` 是一份**按域组装的普通对象**，字段分两类：
+
+**固定基座**（每个域的主入口都收这些）：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `path` / `req` / `res` | 请求本体 | path 可能已被前缀重写（见 15.4） |
+| `q` | 查询函数 | 传 repository 用；路由模块自己 `import * as db from '../store/pg.js'` |
+| `logger` / `json` / `readBody` | 基础设施 | 响应包装与请求体读取（与宿主同一实现） |
+| `user` / `bearer` | 认证结果 | 认证上下文解析**留在 server.js**，路由只读 |
+| `requireUser` / `requireAdmin` | 认证守卫 | 已在宿主闭包里写好 401/403 文案，直接调 |
+| `ip` / `whitelisted` | 拦截链结果 | 只读；路由不得自行调用计数型限流 |
+| `captcha` / `settings` 等 | 域需要的共享模块 | 按域按需加入 |
+
+**域特有**（按引用传递的可变状态，语义共享）：
+
+| 字段 | 例子 | 为什么按引用 |
+|---|---|---|
+| 进程级计数 Map | `loginIpFails` | App token 登录与 Web 登录**共用同一套失败计数**，各写各的会分家 |
+| 单飞状态持有对象 | `appSync = { inFlight: null }` | 并发请求共享同一 Promise（single-flight） |
+| 闭包函数 | `tryAutoBan` | 依赖宿主的 `autoBanScope`/q/ratelimit 闭包 |
+
+**约定**：`ctx` 只加不减——新字段进基座表并写进本节；**传引用字段必须注释"语义共享"**，
+防止后人误改成"传值拷贝"。
+
+### 15.3 两个入口（顺序语义，不能合并）
+
+域内路由对"跑在拦截链之前还是之后"有硬约束时，模块导出**两个入口**：
+
+| 入口 | 调用位置 | 适用 |
+|---|---|---|
+| `handle<Domain>Preflight(ctx)` | `/api/ban/state` 之后、设备维度限流与封禁拦截链**之前** | 必须豁免拦截链的路由（如 `/api/app/status` 封禁自查） |
+| `handle<Domain>Routes(ctx)` | 认证上下文（user/bearer/requireAdmin）就绪之后 | 其余全部路由 |
+
+两个入口共享同一 ctx 构造约定；返回值统一 `true = 已处理并结束响应 / false = 未命中，宿主继续`。
+**移动调用位置 = 改契约**：预检段路由一旦挪到拦截链之后，就会新增限流/封禁副作用（App 契约 §3 不允许）。
+
+### 15.4 什么留在 server.js（中间件 ≠ 路由）
+
+以下**作用于整条请求链**的东西不随域拆走：
+
+- 前缀重写（`/api/app/<rest>` → `/api/<rest>`，CA-1）、Bearer 头解析、`user` 解析——它们决定**所有**路由看到的 `path`/`user`；
+- `/api/app/*` 封禁豁免、设备维度限流（CO-3/C2）、全局三振限流——它们拦截在路由之前，作用于整个命名空间；
+- 首次初始化拦截（setup 未完成时）、must_change_password 白名单——同样的理由。
+
+判据：**"只有这个域的路由会走" → 抽走；"所有域都经过" → 留在 server.js**。
+
+### 15.5 后续域拆解步骤（checklist）
+
+1. 读 [TODO.md](TODO.md)/[ACTIVE-SESSIONS.md](ACTIVE-SESSIONS.md) 认领，文件面登记；**一次一个域**；
+2. 盘点域内路由：`grep -n "path === '<前缀>'" src/server.js`，逐条确认无其它路由抢占同一 path+method；
+3. 建 `src/routes/<domain>.js`：复制路由体，把 `q/logger/json/…` 改为从 `ctx` 解构；
+   需要预检段的路由进 `handle<Domain>Preflight`，其余进 `handle<Domain>Routes`；
+4. 抽该域 SQL：`grep -n "<域特征>" src/store/pg.js` 找到专属 DDL/函数 → 建 `src/store/<domain>-repository.js`
+   （签名照抄）→ pg.js 顶部 import + re-export，`migrate()` 继续消费其 DDL 常量；
+5. 在 server.js 原位置换入两个入口调用（预检段位置**必须原样**），组装 ctx（基座 + 域特有）；
+6. 修静态断言测试指向新文件，并加三条锁：路由分支在新文件、宿主真实接线（防死模块）、
+   旧分支不残留在 server.js（防双实现）；**反向自检**：删一个路由分支 → 对应测试必须红；
+7. `node test/<域相关>.test.js` → `npm run test:1..4` → `node test/api.test.js` → `frontend:build` → `scan` 全绿；
+8. 回写 [DESIGN-AUDIT.md](DESIGN-AUDIT.md)「跟踪」列 + [PROJECT-OVERVIEW.md](PROJECT-OVERVIEW.md) 代码落点表；
+   验收汇报里给 **拆分前后行数对比**（域代码净移出、契约零变化）。
+
+### 15.6 已拆域
+
+| 域 | 路由模块 | repository | 拆出内容 | 批次 |
+|---|---|---|---|---|
+| App 客户端 API + 分发 | `src/routes/app.js` | `src/store/app-repository.js` | `/api/app/status`、`/api/app/latest`、`/api/auth/token`、`/api/auth/token/revoke`、`/api/admin/app-sync`、`/api/admin/app-sync/status`；api_tokens 表 + 4 个 token 函数 | CO-4/B4（试点） |
