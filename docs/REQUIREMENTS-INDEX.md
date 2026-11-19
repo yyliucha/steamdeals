@@ -124,6 +124,11 @@
 | **DN** | 对齐审核内容词 SKU 默认归档（季票/服装/DLC 等无效数据不进待审队列） | 本条目 + [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) | 已发布 v2.27.0（2026-11-19，实现 0c5fde4；QA docs/QA-DN.md 第 1 轮 ✅ 10/0/0/1） | ✅ 本轮已给 |
 | **DR** | App 发版后即刻可更新（后台立即同步 + App 检查节流 1h + 同步间隔 15 分钟可配） | [APP-INSTANT-UPDATE.md](APP-INSTANT-UPDATE.md) | 已发布 v2.27.0（2026-11-19，站点 39aaebb + App 仓库 98dabca；QA docs/QA-DR.md 第 1 轮 ✅ 8/0/0/2；App 侧 app-v2.22.0 随本批） | ✅ 本轮已给 |
 | **DS** | 搜索全自动派生（缩写/罗马数字/拼音 token + 分级排序 + 模糊兜底，零人工） | [SEARCH-ALIASES.md](SEARCH-ALIASES.md) | 已发布 v2.27.0（2026-11-19，实现 d607e27；QA docs/QA-DS.md 第 1 轮 ✅ 5/0/0/3） | ✅ 本交接已给 |
+| **DT-1** | 菜单与路由权限隔离（admin 全量 / 普通用户 5 页 / 删 Steam 账号菜单 / 路由守卫） | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-1 | 待开发（2026-11-19 沟通确认） | ✅ 本轮已给 |
+| **DT-2** | 用户级数据接口（/api/me/sessions+踢自己、/api/me/wishlist）+ 5 页数据接入 | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-2 | 待开发（依赖 DT-1） | ✅ 本轮已给 |
+| **DT-3** | 用户管理打磨（去新建用户/行内操作/批量踢会话/编辑角色/绑定账号只读） | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-3 | 待开发（2026-11-19 沟通确认） | ✅ 本轮已给 |
+| **DT-4** | 验证码体验（冷却分桶 + 倒计时 60s + 重置密码弹窗不发码/失败不关/可重发） | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-4 | 待开发（2026-11-19 沟通确认） | ✅ 本轮已给 |
+| **DT-5** | 前后台入口（前台登录按钮/去退出改密；Console 全局顶栏用户菜单树） | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-5 | 待开发（2026-11-19 沟通确认） | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
 
