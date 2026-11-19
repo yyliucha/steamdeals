@@ -156,5 +156,25 @@
   失败明确 reason；卡片与 /api/app/latest 一致；app.syncIntervalMin 默认 15 热加载；App 1h 内会检查；
   端到端「发版→点同步→App 更新提示」（截图留档，发版会话执行）。
 
+## DS. 已实现待发版：搜索全自动派生（gta6/拼音/拼错都能搜，零人工）
+
+**状态：已实现待发版（2026-11-19，实现 d607e27；需求会话写入时被其他会话占用，开发会话按交接补建）**
+**依赖：** 无（复用 AD 批 gameKeywordSql 三源 + AU 批 pg_trgm 索引）
+**解锁：** 无
+**规格**：[SEARCH-ALIASES.md](SEARCH-ALIASES.md)
+
+- **痛点（2026-11-19）**：搜 gta6 / xdlc6 / portal ii 等民间简写找不到游戏——搜索只有 name/name_en/平台别名
+  三源 LIKE，没有缩写/罗马数字/拼音派生；谐音梗（给她爱6）按规格 §7 覆盖边界如实告知不覆盖。
+- **方案（零人工，规格 §0 决策 4 项）**：① `games.search_tokens text[]`（纯派生数据）+ GIN 索引，全部算法生成、
+  可随时全量重建，不做 manual_aliases、不做后台别名入口；② `src/search-derive.js` 纯函数（归一化/去重音/
+  字母数字汉字 token 拆/缩写跳虚词/罗马数字 I–XII↔阿拉伯 1–12 双向/拼音全拼+首字母+数字组合，上限 40 条，
+  存储与查询用同一函数）；③ 写入路径（upsertGameMeta/ensureGame）顺带生成 + 定时任务 search-tokens-rebuild
+  （每 6 小时增量 ≤5 万行）+ CLI `search-tokens --full`；④ gameKeywordSql 加 token 源（数组重叠 + 子串兼容），
+  gameSearch 候选加 token 臂、分级排序（原名/中文名 0 > token/平台别名 1 > 模糊 2）、零命中 pg_trgm 模糊兜底
+  （name 臂 0.4 可调 / token 臂 0.6）、`search.miss` 零命中日志（只记日志不建人工映射）。
+- **验收**：规格 §6 的 8 条——含 gta6/GTA VI/gta 6 命中 GTA VI 且原名命中排最前、xdlc6/全拼命中侠盗猎车手6、
+  gtaa6 模糊兜底（生产 trgm 验证）、派生任务增量/全量、零人工 grep 断言、反向自检清空 tokens 必红、
+  P95 ≤300ms（生产复测）。
+
 
 

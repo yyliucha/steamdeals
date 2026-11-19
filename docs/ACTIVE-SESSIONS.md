@@ -16,8 +16,7 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| （示例）DL | src/align*.js、server.js(align 区)、AlignAdmin.vue | 无 | 11-20 09:00 | 11-20 18:00 | dev-DL |
-| DN(质检) | docs/QA-DN.md（新写）、docs/TODO.md（DN 状态行）、docs/REQUIREMENTS-INDEX.md（DN 行） | 无 | 11-19 13:15 | 11-19 14:30 | qa-DN(lead) |
+| DL(开发) | src/align-snapshot.js（新增）、src/align-compute.js（新增）、src/align-query.js、src/server.js(align 区)、src/cli.js(align-snapshot 命令)、src/scheduler.js(align-snapshot 任务)、src/store/pg.js(migrate 加 align_snapshots)、frontend/src/components/AlignAdmin.vue、test/{align-snapshot(新),align,align-perf,api,scheduler}.test.js、docs/{TODO(DL 状态行),REQUIREMENTS-INDEX(DL 行),PROJECT-OVERVIEW,ALIGN-SNAPSHOT}.md；**worktree F:\dsh\wt\dl 隔离**；与 DS 重叠面（scheduler/cli/pg/test/PROJECT-OVERVIEW）经所有者批准**并行**（各自加任务/命令/表，push 前 fetch+rebase） | 无 | 11-19 13:40 | 11-19 20:00 | dev-DL(lead) |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 
