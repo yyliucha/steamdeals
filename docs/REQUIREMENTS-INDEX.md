@@ -80,7 +80,7 @@
 | **CQ** | 系统设置信息架构重构（平台卡片 + 常用/高级折叠 + 只看非默认/来源/恢复默认） | [SETTINGS-IA.md](SETTINGS-IA.md) | 已发布 v2.25.0（2026-11-19，QA docs/QA-CQ.md 第 3 轮 ✅；实现 6850e5b + 修复 b705824/50f5e45） | ✅ 本轮已给 |
 | **CS** | 对齐审核二次修复（事件循环阻塞观测 + 首屏后台化；补齐 CN 未进镜像问题；DB 侧已验证 91ms 无需索引） | [ALIGN-DB-SLOW.md](ALIGN-DB-SLOW.md) | 已发布 v2.24.3（2026-11-18，2a03188；QA ✅ docs/QA-CS-CV.md） | ✅ 本轮已给 |
 | **CT** | app-release-sync 404 → 改用 releases 列表接口取最新（仓库已公开，无需 token；日志区分失败原因） | [APP-SYNC-404.md](APP-SYNC-404.md) | 已发布 v2.24.4（2026-11-18，9312054；QA docs/QA-CP-CT-CO2.md 第 1 轮） | ✅ 本轮已给 |
-| **CU** | 到价提醒治理（无报价标记 / 站点级按 Steam 愿望单反查并迁移 / 史低抽检 / Steam 刷新频率评估） | [USER-ALERTS-GOVERNANCE.md](USER-ALERTS-GOVERNANCE.md) | CU-1 质检通过（QA docs/QA-CU1.md ✅，b5f5663+77c9f8f）；CU-2 开发中；CU-3/CU-4 待开发（2026-11-19） | ✅ 本轮已给 |
+| **CU** | 到价提醒治理（无报价标记 / 站点级按 Steam 愿望单反查并迁移 / 史低抽检 / Steam 刷新频率评估） | [USER-ALERTS-GOVERNANCE.md](USER-ALERTS-GOVERNANCE.md) | CU-1 质检通过（QA docs/QA-CU1.md ✅，b5f5663+77c9f8f）；CU-2 已实现待发版（b7ab402）；CU-3/CU-4 待开发（2026-11-19） | ✅ 本轮已给 |
 | **CV** | 所有查询不再排除已拥有（列表+搜索 owned=include；已拥有显示账号与终态按钮；App 对齐） | [APP-SEARCH-OWNED.md](APP-SEARCH-OWNED.md) | 已发布 v2.24.3（2026-11-18，站点 2a03188 + App 0945006；QA ✅ docs/QA-CS-CV.md） | ✅ 本轮已给 |
 | **CW** | 后台「游戏目录」点游戏名弹详情（Steam 已同步数据 + 封面/发售/开发商 + 底部 Steam 商店跳转） | [ADMIN-GAME-POPUP.md](ADMIN-GAME-POPUP.md) | 已发布 v2.25.0（2026-11-19，实现随 b9811f8 入 main；QA docs/QA-CW.md ✅） | ✅ 本轮已给 |
 | **CX** | 个人资料编辑（Web + App；头像存库、双 Steam 账号默认头像、设为默认/解绑/新增换绑） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) | 已发布 v2.25.0（2026-11-19，QA docs/QA-CX.md ✅；站点随 b9356aa/93e1241/2f01b59 入 main + App 6f68e81） | ✅ 本轮已给 |
