@@ -1,5 +1,27 @@
 # 变更日志
 
+## [2.26.0] - 2026-11-19
+
+CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4 合并发版：到价提醒治理（无报价徽标 / 站点级迁移 / 史低抽检 / 刷新频率评估）、到价提醒手动推送、移动/桌面双结构渐进合并、覆盖率与性能基线门禁、日志统一字段规范（含新功能面 CU-2 迁移与 DF 手动推送 → 大版本）。
+
+### 新增
+
+- **到价提醒「无报价」徽标与筛选（CU-1）**：后台「到价提醒」列表对无任何在售报价（官方+授权渠道、CN 区、在售，与 `current_cents` 同口径）的提醒行显示「无报价」徽标（悬停说明「无在售报价时不触发提醒」）+ 状态筛选（`GET /api/admin/watchlist?status=no_price`，count 与列表同条件），无报价行永不触发。
+- **站点级提醒按 Steam 愿望单反查与迁移（CU-2）**：列表行带 `claimableUsers`（`steam_wishlist` → `steam_accounts.user_id` 反查，多用户全列、同用户多账号去重）；行内/批量「迁移给用户」（`POST /api/admin/watchlist/migrate`——站点级行 `user_id` NULL→目标用户，目标已有同游戏用户级行则合并删站点级行，邮件发该用户邮箱）；批量删除站点级（`POST /api/admin/watchlist/delete`）；审计 `admin.watch_migrated` / `admin.watch_deleted`。
+- **到价提醒手动推送（DF）**：后台每行「推送」→ 确认弹窗（游戏/用户/当前价/史低/上次提醒/渠道）→ 立即发送；**强制推送**（未达条件也发，文案标注手动推送）与**更新最近提醒时间**（mark 默认勾选）两个选项；批量「推送选中」合并一封邮件（正文列出全部命中游戏）+ 逐条结果；单条 `POST /api/admin/watchlist/:id/push` 与批量 `POST /api/admin/watchlist/push`；5 分钟内存频控（429 带 retryAfterSec）；无通道按钮禁用；用户级提醒不可推（403 + `admin.forbidden_write`）；审计 `admin.alert_pushed`（sent/not_met/rate_limited 全落）。
+- **CU-3 史低抽检 / CU-4 刷新频率评估（分析类，无代码）**：结论落规格 §6/§7 附录（异常样本判定 SQL + daily_prices 明细 SQL + 结论清单——部落幸存者 ¥20.25 确认真实促销史低；720/480 配额数字与建议——720 可接受 / 480 不推荐），未改任何配置。
+
+### 技术债
+
+- **移动/桌面双结构渐进合并（CO-4/D4）**：Home.vue 两套 v-if 分支（游戏卡片/到价提醒列表/结果行/骨架/空态/分页）合并为单一共享列表区（卡片同 DOM 双态 class + `desktop-only`/`mobile-only` 显隐），v-if 77→38 行；`isMobile` 断点判定未动；桌面 1280×900 与移动 390×844 四态截图前后像素对比零视觉差异。
+- **覆盖率/性能基线门禁（CO-4/D6）**：新增 `scripts/baseline-gate.mjs`（coverage/perf/e2e 三模式——主链覆盖率阈值 + 关键查询 P95 散点 + e2e 发版报告联动，阈值 env 可调宽松防误报）；docker-hub / docker-tcr 两个 workflow 的 test job 挂门禁；`test/baseline-gate.test.js` 5 项进主链（含判定反向自检）。
+- **日志统一字段规范（CO-4/E4）**：scheduler / adapter / ingest 三个试点域失败事件统一 `reason/url/status`（`failFields` 自动提取 + 域白名单）；任务失败/熔断事件补 reason；单轮入库解析/失败超阈值（max(5, ⌈总数×50%⌉)）记 error 级聚合告警（阈值设置页可调）；[docs/LOGGING-SCHEMA.md](docs/LOGGING-SCHEMA.md) 字段规范与告警阈值表成文 + `test/log-schema.test.js` 事件名快照锁。
+
+### 测试
+
+- 本批相关测试进主链：`test/watchlist-noprice.test.js`（CU-1，test:2）、`test/watchlist-migrate.test.js`（CU-2，test:2）、`test/alert-push.test.js`（DF，9 项，test:2）、`test/baseline-gate.test.js`（D6，5 项，test:3）、`test/log-schema.test.js`（E4，test:1）。
+- QA（本批 8 块全部放行）：CU-1 ✅ [docs/QA-CU1.md] 第 2 轮（3/0/0/1）、CU-2 ✅ [docs/QA-CU2.md]（5/0/0/2）、CU-3 ✅ [docs/QA-CU3.md]（4/0/0/2）、CU-4 ✅ [docs/QA-CU4.md]（4/0/0/1）、DF ✅ [docs/QA-DF.md] 第 1 轮（9/0/0/2）、D4 ✅ [docs/QA-D4.md] 第 1 轮、D6 ✅ [docs/QA-D6.md] 第 1 轮、E4 ✅ [docs/QA-CO4-E4.md]（4/0/0/1）。
+
 ## [2.25.0] - 2026-11-19
 
 CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK 合并发版：系统设置信息架构、后台游戏详情弹窗、个人资料编辑、用户数据隔离、更换登录邮箱、App 筛选服务端化、App 公告、对齐审核数据完整性、App 更新失败修复、双真相源收敛与任务预算实测化（含新功能条目 → 大版本）。App 仓库同步发布 app-v2.21.0。

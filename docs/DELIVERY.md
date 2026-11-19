@@ -195,10 +195,15 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-19 更新，v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
+### 当前状态（2026-11-19 更新，v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
-- **DF 已实现待发版**（实现 578f063 + 回写 3a7160c；QA [QA-DF.md](QA-DF.md) 第 1 轮 ✅ 9/0/0/2，2026-11-19）：到价提醒手动推送——后台每行「推送」+ 确认弹窗（游戏/用户/当前价/史低/上次提醒/渠道）、强制推送（文案标注手动推送）、更新最近提醒时间默认勾选、批量「推送选中」合并一封邮件 + 逐条结果、5 分钟频控 429、无通道按钮禁用、审计 `admin.alert_pushed`；`test/alert-push.test.js` 9 项进主链 test:2。等构建指令。
+- **v2.26.0 已发布**（tag `v2.26.0`，release 提交见 git log）：CU 四项（CU-1 实现 b5f5663 + 恢复 77c9f8f / CU-2 实现 b7ab402 / CU-3 规格 §6 附录 / CU-4 规格 §7 附录）+ DF（578f063）+ CO-4/D4（56d8573）+ CO-4/D6（40517d5）+ CO-4/E4（551f4b1 + e5cfef1）合并发版（含新功能面 CU-2 迁移与 DF 手动推送 → 大版本，2.25.0 → 2.26.0 连续递增）。
+  CU-1 后台「到价提醒」无报价徽标 + 状态筛选（无在售报价行标「无报价」、不触发提醒）；CU-2 站点级提醒按 Steam 愿望单反查候选用户（多用户全列、去重）+ 一键迁移给用户（同游戏已有行合并删站点级）+ 批量删除（全审计）；CU-3 史低抽检结论（规格 §6 附录 SQL + 结论清单，分析类无代码，部落幸存者 ¥20.25 确认真实促销史低）；CU-4 Steam 刷新频率评估（规格 §7 附录：720 可接受 / 480 不推荐，未改任何配置）；DF 到价提醒手动推送（后台每行「推送」+ 确认弹窗、强制推送、mark 默认勾选、批量「推送选中」合并一封邮件、5 分钟频控 429、无通道禁用、审计 `admin.alert_pushed`）；CO-4/D4 移动/桌面双结构渐进合并（列表区共享 DOM + CSS 双态，v-if 77→38 行，四态截图像素零差异）；CO-4/D6 覆盖率/性能基线门禁（CI 两个 workflow test job 挂 coverage/perf 阈值 + e2e 报告联动）；CO-4/E4 日志统一字段规范（scheduler/adapter/ingest 失败事件统一 reason/url/status + 告警阈值，[LOGGING-SCHEMA.md](LOGGING-SCHEMA.md)）。
+  QA：CU-1 ✅ [QA-CU1.md](QA-CU1.md) 第 2 轮（3/0/0/1）/ CU-2 ✅ [QA-CU2.md](QA-CU2.md)（5/0/0/2）/ CU-3 ✅ [QA-CU3.md](QA-CU3.md)（4/0/0/2）/ CU-4 ✅ [QA-CU4.md](QA-CU4.md)（4/0/0/1）/ DF ✅ [QA-DF.md](QA-DF.md) 第 1 轮（9/0/0/2）/ D4 ✅ [QA-D4.md](QA-D4.md) 第 1 轮 / D6 ✅ [QA-D6.md](QA-D6.md) 第 1 轮 / E4 ✅ [QA-CO4-E4.md](QA-CO4-E4.md)（4/0/0/1）。
+  验证（本机发版门禁）：见 v2.26.0 收尾提交（CI 记录）。
+  CI：docker-hub <run-id>（test/smoke/publish）；docker-tcr <run-id>（test/publish）——**CI 待确认**，双绿后收尾提交回填 run id。
+  **服务器部署待执行**（升级到 `2.26.0`）；发版后 e2e 全量由独立报告会话按 steamdeals-test §2.3 执行（PDF 落 `F:\dsh\e2e-reports\`），不在本会话跑。
 - **v2.25.0 已发布**（tag `v2.25.0`，release 提交见 git log）：CO-1/A3（6a9ecc3）+ CO-2/B3（7a324b0）+ CQ（6850e5b + 修复 b705824/50f5e45）+ CW（随 b9811f8 入 main）+ CX（随 b9356aa/93e1241/2f01b59 入 main + App 6f68e81）+ CY（3351f9f）+ CZ（站点 ac52955 + App 7c01820）+ DA（站点 b46669a + App 4334823）+ DC（App ef17e9a）+ DH（d3c67ec + cc8e351）+ DK（站点 d65542f + App 8fb6328）合并发版（含新功能条目 → 大版本，2.24.5 → 2.25.0 连续递增）。
   CQ 系统设置信息架构（6 平台卡/折叠摘要/只看非默认/来源标注/恢复默认/搜索展开）；CW 后台游戏详情弹窗（站内已同步 Steam 数据 + Steam 商店跳转，三态兜底）；CX 个人资料编辑（头像存库/双 Steam 账号默认头像/我的游戏库与统计，Web + App）；CY 数据隔离（用户私有数据管理员只读，越权写 403 + 审计）；CZ 更换登录邮箱（两步验证码、全会话下线、双邮件、24h 频控，Web + App）；DA App 筛选/排序服务端化（4 开关互斥 + heat/release 排序，App 依赖本批站点参数）；DC App 公告角标与列表（游客本地已读）；DH 对齐审核数据完整性（继承缺口/已忽略恢复/审阅痕迹/孤儿行提示）；DK App 检查更新失败修复（apkPath 兜底 GitHub 直链 + App 提示区分 + APK 缺失自愈）；A3 双真相源收敛（库唯一真相、skus.json 只读兼容）；B3 任务预算实测化（sync_runs 实测折算 + 任务卡实际/估算差）。
   QA：A3 ✅ [QA-CO1-A3.md](QA-CO1-A3.md)（25/0/0/0）/ B3 ✅ [QA-CO2-B3.md](QA-CO2-B3.md)（15/0/0/1）/ CQ ✅ [QA-CQ.md](QA-CQ.md) 第 3 轮（9/0/0/2）/ CW ✅ [QA-CW.md](QA-CW.md)（11/0/0/2）/ CX ✅ [QA-CX.md](QA-CX.md)（14/0/0/1）/ CY ✅ [QA-CY.md](QA-CY.md)（6/0/0/0）/ CZ ✅ [QA-CZ.md](QA-CZ.md)（11/0/0/2）/ DA ✅ [QA-DA.md](QA-DA.md)（6/0/0/2）/ DC ✅ [QA-DC.md](QA-DC.md) / DH ✅ [QA-DH.md](QA-DH.md) 第 2 轮 / DK ✅ [QA-DK.md](QA-DK.md)（6/0/0/2）；多会话并行审计 [AUDIT-2026-11-19.md](AUDIT-2026-11-19.md)（改坏项已全部恢复；本批补其 §③遗漏 1——`test/isolation.test.js` 注册进主链 test:4）。

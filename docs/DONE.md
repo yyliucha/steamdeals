@@ -2130,6 +2130,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 | **CO-4** | D1 | 样式 token 收敛（`main.css` 46 行 vs 组件内联超长 CSS） | 已发布 v2.24.5（2ee09af；QA docs/QA-D1.md 第 1 轮 ✅） |
 | **CO-1** | A3 | `skus.json` 与 `game_source_map` 双真相源 → 以库为唯一真相、skus.json 只读兼容 | 已发布 v2.25.0（6a9ecc3 + 随行提交；QA docs/QA-CO1-A3.md 第 1 轮 ✅ 25/0/0/0） |
 | **CO-2** | B3 | 任务预算改**实测耗时**（AC-4 估算）；任务卡显示实际与估算差 | 已发布 v2.25.0（7a324b0 + 收尾 693dcb5；QA docs/QA-CO2-B3.md 第 1 轮 ✅ 15/0/0/1） |
+| **CO-4** | D4 | 移动/桌面双结构 `v-if` 渐进合并（CSS 优先） | 已发布 v2.26.0（56d8573；QA docs/QA-D4.md 第 1 轮 ✅） |
+| **CO-4** | D6 | 覆盖率/性能基线门禁（与 CK 的 e2e 报告联动） | 已发布 v2.26.0（40517d5；QA docs/QA-D6.md 第 1 轮 ✅） |
+| **CO-4** | E4 | 日志统一字段规范（关键域失败字段 + 告警阈值） | 已发布 v2.26.0（551f4b1 + e5cfef1；QA docs/QA-CO4-E4.md ✅ 放行 4/0/0/1） |
 
 
 ## DG. ~~质检通过：对齐匹配修复（副标题/别名导致低分 → 无候选）~~ → **已发布 v2.24.5（2026-11-18，afc5a91 + 12a6de7）**
@@ -2392,3 +2395,43 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   「新版下载地址暂不可用，请到站点 /app 页下载」，网络失败仍是 `Failed`）+ `UpdateDialogHost` 新分支 +
   `UpdateManagerTest` 9 项；C apk_download 失败带 `apkFailed` 标记、`cmdAppSync` 抛错 → 任务健康条显红；
   D（同批追加）same_version 跳过加 APK 存在性检查（APK 缺失重新下载补齐，每小时自愈）。
+
+
+## CU. ~~待开发：到价提醒治理（无报价标记 / 站点级迁移 / 史低抽检 / 刷新频率评估）~~ → **已发布 v2.26.0（2026-11-19）**
+
+**状态：已发布 v2.26.0（2026-11-19；CU-1 实现 b5f5663 + 恢复 77c9f8f，QA 报告 docs/QA-CU1.md 第 2 轮 ✅ 3/0/0/1；CU-2 实现 b7ab402，QA 报告 docs/QA-CU2.md 第 1 轮 ✅ 5/0/0/2；CU-3 规格 §6 附录（分析类无代码），QA 报告 docs/QA-CU3.md 第 1 轮 ✅ 4/0/0/2；CU-4 规格 §7 附录（未改配置），QA 报告 docs/QA-CU4.md 第 1 轮 ✅ 4/0/0/1）**
+**依赖：** CL（已发布 v2.23.0，用户级提醒）
+**解锁：** 无
+**规格**：[USER-ALERTS-GOVERNANCE.md](USER-ALERTS-GOVERNANCE.md)
+
+- **实测（2026-11-18）**：15 条提醒全部为**站点级**（user_id 为空）、全部未设目标价（跌至史低模式）；
+  其中 **2 条无任何报价**（State of Decay 3 / Warhammer 黑暗异端）→ 永远不触发；
+  多条当前价=史低（靠 last_notified 去重）；**部落幸存者史低 ¥20.25 可疑**（当前 ¥72）。
+- **四项（合并交付）**：CU-1 列表「无报价」徽标+筛选（实现 b5f5663 + 恢复 77c9f8f，QA-CU1 第 2 轮 ✅）；CU-2 站点级提醒按 Steam 愿望单反查用户
+  （`steam_wishlist` → `steam_accounts.user_id`，多用户全部列出，可一键迁移给这些用户，审计）（b7ab402，QA-CU2 第 1 轮 ✅）；
+  **CU-3 史低抽检（全部异常样本**，不只部落幸存者，只读 SQL，脏数据才修）（规格 §6 附录 SQL + 结论清单，QA-CU3 第 1 轮 ✅；部落幸存者 ¥20.25 = 真实促销史低，非脏数据）；CU-4 Steam 刷新频率评估
+  （默认不改，只出 720/480 配额数字与建议）（规格 §7 评估，QA-CU4 第 1 轮 ✅；建议 720 可接受 / 480 不推荐，未改任何配置）。
+- **改动落点**：src/store/pg.js（hasPrice + 迁移/批量删）、src/server.js（/api/admin/watchlist 扩展 +
+  /migrate + 批量删除 + 审计）frontend/src/pages/AdminModules.vue（徽标/筛选/多选/迁移）、测试。
+- **验收**：见规格 §4——① 无报价两行有徽标且可筛选；② 迁移后 user_id/收件人变化；③ 批量删除+审计；
+  ④ 抽检 SQL 结论；⑤ npm test / frontend:build / scan 全绿；⑥ CU-4 只出建议不改配置。
+- **待确认**：无（2026-11-18 已定：迁移目标=按 Steam 愿望单反查的用户，多个全列；抽检=全部异常样本；CU-4=只出配额数字）。
+
+
+## DF. ~~待开发：到价提醒手动推送（重发按钮）~~ → **已发布 v2.26.0（2026-11-19，578f063）**
+
+**状态：已发布 v2.26.0（2026-11-19，578f063；QA 报告 docs/QA-DF.md 第 1 轮 ✅ 9/0/0/2）**
+**依赖：** CL（用户级提醒，已发布）、现有 `notify.js` 通道
+**解锁：** 无
+**规格**：[ALERT-MANUAL-PUSH.md](ALERT-MANUAL-PUSH.md)
+**Demo**：[design/alert-manual-push-2026-11-18.html](design/alert-manual-push-2026-11-18.html)（单条推送）+
+[design/admin-confirm-no-toggle-2026-11-18.html](design/admin-confirm-no-toggle-2026-11-18.html)（批量推送合并一封/确认/审计）
+
+- **现状**：提醒只由 `alerts` 定时任务触发（每 360 分钟）；后台每行只有「删除」，没有手动发送。
+- **需求**：每行加「推送」→ 确认弹窗（游戏/用户/当前价/史低/上次提醒/渠道）→ 立即发送；
+  **强制推送**（未达条件也发）与**更新最近提醒时间**（写 `last_notified`，默认勾选）两个选项；无通道时按钮禁用。
+- **接口**：`POST /api/admin/watchlist/:id/push { force, mark }`（单条）与 `POST /api/admin/watchlist/push { ids }`（批量合并一封邮件），
+  复用 `evaluateAlerts`/`renderDigest`/`notify`；**5 分钟**频控；审计 `admin.alert_pushed`。
+- **验收**：见规格 §4——达标/未达标/强制/mark 去重/频控 429/无通道禁用/审计落库/`npm test`+`frontend:build`+`scan` 全绿。
+- **已确认（2026-11-18）**：① **只有管理员能推**，用户级提醒**不可推**（只站点级）；② mark **默认勾选**；
+  ③ **支持一键推送/批量**，批量**只发一封邮件**（正文列出所有勾选游戏）；④ 频控 **5 分钟**。

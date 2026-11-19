@@ -1,6 +1,6 @@
 # 到价提醒治理：无报价标记 / 站点级迁移 / 史低抽检 / 刷新频率评估（CU）
 
-> 状态：**CU-1 已交付质检通过（实现 b5f5663 + 恢复 77c9f8f，QA docs/QA-CU1.md 第 2 轮 ✅，2026-11-19）；CU-2 已交付质检通过（实现 b7ab402，QA docs/QA-CU2.md 第 1 轮 ✅ 5/0/0/2，2026-11-19）；CU-3 已交付质检通过（§6 附录，QA docs/QA-CU3.md 第 1 轮 ✅ 4/0/0/2，2026-11-19）；CU-4 已交付质检通过（§7 评估，QA docs/QA-CU4.md 第 1 轮 ✅ 4/0/0/1，未改配置，2026-11-19）——四项全部交付**。
+> 状态：**已实现并发布 v2.26.0（2026-11-19；CU-1 实现 b5f5663 + 恢复 77c9f8f，QA docs/QA-CU1.md 第 2 轮 ✅；CU-2 实现 b7ab402，QA docs/QA-CU2.md 第 1 轮 ✅ 5/0/0/2；CU-3 §6 附录（分析类无代码），QA docs/QA-CU3.md 第 1 轮 ✅ 4/0/0/2；CU-4 §7 评估（未改配置），QA docs/QA-CU4.md 第 1 轮 ✅ 4/0/0/1）——四项全部交付**。
 > 关联：[TODO.md](TODO.md) CU 条目、[USER-ALERTS.md](USER-ALERTS.md)（CL 批：用户级提醒）、
 > [DESIGN-AUDIT.md](DESIGN-AUDIT.md)（数据口径类技术债）。
 
