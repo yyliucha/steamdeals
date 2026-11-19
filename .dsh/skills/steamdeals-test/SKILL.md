@@ -32,8 +32,8 @@ description: SteamDeals/gameprice 的测试方法库与真实测试门槛：分�
 | **L1 纯函数/单元** | 解析、匹配、格式、策略 | `node:test` + `node:assert/strict`，最快最多 | `match.js`、`price-report-html.js`、`password-policy.js` |
 | **L2 数据层** | 迁移、SQL 口径、幂等/唯一键 | **pglite 真 SQL**（DDL 10–30s 属正常；迁移跑两次验幂等） | `pg.test.js`、`store.test.js` |
 | **L3 HTTP/API** | 鉴权、权限、限流、封禁、状态码 | **真 HTTP + pglite**（`test/api.test.js` 模式；起服务监听随机端口） | `api.test.js`、`appeal-system.test.js` |
-| **L4 前端** | 页面渲染、交互、响应式 | 静态断言 **+ `@vue/compiler-dom` 编译级断言**；关键区块用 headless Edge 真实渲染断言 | `price-history-report.test.js`（BN 批回归）、`admin-console-mobile.test.js` |
-| **L5 真实环境 e2e** | 全站/全后台/App | 见 §2/§6（headless Edge + 模拟器/真机 adb + 公网只读） | `test/e2e/*` |
+| **L4 前端** | 页面渲染、交互、响应式 | 静态断言 **+ `@vue/compiler-dom` 编译级断言**；关键区块用 headless Chrome 真实渲染断言 | `price-history-report.test.js`（BN 批回归）、`admin-console-mobile.test.js` |
+| **L5 真实环境 e2e** | 全站/全后台/App | 见 §2/§6（headless Chrome + 模拟器/真机 adb + 公网只读） | `test/e2e/*` |
 
 **解析类一律打真实夹具**（`test/fixtures/real-*`），**禁止假 HTML/假 JSON**——假数据测不出站点改版。
 
@@ -100,11 +100,11 @@ description: SteamDeals/gameprice 的测试方法库与真实测试门槛：分�
 
 | 级别 | 内容 | 执行者 | 说明 |
 |---|---|---|---|
-| **R1 自动真实环境** | 本地全栈 + **headless Edge**（DOM/Console/截图）+ **Android 模拟器/真机 adb**（安装/覆盖/走查/截图）+ **公网只读**（部署后 `/api/site`、页面、TTFB） | **会话自己** | 默认模拟器 `steamdeals35`；`--device=real` 用真机 |
+| **R1 自动真实环境** | 本地全栈 + **headless Chrome**（DOM/Console/截图）+ **Android 模拟器/真机 adb**（安装/覆盖/走查/截图）+ **公网只读**（部署后 `/api/site`、页面、TTFB） | **会话自己** | 默认模拟器 `steamdeals35`；`--device=real` 用真机 |
 | **R2 所有者目视** | 模拟器覆盖不了的真机特性（小米浏览器 history 时序、微信内置浏览器渲染、真机字体/触控）、QQ/163 邮箱 App 与企微客户端渲染、主观验收 | 所有者 | 清单由会话生成，所有者逐项勾选 |
 | **R3 部署人员** | 部署动作（pull/up/重启）、迁移执行、生产侧检查（尽量改用后台页面目视，不碰生产库） | 部署人员 | 硬规则 4 |
 
-微信客户端**不做**自动化（违反其条款、有封号风险）：用 headless Edge **设微信 UA** 做页面级自动断言，真机微信只留一次性人工确认。
+微信客户端**不做**自动化（违反其条款、有封号风险）：用 headless Chrome **设微信 UA** 做页面级自动断言，真机微信只留一次性人工确认。
 
 ### 5.2 清单规则与落点
 
@@ -139,7 +139,9 @@ description: SteamDeals/gameprice 的测试方法库与真实测试门槛：分�
 
 ### 6.4 报告（PDF，不入库）
 
-- 运行结束生成 HTML 报告 → Edge `--print-to-pdf` → 输出 **`F:\dsh\e2e-reports\<日期>-<提交短哈希>.pdf`**（仓库外，**不提交 GitHub**）。
+- 运行结束生成 HTML 报告 → Chrome（`C:\Program Files\Google\Chrome\Application\chrome.exe`）`--print-to-pdf`
+  → 输出 **`F:\dsh\e2e-reports\<日期>-<提交短哈希>.pdf`**（仓库外，**不提交 GitHub**）。
+  （2026-11-19 起默认 Chrome；Chrome 缺失时才回退 Edge。）
 - 内容：环境与版本、矩阵逐行结果、失败截图与 Console 错误、skip 及原因、耗时、真实测试清单状态。
 - 失败时必须保留截图与日志；不允许只留一句"失败"。
 
@@ -233,19 +235,20 @@ test('组件不允许同元素 v-for + v-if（BN 批回归）', () => {
 });
 ```
 
-### 11.5 headless Edge 渲染断言（L5）
+### 11.5 headless Chrome 渲染断言（L5）
 
 ```js
 // 起本地服务后：
-// & "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --disable-gpu `
+// & "C:\Program Files\Google\Chrome\Application\chrome.exe" --headless=new --disable-gpu `
 //   --dump-dom "http://127.0.0.1:8090/" > dom.html
 // 断言 dom.html 含关键区块文本；再 --screenshot 出图存档
+// （2026-11-19 起默认 Chrome；Chrome 缺失时才回退 Edge）
 ```
 
 ### 11.6 e2e 报告（PDF）
 
 ```
-HTML 报告 → msedge --headless=new --disable-gpu --print-to-pdf="F:\dsh\e2e-reports\<日期>-<hash>.pdf" report.html
+HTML 报告 → chrome --headless=new --disable-gpu --print-to-pdf="F:\dsh\e2e-reports\<日期>-<hash>.pdf" report.html
 ```
 
 ## 12. 与其它技能的衔接
