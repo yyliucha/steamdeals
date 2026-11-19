@@ -90,9 +90,9 @@
 - **实现**：站点 e62fb4e（迁移+解耦+头像规则+Web 页面+test/profile.test.js 8 项进主链）；
   App 795c791（ProfileEditScreen/MeScreen/ProfileRequests/Dtos/JVM 单测）。
 
-## DN. 开发中：对齐审核内容词 SKU 默认归档（无效数据处理，不进待审队列）
+## DN. 已实现待发版：对齐审核内容词 SKU 默认归档（无效数据处理，不进待审队列）
 
-**状态：开发中（2026-11-19 认领开发）**
+**状态：已实现待发版（2026-11-19，实现 0c5fde4）**
 **优先级：** P2 —— 审核效率（队列被内容词 SKU 反复占用人工）
 **依赖：** 无（复用 CE 批内容词判定 + DH 已忽略/恢复能力）
 **解锁：** 无
@@ -109,6 +109,9 @@
 - **验收**：① 内容词 SKU（季票/服装/DLC）不出现在待对齐队列、不占「待对齐组」计数；② 本体 SKU 不受影响；
   ③ 「已忽略」可查看/恢复内容词归档组；④ 反向自检：去掉内容词判定后这些组重新进队列 → 测试必须红；
   ⑤ `npm test`（分段）+ `npm run frontend:build` + `npm run scan` 全绿。
+- **实现**：0c5fde4（`archiveContentWordItems` 判定 + `writeContentWordArchives` 归档落库（ignored + `method=content_word`）、
+  `loadIgnoredGroups` 组级标注、`alignGroupCounts` 增 `contentWords/contentWordSkus`、`computeAlignGroups` 接线 +
+  日志 `align.content_word_skipped`、AlignAdmin「已忽略」chip 注明 + 已忽略视图标注；单元/契约/运行时测试 + 反向自检）。
 
 ## DR. 已实现待发版：App 发版后即刻可更新（后台立即同步 + App 检查节流 1h + 同步间隔 15 分钟可配）
 
