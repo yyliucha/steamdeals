@@ -16,7 +16,6 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| v2.27.1 构建（CO-4/B4 两域 + DW） | docs/TODO.md、docs/DONE.md、docs/REQUIREMENTS-INDEX.md、docs/DELIVERY.md、docs/PROJECT-OVERVIEW.md、docs/ARCHITECTURE.md §15.6、CHANGELOG.md、package.json、package-lock.json、docs/ACTIVE-SESSIONS.md | **打 tag 构建** | 2026-11-19 19:30 | 2026-11-19 23:00 | 构建会话（本会话） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 

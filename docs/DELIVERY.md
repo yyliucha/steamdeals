@@ -203,7 +203,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   DW：`gameSearch` 关键词归一化拆两个显式变量（`kwNormCandidate` 供候选探测/fuzzy、`kwNorm` 供主查询），注释约束两者不可互换（互换 = 精确名 LIKE 匹配 cap/42P18，新测试必红）；`filterParams` 顺序不变、候选查询绑定不变；新增 `test/game-search-exact.test.js` 进主链 test:3（精确名命中/region 值不命中/回归/零命中 + 注入错位反向自检）。
   QA：B4 ✅ [QA-CO4-B4.md](QA-CO4-B4.md) 第 1/2 轮（16/0/0/1）/ DW ✅ [QA-DW.md](QA-DW.md) 第 1 轮（6/0/0/1）。
   验证（本机发版门禁）：主链四段全绿（`npm run test:1..4` 串行，合计 1020 通过 / 0 失败——B4 涉及全部路由故跑全量主链；DW 搜索用例在 test:3 的 `game-search-exact.test.js` 4/4）+ `node test/api.test.js` 37/37 + `frontend:build` ✓（2.25s）+ `scan` 干净（699 文件，无高置信度凭据）。
-  CI：待确认。
+  CI：docker-hub run 44519906810 ✅（test 21m23s——含 coverage/perf 门禁全绿 / smoke 36s / publish 全 success）；docker-tcr run 44519906872 ✅（test 21m23s / publish 10m29s、Verify manifests 全绿）；test-main（push）run 44519850643 ✅（test success，release 提交 466f4c4 的 push 门禁）。两个镜像源均已推送。
   **部署提示**：本批**无 schema 变更、无新增依赖**——升级后直接可用，无需迁移/首次回填等一次性关注项；部署后按 DW 规格 §DW 线上复验「侠盗猎车手」精确名搜索。
   **服务器部署待执行**（升级到 `2.27.1`）；发版后 e2e 全量由独立报告会话按 steamdeals-test §2.3 执行（PDF 落 `F:\dsh\e2e-reports\`），不在本会话跑。
 - **v2.27.0 已发布**（tag `v2.27.0`，release 提交见 git log）：DP（实现 24780ef）+ DQ（站点 e62fb4e/a1af397 + App 795c791）+ DN（实现 0c5fde4）+ DR（站点 39aaebb + App 仓库 98dabca）+ DS（实现 d607e27）+ DL（实现 1e49eeb）合并发版（含新功能面 DS 搜索派生 / DL 快照落库 / DR 后台立即同步 → 大版本，2.26.0 → 2.27.0 连续递增）。App 仓库同步发布 **app-v2.22.0（22200）**。
