@@ -112,4 +112,31 @@
 5. 模拟器截图对照（隐藏态/显示态/确认弹窗）；
 6. App 构建通过。
 
+## DY/DZ 实现说明（2026-11-19 开发会话，随 app-v2.23.0 发布）
+
+### DY 实现与安全例外
+
+- **状态提升（AppViewModel 扩展）**：`vm.searchState`（搜索词/结果/总数/分页/加载/错误 + 滚动镜像）、
+  `vm.homeState`（首页数据/筛选/排序）、`vm.wishlistState`（愿望单数据/筛选）、`vm.profileState`
+  （资料表单，含脏标记）——跨导航往返、切 Tab、旋转全部保留；账号切换（登录/退出）时
+  `resetForSessionChange()` / `reset()` 复位，避免闪现上一账号数据。
+- **详情页**：`DetailScreenState` 转返回栈级 `viewModel(key = "detail-<appid>")`，旋转不重拉、
+  返回栈弹出自动清理。
+- **滚动位置**：Home/Search/Wishlist/Detail 的 LazyColumn 用
+  `rememberSaveable(saver = LazyListState.Saver)`；Me/Login/Register/ChangePassword/ProfileEdit
+  的表单滚动与首页 chips 行用 `rememberSaveable(saver = ScrollState.Saver)`。
+- **表单输入**：用户名/邮箱/昵称/简介等非敏感字段 `rememberSaveable`；
+  **密码类字段（密码/确认密码）与一次性验证码（图形/邮箱验证码）按安全惯例不落 saveable**
+  （不入系统保存状态，避免明文/令牌进 saved instance state）——旋转后需重输属预期行为，
+  代码注释已写明；loading/error/countdown/验证码图片对象保持 `remember`（瞬时）。
+- **grep 断言（规格 §DY 验收 5）**：
+  `Select-String -Path app\src\main\java\cn\yyliucha\steamdeals\ui\{home,search,wishlist,me,detail,login,register,password,profile,about}\*.kt -Pattern "remember \{|rememberLazyListState\(\)|rememberScrollState\(\)"`——
+  残留白名单（均为已注明理由的安全例外/瞬时/非状态）：Login/Register/ChangePassword 的密码与
+  验证码字段、loading/error/countdown/captcha 等瞬时态、SearchScreen 的 FocusRequester（非状态对象）、
+  LoginScreen 的 `LoginRequiredSheet` 弹层 pending（非 Screen 弹层瞬时态）、ProfileEditScreen 的
+  `EmailChangeSheet` 底部弹层滚动（弹层内瞬时，非 Screen 主体）、AnnouncementsOverlay 的
+  `selectedId`（弹层内瞬时，非 Screen）；其余 Screen 状态一律 rememberSaveable / ViewModel。
+- **不改**：导航栈结构、Tab 切换逻辑（saveState/restoreState 保持原样）。
+
+
 

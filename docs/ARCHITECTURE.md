@@ -493,3 +493,53 @@ device（devices/reviews/admin-bulk）三族断言锁定行为；③ 避开 `/ap
 **之前**（改密页也要注册设备），其余认证路由在白名单之后（主段）；pg.js 本轮零函数搬家
 （路由内联 SQL 抽 10 个新函数 + re-export 壳），`MAX_ACCOUNTS_PER_USER` 由 routes/auth.js 导出、
 server.js 导入（`/api/steam/accounts` 共用同一上限）。
+
+## 16. Android 导航状态保存规范（DY 批，2026-11-19）
+
+> 适用：App 仓库 `F:\dsh\steamdeals-app`。Compose Navigation 跳转时列表页离开组合（dispose），
+> `remember` 状态随之销毁，返回时页面重建为空——这是 DY 缺陷（详情返回后搜索/滚动/表单全丢）的根因。
+> 本节是 App 端页面状态的唯一规范，后续新增/修改页面一律照此写；完整缺陷/验收见
+> [ANDROID-POLISH.md](ANDROID-POLISH.md) §DY。
+
+### 16.1 状态分层：按存活需求三选一
+
+| 存活范围 | 工具 | 适用 |
+|---|---|---|
+| 组合期内（瞬时） | `remember` | 对话框开关、验证码图片对象、FocusRequester 等非状态对象、纯派生计算、loading/error 瞬时态 |
+| 页面往返 / 旋转（Bundle 可存） | `rememberSaveable` | 滚动位置、筛选/排序选中项、非敏感表单输入、弹窗开关 |
+| 页面往返 / 旋转 / 切 Tab（业务数据） | ViewModel（AppViewModel 扩展，或返回栈级 `viewModel(key=…)`） | 搜索词/结果/分页、列表数据、资料表单（含脏标记） |
+
+- **Tab 切换**：AppNav 已有 `popUpTo { saveState = true }` + `restoreState = true` ✅ 不改；
+  `rememberSaveable` 与返回栈级 ViewModel 都随它存活。
+- **进详情再返回**：列表页留在返回栈——`rememberSaveable` 由 NavHost 的 SaveableStateHolder
+  保存/恢复，ViewModel 不销毁；旋转/进程重建由 SavedStateRegistry 兜底（跨进程冷启动不要求，见 DY 边界）。
+
+### 16.2 滚动位置：一律 Saver
+
+- Lazy 列表：`rememberSaveable(saver = LazyListState.Saver) { LazyListState() }`；
+- 普通滚动（表单 Column、筛选 chips 行）：`rememberSaveable(saver = ScrollState.Saver) { ScrollState(0) }`；
+- 禁止用 `rememberLazyListState()` / 裸 `rememberScrollState()` 承接页面级滚动。
+
+### 16.3 业务状态提升到 ViewModel
+
+- 搜索/首页/愿望单/资料等跨导航往返的业务状态**提升到 ViewModel**。本项目用 AppViewModel 扩展
+  （`vm.searchState` / `vm.homeState` / `vm.wishlistState` / `vm.profileState`）；详情页是返回栈级
+  `viewModel(key = "detail-<appid>", factory = …)`，随返回栈弹出自动清理；
+- 账号切换（登录/退出）时，ViewModel 里的用户数据必须复位（`resetForSessionChange()` / `reset()`），
+  避免加载完成前闪现上一账号数据；
+- 状态类内部的网络请求用 `viewModelScope`（页面销毁不取消，随 Activity 生命周期）。
+
+### 16.4 表单输入：rememberSaveable + 安全例外
+
+- 用户名/邮箱/昵称/简介等非敏感输入一律 `rememberSaveable`（旋转/返回不丢）；
+- **密码类字段**（密码/确认密码）与一次性验证码（图形/邮箱验证码）**不落 saveable**（不入系统保存状态，
+  安全惯例），旋转后需重输属预期行为——页面代码注释与规格实现说明里写明；
+- 瞬时状态（loading/error/countdown/验证码图片对象）保持 `remember`。
+
+### 16.5 验收口径（grep 断言）
+
+10 个 Screen（Home / Search / Wishlist / Me / Detail / Login / Register / ChangePassword /
+ProfileEdit / About）的状态类 `remember` 断言：Screen 组合函数里 `mutableStateOf` 与状态持有类实例
+必须来自 `rememberSaveable` 或 ViewModel；允许 `remember` 的只有——纯派生计算、FocusRequester 等
+非状态对象、§16.4 的安全例外字段与瞬时状态。DY 批的 grep 命令与残留白名单见
+[ANDROID-POLISH.md](ANDROID-POLISH.md) §DY 实现说明。
