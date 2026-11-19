@@ -34,7 +34,7 @@
 ## CO-5. 开发中（🧹 技术债）：B4-2 巨石拆分第三轮（认证域）
 
 **类型：** 🧹 技术债（重构，外部契约零变化）
-**状态：** 已实现待发版（第三轮：认证域已交付——`src/routes/auth.js` + `src/store/auth-repository.js`，契约零变化；见 [ARCHITECTURE.md](ARCHITECTURE.md) §15.6，QA 待回写）
+**状态：** 质检通过（第三轮：认证域——`src/routes/auth.js` + `src/store/auth-repository.js`，契约零变化；QA docs/QA-CO5-B4-2.md 第 1 轮 16/0/0/1；等构建指令）
 **优先级：** P2 —— 巨石渐进瘦身（CO-4/B4 已随 v2.27.1 发布 app/appeal 两域；剩余域拆分按 DONE.md 口径另行立项 B4-2/CO-5，本条目承接第三轮）
 **依赖：** 无（**避开** `/api/games*`（DX 待开发改游戏查询区）、`/api/me*`（DT-2 待开发会加接口）；与 DW 零重叠）
 **解锁：** 无
