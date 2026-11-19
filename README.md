@@ -354,7 +354,7 @@ node src/cli.js chart --db pglite:./data/demo-pgdata --out out
 
 | 命令 | 说明 |
 |---|---|
-| `e2e` | e2e 全量（`npm run e2e`）：功能矩阵 + 建删 `e2e_` 账号 + headless Edge + 模拟器/真机 + PDF 报告（见 docs/TESTING-E2E.md） |
+| `e2e` | e2e 全量（`npm run e2e`）：功能矩阵 + 建删 `e2e_` 账号 + headless Chrome + 模拟器/真机 + PDF 报告（见 docs/TESTING-E2E.md） |
 | `e2e:smoke` | 核心链路冒烟（`npm run e2e:smoke`，≤5 分钟；`--only`/`--tag`/`--device=real`/`--online` 可自定义） |
 | `test:N` | 主链分段测试（N=1~4）：`npm run test:N` 只跑第 N 段，中断从失败段续跑（v2.24.5） |
 | `test:reset` | 测试环境复位：默认 dry-run 只打印；`--apply` 把白名单运行时产物移到仓库外、`--restore <时间戳>` 移回（源数据与调试库永不入选，v2.24.5） |
@@ -592,7 +592,7 @@ node src/cli.js logs --run run-20261026025454-nu81  # 单次命令全轨迹
 
 ```bash
 npm test                     # 主链（95+ 个模块测试，首个失败即中断）
-npm run e2e                  # e2e 全量：功能矩阵 + 后台建删 e2e_ 账号 + headless Edge + Android 模拟器/真机 + PDF 报告
+npm run e2e                  # e2e 全量：功能矩阵 + 后台建删 e2e_ 账号 + headless Chrome + Android 模拟器/真机 + PDF 报告
                              # （发版前与每轮 QA 必跑；报告在 F:\dsh\e2e-reports\，不入库；使用说明 docs/TESTING-E2E.md）
 npm run e2e:smoke            # 核心链路冒烟（≤5 分钟）
 node test/log.test.js        # 7 项：JSONL 格式、脱敏、轮转读取、过滤
