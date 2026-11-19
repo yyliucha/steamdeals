@@ -71,6 +71,26 @@
   返回明确状态而非 503 超时；③ 现有 align 测试全绿 + 反向自检（去掉 staleCache 路径必须红）；
   ④ `npm test`（分段）+ `scan` 全绿。
 
+## DP. 质检通过：e2e 浏览器从 Edge 换成 Chrome（headless Chrome + Edge 回退）
+
+**状态：质检通过（2026-11-19 QA docs/QA-DP.md 第 1 轮 ✅ 4/0/0/0；实现 24780ef；需求会话写入时被 v2.26.0 构建会话占用，开发会话按交接补建）**
+**依赖：** 无（CK e2e 套件已发布 v2.24.0）
+**解锁：** 无
+**规格**：本交接 + [E2E-SUITE.md](E2E-SUITE.md) + [TESTING-E2E.md](TESTING-E2E.md)
+
+- **背景（2026-11-19）**：本机 Chrome 157 headless 实测正常（dump-dom 成功、stderr 0）；受限沙箱下
+  Edge mojo 命名管道被拒；所有者指定 e2e 用 Chrome。
+- **范围**：① `test/e2e/lib/browser.mjs`：findEdge → findChrome（探测顺序：Program Files Chrome →
+  Program Files (x86) Chrome → PATH chrome → 最后回退 Edge 并提示）；launchEdge → launchChrome
+  （CDP 逻辑不变，日志文案改）；② `test/e2e/runner.mjs`：预检文案/路径（Chrome 优先）、
+  「headless Chrome 已就绪」；③ `test/e2e/lib/report.mjs`：print-to-pdf 用 Chrome；
+  ④ `docs/E2E-SUITE.md`、`docs/TESTING-E2E.md`：Edge → Chrome（保留回退 Edge 兼容说明）。
+  不做：e2e 矩阵行、其它 e2e 逻辑、App/模拟器部分、技能文件（87d0f11 已改好）。
+- **验收**：① `npm run e2e:smoke` 用 Chrome 跑通（报告显示浏览器为 Chrome）——实测 7/8（admin-login
+  行失败为 CX 批 UserAvatar 既有 avatar 404，2026-11-18 Edge 时代报告同样失败，非本批引入）；
+  ② Chrome 缺失时回退 Edge 或明确报错（注入路径验证 4 分支）；③ 代码无「Edge 优先」残留逻辑；
+  ④ `npm test`（分段）+ `scan` 全绿（test:4 期间 DR 在途 92≠91 已由 DR 批提交消解，QA 复跑全绿）。
+
 ## DQ. 质检通过：个人资料页打磨——头像与 Steam 账号解耦 + 布局调整
 
 **状态：质检通过（2026-11-19 QA docs/QA-DQ.md 第 1 轮 ✅ 9/0/0/3；站点 e62fb4e/a1af397 + App 795c791；需求会话写入时被 v2.26.0 构建会话占用，开发会话按交接补建）**
@@ -113,9 +133,9 @@
   `loadIgnoredGroups` 组级标注、`alignGroupCounts` 增 `contentWords/contentWordSkus`、`computeAlignGroups` 接线 +
   日志 `align.content_word_skipped`、AlignAdmin「已忽略」chip 注明 + 已忽略视图标注；单元/契约/运行时测试 + 反向自检）。
 
-## DR. 已实现待发版：App 发版后即刻可更新（后台立即同步 + App 检查节流 1h + 同步间隔 15 分钟可配）
+## DR. 质检通过：App 发版后即刻可更新（后台立即同步 + App 检查节流 1h + 同步间隔 15 分钟可配）
 
-**状态：已实现待发版（2026-11-19，站点 39aaebb + App 仓库 98dabca）**
+**状态：质检通过（2026-11-19 QA docs/QA-DR.md 第 1 轮 ✅ 8/0/0/2；站点 39aaebb + App 仓库 98dabca）**
 **优先级：** P1 —— App 发版后手机要立刻能检测到更新
 **依赖：** CJ（app-release-sync / latest.json 契约）、DK（失败原因与 apkPath 兜底）——均已发布
 **解锁：** 无
