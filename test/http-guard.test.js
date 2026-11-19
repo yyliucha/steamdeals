@@ -86,7 +86,7 @@ test('B1 配置表：重型接口登记且并发 ≤2（admin 列表/对齐 ≤1
 test('B1 超时白名单：静态资源/图片代理/APK 下载/CSV 导出/备份豁免，业务 API 不豁免', () => {
   for (const p of ['/assets/index-a1b2.js', '/styles/main.css', '/img/steam/413150.jpg', '/app/dl/steamdeals-2.19.0.apk',
     '/app/steamdeals-2.16.0.apk', '/out/chart/413150.html', '/api/games/413150/history.csv', '/api/admin/reports/price.csv',
-    '/api/admin/backup', '/api/admin/app-sync', '/manifest.webmanifest', '/icon-192.png']) {
+    '/api/admin/backup', '/manifest.webmanifest', '/icon-192.png']) {
     assert.equal(isTimeoutExemptPath(p), true, `白名单豁免：${p}`);
   }
   for (const p of ['/api/games', '/api/site', '/api/admin/games', '/api/admin/align', '/api/games/stamp', '/console']) {

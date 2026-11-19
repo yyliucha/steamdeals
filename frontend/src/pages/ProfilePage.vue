@@ -21,22 +21,7 @@
               <el-button size="small" :disabled="!avatarSource" @click="removeAvatar">移除</el-button>
             </div>
             <p class="hint">JPG/PNG/WebP ≤512KB，客户端自动裁剪 256×256</p>
-            <p class="hint">默认头像（已绑 {{ accounts.length }} 个 Steam 账号，可选其一或自定义上传）：</p>
-            <div class="avatar-opts">
-              <button
-                v-for="a in accounts"
-                :key="a.steamId"
-                type="button"
-                class="avopt"
-                :class="{ on: avatarSource === 'steam:' + a.steamId }"
-                @click="chooseSteamAvatar(a)"
-              >
-                <span class="dot">{{ (a.name || 'S').slice(0, 1).toUpperCase() }}</span>Steam · {{ a.name }}
-              </button>
-              <button type="button" class="avopt" :class="{ on: avatarSource === 'custom' }" @click="pickFile">
-                <span class="dot">↑</span>自定义上传
-              </button>
-            </div>
+            <p class="hint">未上传时显示昵称首字母（英文大写）或第一个汉字 + 品牌色</p>
             <input ref="fileInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden-input" @change="onFilePicked" />
           </div>
         </div>
@@ -122,7 +107,7 @@
             <el-switch v-model="form.emailAlerts" />
             <span>{{ form.emailAlerts ? '开启' : '关闭' }}</span>
           </div>
-          <div class="hint">只影响发给你的提醒邮件；关闭后不再投递到价提醒邮件</div>
+          <div class="hint">降价时发邮件提醒</div>
         </div>
       </div>
     </section>
@@ -153,7 +138,9 @@
           <div class="acct-ops">
             <el-button size="small" @click="openDialog(a, 'library')">查看已拥有</el-button>
             <el-button size="small" @click="openDialog(a, 'wishlist')">查看愿望单</el-button>
-            <el-button size="small" :disabled="a.isDefault" @click="setDefault(a)">设为默认</el-button>
+          </div>
+          <div class="acct-ops">
+            <el-button size="small" :disabled="a.isDefault" @click="setDefault(a)">{{ a.isDefault ? '已设为默认' : '设为默认' }}</el-button>
             <el-button size="small" type="danger" plain @click="unbind(a)">解绑</el-button>
           </div>
         </div>
@@ -161,20 +148,18 @@
       <el-empty v-else description="绑定 Steam 账号并同步后，这里会按账号分别展示游戏库" :image-size="56" />
     </section>
 
-    <!-- 我的统计 -->
+    <!-- 我的统计（DQ：已拥有/愿望单合计放标题行，卡片只留三项） -->
     <section class="module-card">
       <div class="card-heading">
         <div>
           <h3>我的统计</h3>
-          <p>仅本人可见</p>
+          <p>已拥有合计 <b>{{ stats.ownedTotal }}</b> · 愿望单合计 <b>{{ stats.wishlistTotal }}</b> · 仅本人可见</p>
         </div>
       </div>
-      <div class="statsline">
-        <span>已拥有合计 <b>{{ stats.ownedTotal }}</b></span>
-        <span>愿望单合计 <b>{{ stats.wishlistTotal }}</b></span>
-        <span>本站愿望单 <b>{{ stats.siteWishlist }}</b></span>
-        <span>到价提醒 <b>{{ stats.alerts }}</b></span>
-        <span>史低命中 <b>{{ stats.histLowHits }}</b></span>
+      <div class="stats3">
+        <div class="stat3"><div class="k">本站愿望单</div><div class="v">{{ stats.siteWishlist }}</div></div>
+        <div class="stat3"><div class="k">到价提醒</div><div class="v">{{ stats.alerts }}</div></div>
+        <div class="stat3"><div class="k">史低命中</div><div class="v">{{ stats.histLowHits }}</div></div>
       </div>
     </section>
 
@@ -288,6 +273,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { fmtDateTime, fmtDay } from '../utils/siteTime.js';
 import { formatMoney } from '../utils/money.js';
+import { avatarInitial } from '../utils/avatar.js';
 import { registerUnsavedSource } from '../composables/useUnsavedGuard.js';
 import { markSessionLoggedOut } from '../composables/useSessionHeartbeat.js';
 import { openLogin } from '../utils/login-entry.js';
@@ -320,13 +306,10 @@ const fileInput = ref(null);
 const dirty = ref(false);
 
 const isAdmin = computed(() => me.value?.role === 'admin');
-const initial = computed(() => {
-  const s = String(me.value?.displayName || me.value?.username || '').trim();
-  return s ? [...s][0].toUpperCase() : 'S';
-});
+const initial = computed(() => avatarInitial(me.value?.displayName || me.value?.username, 'S'));
 const avatarSource = computed(() => me.value?.avatarSource ?? null);
-// 头像图片地址：自定义 → /api/avatar/:id（带 cache-bust）；steam:<id> → /api/avatar 302 到 Steam CDN；空 → 首字
-const avatarImgUrl = computed(() => (avatarSource.value ? `/api/avatar/${me.value.id}?v=${encodeURIComponent(me.value.avatarUpdatedAt || '0')}` : null));
+// DQ（docs/PROFILE-UI-2026-11-19.md §4）：头像只有 custom 走 /api/avatar/:id（带 cache-bust）；null → 首字回退
+const avatarImgUrl = computed(() => (avatarSource.value === 'custom' ? `/api/avatar/${me.value.id}?v=${encodeURIComponent(me.value.avatarUpdatedAt || '0')}` : null));
 const roleLabel = computed(() => (isAdmin.value ? '管理员' : '普通用户'));
 const money = (cents) => formatMoney(cents, 'CNY');
 
@@ -454,7 +437,7 @@ function cropToSquare(file, size) {
 
 async function removeAvatar() {
   try {
-    await ElMessageBox.confirm('移除当前头像？之后将显示昵称首字，也可以重新选择 Steam 账号或上传自定义头像。', '移除头像', { type: 'warning' });
+    await ElMessageBox.confirm('移除当前头像？之后将显示昵称首字母/第一个汉字 + 品牌色。', '移除头像', { type: 'warning' });
     const res = await fetch('/api/me/avatar', { method: 'DELETE', credentials: 'same-origin' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -466,17 +449,12 @@ async function removeAvatar() {
   }
 }
 
-async function chooseSteamAvatar(a) {
-  if (avatarSource.value === 'steam:' + a.steamId) return;
-  await setDefault(a);
-}
-
 async function setDefault(a) {
   try {
     const res = await fetch(`/api/steam/accounts/${encodeURIComponent(a.steamId)}/default`, { method: 'POST', credentials: 'same-origin' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    ElMessage.success(`已将「${a.name}」设为默认账号，头像默认取该账号`);
+    ElMessage.success(`已将「${a.name}」设为默认账号`);
     await load();
     emit('profile-updated');
   } catch (e) {
@@ -751,40 +729,6 @@ onMounted(load);
   gap: var(--space-8);
   align-items: center;
 }
-.avatar-opts {
-  display: flex;
-  gap: var(--space-8);
-  flex-wrap: wrap;
-  margin-top: var(--space-8);
-}
-.avopt {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid var(--border-2);
-  background: var(--panel-2);
-  border-radius: var(--radius-10);
-  padding: 5px 10px;
-  font-size: var(--font-12);
-  color: var(--fg-muted);
-  cursor: pointer;
-}
-.avopt.on {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-soft);
-  color: var(--fg);
-}
-.avopt .dot {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--brand), #3e4fd8);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  color: #fff;
-}
 .hidden-input {
   display: none;
 }
@@ -938,23 +882,39 @@ onMounted(load);
   font-size: var(--font-12);
   font-weight: 500;
 }
+/* DQ（docs/PROFILE-UI-2026-11-19.md 决策 3）：账号卡按钮两行等宽——行1「查看已拥有/查看愿望单」、
+   行2「设为默认（已默认则禁用）/解绑」；不去 flex-wrap，窄屏保持两列等宽不竖排。 */
 .acct-ops {
   display: flex;
   gap: var(--space-6);
-  flex-wrap: wrap;
   margin-top: var(--space-6);
   padding-top: 7px;
   border-top: 1px dashed var(--border);
 }
-.statsline {
-  display: flex;
-  gap: var(--space-16);
-  color: var(--fg-muted);
-  font-size: var(--font-12);
-  flex-wrap: wrap;
+.acct-ops .el-button {
+  flex: 1 1 0;
+  margin-left: 0;
 }
-.statsline b {
-  color: var(--brand);
+/* DQ 决策 4：统计三项卡片（本站愿望单/到价提醒/史低命中）；已拥有/愿望单合计在标题行 */
+.stats3 {
+  display: flex;
+  gap: var(--space-10);
+}
+.stat3 {
+  flex: 1 1 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-12);
+  padding: var(--space-12);
+}
+.stat3 .k {
+  font-size: var(--font-12);
+  color: var(--fg-subtle);
+}
+.stat3 .v {
+  font-size: var(--font-20);
+  font-weight: 800;
+  margin-top: var(--space-4);
 }
 .profile-foot {
   display: flex;

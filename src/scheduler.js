@@ -76,11 +76,9 @@ export function jobsFromEnv(env = process.env) {
     },
     {
       name: 'app-release-sync',
-      // CJ 批（docs/APP-AUTO-UPDATE-PAGE.md §4）：同步 App Release 到本地（轻任务，不进 STEAM_HEAVY；GitHub API 每轮 1 次调用）
-      // DR 批（docs/APP-INSTANT-UPDATE.md §3.1）：默认 60→15 分钟；settings app.syncIntervalMin 可改（DB 热加载，
-      // env APP_RELEASE_SYNC_INTERVAL_MIN 兜底——水合后本处读到的已是 DB 值，保存设置后任务表重建生效）。
+      // CJ 批（docs/APP-AUTO-UPDATE-PAGE.md §4）：每小时同步 App Release 到本地（轻任务，不进 STEAM_HEAVY；GitHub API 每轮 1 次调用）
       args: ['app-sync'],
-      intervalMin: num(env.APP_RELEASE_SYNC_INTERVAL_MIN, 15),
+      intervalMin: num(env.APP_RELEASE_SYNC_INTERVAL_MIN, 60),
       initialDelaySec: num(env.APP_RELEASE_SYNC_INITIAL_DELAY_SEC, 300),
       enabled: env.APP_RELEASE_SYNC_ENABLED !== '0',
     },

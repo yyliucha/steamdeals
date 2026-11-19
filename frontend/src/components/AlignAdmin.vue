@@ -194,6 +194,9 @@ const pagedRows = computed(() => {
 });
 watch([query, filter], () => { page.value = 1; });
 
+// DN 批（docs/TODO.md DN）：内容词自动归档组数（counts.contentWords，跨轮稳定）
+const contentWords = computed(() => shownCounts.value?.contentWords ?? 0);
+
 const chips = computed(() => {
   const c = shownCounts.value;
   return [
@@ -201,7 +204,9 @@ const chips = computed(() => {
     { key: 'high', label: '高置信', n: c?.auto ?? 0 },
     { key: 'manual', label: '需人工', n: c?.manual ?? 0 },
     { key: 'none', label: '无候选', n: c?.noCandidate ?? 0 },
-    { key: 'ignored', label: '已忽略', n: ignored.total }, // DH 批：真实已忽略组数（GET /api/admin/align/ignored）
+    // DH 批：真实已忽略组数（GET /api/admin/align/ignored，含内容词自动归档）；
+    // DN 批：计数包含内容词归档并在 chip 旁注明（口径见 DN 条目）。
+    { key: 'ignored', label: '已忽略', n: ignored.total, note: contentWords.value > 0 ? `内容词自动归档 ${contentWords.value}` : null },
   ];
 });
 
@@ -505,7 +510,7 @@ onUnmounted(() => clearTimeout(pollTimer));
       <el-input v-model="query" class="align-search" clearable placeholder="搜索杉果 SKU 名 / 候选游戏名" />
       <button v-for="c in chips" :key="c.key" type="button" class="align-chip"
         :class="{ on: c.key === 'ignored' ? view === 'ignored' : (view === 'queue' && filter === c.key) }"
-        @click="onChip(c)">{{ c.label }} <strong>{{ c.n }}</strong></button>
+        @click="onChip(c)">{{ c.label }} <strong>{{ c.n }}</strong><small v-if="c.note" class="align-chip-note">（{{ c.note }}）</small></button>
       <el-button v-if="view === 'queue'" size="small" type="primary" plain :disabled="!selectedRows.length" :loading="batchConfirmDlg.submitting" @click="openBatchConfirm">批量确认{{ selectedRows.length ? `（${selectedRows.length}）` : '' }}</el-button>
       <el-button v-if="view === 'queue'" size="small" type="danger" plain :disabled="!selectedRows.length" :loading="batchIgnoreDlg.submitting" @click="openBatchIgnore">批量忽略{{ selectedRows.length ? `（${selectedRows.length}）` : '' }}</el-button>
     </div>
@@ -597,10 +602,12 @@ onUnmounted(() => clearTimeout(pollTimer));
         </el-table-column>
       </el-table>
 
-      <!-- DH 批：已忽略视图（组名/SKU/忽略时间/操作人/恢复二次确认） -->
+      <!-- DH 批：已忽略视图（组名/SKU/忽略时间/操作人/恢复二次确认）；DN 批：内容词自动归档组标注 -->
       <el-table v-else-if="view === 'ignored'" class="align-table" row-key="key" :data="ignored.rows" v-loading="ignored.loading" stripe>
         <el-table-column label="杉果名（组）" min-width="220" show-overflow-tooltip>
-          <template #default="{ row }"><div class="align-gname"><b>{{ row.name }}</b></div></template>
+          <template #default="{ row }">
+            <div class="align-gname"><b>{{ row.name }}</b><el-tag v-if="row.method === 'content_word'" type="info" size="small" class="align-cw-tag">内容词自动归档</el-tag></div>
+          </template>
         </el-table-column>
         <el-table-column label="SKU" min-width="190">
           <template #default="{ row }">
@@ -761,7 +768,9 @@ onUnmounted(() => clearTimeout(pollTimer));
 .align-search{flex:1;min-width:240px}
 .align-chip{border:1px solid var(--border-2);background:var(--panel-2);color:var(--fg-muted);border-radius:999px;padding:4px 12px;font-size:12px;cursor:pointer}
 .align-chip strong{font-weight:600}
+.align-chip-note{color:var(--fg-subtle);font-weight:400}
 .align-chip.on{background:var(--brand-soft);color:var(--brand);border-color:var(--brand)}
+.align-cw-tag{margin-left:7px}
 
 /* 表格内元素 */
 .align-card{padding-bottom:0}

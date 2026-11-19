@@ -4,6 +4,7 @@
 // 设为默认 Steam 账号 + 解绑清默认、我的游戏库与统计（每账号一卡 + 5 项）、库/愿望单弹窗条目、越权 403。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import { startApiServer } from '../src/server.js';
@@ -227,8 +228,8 @@ test('头像：上传存库（mime/魔数/大小校验）+ GET /api/avatar ETag/
   }
 });
 
-test('默认 Steam 账号：设为默认持久化；/api/avatar 302 到账号头像；越权 403；解绑清默认', async () => {
-  const { store, srv, base, q, alice, SA1, SA2, SB1 } = await setup();
+test('DQ 默认 Steam 账号：设为默认只写 default_steam_id、头像不变；解绑只清默认；越权 403', async () => {
+  const { store, srv, base, alice, SA1, SA2 } = await setup();
   try {
     const ac = await login(base, 'alice', 'alice123456');
     const bc = await login(base, 'bob', 'bob123456');
@@ -244,41 +245,59 @@ test('默认 Steam 账号：设为默认持久化；/api/avatar 302 到账号头
     // 不存在 404
     assert.equal((await setDefault('76561198000009999', ac.cookie)).status, 404);
 
-    // 设为默认：avatarSource 持久化（刷新 /api/me 保持一致）；avatar 接口 302 到该账号 Steam 头像
+    // 验收「设为默认独立」：响应只带 defaultSteamId；avatarSource 不变（头像与账号解耦）
     let r = await setDefault(SA1, ac.cookie);
     assert.equal(r.status, 200);
-    assert.equal((await r.json()).avatarSource, 'steam:' + SA1);
-    const me = await (await fetch(`${base}/api/me`, { headers: { cookie: ac.cookie } })).json();
-    assert.equal(me.user.avatarSource, 'steam:' + SA1, '保存后 /api/me 的 avatarSource 对应');
-    const av = await fetch(`${base}/api/avatar/${alice.id}`, { redirect: 'manual' });
-    assert.equal(av.status, 302, 'steam 来源 302');
-    assert.equal(av.headers.get('location'), 'https://steamcdn/sunming.jpg');
+    let body = await r.json();
+    assert.equal(body.ok, true);
+    assert.equal(body.defaultSteamId, SA1, '默认账号写入 default_steam_id');
+    assert.equal('avatarSource' in body, false, '响应不再联动头像');
+    let me = await (await fetch(`${base}/api/me`, { headers: { cookie: ac.cookie } })).json();
+    assert.equal(me.user.avatarSource, null, '设为默认不改变头像来源');
+    // 无头像时 /api/avatar 404（steam 来源 302 已退役）
+    assert.equal((await fetch(`${base}/api/avatar/${alice.id}`, { redirect: 'manual' })).status, 404);
+    // 账号卡 isDefault 读 default_steam_id
+    let lib = await (await fetch(`${base}/api/me/library`, { headers: { cookie: ac.cookie } })).json();
+    assert.equal(lib.accounts.filter((a) => a.isDefault).length, 1, '默认只有一个');
+    assert.equal(lib.accounts.find((a) => a.isDefault).steamId, SA1);
 
-    // 换成第二个账号
+    // 换成第二个账号：默认迁移，头像仍不变
     r = await setDefault(SA2, ac.cookie);
-    assert.equal((await r.json()).avatarSource, 'steam:' + SA2);
-    const lib = await (await fetch(`${base}/api/me/library`, { headers: { cookie: ac.cookie } })).json();
-    const cards = lib.accounts;
-    assert.equal(cards.filter((a) => a.isDefault).length, 1, '默认只有一个');
-    assert.equal(cards.find((a) => a.isDefault).steamId, SA2);
+    assert.equal((await r.json()).defaultSteamId, SA2);
+    lib = await (await fetch(`${base}/api/me/library`, { headers: { cookie: ac.cookie } })).json();
+    assert.equal(lib.accounts.filter((a) => a.isDefault).length, 1, '默认仍然只有一个');
+    assert.equal(lib.accounts.find((a) => a.isDefault).steamId, SA2);
 
-    // 解绑默认账号 → 头像来源清空，不留悬挂引用
+    // 解绑默认账号 → 只清默认标记，头像不变
     r = await fetch(`${base}/api/steam/accounts/${SA2}`, { method: 'DELETE', headers: { cookie: ac.cookie } });
     assert.equal(r.status, 200);
-    const me2 = await (await fetch(`${base}/api/me`, { headers: { cookie: ac.cookie } })).json();
-    assert.equal(me2.user.avatarSource, null, '解绑默认账号后头像来源清空');
     const after = await (await fetch(`${base}/api/me/library`, { headers: { cookie: ac.cookie } })).json();
     assert.equal(after.accounts.length, 1, '解绑后行消失');
     assert.equal(after.accounts.every((a) => !a.isDefault), true, '默认徽标消失');
 
-    // 认领/绑定的首个账号自动成为默认（db 层：未设置过才生效）
-    const bobRow = (await q('select id from users where username = $1', ['bob'])).rows[0];
-    await db.setDefaultSteamAccountIfUnset(q, { userId: bobRow.id, steamId: SB1 });
-    const bobMe = (await (await fetch(`${base}/api/me`, { headers: { cookie: bc.cookie } })).json()).user;
-    assert.equal(bobMe.avatarSource, 'steam:' + SB1, '首个账号自动成为默认');
-    // 已显式设置过的不被覆盖
-    await db.setDefaultSteamAccountIfUnset(q, { userId: bobRow.id, steamId: SA1 });
-    assert.equal((await db.getUserPublic(q, bobRow.id)).avatar_source, 'steam:' + SB1, '已设置过不覆盖');
+    // 自定义头像 + 设为默认：头像仍 custom（账号与头像彻底解耦）
+    const dataUrl = 'data:image/png;base64,' + PNG_1PX_B64;
+    r = await fetch(`${base}/api/me/avatar`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: ac.cookie },
+      body: JSON.stringify({ dataUrl }),
+    });
+    assert.equal(r.status, 200);
+    r = await setDefault(SA1, ac.cookie);
+    assert.equal(r.status, 200);
+    me = await (await fetch(`${base}/api/me`, { headers: { cookie: ac.cookie } })).json();
+    assert.equal(me.user.avatarSource, 'custom', '设默认后自定义头像保持不变');
+    const av = await fetch(`${base}/api/avatar/${alice.id}`);
+    assert.equal(av.status, 200, '自定义头像仍输出库内字节');
+    // 解绑当前默认账号：头像仍 custom、默认徽标消失
+    await fetch(`${base}/api/steam/accounts/${SA1}`, { method: 'DELETE', headers: { cookie: ac.cookie } });
+    me = await (await fetch(`${base}/api/me`, { headers: { cookie: ac.cookie } })).json();
+    assert.equal(me.user.avatarSource, 'custom', '解绑默认账号不动头像');
+    const lib2 = await (await fetch(`${base}/api/me/library`, { headers: { cookie: ac.cookie } })).json();
+    assert.equal(lib2.accounts.every((a) => !a.isDefault), true, '解绑后默认徽标消失');
+
+    // 旧联动函数已删除：绑定/认领不再自动改头像
+    assert.equal(typeof db.setDefaultSteamAccountIfUnset, 'undefined', 'setDefaultSteamAccountIfUnset 已删除');
   } finally {
     await srv.close();
     await store.close();
@@ -365,4 +384,68 @@ test('邮件开关生效：watchCandidates 带 user_email_alerts；groupAlertsBy
     await srv.close();
     await store.close();
   }
+});
+
+// DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：迁移回填与头像来源退役。
+// 反向自检思路：把「steam: 头像清空」这条 SQL 从 ALTERS 里去掉 → 本用例 avatar_source 断言必然红。
+test('DQ 迁移：default_steam_id 回填自 steam: 头像来源并清空该来源；重跑幂等；custom 不受影响', async () => {
+  const store = await openStore('pglite:', {});
+  try {
+    await db.migrate(store);
+    const q = (sql, p) => store.query(sql, p);
+    const u = await db.createUser(q, { username: 'olduser', password: 'old123456', role: 'user', email: 'old@example.com' });
+    // 模拟老库：CX 批「设为默认」写出的形态 avatar_source = 'steam:<id>'
+    await q("update users set avatar_source = 'steam:76561198000000042', avatar_updated_at = now() where id = $1", [u.id]);
+    // 重跑 migrate（= 老库升级路径）：回填 default_steam_id + 清空 steam: 头像来源
+    await db.migrate(store);
+    let row = (await q('select avatar_source, default_steam_id from users where id = $1', [u.id])).rows[0];
+    assert.equal(row.default_steam_id, '76561198000000042', '默认账号关系回填到 default_steam_id');
+    assert.equal(row.avatar_source, null, 'steam: 头像来源退役清空（回退首字/可自行上传）');
+    // 幂等：再跑一次结果不变（容器每次启动都会跑 migrate）
+    await db.migrate(store);
+    row = (await q('select avatar_source, default_steam_id from users where id = $1', [u.id])).rows[0];
+    assert.equal(row.default_steam_id, '76561198000000042', '重跑不回填空值');
+    assert.equal(row.avatar_source, null);
+    // 自定义头像与已回填默认不被迁移触碰
+    await q("update users set avatar_source = 'custom', avatar_bytes = '\\x00', avatar_mime = 'image/png' where id = $1", [u.id]);
+    await db.migrate(store);
+    row = (await q('select avatar_source, default_steam_id from users where id = $1', [u.id])).rows[0];
+    assert.equal(row.avatar_source, 'custom', '自定义头像不被迁移触碰');
+    assert.equal(row.default_steam_id, '76561198000000042', '已回填的默认关系不被清');
+  } finally {
+    await store.close();
+  }
+});
+
+// DQ 前端静态锁：验收 §6 的「无从 Steam 选头像 / 两行按钮窄屏不竖排 / 统计去重 / 开关文案」锁进测试。
+test('DQ 前端静态锁：无 Steam 头像来源入口；两行等宽按钮；统计只三项；开关副说明；头像规则统一', () => {
+  const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
+  const page = read('../frontend/src/pages/ProfilePage.vue');
+  const avatar = read('../frontend/src/components/UserAvatar.vue');
+
+  // 验收「无『从 Steam 选头像』」：页面结构不存在 Steam 头像来源选择（grep 无 avatar_source steam 选项）
+  assert.ok(!page.includes('chooseSteamAvatar'), '资料页不再有选择 Steam 头像的动作');
+  assert.ok(!page.includes('avatar-opts'), '资料页不再有头像来源选项列表');
+  assert.ok(!page.includes("'steam:'"), '资料页不再引用 steam: 头像来源');
+  // 头像规则：只有 custom 走 /api/avatar
+  assert.ok(page.includes("avatarSource.value === 'custom'"), '只有 custom 显示 /api/avatar');
+
+  // 验收「账号卡两行按钮」：模板里恰好两行按钮容器；按钮 flex:1 等宽、容器不去 flex-wrap（窄屏不竖排）
+  assert.equal((page.match(/class="acct-ops"/g) || []).length, 2, '账号卡两行按钮（行1 查看已拥有/查看愿望单，行2 设为默认/解绑）');
+  assert.ok(!/\.acct-ops\s*\{[^}]*flex-wrap/.test(page), '按钮行不去 flex-wrap——窄屏保持两列等宽不竖排');
+  assert.ok(/\.acct-ops\s*\.el-button\s*\{[^}]*flex:\s*1\s*1\s*0/.test(page), '按钮等宽（flex: 1 1 0）');
+  assert.ok(page.includes('已设为默认'), '默认账号行内按钮禁用态文案');
+
+  // 验收「统计去重」：底部统计只有三项；已拥有/愿望单合计在标题行
+  assert.ok(page.includes('已拥有合计 <b>{{ stats.ownedTotal }}</b> · 愿望单合计'), '合计放统计标题行');
+  assert.ok(!page.includes('statsline'), '旧的五合一统计行已移除');
+  assert.equal((page.match(/class="stat3"/g) || []).length, 3, '统计卡片恰好三项（本站愿望单/到价提醒/史低命中）');
+
+  // 验收「开关文案」：标签 + 副说明
+  assert.ok(page.includes('到价提醒邮件'), '开关标签');
+  assert.ok(page.includes('降价时发邮件提醒'), '开关副说明');
+
+  // 头像规则统一：UserAvatar 与资料页共用 utils/avatar.js 的 avatarInitial
+  assert.ok(avatar.includes("avatarInitial(props.name, '?')"), 'UserAvatar 用统一头像规则');
+  assert.ok(page.includes("avatarInitial(me.value?.displayName"), '资料页头像用统一头像规则');
 });
