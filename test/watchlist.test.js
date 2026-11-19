@@ -5,6 +5,7 @@ import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import { ingestOffers } from '../src/ingest.js';
 import { evaluateAlerts } from '../src/alerts.js';
+import { ensureSteamSchema } from '../src/steam-login.js';
 
 const offer = (priceCents) => ({
   platformCode: 'steam',
@@ -40,6 +41,7 @@ test('关注后能列出，重复 upsert 会更新目标价而不是插两条', 
   const store = await openStore('pglite:', {});
   try {
     await db.migrate(store);
+    await ensureSteamSchema(store); // CU-2：listAllWatchesAdmin 的 claimable_users 反查依赖 steam 表（生产迁移链必有）
     const q = (sql, p) => store.query(sql, p);
     const gameId = await seed(store, 14900, 9900);
 
@@ -59,6 +61,7 @@ test('watchCandidates 带上当前价与史低', async () => {
   const store = await openStore('pglite:', {});
   try {
     await db.migrate(store);
+    await ensureSteamSchema(store); // CU-2：listAllWatchesAdmin 的 claimable_users 反查依赖 steam 表（生产迁移链必有）
     const q = (sql, p) => store.query(sql, p);
     const gameId = await seed(store, 14900, 9900);
     await db.upsertWatch(q, { gameId, targetCents: 10000 });
@@ -77,6 +80,7 @@ test('markNotified 之后同价位不再重复提醒', async () => {
   const store = await openStore('pglite:', {});
   try {
     await db.migrate(store);
+    await ensureSteamSchema(store); // CU-2：listAllWatchesAdmin 的 claimable_users 反查依赖 steam 表（生产迁移链必有）
     const q = (sql, p) => store.query(sql, p);
     const gameId = await seed(store, 9900, 9900);
     await db.upsertWatch(q, { gameId, targetCents: 10000 });
@@ -103,6 +107,7 @@ test('取消关注后从候选里消失', async () => {
   const store = await openStore('pglite:', {});
   try {
     await db.migrate(store);
+    await ensureSteamSchema(store); // CU-2：listAllWatchesAdmin 的 claimable_users 反查依赖 steam 表（生产迁移链必有）
     const q = (sql, p) => store.query(sql, p);
     const gameId = await seed(store, 14900, 9900);
     await db.upsertWatch(q, { gameId, targetCents: 10000 });
@@ -118,6 +123,7 @@ test('删除游戏会级联清掉关注项', async () => {
   const store = await openStore('pglite:', {});
   try {
     await db.migrate(store);
+    await ensureSteamSchema(store); // CU-2：listAllWatchesAdmin 的 claimable_users 反查依赖 steam 表（生产迁移链必有）
     const q = (sql, p) => store.query(sql, p);
     const gameId = await seed(store, 14900, 9900);
     await db.upsertWatch(q, { gameId, targetCents: 10000 });

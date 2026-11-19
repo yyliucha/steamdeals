@@ -14,6 +14,7 @@ import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import { startApiServer } from '../src/server.js';
 import { ingestOffers } from '../src/ingest.js';
+import { ensureSteamSchema } from '../src/steam-login.js';
 
 process.env.CAPTCHA_ENABLED = '0';
 
@@ -22,6 +23,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 async function setup() {
   const store = await openStore('pglite:', {});
   await db.migrate(store);
+  await ensureSteamSchema(store); // CU-2：listAllWatchesAdmin 的 claimable_users 反查依赖 steam 表（生产迁移链必有）
   const q = (sql, p) => store.query(sql, p);
   return { store, q };
 }

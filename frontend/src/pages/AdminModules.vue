@@ -72,18 +72,20 @@
     <!-- CL 批（docs/USER-ALERTS.md §4.3；CY 批：用户级只读，站点级可清理） -->
     <template v-else-if="section==='watchlist'">
       <div class="module-card"><div class="card-heading"><div><h3>全站到价提醒</h3><p>用户级提醒为私有数据、管理员只读（请用户自行操作）；站点级提醒可清理。新增请走前台详情页。</p></div></div>
-      <div class="inline-form"><el-input v-model="watchQuery" clearable placeholder="搜索用户名" @keyup.enter="loadAdminWatches(1)" @clear="loadAdminWatches(1)"/><el-select v-model="watchStatus" style="width:150px" @change="loadAdminWatches(1)"><el-option label="全部状态" value=""/><el-option label="无报价" value="no_price"/></el-select><el-button type="primary" :loading="loading" @click="loadAdminWatches(1)">搜索</el-button><span class="muted">共 {{ watchTotal }} 条 · 无在售报价时不触发提醒</span></div></div>
-      <div v-if="isMobile" class="game-card-list"><div v-for="w in adminWatches" :key="w.id" class="admin-card"><div class="admin-card-main"><strong>{{ w.name||('appid:'+w.steam_appid) }}<el-tag v-if="!w.hasPrice" type="warning" size="small" title="该游戏无任何在售报价，提醒不会触发">无报价</el-tag><el-tag v-if="w.user_id!=null" type="info" size="small" class="tag-gap">只读</el-tag></strong><small>{{ w.username||'站点级' }} · 加入 {{ dateTime(w.created_at) }}</small><span class="muted">目标 {{ w.target_cents==null?'史低':price(w.target_cents) }} · 当前 {{ price(w.current_cents) }} · 史低 {{ price(w.hist_low) }}</span></div><el-button v-if="w.user_id==null" type="danger" plain size="small" @click="removeAdminWatch(w)">删除</el-button></div><el-empty v-if="!adminWatches.length" description="没有到价提醒"/></div>
-      <div v-else class="module-card table-card"><el-table :data="adminWatches" v-loading="loading" stripe>
+      <div class="inline-form"><el-input v-model="watchQuery" clearable placeholder="搜索用户名" @keyup.enter="loadAdminWatches(1)" @clear="loadAdminWatches(1)"/><el-select v-model="watchStatus" style="width:150px" @change="loadAdminWatches(1)"><el-option label="全部状态" value=""/><el-option label="无报价" value="no_price"/></el-select><el-button type="primary" :loading="loading" @click="loadAdminWatches(1)">搜索</el-button><span class="muted">共 {{ watchTotal }} 条 · 无在售报价时不触发提醒</span><template v-if="watchSel.size"><span class="muted"> · 已选 {{ watchSel.size }} 条</span><el-button size="small" type="primary" :loading="migrateRunning" @click="openWatchMigrate(null)">迁移给用户</el-button><el-button size="small" type="danger" plain :loading="bulkWatchDeleteRunning" @click="batchDeleteWatches">批量删除</el-button></template></div></div>
+      <div v-if="isMobile" class="game-card-list"><div v-for="w in adminWatches" :key="w.id" class="admin-card"><div class="admin-card-main"><strong>{{ w.name||('appid:'+w.steam_appid) }}<el-tag v-if="!w.hasPrice" type="warning" size="small" title="该游戏无任何在售报价，提醒不会触发">无报价</el-tag><el-tag v-if="w.user_id!=null" type="info" size="small" class="tag-gap">只读</el-tag><el-tag v-if="w.user_id==null&&w.claimableUsers.length" type="info" size="small" class="tag-gap" :title="'Steam 愿望单候选：'+w.claimableUsers.map(u=>u.username).join('、')">候选 {{ w.claimableUsers.length }} 人</el-tag></strong><small>{{ w.username||'站点级' }} · 加入 {{ dateTime(w.created_at) }}</small><span class="muted">目标 {{ w.target_cents==null?'史低':price(w.target_cents) }} · 当前 {{ price(w.current_cents) }} · 史低 {{ price(w.hist_low) }}</span></div><div><el-button v-if="w.user_id==null&&w.claimableUsers.length" type="primary" plain size="small" @click="openWatchMigrate([w])">迁移</el-button><el-button v-if="w.user_id==null" type="danger" plain size="small" @click="removeAdminWatch(w)">删除</el-button></div></div><el-empty v-if="!adminWatches.length" description="没有到价提醒"/></div>
+      <div v-else class="module-card table-card"><el-table :data="adminWatches" v-loading="loading" stripe @selection-change="onWatchSelChange">
+        <el-table-column type="selection" width="40" :selectable="(row)=>row.user_id==null"/>
         <el-table-column prop="username" label="用户" min-width="120"><template #default="{row}">{{ row.username||'站点级' }}</template></el-table-column>
-        <el-table-column label="游戏" min-width="240"><template #default="{row}"><div class="game-name-row"><span class="game-name-static">{{ row.name||row.name_en||('appid:'+row.steam_appid) }}</span><span v-if="row.steam_appid" class="muted mono">{{ row.steam_appid }}</span><el-tag v-if="!row.hasPrice" type="warning" size="small" title="该游戏无任何在售报价，提醒不会触发">无报价</el-tag></div></template></el-table-column>
+        <el-table-column label="游戏" min-width="240"><template #default="{row}"><div class="game-name-row"><span class="game-name-static">{{ row.name||row.name_en||('appid:'+row.steam_appid) }}</span><span v-if="row.steam_appid" class="muted mono">{{ row.steam_appid }}</span><el-tag v-if="!row.hasPrice" type="warning" size="small" title="该游戏无任何在售报价，提醒不会触发">无报价</el-tag><el-tag v-if="row.user_id==null&&row.claimableUsers.length" type="info" size="small" :title="'Steam 愿望单候选：'+row.claimableUsers.map(u=>u.username).join('、')">候选 {{ row.claimableUsers.length }} 人</el-tag></div></template></el-table-column>
         <el-table-column label="目标价" width="110" align="right"><template #default="{row}">{{ row.target_cents==null?'史低':price(row.target_cents) }}</template></el-table-column>
         <el-table-column label="当前价" width="110" align="right"><template #default="{row}">{{ price(row.current_cents) }}</template></el-table-column>
         <el-table-column label="史低" width="110" align="right"><template #default="{row}">{{ price(row.hist_low) }}</template></el-table-column>
         <el-table-column label="加入时间" min-width="150"><template #default="{row}">{{ dateTime(row.created_at) }}</template></el-table-column>
         <el-table-column label="最近提醒" min-width="150"><template #default="{row}">{{ row.last_notified_at?dateTime(row.last_notified_at):'—' }}</template></el-table-column>
-        <el-table-column label="操作" width="90"><template #default="{row}"><el-button v-if="row.user_id==null" link type="danger" @click="removeAdminWatch(row)">删除</el-button><el-tag v-else type="info" size="small">只读</el-tag></template></el-table-column>
+        <el-table-column label="操作" width="150"><template #default="{row}"><el-button v-if="row.user_id==null&&row.claimableUsers.length" link type="primary" @click="openWatchMigrate([row])">迁移</el-button><el-button v-if="row.user_id==null" link type="danger" @click="removeAdminWatch(row)">删除</el-button><el-tag v-else type="info" size="small">只读</el-tag></template></el-table-column>
       </el-table><PaginationBar v-model:page="watchAdminPage" :page-size="20" :total="watchTotal" @change="loadAdminWatches(watchAdminPage)"/></div>
+      <el-dialog v-model="migrateDialog.visible" title="迁移站点级提醒给用户" width="min(460px, 92vw)"><p class="muted">已选 {{ migrateDialog.ids.length }} 条站点级提醒；迁移后归该用户所有，达标提醒邮件将发送到该用户的邮箱。</p><p v-if="migrateDialog.rows.length" class="muted">游戏：{{ migrateDialog.rows.map(r=>r.name||('appid:'+r.steam_appid)).join('、') }}</p><el-select v-model="migrateDialog.targetId" placeholder="选择目标用户（Steam 愿望单反查候选）" style="width:100%"><el-option v-for="u in migrateDialog.users" :key="u.userId" :value="u.userId" :label="u.email?`${u.username}（${u.email}）`:u.username"/></el-select><template #footer><el-button @click="migrateDialog.visible=false">取消</el-button><el-button type="primary" :disabled="!migrateDialog.targetId" :loading="migrateRunning" @click="submitWatchMigrate">确认迁移</el-button></template></el-dialog>
     </template>
     <!-- 公告 -->
     <template v-else-if="section==='announcements'">
@@ -464,6 +466,40 @@ async function loadAdminWatches(nextPage=1){loading.value=true;try{const qs=new 
 async function removeAdminWatch(row){
   try{await ElMessageBox.confirm(`删除「${row.username||'站点级'}」的到价提醒「${row.name||row.steam_appid}」？`,'删除到价提醒',{type:'warning',confirmButtonText:'删除',cancelButtonText:'取消'});}catch{return;}
   try{await api(`/api/admin/watchlist/${row.id}`,{method:'DELETE'});ElMessage.success('已删除');await loadAdminWatches(watchAdminPage.value);}catch(e){notifyError(e);}
+}
+// CU-2（docs/USER-ALERTS-GOVERNANCE.md §2）：站点级提醒多选 → 按 Steam 愿望单反查候选用户 → 迁移/批量删除
+const watchSel=ref(new Set()),migrateRunning=ref(false),bulkWatchDeleteRunning=ref(false);
+const migrateDialog=reactive({visible:false,ids:[],rows:[],users:[],targetId:null});
+function onWatchSelChange(rows){watchSel.value=new Set((rows||[]).filter(r=>r.user_id==null).map(r=>r.id));}
+function claimableUnion(rows){
+  const byUser=new Map();
+  for(const w of rows)for(const u of (w.claimableUsers||[]))if(!byUser.has(u.userId))byUser.set(u.userId,{userId:u.userId,username:u.username,email:u.email});
+  return [...byUser.values()];
+}
+function openWatchMigrate(rows){
+  const list=(rows||adminWatches.value.filter(w=>w.user_id==null&&watchSel.value.has(w.id))).filter(w=>w.user_id==null);
+  if(!list.length){ElMessage.warning('请选择站点级提醒（用户级只读）');return;}
+  const users=claimableUnion(list);
+  if(!users.length){ElMessage.warning('所选游戏均无 Steam 愿望单反查候选（无人认领保持站点级）');return;}
+  migrateDialog.rows=list;migrateDialog.ids=list.map(w=>w.id);migrateDialog.users=users;migrateDialog.targetId=null;migrateDialog.visible=true;
+}
+async function submitWatchMigrate(){
+  migrateRunning.value=true;
+  try{
+    const d=await api(`/api/admin/watchlist/migrate`,json('POST',{ids:migrateDialog.ids,userId:migrateDialog.targetId}));
+    ElMessage.success(`已迁移 ${d.migrated} 条给 ${d.target.username}${d.merged?`，另有 ${d.merged} 条该用户已有提醒（合并）`:''}`);
+    migrateDialog.visible=false;watchSel.value=new Set();await loadAdminWatches(watchAdminPage.value);
+  }catch(e){notifyError(e);}finally{migrateRunning.value=false;}
+}
+async function batchDeleteWatches(){
+  const list=adminWatches.value.filter(w=>w.user_id==null&&watchSel.value.has(w.id));
+  if(!list.length){ElMessage.warning('请选择站点级提醒（用户级只读）');return;}
+  try{await ElMessageBox.confirm(`删除已选的 ${list.length} 条站点级到价提醒？`,'批量删除到价提醒',{type:'warning',confirmButtonText:'删除',cancelButtonText:'取消'});}catch{return;}
+  bulkWatchDeleteRunning.value=true;
+  try{
+    await api(`/api/admin/watchlist/delete`,json('POST',{ids:list.map(w=>w.id)}));
+    ElMessage.success(`已删除 ${list.length} 条`);watchSel.value=new Set();await loadAdminWatches(watchAdminPage.value);
+  }catch(e){notifyError(e);}finally{bulkWatchDeleteRunning.value=false;}
 }
 // AT 批（docs/ADMIN-CONSOLE-IA.md §7.3）：抽屉状态与 URL 双向同步——
 // ?section=announcements&drawer=new[&id=…] 可直达；关闭去掉 drawer/id，保留其它参数。

@@ -8,6 +8,7 @@ import * as db from '../src/store/pg.js';
 import { startApiServer } from '../src/server.js';
 import { evaluateAlerts, groupAlertsByUser } from '../src/alerts.js';
 import { ingestOffers } from '../src/ingest.js';
+import { ensureSteamSchema } from '../src/steam-login.js';
 
 // 与 api.test.js 一致：测试默认关登录验证码（HTTP 用例要真实登录）
 process.env.CAPTCHA_ENABLED = '0';
@@ -15,6 +16,7 @@ process.env.CAPTCHA_ENABLED = '0';
 async function setup() {
   const store = await openStore('pglite:', {});
   await db.migrate(store);
+  await ensureSteamSchema(store); // CU-2：listAllWatchesAdmin 的 claimable_users 反查依赖 steam 表（生产迁移链必有）
   const q = (sql, p) => store.query(sql, p);
   return { store, q };
 }

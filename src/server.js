@@ -3258,8 +3258,12 @@ export function createApiServer({
         // CU-1（docs/USER-ALERTS-GOVERNANCE.md §2）：status=no_price 只出「无报价」行
         const status = String(url.searchParams.get('status') ?? '');
         const result = await db.listAllWatchesAdmin(q, { region, page, pageSize, username, noPriceOnly: status === 'no_price' });
-        // 契约：hasPrice 用驼峰（规格 §3）；其余字段沿用既有蛇形命名，前端消费不动
-        const items = result.items.map(({ has_price: hasPrice, ...rest }) => ({ ...rest, hasPrice: hasPrice === true }));
+        // 契约：hasPrice / claimableUsers 用驼峰（规格 §3）；其余字段沿用既有蛇形命名，前端消费不动
+        const items = result.items.map(({ has_price: hasPrice, claimable_users: claimableUsers, ...rest }) => ({
+          ...rest,
+          hasPrice: hasPrice === true,
+          claimableUsers: Array.isArray(claimableUsers) ? claimableUsers : [],
+        }));
         return json(res, 200, { ...result, items, region });
       }
 
@@ -3287,6 +3291,53 @@ export function createApiServer({
         });
         logger?.info('api.watch_saved', { gameId, targetCents, by: user.username });
         return json(res, 200, { id });
+      }
+
+      // CU-2（docs/USER-ALERTS-GOVERNANCE.md §2/§3）：站点级提醒批量迁移给用户（候选=Steam 愿望单反查，
+      // 前端已按 claimableUsers 列出；服务端校验目标用户存在）+ 批量删除；均记审计。
+      if (path === '/api/admin/watchlist/migrate' && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const body = await readBody(req);
+        const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter((n) => Number.isInteger(n) && n > 0) : [];
+        const userId = Number(body.userId);
+        if (!ids.length) return json(res, 400, { error: '需要选择要迁移的提醒' });
+        if (!Number.isInteger(userId) || userId <= 0) return json(res, 400, { error: '需要选择目标用户' });
+        const target = await q('select id, username from users where id = $1', [userId]);
+        const targetUser = target.rows[0];
+        if (!targetUser) return json(res, 404, { error: '目标用户不存在' });
+        const result = await db.migrateSiteWatches(q, { ids, userId, region: 'cn' });
+        if (result.migrated + result.merged === 0) return json(res, 404, { error: '所选提醒不存在或非站点级' });
+        logger?.info('api.watch_migrated', { ids, toUserId: userId, toUsername: targetUser.username, by: user.username, ...result });
+        await db.writeAuditLog(q, {
+          actorId: user.id,
+          actor: user.username,
+          action: 'admin.watch_migrated',
+          target: `watchlist:${ids.join(',')}`,
+          detail: { ids, toUserId: userId, toUsername: targetUser.username, migrated: result.migrated, merged: result.merged },
+          ip,
+        });
+        return json(res, 200, { ok: true, ...result, target: { id: userId, username: targetUser.username } });
+      }
+
+      if (path === '/api/admin/watchlist/delete' && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const body = await readBody(req);
+        const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter((n) => Number.isInteger(n) && n > 0) : [];
+        if (!ids.length) return json(res, 400, { error: '需要选择要删除的提醒' });
+        const removed = await db.deleteSiteWatches(q, { ids, region: 'cn' });
+        if (!removed.length) return json(res, 404, { error: '所选提醒不存在或为用户级（只读）' });
+        for (const row of removed) {
+          logger?.info('api.watch_deleted', { watchId: Number(row.id), userId: null, gameId: Number(row.game_id), by: user.username });
+        }
+        await db.writeAuditLog(q, {
+          actorId: user.id,
+          actor: user.username,
+          action: 'admin.watch_deleted',
+          target: `watchlist:${removed.map((x) => x.id).join(',')}`,
+          detail: { ids: removed.map((x) => Number(x.id)), gameIds: removed.map((x) => Number(x.game_id)), requested: ids },
+          ip,
+        });
+        return json(res, 200, { ok: true, removed: removed.length });
       }
 
       // CL 批：按提醒 id 清理任意一条（含用户级），记审计 api.watch_deleted

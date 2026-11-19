@@ -2171,7 +2171,14 @@ export async function listAllWatchesAdmin(q, { region = 'cn', page = 1, pageSize
             exists (select 1 from offers o
                join platforms p on p.code = o.platform_code
               where o.game_id = g.id and o.region = $1 and o.in_stock
-                and p.kind in ${OFFICIAL_KINDS}) as has_price
+                and p.kind in ${OFFICIAL_KINDS}) as has_price,
+            (select coalesce(json_agg(x order by x."userId"), '[]'::json) from (
+               select distinct sa.user_id as "userId", u2.username, u2.email
+                 from steam_wishlist sw
+                 join steam_accounts sa on sa.steam_id = sw.steam_id
+                 join users u2 on u2.id = sa.user_id
+                where sw.appid = g.steam_appid
+             ) x) as claimable_users
        from watchlist w
        join games g on g.id = w.game_id
        left join users u on u.id = w.user_id
@@ -2181,6 +2188,55 @@ export async function listAllWatchesAdmin(q, { region = 'cn', page = 1, pageSize
     [...params, size, offset],
   );
   return { items: rows.rows, total, page: pg, pageSize: size, pages: Math.max(1, Math.ceil(total / size)) };
+}
+
+/**
+ * CU-2（docs/USER-ALERTS-GOVERNANCE.md §2/§3）：站点级提醒批量迁移给用户。
+ * 目标用户已有同 (game_id, region) 用户级行 → 合并（站点级行删除，用户级行已覆盖该游戏提醒）；
+ * 否则站点级行 user_id 从 NULL 更新为目标用户（partial 唯一索引自动从站点级换档到用户级）。
+ * 只认 user_id IS NULL 的行；用户级行不在此接口范围（管理员只读）。
+ * 返回 { migrated, merged, requested }。
+ */
+export async function migrateSiteWatches(q, { ids, userId, region = 'cn' }) {
+  const cleanIds = [...new Set((ids ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (!cleanIds.length || !Number.isInteger(userId) || userId <= 0) return { migrated: 0, merged: 0, requested: cleanIds.length };
+  const r = await q(
+    `with targets as (
+       select w.id, w.game_id from watchlist w
+        where w.id = any($1::bigint[]) and w.user_id is null and w.region = $3
+     ),
+     merged as (
+       delete from watchlist w using targets t
+        where w.id = t.id
+          and exists (select 1 from watchlist u2
+                       where u2.user_id = $2 and u2.game_id = t.game_id and u2.region = $3)
+        returning w.id
+     ),
+     migrated as (
+       update watchlist w set user_id = $2
+        from targets t
+        where w.id = t.id
+          and not exists (select 1 from watchlist u2
+                           where u2.user_id = $2 and u2.game_id = t.game_id and u2.region = $3)
+        returning w.id
+     )
+     select (select count(*)::int from merged) as merged,
+            (select count(*)::int from migrated) as migrated`,
+    [cleanIds, userId, region],
+  );
+  const row = r.rows[0] ?? { merged: 0, migrated: 0 };
+  return { migrated: Number(row.migrated), merged: Number(row.merged), requested: cleanIds.length };
+}
+
+/** CU-2：批量删除站点级提醒（用户级行只读不在此范围），返回被删行供审计。 */
+export async function deleteSiteWatches(q, { ids, region = 'cn' }) {
+  const cleanIds = [...new Set((ids ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (!cleanIds.length) return [];
+  const r = await q(
+    `delete from watchlist where id = any($1::bigint[]) and user_id is null and region = $2 returning id, game_id`,
+    [cleanIds, region],
+  );
+  return r.rows;
 }
 
 /** 关注列表 + 当前价 + 史低 + user_id/邮箱，供 alerts 判定与分组。 */
