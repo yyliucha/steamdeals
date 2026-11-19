@@ -34,3 +34,5 @@ android/app-release*.apk
 android/.gradle/
 android/build/
 android/app/build/
+# 清单文件锁（scripts/commit-own.mjs lock/unlock 的运行时瞬态文件，不入库）
+docs/.ledger-lock
