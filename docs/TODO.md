@@ -93,3 +93,21 @@
 
 
 
+## DQ. 已实现待发版：个人资料页打磨——头像与 Steam 账号解耦 + 布局调整
+
+**状态：已实现待发版（2026-11-19 开发会话补建条目并实现；站点 e62fb4e + App 795c791；需求会话写入时被 v2.26.0 构建会话占用，开发会话按交接补建）**
+**依赖：** 无（CX 已发布 v2.25.0）
+**解锁：** 无
+**规格**：[PROFILE-UI-2026-11-19.md](PROFILE-UI-2026-11-19.md)（决策 5 项 + 数据/前端/验收齐全）；demo [design/profile-layout-2026-11-19.html](design/profile-layout-2026-11-19.html) + 同名 .png
+**涉及 App 仓库**：是（app-vX.Y.Z 随本批；App 仓库提交 795c791）
+
+- **范围**：① `users.default_steam_id` 列 + 迁移（回填自 `avatar_source`，`steam:%` 头像清空）；
+  ② 头像解耦：`setDefaultSteamAccount` 只写 `default_steam_id`、解绑只清该列、删除绑定自动设头像逻辑（`setDefaultSteamAccountIfUnset`）、
+  `isDefault` 改读 `default_steam_id`；③ 头像规则：只有 custom 走 `/api/avatar`，否则首字母/首字+品牌色（Web+App 统一）；
+  ④ Web ProfilePage/UserAvatar + App ProfileEditScreen/MeScreen 按 demo 调整（两行按钮、统计三项、开关文案）。
+  不做：改 CX 其它已发布功能、新增头像来源、后端契约以外的新接口。
+- **验收**：规格 §6 的 8 行 demo 状态↔断言（尤其：设为默认只改 `default_steam_id` 头像不变；
+  无「从 Steam 选头像」入口；两行按钮窄屏不竖排；统计去重）；`npm test`（分段）+ api.test +
+  `frontend:build` + `scan` 全绿；App 模拟器对照 demo 截图。
+- **实现**：站点 e62fb4e（迁移+解耦+头像规则+Web 页面+test/profile.test.js 8 项进主链）；
+  App 795c791（ProfileEditScreen/MeScreen/ProfileRequests/Dtos/JVM 单测）。
