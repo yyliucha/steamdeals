@@ -1,7 +1,7 @@
 // CD 批（docs/SONKWO-STEAM-MATCH.md §4/§5）：跨平台对齐核心——CLI 与后台审核共用。
 // 职责：加载 Steam 候选、收集杉果条目（skus.json + 孤儿游戏行）、按去重组提案、
 // 决定继承（confirmed 自动回填 / ignored 自动跳过）、确认/忽略落 game_source_map。
-import { alignGroupKey, buildCandidateIndex, preselectCandidates, topMatches } from './match.js';
+import { alignGroupKey, buildCandidateIndex, preselectCandidates, topMatches, hasContentWord } from './match.js';
 import * as db from './store/pg.js';
 
 export const SONKWO = 'sonkwo';
@@ -64,6 +64,70 @@ export function applyMapInheritance(items, maps) {
     out.push(item);
   }
   return { items: out, inheritApplied, ignoredGroups: ignoredKeys.size, backfill };
+}
+
+/**
+ * DN 批（docs/TODO.md DN）：内容词 SKU 默认归档——名称命中内容词（复用 match.js `hasContentWord`：
+ * 季票/通行证/服装/皮肤/故事包/扩展包/升级包/合集/三部曲/DLC/season pass/bundle…，含杉果自定义命名
+ * 的同类商品）且库无映射的 SKU 视为无效数据，不进待对齐队列（不再需要人工逐个忽略）。
+ * - 库已有映射（confirmed/pending/ignored）时**人工决定优先**：pending=已恢复，交给继承逻辑重新入队；
+ *   confirmed=已确认继承；ignored（method=content_word）=上轮已自动归档，只计数不重复写库；
+ * - archived 只含「本轮需要写库」的无映射 SKU；groups/skus 计数口径 = 当前处于自动归档状态
+ *   （待归档 + 已归档）的内容词 SKU，跨轮稳定；被人工恢复/确认后不再计入。
+ * 返回 { items, archived, groups, skus }（groups 按 alignGroupKey 去重、按组计数，与队列口径一致）。
+ */
+export function archiveContentWordItems(items, maps) {
+  const kept = [];
+  const archived = [];
+  let skus = 0;
+  const groupKeys = new Set();
+  for (const item of items ?? []) {
+    const m = maps?.get(String(item.skuId)) ?? null;
+    const hit = (item.titles ?? [item.name]).filter(Boolean).some((t) => hasContentWord(t));
+    if (!hit) {
+      kept.push(item);
+      continue;
+    }
+    const archivedNow = m == null; // 本轮需要写库归档
+    const archivedAlready = m?.decision === 'ignored' && m?.match_method === 'content_word'; // 上轮已自动归档
+    if (!archivedNow && !archivedAlready) {
+      kept.push(item); // confirmed/pending/人工忽略 → 人工决定优先，交给继承逻辑，不计数
+      continue;
+    }
+    skus += 1;
+    const key = alignGroupKey(SONKWO, item.name);
+    if (key) groupKeys.add(key);
+    if (archivedNow) archived.push(item);
+    else kept.push(item); // 已归档：只计数、不重复写库
+  }
+  return { items: kept, archived, groups: groupKeys.size, skus };
+}
+
+/**
+ * DN 批：内容词归档落库——写 game_source_map（decision=ignored, method=content_word, reviewed_by=null），
+ * 与 DH 批「已忽略视图/恢复」共用同一张表：已忽略视图（loadIgnoredGroups）可查看（组级 method 标注），
+ * 恢复 = decision 改 pending（restoreIgnoredGroup），下一轮计算 pending 优先于内容词判定、重新入队。
+ * 幂等 upsert（只对无映射 SKU 调用，重复计算不重复改 reviewed_by/时间）；返回本轮写入条数。
+ */
+export async function writeContentWordArchives({ q, archived, logger }) {
+  let written = 0;
+  for (const item of archived ?? []) {
+    try {
+      await db.upsertSourceMap(q, {
+        platformCode: SONKWO,
+        productId: String(item.skuId),
+        gameId: null,
+        method: 'content_word',
+        confidence: null,
+        decision: 'ignored',
+        reviewedBy: null,
+      });
+      written += 1;
+    } catch (err) {
+      logger?.warn('align.content_word_archive_failed', { skuId: item.skuId, error: String(err?.message ?? err) });
+    }
+  }
+  return written;
 }
 
 /**
@@ -152,11 +216,13 @@ export function resolveSkuAppid(confirmedMap, item) {
 
 /**
  * DH 批（docs/ALIGN-INTEGRITY.md §2 B1/§3）：已忽略组列表——按去重组键聚合，
- * 返回 [{ key, name, skus, ignoredAt, ignoredBy }]（可选 qFilter 过滤组名/SKU）。
+ * 返回 [{ key, name, skus, ignoredAt, ignoredBy, method }]（可选 qFilter 过滤组名/SKU）。
+ * DN 批：method——组内全部映射行都是 content_word 归档时标 'content_word'（页面注「内容词自动归档」），
+ * 混合人工忽略/自动归档则 null（不误标）。
  */
 export async function loadIgnoredGroups({ q, entries, qFilter = '' }) {
   const rows = (await q(
-    `select m.product_id, m.reviewed_by, m.reviewed_at, u.username
+    `select m.product_id, m.reviewed_by, m.reviewed_at, m.match_method, u.username
        from game_source_map m
        left join users u on u.id = m.reviewed_by
       where m.platform_code = $1 and m.decision = 'ignored'
@@ -168,15 +234,23 @@ export async function loadIgnoredGroups({ q, entries, qFilter = '' }) {
   for (const row of rows) {
     const name = nameBySku.get(String(row.product_id)) ?? `SKU ${row.product_id}`;
     const key = alignGroupKey(SONKWO, name) ?? `sku:${row.product_id}`;
-    if (!groups.has(key)) groups.set(key, { key, name, skus: [], ignoredAt: null, ignoredBy: null });
+    if (!groups.has(key)) groups.set(key, { key, name, skus: [], ignoredAt: null, ignoredBy: null, methods: new Set() });
     const g = groups.get(key);
     g.skus.push(String(row.product_id));
+    if (row.match_method) g.methods.add(row.match_method);
     if (!g.ignoredAt || (row.reviewed_at != null && new Date(row.reviewed_at) > new Date(g.ignoredAt))) {
       g.ignoredAt = row.reviewed_at;
       g.ignoredBy = row.username ?? null;
     }
   }
-  let out = [...groups.values()];
+  let out = [...groups.values()].map((g) => ({
+    key: g.key,
+    name: g.name,
+    skus: g.skus,
+    ignoredAt: g.ignoredAt,
+    ignoredBy: g.ignoredBy,
+    method: g.methods.size === 1 && g.methods.has('content_word') ? 'content_word' : null,
+  }));
   const qq = String(qFilter ?? '').trim().toLowerCase();
   if (qq) {
     out = out.filter((g) => g.name.toLowerCase().includes(qq) || g.skus.some((s) => String(s).includes(qq)));
@@ -296,8 +370,10 @@ export async function proposeAlignGroupsBudgeted(items, steamGames, {
 /**
  * DE 批（docs/ALIGN-REVIEW-UI.md §2 统计卡/§3 统计口径）：
  * 待对齐组 / 涉及 SKU / 自动匹配（分数 ≥0.94）/ 需人工（0.86–0.94）/ 无候选 / 本次自动继承 / 已忽略组。
+ * DN 批：+ contentWords/contentWordSkus——内容词自动归档的组数/SKU 数（archiveContentWordItems 计数，
+ * 跨轮稳定；「已忽略」chip 旁注明「内容词自动归档」用）。
  */
-export function alignGroupCounts(groups, inherit = {}) {
+export function alignGroupCounts(groups, inherit = {}, contentWords = {}) {
   const counts = {
     groups: groups.length,
     skus: 0,
@@ -306,6 +382,8 @@ export function alignGroupCounts(groups, inherit = {}) {
     noCandidate: 0,
     inherited: inherit?.inheritApplied ?? 0,
     ignored: inherit?.ignoredGroups ?? 0,
+    contentWords: contentWords?.groups ?? 0,
+    contentWordSkus: contentWords?.skus ?? 0,
   };
   for (const g of groups ?? []) {
     counts.skus += g.skuIds?.length ?? 0;

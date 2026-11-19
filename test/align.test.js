@@ -87,6 +87,91 @@ test('DH 继承参考 skus.json appid：库无映射时不入队并列入补写�
   assert.equal(conflict.inheritApplied, 1, '已有 confirmed 映射时不再补写');
 });
 
+test('DN 内容词归档：季票/服装/DLC 不进待对齐；本体同键保留；去掉判定必然红（反向自检）', async () => {
+  // 口径（docs/TODO.md DN）：内容词类 SKU（含杉果自定义命名）视为无效数据默认归档；
+  // 验收②：本体 SKU 不受影响——「龙之剑:觉醒 - 服装」与本体同归一化键，只归档服装 SKU、本体仍入队
+  const items = [
+    { skuId: 1, name: '巴士模拟器 27 - 第1年季票', appid: null, titles: ['巴士模拟器 27 - 第1年季票'] },
+    { skuId: 2, name: '龙之剑:觉醒 - 服装', appid: null, titles: ['龙之剑:觉醒 - 服装'] },
+    { skuId: 3, name: '龙之剑:觉醒', appid: null, titles: ['龙之剑:觉醒'] },
+    { skuId: 4, name: '内核之心', appid: null, titles: ['内核之心'] },
+    { skuId: 5, name: '塔拉萨号', appid: null, titles: ['塔拉萨号', 'The Thalassa: Season Pass'] },
+  ];
+  const cw = align.archiveContentWordItems(items, new Map());
+  assert.deepEqual(cw.items.map((i) => i.skuId), [3, 4], '内容词 SKU 不进 items，本体/普通 SKU 保留');
+  assert.deepEqual(cw.archived.map((i) => i.skuId), [1, 2, 5], '无映射的内容词 SKU 全部列入归档（中文/英文名都查）');
+  assert.equal(cw.groups, 3, '归档按去重组计数（季票 / 服装 / 英文 Season Pass 各 1 组）');
+  assert.equal(cw.skus, 3, '归档 SKU 计数');
+  // 正向：过滤后提案里没有内容词组，本体组仍在且只剩本体 SKU
+  const filtered = await align.proposeAlignGroupsBudgeted(cw.items, STEAM);
+  assert.ok(!filtered.groups.some((g) => g.name === '巴士模拟器 27 - 第1年季票'), '季票组不进队列');
+  const base = filtered.groups.find((g) => g.name === '龙之剑:觉醒');
+  assert.ok(base, '本体组（与服装 SKU 同键）不受影响');
+  assert.deepEqual(base.skuIds, [3], '本体组只剩本体 SKU');
+  // 反向自检（验收④）：跳过内容词判定直接提案 → 内容词组重新出现——删掉判定这一步，本条必然红
+  const unfiltered = await align.proposeAlignGroupsBudgeted(items, STEAM);
+  assert.ok(unfiltered.groups.some((g) => g.name === '巴士模拟器 27 - 第1年季票'), '去掉内容词判定后季票组重新进队列（反向自检）');
+  // 人工决定优先：pending（恢复为待处理）不再重复归档、confirmed 也不归档
+  const overridden = align.archiveContentWordItems(items, new Map([
+    ['1', { decision: 'pending', game_id: null }],
+    ['2', { decision: 'confirmed', game_id: 111 }],
+  ]));
+  assert.ok(overridden.items.some((i) => i.skuId === 1), 'pending（已恢复）不重复归档，交给继承逻辑重新入队');
+  assert.ok(!overridden.archived.some((i) => i.skuId === 2), 'confirmed 不归档');
+  assert.deepEqual(overridden.archived.map((i) => i.skuId), [5], '恢复/确认后不计入归档，仅无映射内容词归档');
+  assert.equal(overridden.groups, 1, '归档计数随人工决定减少（只算仍自动归档的）');
+  // 既有内容词归档（ignored + method=content_word）只计数、不重复进待写列表
+  const reRun = align.archiveContentWordItems(items, new Map([
+    ['1', { decision: 'ignored', game_id: null, match_method: 'content_word' }],
+  ]));
+  assert.ok(reRun.archived.every((i) => i.skuId !== 1), '已归档的内容词 SKU 不重复写库');
+  assert.equal(reRun.groups, 3, '内容词计数跨轮稳定（已归档仍计入）');
+});
+
+test('DN 归档落库：写 ignored + method=content_word + 无操作人；失败只告警不中断', async () => {
+  const calls = [];
+  const q = async (sql, params) => { calls.push({ sql, params }); return { rowCount: 1 }; };
+  const written = await align.writeContentWordArchives({
+    q,
+    archived: [{ skuId: 11, name: '巴士模拟器 27 - 第1年季票' }, { skuId: 12, name: '龙之剑:觉醒 - 服装' }],
+  });
+  assert.equal(written, 2, '逐 SKU 写归档映射');
+  assert.equal(calls.length, 2);
+  assert.match(calls[0].sql, /insert into game_source_map/, '走 game_source_map 统一落库（DH 已忽略视图可查）');
+  assert.equal(calls[0].params[0], 'sonkwo');
+  assert.equal(calls[0].params[1], '11');
+  assert.equal(calls[0].params[3], 'content_word', 'method=content_word（已忽略视图据此标注）');
+  assert.equal(calls[0].params[5], 'ignored', 'decision=ignored（与人工忽略同视图、可恢复）');
+  assert.equal(calls[0].params[6], null, '自动归档无操作人');
+  // 单条失败不影响其余（防一个坏 SKU 拖垮整轮归档）
+  let n = 0;
+  const flaky = async () => { n += 1; if (n === 1) throw new Error('db down'); return { rowCount: 1 }; };
+  const warnings = [];
+  const r = await align.writeContentWordArchives({ q: flaky, archived: [{ skuId: 21 }, { skuId: 22 }], logger: { warn: (ev, d) => warnings.push([ev, d]) } });
+  assert.equal(r, 1, '失败一条仍写另一条');
+  assert.equal(warnings[0][0], 'align.content_word_archive_failed', '失败路径记告警');
+});
+
+test('DN 已忽略视图标注：整组 content_word 标「内容词自动归档」，混合人工忽略不误标', async () => {
+  const entries = [
+    { skuId: 31, name: '巴士模拟器 27 - 第1年季票' },
+    { skuId: 32, name: '愚者不灭' },
+  ];
+  const q = async () => ({
+    rows: [
+      { product_id: '31', reviewed_by: null, reviewed_at: '2026-11-19T10:00:00Z', username: null, match_method: 'content_word' },
+      { product_id: '32', reviewed_by: 1, reviewed_at: '2026-11-19T09:00:00Z', username: 'admin', match_method: 'manual' },
+    ],
+  });
+  const groups = await align.loadIgnoredGroups({ q, entries });
+  const cw = groups.find((g) => g.name === '巴士模拟器 27 - 第1年季票');
+  assert.equal(cw.method, 'content_word', '整组内容词归档 → 标注 content_word');
+  assert.equal(cw.ignoredBy, null, '自动归档无操作人（页面显示「系统」）');
+  const manual = groups.find((g) => g.name === '愚者不灭');
+  assert.equal(manual.method, null, '人工忽略不标 content_word');
+  assert.equal(manual.ignoredBy, 'admin');
+});
+
 test('A3 读路径解析：库映射优先、skus.json 只读回落、都无则 null', () => {
   // 库（game_source_map confirmed）为唯一真相；skus.json 自带 appid 只作旧数据回落
   const confirmed = new Map([['7001', 413150]]);
@@ -150,7 +235,7 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   // 接口：202 带 stale 旧结果分页；200 带 counts 5 项；批量确认/忽略；预览 keys
   assert.match(server, /cachedRows/, '202 返回上一轮缓存分页（stale 旧结果）');
   assert.match(server, /body\.stale = true/, '202 stale 标记');
-  assert.match(server, /alignGroupCounts\(groups, inherit\)/, '完成响应带 counts 5 项统计');
+  assert.match(server, /alignGroupCounts\(groups, inherit, result\.contentWords\)/, '完成响应带 counts 统计（含内容词计数透传）');
   assert.match(server, /match\.batch_confirmed/, '批量确认审计');
   assert.match(server, /match\.batch_ignored/, '批量忽略审计');
   assert.match(server, /align\/preview\?keys=|keysParam/, '批量合并预览（批量确认弹窗用）');
@@ -193,6 +278,14 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   assert.match(alignAdmin, /确认恢复/, '恢复二次确认按钮（§5.2）');
   assert.match(alignAdmin, /确认后将合并到目标游戏/, '确认弹窗孤儿行合并提示（D1）');
   assert.match(alignAdmin, /最近处理/, '队列「最近处理」列（C1）');
+
+  // ── DN 批（docs/TODO.md DN）：内容词 SKU 默认归档（不进队列/已忽略可查看恢复/反向自检）──
+  assert.match(server, /align\.archiveContentWordItems/, 'computeAlignGroups 内容词判定接线（DN）');
+  assert.match(server, /align\.writeContentWordArchives/, '内容词归档写 game_source_map（DN）');
+  assert.match(server, /align\.content_word_skipped/, '内容词归档日志（含计数）（DN）');
+  assert.match(server, /stale\.contentWords/, '202 旧结果 counts 同样带内容词计数（DN）');
+  assert.match(alignAdmin, /内容词自动归档/, '「已忽略」chip 旁注明内容词自动归档（DN）');
+  assert.match(alignAdmin, /row\.method === 'content_word'/, '已忽略视图标注内容词归档组（DN）');
 
   // ── A3 批（docs/DESIGN-AUDIT.md A3）：库为唯一真相、skus.json 只读兼容 ──
   assert.doesNotMatch(server, /writeFileSync\(alignSkuFile\(\)/, 'server 确认流程不再写 skus.json');

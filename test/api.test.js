@@ -5,6 +5,7 @@ import { openStore } from '../src/store/index.js';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { writeFileSync, readFileSync } from 'node:fs';
+import { alignGroupKey } from '../src/match.js';
 import * as db from '../src/store/pg.js';
 import { startApiServer } from '../src/server.js';
 import { ingestOffers } from '../src/ingest.js';
@@ -1388,6 +1389,85 @@ test('DH 对齐数据完整性：skus.json 带 appid 自动补写不入队；已
     // 已忽略视图在恢复后不再包含该组
     const ignoredAfter = await (await fetch(`${base}/api/admin/align/ignored`, { headers: { cookie } })).json();
     assert.ok(!ignoredAfter.groups.some((g) => g.key === fool.key), '恢复后不再出现在已忽略视图');
+  } finally {
+    delete process.env.ALIGN_SKU_FILE;
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('DN 内容词 SKU 默认归档：不进队列不占计数；本体同键保留；已忽略可查看/恢复；恢复后重算不重复归档', async () => {
+  const { store, q, srv, base } = await setup();
+  const tmpFile = join(tmpdir(), `align-dn-${Date.now()}.json`);
+  try {
+    // 7001 季票、7002 服装（与本体同归一化键）、7003 本体、7004 普通 SKU
+    writeFileSync(tmpFile, JSON.stringify([
+      { skuId: 7001, appid: null, name: '巴士模拟器 27 - 第1年季票' },
+      { skuId: 7002, appid: null, name: '龙之剑:觉醒 - 服装' },
+      { skuId: 7003, appid: null, name: '龙之剑:觉醒' },
+      { skuId: 7004, appid: null, name: '内核之心' },
+    ], null, 2));
+    process.env.ALIGN_SKU_FILE = tmpFile;
+    const cookie = (await login(base, 'admin', 'admin123456')).cookie;
+    await q("insert into games (steam_appid, name) values (413150, '断箭') on conflict do nothing");
+    const getQueue = async ({ refresh = false } = {}) => {
+      for (let i = 0; i < 40; i += 1) {
+        // refresh 只在第一轮触发重算，后续轮询不带（refresh=1 永远绕缓存，与前端口径一致）
+        const res = await fetch(`${base}/api/admin/align?page=1&pageSize=50${refresh && i === 0 ? '&refresh=1' : ''}`, { headers: { cookie } });
+        const body = await res.json();
+        if (res.status === 200) return body;
+        assert.equal(res.status, 202, '冷缓存应返回 202 generating');
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      throw new Error('对齐审核后台生成超时（40 轮未就绪）');
+    };
+
+    // 验收①：内容词 SKU 不进队列、不占「待对齐组」计数；验收②：本体（同键）与普通 SKU 不受影响
+    const first = await getQueue();
+    assert.ok(!first.groups.some((g) => g.name.includes('季票')), '季票组不进待对齐队列');
+    assert.ok(!first.groups.some((g) => g.name.includes('服装')), '服装组不进待对齐队列');
+    const baseGame = first.groups.find((g) => g.name === '龙之剑:觉醒');
+    assert.ok(baseGame, '本体组（与服装 SKU 同键）仍在队列');
+    assert.deepEqual(baseGame.skuIds, [7003], '本体组只剩本体 SKU');
+    assert.ok(first.groups.some((g) => g.name === '内核之心'), '普通 SKU 正常入队');
+    assert.equal(first.counts.groups, 2, '待对齐组只算本体 + 普通 SKU（内容词不占计数）');
+    assert.equal(first.counts.contentWords, 2, '内容词自动归档 2 组（季票、服装）');
+    assert.equal(first.counts.contentWordSkus, 2, '内容词自动归档 2 个 SKU');
+
+    // 归档落库：ignored + method=content_word + 无操作人（已忽略视图可查看/恢复的前提）
+    const row = (await q("select decision, match_method, reviewed_by from game_source_map where platform_code = 'sonkwo' and product_id = '7001'")).rows[0];
+    assert.ok(row, '内容词 SKU 自动写归档映射');
+    assert.equal(row.decision, 'ignored', '归档为 ignored（与人工忽略同视图）');
+    assert.equal(row.match_method, 'content_word', '归档方式 content_word');
+    assert.equal(row.reviewed_by, null, '自动归档无操作人');
+
+    // 计数跨轮稳定：强制重算后仍计 2 组（已归档不再重复写库、也不重复排队）
+    const second = await getQueue({ refresh: true });
+    assert.equal(second.counts.contentWords, 2, '重算后内容词归档计数稳定');
+    assert.ok(!second.groups.some((g) => g.name.includes('季票')), '重算后季票组仍不进队列');
+
+    // 验收③：已忽略视图可查看（标注「内容词自动归档」）
+    const seasonKey = alignGroupKey('sonkwo', '巴士模拟器 27 - 第1年季票');
+    const ignoredBody = await (await fetch(`${base}/api/admin/align/ignored`, { headers: { cookie } })).json();
+    const cwRow = ignoredBody.groups.find((g) => g.key === seasonKey);
+    assert.ok(cwRow, '已忽略视图包含内容词归档组');
+    assert.deepEqual(cwRow.skus, ['7001'], '归档组带 SKU 明细');
+    assert.equal(cwRow.method, 'content_word', '已忽略视图标注「内容词自动归档」');
+    assert.equal(cwRow.ignoredBy, null, '自动归档组操作人为空（页面显示「系统」）');
+
+    // 恢复（DH 能力）：pending 人工决定优先 → 重新入队；再重算仍不重复归档
+    const restore = await fetch(`${base}/api/admin/align/restore`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ key: seasonKey }),
+    });
+    assert.equal(restore.status, 200, JSON.stringify(await restore.json()));
+    const after = await getQueue();
+    assert.ok(after.groups.some((g) => g.name.includes('季票')), '恢复后内容词组重新回到待对齐队列');
+    assert.equal(after.counts.contentWords, 1, '恢复后该组不再计入自动归档（只剩服装组）');
+    const refreshed = await getQueue({ refresh: true });
+    assert.ok(refreshed.groups.some((g) => g.name.includes('季票')), '重算后恢复的组仍留在队列（pending 优先、不重复归档）');
+    assert.equal(refreshed.counts.contentWords, 1, '重算后自动归档计数不再包含已恢复组');
   } finally {
     delete process.env.ALIGN_SKU_FILE;
     await srv.close();

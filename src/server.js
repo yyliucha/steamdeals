@@ -719,7 +719,16 @@ export function createApiServer({
     const items = align.loadSonkwoItems(entries, orphanRows);
     const allSkuIds = items.map((i) => String(i.skuId));
     const maps = await db.sourceMapsByProducts(q, 'sonkwo', allSkuIds);
-    const inherit = align.applyMapInheritance(items, maps);
+    // DN 批（docs/TODO.md DN）：内容词 SKU 默认归档——名称命中内容词（复用 match.js hasContentWord，
+    // 季票/服装/DLC 等，含杉果自定义命名）且库无映射 → 不进待对齐队列（自动归档，不计入「待对齐组」）；
+    // 归档写 game_source_map（ignored, method=content_word）供「已忽略」视图查看/恢复（DH 能力）；
+    // confirmed/pending/ignored 的人工决定优先（恢复为 pending 后重新入队、不重复归档）。
+    const contentWords = align.archiveContentWordItems(items, maps);
+    const archivedWritten = await align.writeContentWordArchives({ q, archived: contentWords.archived, logger });
+    if (contentWords.groups) {
+      logger?.info('align.content_word_skipped', { groups: contentWords.groups, skus: contentWords.skus, archived: archivedWritten });
+    }
+    const inherit = align.applyMapInheritance(contentWords.items, maps);
     // DH 批（docs/ALIGN-INTEGRITY.md §2 A1/§5.1）：skus.json 已带 appid、库无映射 →
     // 计算时自动补写 game_source_map（confirmed，method=skus_backfill）+ 日志 align.map_backfilled。
     const backfilled = await align.writeBackfilledMaps({ q, backfill: inherit.backfill, steamGames: games, logger });
@@ -754,8 +763,8 @@ export function createApiServer({
         g.lastReviewed = { by: traces[0].username ?? null, at: traces[0].reviewed_at, action: '恢复' };
       }
     }
-    logger?.info('align.computed', { groups: groups.length, partial, backfilled, ms: Date.now() - wallStartedAt });
-    return { align, entries, games, groups, inherit, partial, generatedAt: Date.now() };
+    logger?.info('align.computed', { groups: groups.length, partial, backfilled, contentWordGroups: contentWords.groups, ms: Date.now() - wallStartedAt });
+    return { align, entries, games, groups, inherit, contentWords, partial, generatedAt: Date.now() };
   };
   const alignRunner = createAlignRunner({ compute: computeAlignGroups, ttlMs: ALIGN_CACHE_TTL_MS });
   const buildAlignGroups = ({ refresh = false } = {}) => alignRunner.run({ refresh });
@@ -5040,7 +5049,7 @@ export function createApiServer({
             body.stale = true;
             body.cachedRows = rows.slice((page - 1) * pageSize, page * pageSize);
             body.cachedTotal = rows.length;
-            body.cachedCounts = stale.align.alignGroupCounts(stale.groups, stale.inherit);
+            body.cachedCounts = stale.align.alignGroupCounts(stale.groups, stale.inherit, stale.contentWords);
             body.cachedGeneratedAt = stale.generatedAt ?? null;
           } else {
             body.stale = false;
@@ -5050,7 +5059,7 @@ export function createApiServer({
         const result = await buildAlignGroups({ refresh });
         const { groups, inherit } = result;
         const rows = mapAlignRows(groups);
-        const counts = result.align.alignGroupCounts(groups, inherit);
+        const counts = result.align.alignGroupCounts(groups, inherit, result.contentWords);
         return json(res, 200, {
           groups: rows.slice((page - 1) * pageSize, page * pageSize),
           total: rows.length,
