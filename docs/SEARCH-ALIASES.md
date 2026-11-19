@@ -1,6 +1,6 @@
-# 搜索全自动派生（DS，质检通过；零人工方案）
+# 搜索全自动派生（DS，已实现并发布 v2.27.0；零人工方案）
 
-> 状态：**质检通过（2026-11-19 实现 d607e27；QA docs/QA-DS.md 第 1 轮 ✅ 5/0/0/3；全自动、完全摆脱人工）**。
+> 状态：**已实现并发布 v2.27.0（2026-11-19 实现 d607e27；QA docs/QA-DS.md 第 1 轮 ✅ 5/0/0/3；全自动、完全摆脱人工）**。
 > 关联：[SEARCH-I18N.md](SEARCH-I18N.md)（AD 中英文搜索）、`src/store/pg.js` `gameKeywordSql`。
 > 业界先例：Prysm（pg_trgm + unaccent 模糊，自动处理缩写/拼错/地区名）、电商拼音字段（全拼+首字母自动派生）、
 > Elasticsearch pinyin 分词器、阿里云 OpenSearch 拼音简拼——本方案与其一致，**不建人工别名库**。

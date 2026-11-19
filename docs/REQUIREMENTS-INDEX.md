@@ -117,13 +117,13 @@
 | **C1** | heat 逐 appid 全 `success:false` | 无独立规格（[TODO.md](TODO.md) C 段定案） | 已发布 v2.2.0（2026-11-09，b01aaf8 修复） | ✅ 已在对话给出 |
 | **DJ** | 发版测试报告独立会话 + e2e 整轮总预算 | [E2E-SUITE.md](E2E-SUITE.md) | 已发布 v2.24.5（2026-11-18，c87dfe0；QA docs/QA-DJ.md 第 1 轮 ✅） | ✅ 本轮已给 |
 | **DK** | App 检查更新失败：apkPath 缺 GitHub 直链兜底 + App 提示区分 | 本条目 + [APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md) | 已发布 v2.25.0（2026-11-19，站点 d65542f + App 仓库 8fb6328；QA docs/QA-DK.md 第 1 轮 ✅） | ✅ 本轮已给 |
-| **DL** | 对齐审核快照落库（后台生成 + 数据签名动态失效 + 操作即时更新快照 + 前台只读） | [ALIGN-SNAPSHOT.md](ALIGN-SNAPSHOT.md) | 质检通过（2026-11-19，QA docs/QA-DL.md 第 1 轮 ✅；实现 1e49eeb） | ✅ 本轮已给 |
+| **DL** | 对齐审核快照落库（后台生成 + 数据签名动态失效 + 操作即时更新快照 + 前台只读） | [ALIGN-SNAPSHOT.md](ALIGN-SNAPSHOT.md) | 已发布 v2.27.0（2026-11-19，实现 1e49eeb；QA docs/QA-DL.md 第 1 轮 ✅ 9/0/0/0） | ✅ 本轮已给 |
 | **DM** | 对齐审核批量操作超时：短期补丁 | 并入 [ALIGN-SNAPSHOT.md](ALIGN-SNAPSHOT.md) | 已过时（2026-11-19 所有者要求彻底解决，并入 DL） | — |
-| **DP** | e2e 浏览器从 Edge 换成 Chrome（headless Chrome + Edge 回退） | 本交接 + [E2E-SUITE.md](E2E-SUITE.md) + [TESTING-E2E.md](TESTING-E2E.md) | 质检通过（2026-11-19 QA docs/QA-DP.md 第 1 轮 ✅ 4/0/0/0；实现 24780ef） | ✅ 本轮已给 |
-| **DQ** | 个人资料页打磨：头像与 Steam 账号解耦（default_steam_id）+ 布局调整 | [PROFILE-UI-2026-11-19.md](PROFILE-UI-2026-11-19.md) | 质检通过（2026-11-19 QA docs/QA-DQ.md 第 1 轮 ✅ 9/0/0/3；站点 e62fb4e + App 795c791） | ✅ 本交接已给 |
-| **DN** | 对齐审核内容词 SKU 默认归档（季票/服装/DLC 等无效数据不进待审队列） | 本条目 + [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) | 质检通过（2026-11-19，QA docs/QA-DN.md ✅；实现 0c5fde4） | ✅ 本轮已给 |
-| **DR** | App 发版后即刻可更新（后台立即同步 + App 检查节流 1h + 同步间隔 15 分钟可配） | [APP-INSTANT-UPDATE.md](APP-INSTANT-UPDATE.md) | 质检通过（2026-11-19 QA docs/QA-DR.md 第 1 轮 ✅ 8/0/0/2；站点 39aaebb + App 仓库 98dabca） | ✅ 本轮已给 |
-| **DS** | 搜索全自动派生（缩写/罗马数字/拼音 token + 分级排序 + 模糊兜底，零人工） | [SEARCH-ALIASES.md](SEARCH-ALIASES.md) | 质检通过（2026-11-19 QA docs/QA-DS.md 第 1 轮 ✅ 5/0/0/3；实现 d607e27；需求会话写入被占用，开发会话按交接补建） | ✅ 本交接已给 |
+| **DP** | e2e 浏览器从 Edge 换成 Chrome（headless Chrome + Edge 回退） | 本交接 + [E2E-SUITE.md](E2E-SUITE.md) + [TESTING-E2E.md](TESTING-E2E.md) | 已发布 v2.27.0（2026-11-19，实现 24780ef；QA docs/QA-DP.md 第 1 轮 ✅ 4/0/0/0） | ✅ 本轮已给 |
+| **DQ** | 个人资料页打磨：头像与 Steam 账号解耦（default_steam_id）+ 布局调整 | [PROFILE-UI-2026-11-19.md](PROFILE-UI-2026-11-19.md) | 已发布 v2.27.0（2026-11-19，站点 e62fb4e/a1af397 + App 795c791；QA docs/QA-DQ.md 第 1 轮 ✅ 9/0/0/3；App 侧 app-v2.22.0 随本批） | ✅ 本交接已给 |
+| **DN** | 对齐审核内容词 SKU 默认归档（季票/服装/DLC 等无效数据不进待审队列） | 本条目 + [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) | 已发布 v2.27.0（2026-11-19，实现 0c5fde4；QA docs/QA-DN.md 第 1 轮 ✅ 10/0/0/1） | ✅ 本轮已给 |
+| **DR** | App 发版后即刻可更新（后台立即同步 + App 检查节流 1h + 同步间隔 15 分钟可配） | [APP-INSTANT-UPDATE.md](APP-INSTANT-UPDATE.md) | 已发布 v2.27.0（2026-11-19，站点 39aaebb + App 仓库 98dabca；QA docs/QA-DR.md 第 1 轮 ✅ 8/0/0/2；App 侧 app-v2.22.0 随本批） | ✅ 本轮已给 |
+| **DS** | 搜索全自动派生（缩写/罗马数字/拼音 token + 分级排序 + 模糊兜底，零人工） | [SEARCH-ALIASES.md](SEARCH-ALIASES.md) | 已发布 v2.27.0（2026-11-19，实现 d607e27；QA docs/QA-DS.md 第 1 轮 ✅ 5/0/0/3） | ✅ 本交接已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
 

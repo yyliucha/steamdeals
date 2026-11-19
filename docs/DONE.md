@@ -2435,3 +2435,132 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **验收**：见规格 §4——达标/未达标/强制/mark 去重/频控 429/无通道禁用/审计落库/`npm test`+`frontend:build`+`scan` 全绿。
 - **已确认（2026-11-18）**：① **只有管理员能推**，用户级提醒**不可推**（只站点级）；② mark **默认勾选**；
   ③ **支持一键推送/批量**，批量**只发一封邮件**（正文列出所有勾选游戏）；④ 频控 **5 分钟**。
+
+
+## DP. ~~质检通过：e2e 浏览器从 Edge 换成 Chrome（headless Chrome + Edge 回退）~~ → **已发布 v2.27.0（2026-11-19，实现 24780ef）**
+
+**状态：已发布 v2.27.0（2026-11-19，实现 24780ef；QA docs/QA-DP.md 第 1 轮 ✅ 4/0/0/0）**
+**依赖：** 无（CK e2e 套件已发布 v2.24.0）
+**解锁：** 无
+**规格**：本交接 + [E2E-SUITE.md](E2E-SUITE.md) + [TESTING-E2E.md](TESTING-E2E.md)
+
+- **背景（2026-11-19）**：本机 Chrome 157 headless 实测正常（dump-dom 成功、stderr 0）；受限沙箱下
+  Edge mojo 命名管道被拒；所有者指定 e2e 用 Chrome。
+- **范围**：① `test/e2e/lib/browser.mjs`：findEdge → findChrome（探测顺序：Program Files Chrome →
+  Program Files (x86) Chrome → PATH chrome → 最后回退 Edge 并提示）；launchEdge → launchChrome
+  （CDP 逻辑不变，日志文案改）；② `test/e2e/runner.mjs`：预检文案/路径（Chrome 优先）、
+  「headless Chrome 已就绪」；③ `test/e2e/lib/report.mjs`：print-to-pdf 用 Chrome；
+  ④ `docs/E2E-SUITE.md`、`docs/TESTING-E2E.md`：Edge → Chrome（保留回退 Edge 兼容说明）。
+  不做：e2e 矩阵行、其它 e2e 逻辑、App/模拟器部分、技能文件（87d0f11 已改好）。
+- **验收**：① `npm run e2e:smoke` 用 Chrome 跑通（报告显示浏览器为 Chrome）——实测 7/8（admin-login
+  行失败为 CX 批 UserAvatar 既有 avatar 404，2026-11-18 Edge 时代报告同样失败，非本批引入）；
+  ② Chrome 缺失时回退 Edge 或明确报错（注入路径验证 4 分支）；③ 代码无「Edge 优先」残留逻辑；
+  ④ `npm test`（分段）+ `scan` 全绿（test:4 期间 DR 在途 92≠91 已由 DR 批提交消解，QA 复跑全绿）。
+
+
+## DQ. ~~质检通过：个人资料页打磨——头像与 Steam 账号解耦 + 布局调整~~ → **已发布 v2.27.0（2026-11-19，站点 e62fb4e/a1af397 + App 795c791）**
+
+**状态：已发布 v2.27.0（2026-11-19，站点 e62fb4e/a1af397 + App 795c791；QA docs/QA-DQ.md 第 1 轮 ✅ 9/0/0/3）**
+**依赖：** 无（CX 已发布 v2.25.0）
+**解锁：** 无
+**规格**：[PROFILE-UI-2026-11-19.md](PROFILE-UI-2026-11-19.md)（决策 5 项 + 数据/前端/验收齐全）；demo [design/profile-layout-2026-11-19.html](design/profile-layout-2026-11-19.html) + 同名 .png
+**涉及 App 仓库**：是（app-v2.22.0 随本批；App 仓库提交 795c791）
+
+- **范围**：① `users.default_steam_id` 列 + 迁移（回填自 `avatar_source`，`steam:%` 头像清空）；
+  ② 头像解耦：`setDefaultSteamAccount` 只写 `default_steam_id`、解绑只清该列、删除绑定自动设头像逻辑（`setDefaultSteamAccountIfUnset`）、
+  `isDefault` 改读 `default_steam_id`；③ 头像规则：只有 custom 走 `/api/avatar`，否则首字母/首字+品牌色（Web+App 统一）；
+  ④ Web ProfilePage/UserAvatar + App ProfileEditScreen/MeScreen 按 demo 调整（两行按钮、统计三项、开关文案）。
+  不做：改 CX 其它已发布功能、新增头像来源、后端契约以外的新接口。
+- **验收**：规格 §6 的 8 行 demo 状态↔断言（尤其：设为默认只改 `default_steam_id` 头像不变；
+  无「从 Steam 选头像」入口；两行按钮窄屏不竖排；统计去重）；`npm test`（分段）+ api.test +
+  `frontend:build` + `scan` 全绿；App 模拟器对照 demo 截图。
+- **实现**：站点 e62fb4e（迁移+解耦+头像规则+Web 页面+test/profile.test.js 8 项进主链）；
+  App 795c791（ProfileEditScreen/MeScreen/ProfileRequests/Dtos/JVM 单测）。
+
+
+## DN. ~~质检通过：对齐审核内容词 SKU 默认归档（无效数据处理，不进待审队列）~~ → **已发布 v2.27.0（2026-11-19，实现 0c5fde4）**
+
+**状态：已发布 v2.27.0（2026-11-19，实现 0c5fde4；QA docs/QA-DN.md 第 1 轮 ✅ 通过 10/缺失 0/偏差 0/需人工确认 1）**
+**优先级：** P2 —— 审核效率（队列被内容词 SKU 反复占用人工）
+**依赖：** 无（复用 CE 批内容词判定 + DH 已忽略/恢复能力）
+**解锁：** 无
+**规格**：本条目 + [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md)（CE 批内容词口径）+ [ALIGN-INTEGRITY.md](ALIGN-INTEGRITY.md)（已忽略视图/恢复）
+
+- **痛点（2026-11-19 线上）**：待对齐队列剩余全是内容词 SKU——巴士模拟器 27 第1年季票、龙之剑:觉醒 服装 ×3；
+  它们 Steam 上有对应 DLC（appid 4488260 / 5245420 等），但**不是本体、不该与本体重合**，现在要人工逐个「忽略」。
+- **已确认口径（2026-11-19）**：内容词类 SKU（名称命中 服装/皮肤/季票/通行证/套装/DLC 等；含杉果自定义命名的同类商品）
+  视为**无效数据**——默认**不进入待对齐队列**（自动归档，不计入「待对齐组」），不需要人工审核；
+  误判可通过「已忽略」视图恢复（DH 能力）。
+- **实现**：`computeAlignGroups` 对每组做内容词判定（复用 `match.js` 现有内容词/版本词校验与 EDITION_WORDS），
+  命中 → 不进 `items`（计入 `ignoredGroups` 或新增 `contentWords` 计数），日志 `align.content_word_skipped`（含计数）；
+  对齐审核页「已忽略」chip 计数包含内容词归档，chip 旁注明「内容词自动归档」；可选单列「内容词 N」chip。
+- **验收**：① 内容词 SKU（季票/服装/DLC）不出现在待对齐队列、不占「待对齐组」计数；② 本体 SKU 不受影响；
+  ③ 「已忽略」可查看/恢复内容词归档组；④ 反向自检：去掉内容词判定后这些组重新进队列 → 测试必须红；
+  ⑤ `npm test`（分段）+ `npm run frontend:build` + `npm run scan` 全绿。
+- **实现**：0c5fde4（`archiveContentWordItems` 判定 + `writeContentWordArchives` 归档落库（ignored + `method=content_word`）、
+  `loadIgnoredGroups` 组级标注、`alignGroupCounts` 增 `contentWords/contentWordSkus`、`computeAlignGroups` 接线 +
+  日志 `align.content_word_skipped`、AlignAdmin「已忽略」chip 注明 + 已忽略视图标注；单元/契约/运行时测试 + 反向自检）。
+
+
+## DR. ~~质检通过：App 发版后即刻可更新（后台立即同步 + App 检查节流 1h + 同步间隔 15 分钟可配）~~ → **已发布 v2.27.0（2026-11-19，站点 39aaebb + App 仓库 98dabca）**
+
+**状态：已发布 v2.27.0（2026-11-19，站点 39aaebb + App 仓库 98dabca；QA docs/QA-DR.md 第 1 轮 ✅ 8/0/0/2）**
+**优先级：** P1 —— App 发版后手机要立刻能检测到更新
+**依赖：** CJ（app-release-sync / latest.json 契约）、DK（失败原因与 apkPath 兜底）——均已发布
+**解锁：** 无
+**规格**：[APP-INSTANT-UPDATE.md](APP-INSTANT-UPDATE.md)
+**涉及 App 仓库**：是（app-v2.22.0 随本批）
+
+- **痛点（2026-11-19 线上 v2.25.0）**：App 发版后三层延迟——手机启动/回前台 24h 内不重复检查
+  （UpdateManager THROTTLE_MS 24h，最大瓶颈）、站点每小时才同步一次 GitHub Release、后台没有
+  「立即同步」入口——「安卓构建完成 → 手机立刻能更新」做不到。
+- **方案（规格 §3 三处小改）**：
+  ① 站点：`POST /api/admin/app-sync`（requireAdmin + single-flight + 审计 + 日志 app.sync_manual）
+  + 运行与同步页「App 版本卡」（当前版本/上次同步时间/失败原因/「立即同步」按钮）；
+  `APP_RELEASE_SYNC_INTERVAL_MIN` 默认 60→15 + settings 项 `app.syncIntervalMin`（页面可改，热加载）；
+  ② App：`THROTTLE_MS` 24h→1h（启动/回前台；手动检查不节流、不写时间不变）；
+  ③ 技能：steamdeals-app-build §3 / steamdeals-build §3.8 加「发版后提示去后台点立即同步」。
+  不做：GitHub webhook（后置）、下载/安装流程、app-release-sync 的 DK 逻辑（已发布）。
+- **验收**：见规格 §4 的 5 条——含管理员 200 / 非管理员 401-403 / 并发 single-flight 只跑一次 /
+  失败明确 reason；卡片与 /api/app/latest 一致；app.syncIntervalMin 默认 15 热加载；App 1h 内会检查；
+  端到端「发版→点同步→App 更新提示」（截图留档，发版会话执行）。
+
+
+## DS. ~~质检通过：搜索全自动派生（gta6/拼音/拼错都能搜，零人工）~~ → **已发布 v2.27.0（2026-11-19，实现 d607e27）**
+
+**状态：已发布 v2.27.0（2026-11-19，实现 d607e27；QA docs/QA-DS.md 第 1 轮 ✅ 通过 5/缺失 0/偏差 0/需人工确认 3）**
+**依赖：** 无（复用 AD 批 gameKeywordSql 三源 + AU 批 pg_trgm 索引）
+**解锁：** 无
+**规格**：[SEARCH-ALIASES.md](SEARCH-ALIASES.md)
+
+- **痛点（2026-11-19）**：搜 gta6 / xdlc6 / portal ii 等民间简写找不到游戏——搜索只有 name/name_en/平台别名
+  三源 LIKE，没有缩写/罗马数字/拼音派生；谐音梗（给她爱6）按规格 §7 覆盖边界如实告知不覆盖。
+- **方案（零人工，规格 §0 决策 4 项）**：① `games.search_tokens text[]`（纯派生数据）+ GIN 索引，全部算法生成、
+  可随时全量重建，不做 manual_aliases、不做后台别名入口；② `src/search-derive.js` 纯函数（归一化/去重音/
+  字母数字汉字 token 拆/缩写跳虚词/罗马数字 I–XII↔阿拉伯 1–12 双向/拼音全拼+首字母+数字组合，上限 40 条，
+  存储与查询用同一函数）；③ 写入路径（upsertGameMeta/ensureGame）顺带生成 + 定时任务 search-tokens-rebuild
+  （每 6 小时增量 ≤5 万行）+ CLI `search-tokens --full`；④ gameKeywordSql 加 token 源（数组重叠 + 子串兼容），
+  gameSearch 候选加 token 臂、分级排序（原名/中文名 0 > token/平台别名 1 > 模糊 2）、零命中 pg_trgm 模糊兜底
+  （name 臂 0.4 可调 / token 臂 0.6）、`search.miss` 零命中日志（只记日志不建人工映射）。
+- **验收**：规格 §6 的 8 条——含 gta6/GTA VI/gta 6 命中 GTA VI 且原名命中排最前、xdlc6/全拼命中侠盗猎车手6、
+  gtaa6 模糊兜底（生产 trgm 验证）、派生任务增量/全量、零人工 grep 断言、反向自检清空 tokens 必红、
+  P95 ≤300ms（生产复测）。
+
+
+## DL. ~~质检通过：对齐审核快照落库（后台生成 + 签名动态失效）~~ → **已发布 v2.27.0（2026-11-19，实现 1e49eeb）**
+
+**状态：已发布 v2.27.0（2026-11-19，实现 1e49eeb；QA docs/QA-DL.md 第 1 轮 ✅ 9/0/0/0）**
+**依赖：** 无（CN/CS/DE 批已发布）
+**解锁：** 无
+**规格**：[ALIGN-SNAPSHOT.md](ALIGN-SNAPSHOT.md)
+
+- **痛点（2026-11-19 线上 v2.25.0）**：对齐审核缓存是内存 TTL 10 分钟 + 硬编码（`server.js:674`），
+  服务重启后首次进入必然「生成中 0/0」，前台要等；同一份结果重启即丢。
+- **方案**：① 新表 `align_snapshots`（payload/counts/signature/generated_at/error，保留最近 5 条）；
+  ② 数据签名（skus.json size+mtime、games count+max(updated_at)、game_source_map count+max(reviewed_at)）——
+  签名不变直接用库快照，变化才后台重算；24h 强制重算兜底；③ 新调度任务 `align-snapshot`
+  （默认每 30 分钟、首轮延迟 30 秒）；④ `GET /api/admin/align` 只读快照；无快照首次 202；
+  `?refresh=1` 后台重算不阻塞；**⑤ 确认/忽略成功后同事务更新快照**（从 payload 移除已处理组、counts 递减、
+  `dirty=true`）——读请求立即拿到新队列，**彻底消除「确认后旧列表还要再审」**；废弃 `invalidate()`/`staleCache`
+  内存语义；⑥ 前端操作成功后本地乐观移除该组 + counts 更新，再读快照；「生成中」进度只在首次生成出现。
+- **验收**：见规格 §8 的 9 条——含「确认 3 组后立即刷新页面 → 这 3 组立刻消失、counts 递减、无生成中」。

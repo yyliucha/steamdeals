@@ -1,5 +1,23 @@
 # 变更日志
 
+## [2.27.0] - 2026-11-19
+
+DP + DQ + DN + DR + DS + DL 合并发版：e2e 浏览器 Edge → Chrome、个人资料页打磨（头像与 Steam 账号解耦，Web + App）、对齐审核内容词 SKU 默认归档、App 发版后即刻可更新（后台立即同步）、搜索全自动派生（缩写/罗马数字/拼音，零人工）、对齐审核快照落库（含新功能面 → 大版本，2.26.0 → 2.27.0）。App 仓库同步发布 app-v2.22.0（22200）。
+
+### 新增
+
+- **e2e 浏览器 Edge → Chrome（DP）**：`test/e2e` 默认浏览器探测顺序 Program Files Chrome → Program Files (x86) Chrome → PATH chrome → 最后回退 Edge 并提示；launchChrome/CDP 逻辑不变、日志文案改；预检/报告「Node / 浏览器」显示实际浏览器；PDF 打印（CDP 优先 + 独立进程兜底）走 Chrome；e2e:smoke Chrome 实测 7/8（admin-login 行失败为 CX 批 UserAvatar 既有 avatar 404，非本批引入）。
+- **个人资料页打磨（DQ，Web + App）**：`users.default_steam_id` 列 + 迁移（回填自 `avatar_source`、清空 `steam:%` 来源）——设为默认/解绑只改 `default_steam_id`、头像不变；头像规则统一：只有 custom 走 `/api/avatar`，否则昵称首字母/首字 + 品牌色（Web/App 同一 `avatarInitial` 口径）；资料页去「从 Steam 选头像」入口、账号卡两行等宽按钮（窄屏不竖排）、统计三项卡片（合计入标题行）、开关副说明「降价时发邮件提醒」；App ProfileEditScreen/MeScreen 同套布局。
+- **对齐审核内容词 SKU 默认归档（DN）**：季票/服装/DLC 等内容词 SKU（含杉果自定义命名）自动归档为 ignored（`method=content_word`）——不进待对齐队列、不占「待对齐组」计数；本体 SKU 不受影响；「已忽略」chip 计数含内容词归档并注明「内容词自动归档」、已忽略视图标注并可恢复（误判经恢复回队）。
+- **App 发版后即刻可更新（DR，站点 + App）**：`POST /api/admin/app-sync`（requireAdmin + single-flight + 审计 `admin.app_sync` + 日志 `app.sync_manual`）+ 运行与同步页「App 版本卡」（当前版本/上次同步时间/失败原因/「立即同步」按钮，8 秒轮询）；`APP_RELEASE_SYNC_INTERVAL_MIN` 默认 60→15 + settings 项 `app.syncIntervalMin`（页面可改、保存热加载）；App `THROTTLE_MS` 24h→1h（启动/回前台；手动检查不节流不写时间）——安卓构建完成后点「立即同步」数十秒内手机即可见更新提示，不点则 15 分钟自动同步兜底。
+- **搜索全自动派生（DS）**：`games.search_tokens text[]` + GIN 索引（纯派生数据、全部算法生成、可全量重建，零人工）：归一化/去重音/字母数字汉字 token 拆/缩写跳虚词/罗马数字 I–XII↔阿拉伯 1–12 双向/拼音全拼+首字母+数字组合（上限 40 条，存储与查询用同一函数）；写入路径（upsertGameMeta/ensureGame）顺带生成 + 定时任务 search-tokens-rebuild（每 6 小时增量 ≤5 万行）+ CLI `search-tokens --full`；gameKeywordSql 加 token 源（数组重叠 + 子串兼容）；gameSearch 三级排序（原名/中文名 0 > token/平台别名 1 > 模糊 2）+ 零命中 pg_trgm 模糊兜底（name 臂 0.4 / token 臂 0.6）+ `search.miss` 零命中日志（只记日志不建人工映射）——gta6 / xdlc6 / portal ii 均可命中。
+- **对齐审核快照落库（DL）**：`align_snapshots` 表（payload/counts/signature/generated_at/generated_ms/dirty/last_action_at/error，保留最近 5 条）+ 数据签名动态失效（skus.json size+mtime、games count+max(updated_at)、gsm count+max(reviewed_at)；签名不变直接用库快照，24h 强制重算兜底）；新调度任务 `align-snapshot`（默认每 30 分钟、首轮延迟 30 秒）+ CLI `align-snapshot`（runSyncTracked 留痕）；`GET /api/admin/align` 只读库快照（无快照 202 firstRun、`?refresh=1` 后台重算不阻塞）；确认/忽略/恢复同事务更新快照——读请求立即拿到新队列，彻底消除「确认后旧列表还要再审」；废弃内存缓存 invalidate/staleCache 语义；前端只读快照 + 首次生成横幅 + 乐观移除 + counts 即时更新。
+
+### 测试
+
+- 本批相关测试进主链：`test/search-derive.test.js`/`test/game-search-alias.test.js`（DS）、`test/align-snapshot.test.js`（DL，test:3）、`test/profile.test.js`（DQ，test:4）、`test/align.test.js`/`test/align-perf.test.js`（DN 用例 + 反向自检）、`test/api.test.js`（DR 两用例：权限 401/403 + single-flight + 落盘 + 卡片一致 + 失败 502 reason；DN/DL 运行时用例）、`test/settings.test.js`/`test/scheduler.test.js`/`test/app-release-sync.test.js`/`test/http-guard.test.js`（DR 默认 15 与豁免断言）。
+- QA（本批 6 块全部放行）：DP ✅ [docs/QA-DP.md] 第 1 轮（4/0/0/0）、DQ ✅ [docs/QA-DQ.md] 第 1 轮（9/0/0/3）、DN ✅ [docs/QA-DN.md] 第 1 轮（10/0/0/1）、DR ✅ [docs/QA-DR.md] 第 1 轮（8/0/0/2）、DS ✅ [docs/QA-DS.md] 第 1 轮（5/0/0/3）、DL ✅ [docs/QA-DL.md] 第 1 轮（9/0/0/0）。
+
 ## [2.26.0] - 2026-11-19
 
 CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4 合并发版：到价提醒治理（无报价徽标 / 站点级迁移 / 史低抽检 / 刷新频率评估）、到价提醒手动推送、移动/桌面双结构渐进合并、覆盖率与性能基线门禁、日志统一字段规范（含新功能面 CU-2 迁移与 DF 手动推送 → 大版本）。

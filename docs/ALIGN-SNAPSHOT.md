@@ -1,6 +1,6 @@
-# 对齐审核快照落库（DL，质检通过）
+# 对齐审核快照落库（DL，已实现并发布 v2.27.0）
 
-> 状态：**质检通过（2026-11-19，QA docs/QA-DL.md 第 1 轮 ✅ 9/0/0/0；实现 1e49eeb）**——需求与方案已确认（2026-11-19 所有者），开发交付按本规格 §8 验收。
+> 状态：**已实现并发布 v2.27.0（2026-11-19，QA docs/QA-DL.md 第 1 轮 ✅ 9/0/0/0；实现 1e49eeb）**——需求与方案已确认（2026-11-19 所有者），开发交付按本规格 §8 验收。
 > 关联：[ALIGN-QUERY-PERF.md](ALIGN-QUERY-PERF.md)（CN 缓存/单飞）、[ALIGN-DB-SLOW.md](ALIGN-DB-SLOW.md)（CS 后台生成）、
 > [ALIGN-INTEGRITY.md](ALIGN-INTEGRITY.md)（DH 继承/忽略/审阅）、[ALIGN-REVIEW-UI.md](ALIGN-REVIEW-UI.md)（DE 页改版）。
 

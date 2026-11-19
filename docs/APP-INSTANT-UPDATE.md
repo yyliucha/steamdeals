@@ -1,6 +1,6 @@
-# App 发版后即刻可更新（DR，待开发）
+# App 发版后即刻可更新（DR，已实现并发布 v2.27.0）
 
-> 状态：**已确认待开发（2026-11-19 所有者：安卓构建后手机要立刻能检测到更新）**。
+> 状态：**已实现并发布 v2.27.0（2026-11-19 站点 39aaebb + App 仓库 98dabca；QA docs/QA-DR.md 第 1 轮 ✅ 8/0/0/2；App 侧 app-v2.22.0 随本批）**。
 > 关联：[APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md)（CJ 同步/接口契约）、[APP-NATIVE.md](APP-NATIVE.md) §4.3（内置更新）。
 
 ## 1. 问题与现状（三层延迟，代码证据）
