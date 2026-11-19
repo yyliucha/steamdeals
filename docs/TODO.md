@@ -165,3 +165,34 @@ pm test（分段）+ rontend:build + scan 全绿）。
   scripts/**、package.json、package-lock.json、.github/**）。docker-hub/docker-tcr 只在 tag 触发，不动。
 - **验收**：① 只改 docs 的提交不触发 test-main（gh run list 确认）；② 改 src/package.json 仍触发；
   ③ workflow 语法有效（push 后 Actions 正常解析）；④ 连续文档提交不再产生 cancelled run。
+
+## EF. 待开发（🐞 缺陷）：18R 数据同步与筛选修复（元数据 cc=cn 锁国区 → 成人内容采不到）
+
+**类型：** 🐞 缺陷（数据同步 + 筛选）
+**状态：** 待开发（2026-11-20 所有者指出版权：服务器在美国但代码锁国区）
+**优先级：** P1 —— 18R 数据缺失 + App 筛选语义错误
+**依赖：** 无
+**解锁：** 无
+**规格**：[STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §9
+
+- **根因**：`src/adapters/steam-meta.js:209` appdetails 请求带 `&cc=cn`——国区商店隐藏成人内容 →
+  `content_descriptors` 采不到 → 全库 adult_flag 仅约 20 个（hide 109352 vs badge 109372）。
+- **修复**：① 元数据采集 `cc=cn` → `cc=us`（保留 l=schinese；价格接口仍 cc=cn 不动）；
+  ② 全量回填 content_descriptors（新回填命令/复用 rename，限速防 429）；③ 前台 `/api/games` 支持
+  `rating=adult|mature|none`；④ Web 前台加 18R 筛选；⑤ App 18R chip 改筛选（adult=badge&rating=adult）。
+- **验收**：见规格 §9（回填后 adult 数显著增加且有计数日志；Web/App 筛选只显示 18R + 角标；价格国区口径不变；
+  `npm test`（分段）+ `frontend:build` + `scan` 全绿）。
+
+## EG. 待开发（🐞 缺陷）：通知角标已读后不消失（ABC 三场景）
+
+**类型：** 🐞 缺陷（App 公告角标）
+**状态：** 待开发（2026-11-20 所有者确认 ABC 都有问题）
+**优先级：** P1 —— 角标常驻误导
+**依赖：** 无
+**解锁：** 无
+**规格**：[ANDROID-POLISH.md](ANDROID-POLISH.md) §EG
+
+- **现象**：A 打开公告列表 / B 点开公告详情 / C 点「全部已读」——三种操作后首页铃铛角标仍显示 1。
+- **排查**：服务端 `/api/announcements/read` 是否保存；`refresh()` 覆盖竞态（markInFlight 闩）；
+  角标与弹层未读是否同源；游客本地 DataStore 写入；ABC 分别复现定位。
+- **验收**：ABC 三场景角标正确（B 递减 / C 立即归零 / A 按口径）；刷新/重启不复现；App 构建通过。

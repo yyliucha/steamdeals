@@ -353,3 +353,24 @@ export async function applySteamDetails(q, { appid, cnEntry, hkEntry = null, met
 - 想要**后台可见**：V 批指标卡「成人 N」即可；
 - 想要**定期推送**：在 `steam-status.done` 里附带 `adult/mature` 计数，复用现有 `notify.js`
   通道发一条周报即可（属于可选增强，不改变采集链路）。
+
+## 9. EF 18R 数据同步与筛选修复（2026-11-20 立项，待开发）
+
+**根因（代码证据）**：`src/adapters/steam-meta.js:209` 的 appdetails 请求带 **`&cc=cn`**——
+蒸汽国区商店**隐藏成人内容**，`content_descriptors` 采不到 → `classifyContentRating` 判定不到
+→ 全库 `adult_flag` 仅约 20 个（线上实测 `adult=hide` total=109352 vs `adult=badge` total=109372）。
+服务器在美国、网络层无国区锁，**是代码参数人为锁了国区**（所有者 2026-11-20 指出）。
+
+**修复**：
+1. **元数据采集区域**：`appdetails` 请求 `cc=cn` → **`cc=us`**（保留 `l=schinese` 取中文名；价格接口
+   `steam.js` 仍 `cc=cn` 国区口径**不动**）；成人判定以美区描述符为准；
+2. **全量回填**：新增回填命令（或复用 rename/backfill）重采 `content_descriptors`/`required_age`/
+   `age_ratings`，限速防 429；日志 `steam.meta.backfill_*`；优先高嫌疑（有 Sexual/Nudity 标签的游戏）；
+3. **前台筛选**：`/api/games` 支持 `rating=adult|mature|none`（复用后台条件 `g.adult_flag` 等）；
+4. **Web 前台**：加「18R」筛选开关（与 App 对齐：选中 → adult=badge + rating=adult）；
+5. **App**：18R chip 从「解锁显示」改「筛选」（`adult=badge&rating=adult`，取消恢复全部）——EB 已发布，
+   本次为修正语义。
+
+**验收**：① 回填后 `adult_flag` 游戏数显著增加（前后计数对比，日志留档）；② Web/App 点 18R 只显示 18R 游戏
+且带 18+ 角标，取消恢复全部；③ 价格仍为国区口径（不变）；④ `npm test`（分段）+ `frontend:build` + `scan` 全绿；
+⑤ 回填限速、可断点续跑。
