@@ -1,6 +1,6 @@
-# 个人资料页打磨：头像与 Steam 账号解耦 + 布局调整（DQ，待开发）
+# 个人资料页打磨：头像与 Steam 账号解耦 + 布局调整（DQ，开发中）
 
-> 状态：**需求与方案已确认（2026-11-19 所有者 5 项口径），待开发**。
+> 状态：**开发中（2026-11-19 开发会话认领实现；5 项口径已确认，见 §1）**。
 > 关联：[USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md)（CX 原规格）、demo [design/profile-layout-2026-11-19.html](design/profile-layout-2026-11-19.html)
 > 仓库：站点 `F:\dsh\gameprice` + App `F:\dsh\steamdeals-app`
 

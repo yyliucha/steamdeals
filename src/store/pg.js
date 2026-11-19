@@ -469,6 +469,12 @@ const ALTERS = [  'alter table games add column if not exists interested boolean
   'alter table users add column if not exists avatar_source text',
   'alter table users add column if not exists avatar_updated_at timestamptz',
   'alter table users add column if not exists bio text',
+  // DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：默认 Steam 账号独立列——头像与 Steam 账号解耦。
+  // 回填：历史 avatar_source='steam:<id>' 的「默认账号」关系迁到 default_steam_id；
+  // steam: 头像来源退役清空（头像回归未设置，前端回退首字；用户可自行上传）。两者都幂等。
+  'alter table users add column if not exists default_steam_id text',
+  `update users set default_steam_id = split_part(avatar_source, ':', 2) where avatar_source like 'steam:%' and default_steam_id is null`,
+  `update users set avatar_source = null where avatar_source like 'steam:%'`,
   // 到价提醒邮件开关（true=发邮件；用户关闭后其用户级提醒跳过邮件投递）
   'alter table user_prefs add column if not exists email_alerts boolean not null default true',
   // 逻辑删除：不真删数据，只打标记；前台与后台默认列表都排除，回收站里能看到并恢复
@@ -2388,7 +2394,7 @@ export async function updateUser(q, { username, displayName = undefined, role = 
 export async function getUserPublic(q, userId) {
   const r = await q(
     `select id, username, display_name, email, email_verified, role, created_at,
-            bio, avatar_source, avatar_mime, avatar_updated_at
+            bio, avatar_source, avatar_mime, avatar_updated_at, default_steam_id
        from users where id = $1`,
     [userId],
   );
@@ -2414,7 +2420,7 @@ export async function updateUserProfile(q, { userId, displayName = undefined, bi
   return getUserPublic(q, userId);
 }
 
-/** 头像行（自定义上传时含 bytes；source='steam:<id>' 时由 GET /api/avatar 302 到 Steam CDN）。 */
+/** 头像行（自定义上传时含 bytes；DQ 起 source 只可能是 null / 'custom'，null 时前端回退首字）。 */
 export async function avatarOfUser(q, userId) {
   const r = await q(
     'select id, avatar_bytes, avatar_mime, avatar_source, avatar_updated_at from users where id = $1',
@@ -2441,23 +2447,15 @@ export async function clearUserAvatar(q, userId) {
   return avatarOfUser(q, userId);
 }
 
-/** 设为默认 Steam 账号 = 头像默认取该账号（users.avatar_source = 'steam:<steamId>'）。 */
+/** DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：设为默认 Steam 账号——只写 users.default_steam_id，不再联动头像。 */
 export async function setDefaultSteamAccount(q, { userId, steamId }) {
-  await q('update users set avatar_source = $2, avatar_updated_at = now() where id = $1', [userId, 'steam:' + steamId]);
+  await q('update users set default_steam_id = $2 where id = $1', [userId, steamId]);
   return getUserPublic(q, userId);
 }
 
-/** 绑定/认领新账号后：用户从未设置过头像来源时自动把新账号设为默认（CX §2 #3 默认取 Steam 头像）。 */
-export async function setDefaultSteamAccountIfUnset(q, { userId, steamId }) {
-  await q(
-    "update users set avatar_source = $2, avatar_updated_at = now() where id = $1 and avatar_source is null",
-    [userId, 'steam:' + steamId],
-  );
-}
-
-/** 解绑/删除默认账号后收口：avatar_source 指向它时清空（无头像，回退首字）。 */
+/** DQ 批：解绑/删除默认账号后收口——只清 default_steam_id（头像不受影响）。 */
 export async function clearDefaultSteamIfMatches(q, { userId, steamId }) {
-  await q("update users set avatar_source = null where id = $1 and avatar_source = $2", [userId, 'steam:' + steamId]);
+  await q('update users set default_steam_id = null where id = $1 and default_steam_id = $2', [userId, steamId]);
 }
 
 /**

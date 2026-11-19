@@ -2188,23 +2188,14 @@ export function createApiServer({
 
       // ---- CX 批（docs/USER-PROFILE-EDIT.md §3）：个人资料编辑（只改自己；管理员与用户同一套接口）----
 
-      // 头像公开只读：custom 输出库内字节（ETag/长缓存）；steam:<id> 302 到该账号 Steam CDN 头像；无头像 404。
+      // 头像公开只读：custom 输出库内字节（ETag/长缓存）；无头像 404（前端回退首字）。
+      // DQ 批（docs/PROFILE-UI-2026-11-19.md 决策 1）：steam: 头像来源已退役（迁移清空），不再 302 到 Steam CDN。
       const avatarMatch = path.match(/^\/api\/avatar\/(\d+)$/);
       if (avatarMatch && req.method === 'GET') {
         const avatarUserId = Number(avatarMatch[1]);
         const row = await db.avatarOfUser(q, avatarUserId);
         if (!row) return json(res, 404, { error: '没有该用户' });
         const source = row.avatar_source ?? null;
-        if (source && source.startsWith('steam:')) {
-          const steamId = source.slice('steam:'.length);
-          const acct = (await q('select avatar from steam_accounts where steam_id = $1', [steamId])).rows[0];
-          if (acct?.avatar) {
-            res.writeHead(302, { location: acct.avatar, 'cache-control': 'public, max-age=300' });
-            res.end();
-            return;
-          }
-          return json(res, 404, { error: 'no avatar' });
-        }
         if (source === 'custom' && row.avatar_bytes) {
           const etag = `"av-${avatarUserId}-${row.avatar_updated_at ? new Date(row.avatar_updated_at).getTime() : 0}"`;
           if (req.headers['if-none-match'] === etag) {
@@ -2372,7 +2363,8 @@ export function createApiServer({
               ? new Date(Math.max(new Date(a.library_synced_at).getTime(), new Date(a.wishlist_synced_at).getTime())).toISOString()
               : a.library_synced_at ?? a.wishlist_synced_at ?? null,
           boundAt: bindTimes.get(a.steam_id),
-          isDefault: me.avatar_source === 'steam:' + a.steam_id,
+          // DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：默认判定读 default_steam_id（与头像解耦）
+          isDefault: me.default_steam_id != null && String(me.default_steam_id) === String(a.steam_id),
         }));
         const stats = await db.userLibraryStats(q, user.id);
         return json(res, 200, { accounts: list, stats });
@@ -2887,9 +2879,7 @@ export function createApiServer({
           [steamId, persona.personaName, persona.avatar, user.id],
         );
         logger?.info('steam.bind_ok', { steamId, userId: user.id, persona: persona.personaName ?? null });
-        // CX 批（docs/USER-PROFILE-EDIT.md §2 #3）：头像默认取已绑 Steam 账号——首个账号绑定后自动成为默认
-        // （仅当用户从未显式设置过头像来源；之后可在资料页换选任一账号或自定义）。
-        await db.setDefaultSteamAccountIfUnset(q, { userId: user.id, steamId });
+        // DQ 批（docs/PROFILE-UI-2026-11-19.md 决策 1/§3）：绑定新账号不再自动改动头像（头像永远由用户上传）。
         // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：绑定落一条审计；同步类动作由 syncAccount* 各自记录。
         await steamLogMod.recordSteamLog(q, {
           action: 'bind',
@@ -2937,8 +2927,7 @@ export function createApiServer({
           if (!found.rows[0]) return json(res, 404, { error: '没有该 Steam 账号' });
           if (found.rows[0].user_id != null) return json(res, 409, { error: '该账号已被认领' });
           await q('update steam_accounts set user_id = $1, last_login_at = now() where steam_id = $2 and user_id is null', [user.id, steamId]);
-          // CX 批：认领的首个账号同样自动成为默认头像来源（未显式设置过时）
-          await db.setDefaultSteamAccountIfUnset(q, { userId: user.id, steamId });
+          // DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：认领账号不再自动改动头像。
           // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：认领落审计（失败吞异常，不影响认领）
           await steamLogMod.recordSteamLog(q, {
             action: 'claim',
@@ -3073,12 +3062,12 @@ export function createApiServer({
           logger,
           log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
         });
-        // CX 批（docs/USER-PROFILE-EDIT.md §3）：解绑的是默认账号 → 头像来源清空（回退首字/重选），不留悬挂引用
+        // DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：解绑的是默认账号 → 只清 default_steam_id（头像不受影响）
         await db.clearDefaultSteamIfMatches(q, { userId: user.id, steamId });
         return json(res, 200, result);
       }
 
-      // CX 批：设为默认 Steam 账号（头像默认取该账号；每用户一个默认）
+      // DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：设为默认 Steam 账号——只写 default_steam_id（每用户一个默认），与头像解耦
       const accountDefaultMatch = path.match(/^\/api\/steam\/accounts\/([^/]+)\/default$/);
       if (accountDefaultMatch && req.method === 'POST') {
         if (!requireUser()) return;
@@ -3087,7 +3076,7 @@ export function createApiServer({
         if (!row) return;
         const me = await db.setDefaultSteamAccount(q, { userId: user.id, steamId });
         logger?.info('steam.default_set', { steamId, userId: user.id });
-        return json(res, 200, { ok: true, avatarSource: me.avatar_source });
+        return json(res, 200, { ok: true, defaultSteamId: me.default_steam_id ?? null });
       }
 
       // ---- CL 批（docs/USER-ALERTS.md §3.1）：用户级到价提醒（登录必需；POST/DELETE 每用户 30 次/分）----
