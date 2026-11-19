@@ -67,7 +67,7 @@
 | 1 | app（试点） | /api/app/* | 已拆 | v2.27.1 | 0c5f8ff |
 | 2 | appeal（第二轮） | /api/appeal* | 已拆 | v2.27.1 | 34a7bcc |
 | 3 | auth | /api/auth/* + login/logout/password/captcha/device | 已拆 | v2.27.2 | 00a838f |
-| 4 | watchlist / wishlist | /api/watchlist、/api/wishlist | 未拆 | | |
+| 4 | watchlist / wishlist | /api/watchlist、/api/wishlist | 已拆（QA 通过 10/0/0/2，待构建） | 待 v2.27.3 | 1b087b4 |
 | 5 | announcements | /api/announcements* | 未拆 | | |
 | 6 | me | /api/me/* | 未拆 | | |
 | 7 | 杂项（site/steam/ban） | /api/site、/api/steam/*、/api/ban/state | 未拆 | | |
@@ -100,3 +100,5 @@
   并行度 1：所有 routes 域共享 src/server.js + src/store/pg.js 文件面，无互不重叠配对（与 cli 域可并行，但按队列顺序先做 routes 域）。
 - 2026-11-20 01:45 接管检查：ACTIVE-SESSIONS 无登记（无卡死会话）；上轮最后心跳「认证域完成 + 接管构建 v2.27.2」——tag v2.27.2 存在（465df04）、CI 三绿已回填 DELIVERY（docker-hub 44548428207 / docker-tcr 44548428173 / test-main 44559097058）、HEAD 0c944fa test-main 44571232350 ✅ → 无需接管。
 - 2026-11-20 01:45 开工：注册 ACTIVE-SESSIONS（夜班监工 v4），进入开发循环，启动工人 #4 watchlist/wishlist。
+- 2026-11-20 02:28 工人完成 B4 #4 watchlist/wishlist：提交 1b087b4（server.js −53 / pg.js −33 / 新 routes 140 + repository 65 / 测试 +52）；QA-CO5-B4-2-watchlist 第 1 轮 ✅ 放行（10/0/0/2，2 项人工确认均为本机沙箱环境限制——commit-own 测试 spawn EPERM 与 frontend:build 默认命令，CI 兜底）；**实测单域耗时 37min**（01:50→02:27），远快于评估 P50 1.75h → 本轮预算内可容纳 2–3 域 + 1 次构建。
+- 2026-11-20 02:30 工人启动 B4 #5 announcements。
