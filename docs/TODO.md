@@ -109,23 +109,30 @@
 - **验收**：见规格 §3（ITAD（来源）筛出有匹配标记的游戏；其它平台不变；采集新匹配后刷新可见；标签区分清楚；
   `npm test`（分段）+ `frontend:build` + `scan` 全绿）。
 
-## DW. 待开发（🐞 缺陷）：搜索关键词参数错位——精确名匹配实际在匹配 region
+## DW. 已实现待发版（🐞 缺陷）：搜索关键词参数错位——精确名匹配实际在匹配 region
 
 **类型：** 🐞 缺陷（Bug，P0）
-**状态：** 待开发（2026-11-19 线上实测定位）
+**状态：** 已实现待发版（2026-11-19；参数位显式化 + 锁行为测试）
 **优先级：** P0 —— 搜索功能正确性（中文精确名搜不到）
 **依赖：** 无
 **解锁：** 无
 **规格**：[SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DW
 
-- **根因**：`src/store/pg.js:1763` `kwNorm = lower($1)`，而 `filterParams = [region, kw]`（`pg.js:1743`）——
-  `$1` 是 region（'cn'）、`$2` 才是关键词；候选查询/计数/排序的「精确名 LIKE」实际在匹配 `'cn'`。
+- **根因**：`src/store/pg.js` `gameSearch` 里关键词归一化有两套参数位——候选探测/fuzzy 是独立查询
+  （绑定 `[kw, cap]`，`$1`=kw），主查询绑定 `filterParams=[region, kw]`（`$2`=kw）；同名 `kwNorm`（`$1` 版）
+  与 `kwNorm2`（`$2` 版）并存易误用。线上「侠盗猎车手」0 条的实测绑定 `$1='cn'、$2='侠盗猎车手'` 表明
+  精确名匹配一度绑到 region 位（本仓库 HEAD 经 pglite 实测各查询绑定正确，疑为线上部署版本差异；
+  修复以「参数位显式化 + 测试锁行为」为准，线上复验留部署后验收）。
 - **线上表现**：搜「侠盗猎车手」「侠盗猎车手 V」→ 0 条（GTA V 的 name 明明存在）；「侠盗」98 条、
   「Grand Theft Auto」142 条全靠 token/trgm 兜底；DS 测试 9/9 绿因为用例没覆盖「仅 name 精确匹配」。
-- **修复**：`kwNorm` 改用 `$2`；同步检查候选查询（1786-1790）、`fuzzyCandidateIds` 传参、排序 `kwNorm2`（已是 $2）；
-  推荐直接改 `$2`，不改 `filterParams` 顺序（避免波及 region 条件）。
-- **补测试（反向自检）**：无 `search_tokens` 的游戏搜中文名/英文名必须命中（修前该用例必红）；
-  `gta5/gta6/xdlc6/grand theft auto` 仍命中；`zzz不存在词`、`cn` → 0；搜索不因 region 值命中。
+- **修复**：`gameSearch` 关键词归一化拆两个显式变量——`kwNormCandidate`（`$1` 版，仅供候选探测 SQL 与
+  `fuzzyCandidateIds`，绑定 `[kw, …]`）与 `kwNorm`（`$2` 版，主查询 count/rows/排序，绑定 `[region, kw, …]`），
+  注释写明两者不可互换（互换 = 精确名 LIKE 匹配 cap/42P18，新测试必红）；`filterParams` 顺序不变、
+  候选查询绑定不变、其它搜索逻辑不动。
+- **补测试（反向自检）**：新增 `test/game-search-exact.test.js`（进主链 test:3）——无 `search_tokens` 的游戏
+  搜中文名「侠盗猎车手」/英文名「Grand Theft Auto V」必须命中；注入错位（表达式与绑定参数位不一致）
+  实测必红后才修复转绿；回归 `gta5/gta6/xdlc6/grand theft auto` 仍命中；`zzz不存在词`、`cn` → 0；
+  搜索不因 region 值命中。
 - **验收**：见规格 §DW（本地用例全绿；线上「侠盗猎车手」返回 GTA 系列；`npm test`（分段）+ `frontend:build` + `scan` 全绿）。
 
 ## DX. 待开发（🧹 技术债）：列表/站点接口性能优化
