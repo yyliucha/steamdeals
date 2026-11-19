@@ -32,7 +32,7 @@
 |---|---|---|---|---|---|
 | 1 | app（试点） | /api/app/* | 已拆 | v2.27.1 | 0c5f8ff |
 | 2 | appeal（第二轮） | /api/appeal* | 已拆 | v2.27.1 | 34a7bcc |
-| 3 | auth | /api/auth/* + login/logout/password/captcha/device | 未拆 | | |
+| 3 | auth | /api/auth/* + login/logout/password/captcha/device | 已拆 | v2.27.2 | 00a838f |
 | 4 | watchlist / wishlist | /api/watchlist、/api/wishlist | 未拆 | | |
 | 5 | announcements | /api/announcements* | 未拆 | | |
 | 6 | me | /api/me/* | 未拆 | | |
@@ -54,4 +54,5 @@
 
 ## 备注
 
-- （夜班会话在此追加：阻塞原因、跳过的域、CI 异常等）
+- 2026-11-19 21:40 监工兜底唤醒：auth 域被「认证域拆分会话」占用（ACTIVE-SESSIONS 登记，预计 22:30 完成，代码已交付/QA 待回写），标记阻塞；其后各域与认证会话共享 src/server.js + src/store/pg.js 文件面，等认证会话提交推送后再接下一域（watchlist）。
+- 2026-11-19 22:05 认证域会话完成并注销（拆分 00a838f + 架构记录 8867077 + 质检通过 d779b69，QA-CO5-B4-2 第 1 轮 16/0/0/1）；监工接管构建 v2.27.2（认证域），构建后接 watchlist 域。

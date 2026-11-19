@@ -195,9 +195,15 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-19 更新，v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
+### 当前状态（2026-11-19 更新，v2.27.2 已发布：CO-5/B4-2 认证域拆分；v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
+- **v2.27.2 已发布**（tag `v2.27.2`，release 提交见 git log）：CO-5/B4-2 巨石拆分第三轮（认证域，契约零变化）（技术债重构，无新功能面 → 小版本，2.27.1 → 2.27.2 连续递增）。
+  CO-5/B4-2：认证域（00a838f）`src/routes/auth.js`（认证域 8 条路由——公开段 `POST /api/device` + 主段 `GET /api/captcha`、`POST /api/login`、`POST /api/password/check`、`POST /api/logout`、`POST /api/user/password`、`GET /api/auth/steam/start`、`GET /api/auth/steam/callback`）+ `src/store/auth-repository.js`（登录失败计数/锁定/改密/Steam 绑定 10 个 SQL 新函数）；`src/store/pg.js` re-export 兼容壳；`src/server.js` 认证区换为两入口接线（`loginIpFails`/`appealBucketLimited`/`bindStates` 共享状态留宿主）；**外部契约零变化**（路径/参数/响应/错误码不变）；已交付 app/appeal/auth 三域，剩余域拆分继续按 [B4-QUEUE.md](B4-QUEUE.md) 队列推进（watchlist 为下一域）。
+  QA：B4-2 ✅ [QA-CO5-B4-2.md](QA-CO5-B4-2.md) 第 1 轮（16/0/0/1）。
+  验证（本机发版门禁）：主链四段（`npm run test:1..4` 串行）+ `node test/api.test.js` + `frontend:build` + `scan`（输出随 release 提交记录）。
+  CI：docker-hub / docker-tcr / test-main（CI 待确认，双绿后回填 run id）。
+  **服务器部署待执行**（升级到 `2.27.2`；本批无 schema 变更、无新增依赖——升级后直接可用）。
 - **v2.27.1 已发布**（tag `v2.27.1`，release 提交见 git log）：CO-4/B4 巨石拆分两域（试点 App 域 + 第二轮申诉域）+ DW 搜索关键词参数位错位修复合并发版（技术债重构 + 缺陷修复，无新功能面 → 小版本，2.27.0 → 2.27.1 连续递增）。
   CO-4/B4：试点 App 域（0c8f5ff）`src/routes/app.js`（App 域 6 条路由）+ `src/store/app-repository.js`（`api_tokens` DDL + 4 个 token 函数）；第二轮申诉域（34a7bcc）`src/routes/appeal.js`（申诉域 5 条路由：公开段 + 管理段）+ `src/store/appeal-repository.js`（`appeals` DDL + 12 个申诉 SQL 函数）；`src/store/pg.js` 两域 re-export 兼容壳；`src/server.js` 试点 -216 行、第二轮再 -267 行（域路由换为入口接线，appealExempt 豁免与限流桶等中间件留原地）；**外部契约零变化**（路径/参数/响应/错误码不变）；已交付 app/appeal 两域，剩余 ~18 个域拆分另行立项（B4-2/CO-5）。
   DW：`gameSearch` 关键词归一化拆两个显式变量（`kwNormCandidate` 供候选探测/fuzzy、`kwNorm` 供主查询），注释约束两者不可互换（互换 = 精确名 LIKE 匹配 cap/42P18，新测试必红）；`filterParams` 顺序不变、候选查询绑定不变；新增 `test/game-search-exact.test.js` 进主链 test:3（精确名命中/region 值不命中/回归/零命中 + 注入错位反向自检）。

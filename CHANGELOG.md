@@ -1,5 +1,17 @@
 # 变更日志
 
+## [2.27.2] - 2026-11-19
+
+CO-5/B4-2 巨石拆分第三轮交付（认证域，契约零变化）（技术债重构，无新功能面 → 小版本，2.27.1 → 2.27.2 连续递增）。
+
+### 技术债
+
+- **巨石拆分第三轮（CO-5/B4-2 认证域）**：`src/routes/auth.js`（认证域 8 条路由——公开段 `POST /api/device` + 主段 `GET /api/captcha`、`POST /api/login`、`POST /api/password/check`、`POST /api/logout`、`POST /api/user/password`、`GET /api/auth/steam/start`、`GET /api/auth/steam/callback`）+ `src/store/auth-repository.js`（登录失败计数/锁定/改密/Steam 绑定 10 个 SQL 新函数）；`src/store/pg.js` re-export 兼容壳；`src/server.js` 认证区换为两入口接线（`loginIpFails`/`appealBucketLimited`/`bindStates` 共享状态留宿主）；**外部契约零变化**（路径/参数/响应/错误码不变）。已交付 app/appeal/auth 三域；剩余域拆分继续按 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §15 与 docs/B4-QUEUE.md 队列推进。
+
+### 测试
+
+- QA：B4-2 ✅ docs/QA-CO5-B4-2.md 第 1 轮（16/0/0/1）。
+
 ## [2.27.1] - 2026-11-19
 
 CO-4/B4 巨石拆分两域交付（试点 App 域 + 第二轮申诉域，契约零变化）+ DW 搜索关键词参数位错位修复（技术债重构 + 缺陷修复，无新功能面 → 小版本，2.27.0 → 2.27.1 连续递增）。

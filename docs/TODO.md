@@ -23,35 +23,13 @@
 | 🐞 缺陷 | 1 | DU |
 | ✨ 功能 | 1 | DT-2 |
 | ⚙️ 调整 | 5 | DT-1 / DT-3 / DT-4 / DT-5 / DV |
-| 🧹 技术债 | 2 | CO-5 / DX |
+| 🧹 技术债 | 1 | DX |
 | 🧪 测试基建 | 0 | — |
 | 📝 文档流程 | 0 | — |
 | 🔬 调研 | 0 | — |
 | 已过时 | 1 | DM |
 
 ---
-
-## CO-5. 开发中（🧹 技术债）：B4-2 巨石拆分第三轮（认证域）
-
-**类型：** 🧹 技术债（重构，外部契约零变化）
-**状态：** 质检通过（第三轮：认证域——`src/routes/auth.js` + `src/store/auth-repository.js`，契约零变化；QA docs/QA-CO5-B4-2.md 第 1 轮 16/0/0/1；等构建指令）
-**优先级：** P2 —— 巨石渐进瘦身（CO-4/B4 已随 v2.27.1 发布 app/appeal 两域；剩余域拆分按 DONE.md 口径另行立项 B4-2/CO-5，本条目承接第三轮）
-**依赖：** 无（**避开** `/api/games*`（DX 待开发改游戏查询区）、`/api/me*`（DT-2 待开发会加接口）；与 DW 零重叠）
-**解锁：** 无
-**规格**：[ARCHITECTURE.md](ARCHITECTURE.md) §15（域路由拆分模式）+ [DESIGN-AUDIT.md](DESIGN-AUDIT.md) B4 + 本轮交接消息（验收①–⑥与纪律）
-
-- **范围（一次一个域，本轮只做认证域）**：① 路由 → `src/routes/auth.js`（只做 HTTP 编排、不写 SQL）：
-  `POST /api/device`（公开段）+ `GET /api/captcha`、`POST /api/login`、`POST /api/password/check`、
-  `POST /api/logout`、`POST /api/user/password`、`GET /api/auth/steam/start`、
-  `GET /api/auth/steam/callback`（主段）；② SQL → `src/store/auth-repository.js`
-  （登录失败计数/锁定/改密/Steam 绑定专属 SQL；pg.js 保留 re-export 兼容，通用 SQL 留 pg.js）；
-  ③ 上下文注入照 §15；④ 修该域静态断言测试指向新文件（不降断言质量）；
-  ⑤ 契约零变化（路径/参数/响应/错误码/验证码/会话行为不变）；⑥ ARCHITECTURE §15 补第三轮记录。
-  不做其它域/行为变更/前端/新依赖。邮箱验证码/注册/换邮箱仍在 `src/auth-routes.js`（独立模块 +
-  含 `/api/me/email/*` 属 DT-2 排除区，本轮不动）。
-- **验收**：沿用 QA-CO4-B4.md 口径（域代码在 routes/+repository（拆分前后行数对比）；全量 `test:1..4` +
-  `api.test` + `frontend:build` + `scan` 全绿；静态断言全绿 + 反向自检（删路由分支必红）；
-  ARCHITECTURE §15 步骤清单与实际一致；交付说明含域选择理由/净减行数/下一轮建议）。
 
 ## DM. 已过时（2026-11-19 所有者要求彻底解决，并入 DL）：对齐审核批量操作超时短期补丁
 
