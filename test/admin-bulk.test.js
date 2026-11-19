@@ -77,7 +77,7 @@ function bulk(base, cookie, payload, ip = ADMIN_IP) {
 const adminGet = (base, cookie, path) =>
   fetch(base + path, { headers: { 'x-forwarded-for': ADMIN_IP, cookie } });
 
-test('前端：11 个表格列表 + 站点通知 + 异常审核合并视图都接入了多选与批量工具条', () => {
+test('前端：12 个表格列表 + 站点通知 + 异常审核合并视图都接入了多选与批量工具条', () => {
   const modules = readFileSync(fileURLToPath(new URL('../frontend/src/pages/AdminModules.vue', import.meta.url)), 'utf8');
   const extras = readFileSync(fileURLToPath(new URL('../frontend/src/pages/AdminExtras.vue', import.meta.url)), 'utf8');
   const consoleVue = readFileSync(fileURLToPath(new URL('../frontend/src/pages/Console.vue', import.meta.url)), 'utf8');
@@ -85,8 +85,10 @@ test('前端：11 个表格列表 + 站点通知 + 异常审核合并视图都�
 
   // 表格勾选列：游戏目录/访问明细/最近设备/已封设备/黑名单/白名单/自动封禁 + 回收站/用户/登录会话；
   // AX 批起异常审核只有按 IP 合并视图（勾选用 el-checkbox，不再有明细表 selection 列）；
-  // CY 批（docs/DATA-ISOLATION.md §3）：愿望单改为只读，勾选列与批量工具条已移除
-  assert.equal(count(modules, 'type="selection"'), 7, 'AdminModules 应有 7 个勾选列（CY 批移除愿望单）');
+  // CY 批（docs/DATA-ISOLATION.md §3）：愿望单改为只读，勾选列与批量工具条已移除；
+  // CU-2（docs/USER-ALERTS-GOVERNANCE.md §2）：到价提醒表格新增勾选列（仅站点级行可选；
+  // 批量迁移/批量删除走专用接口 admin/watchlist/migrate|delete，不用统一 BulkBar）
+  assert.equal(count(modules, 'type="selection"'), 8, 'AdminModules 应有 8 个勾选列（CY 批移除愿望单；CU-2 到价提醒 +1）');
   assert.equal(count(extras, 'type="selection"'), 3, 'AdminExtras 应有 3 个勾选列（回收站/用户/登录会话 BK 批）');
   // 站点通知与异常审核合并视图：卡片/合并行没有表格勾选列，用 el-checkbox
   assert.match(modules, /sel\.announcements\.has\(a\)/, '站点通知卡片要有勾选框');
