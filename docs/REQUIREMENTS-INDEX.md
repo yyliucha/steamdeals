@@ -135,6 +135,7 @@
 | **DY** | 🐞 缺陷：安卓页面衔接状态丢失（详情返回后搜索/滚动/表单丢）——ViewModel/rememberSaveable 治理 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §DY | 待开发（2026-11-19） | ✅ 本轮已给 |
 | **DZ** | ⚙️ 调整：安卓公告未读角标无法清除（首页铃铛常驻 1）——弹层加「全部已读」 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §DZ | 待开发（2026-11-19） | ✅ 本轮已给 |
 | **EA** | ⚙️ 调整：安卓体验包（攒批）——下拉刷新/搜索空态/详情分享/版本号+清缓存/骨架屏/弱网提示 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EA | 待开发（2026-11-19 立项攒批，等所有者说开工） | ✅ 本轮已给 |
+| **EB** | ✨ 功能：安卓 18R 内容选项（筛选 chips「18R」+ adult=badge 显示/角标 + 首次 18+ 确认 + 本地记忆，攒批） | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EB | 待开发（2026-11-19 立项攒批） | ✅ 本轮已给 |
 | **DX** | 🧹 技术债：列表/站点接口性能优化（count 合并 + 短 TTL 缓存 + /api/site 缓存 + 压测） | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DX | 待开发（依赖 DW） | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
