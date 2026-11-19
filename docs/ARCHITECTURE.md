@@ -451,7 +451,8 @@ GOG 的 catalog 接口接受 `countryCode` + `currencyCode`，是目前唯一能
 2. 盘点域内路由：`grep -n "path === '<前缀>'" src/server.js`，逐条确认无其它路由抢占同一 path+method；
 3. 建 `src/routes/<domain>.js`：复制路由体，把 `q/logger/json/…` 改为从 `ctx` 解构；
    按 15.3 选入口形态——需要预检段的路由进 `handle<Domain>Preflight`，其余进 `handle<Domain>Routes`；
-   域内对"用户解析前后"有硬约束时用 `handle<Domain>Public` / `handle<Domain>Admin` 两段（申诉域先例）；
+   域内对"用户解析前后"有硬约束时用 `handle<Domain>Public` / `handle<Domain>Admin` 两段（申诉域先例），
+   "公开段 + 主段"组合同样成立（认证域先例：/api/device 在白名单前走公开段，其余认证路由进主段）；
 4. 抽该域 SQL：`grep -n "<域特征>" src/store/pg.js` 找到专属 DDL/函数 → 建 `src/store/<domain>-repository.js`
    （签名照抄）→ pg.js 顶部 import + re-export，`migrate()` 继续消费其 DDL 常量；
    **域内联 SQL**（此前直接写在路由体里的字面量）同样抽成 repository 新函数——认证域先例：
