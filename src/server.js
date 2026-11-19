@@ -9,7 +9,7 @@
 //
 // 折扣数据永远只由调度器写入，这里没有任何改价的接口——这是硬约束。
 import { createServer } from 'node:http';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { readFileSync, existsSync, writeFileSync, statSync } from 'node:fs';
 import { join, extname, resolve, sep } from 'node:path';
 import * as db from './store/pg.js';
@@ -39,7 +39,6 @@ import {
 } from './align-snapshot.js';
 import { handleSettingsRoutes } from './settings-routes.js';
 import { appealEmailFrom } from './appeal.js';
-import { appealAdminMail, appealResultMail, appealReplyText, appealActionUrl } from './appeal-mail.js';
 import { ensureSteamSchemaOnce, baseUrl } from './steam-login.js';
 import * as mailTemplates from './mail-templates.js';
 import * as notify from './notify.js';
@@ -48,7 +47,6 @@ import * as accountNotify from './account-notify.js';
 import * as proxyPool from './proxy-pool.js';
 import * as passwordPolicy from './password-policy.js';
 import { maskEmail } from './auth-routes.js';
-import { normalizeEmail } from './email-auth.js';
 import { auditJobs as auditSchedulerJobs, resetCircuit } from './scheduler.js';
 import { ipSessionKey, uaSessionKey } from './session-fingerprint.js';
 import { formatDateTime, yuanAmount } from './format.js';
@@ -57,6 +55,10 @@ import * as appRateLimit from './app-ratelimit.js';
 // handleAppPreflight 在拦截链之前（封禁自查），handleAppRoutes 在认证上下文就绪后（主段）。
 // 拆分模式与后续域步骤见 docs/ARCHITECTURE.md「域路由拆分模式」。
 import { handleAppPreflight, handleAppRoutes } from './routes/app.js';
+// CO-4/B4 第二轮：申诉域路由已抽到 src/routes/appeal.js——
+// handleAppealPublic 在认证上下文解析之前（公开段，保住 must_change_password 用户的申诉入口），
+// handleAppealAdmin 在 requireAdmin 就绪之后（管理段）。拦截链豁免（appealExempt）仍是中间件、留在本文件。
+import { handleAppealPublic, handleAppealAdmin } from './routes/appeal.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -194,42 +196,9 @@ export function newAppealCode() {
   return `AP-${code}`;
 }
 
-// BQ 批（docs/APPEAL-SYSTEM.md §10.2）：邮件动作 token——32 字节随机（base64url），
-// 库里只存 sha256 hex；明文只出现在邮件链接的 fragment 里。
-export function newActionToken() {
-  const token = randomBytes(32).toString('base64url');
-  return { token, hash: createHash('sha256').update(token).digest('hex') };
-}
-
-/** 申诉快照里的封禁原因文案（ip_abuse.ban_source → 人类可读）。 */
-export function appealBanReasonLabel(source) {
-  if (source === 'rate') return '临时超频封禁';
-  if (source === 'rate-day') return '当天超频封禁';
-  if (source === 'path') return '非法路径封禁';
-  return '自动封禁';
-}
-
-/** 管理员视角的申诉行：剥离 token 哈希（永不回显明文 token / 哈希）。 */
-export function appealRowPublic(r) {
-  return {
-    id: Number(r.id),
-    code: r.code,
-    ip: r.ip ?? null,
-    device_id: r.device_id ?? null,
-    fingerprint: r.fingerprint ?? null,
-    reason: r.reason ?? null,
-    ban_until: r.ban_until ?? null,
-    contact: r.contact,
-    message: r.message ?? '',
-    status: r.status,
-    action: r.action ?? null,
-    note: r.note ?? null,
-    created_at: r.created_at,
-    handled_at: r.handled_at ?? null,
-    handled_via: r.handled_via ?? null,
-    handled_by: r.handled_by == null ? null : Number(r.handled_by),
-  };
-}
+// 说明：BQ 邮件动作 token（newActionToken）、封禁原因文案（appealBanReasonLabel）、
+// 管理员申诉行视图（appealRowPublic）已随 CO-4/B4 第二轮移入 src/routes/appeal.js；
+// newAppealCode 因 serveBanPage 仍使用、且被 test/appeal-security.test.js 导入，保留在本文件。
 
 // /api/ban/state 的自带限流：每 IP 1 次/秒、30 次/分钟（防被当成探测接口；docs/BAN-AND-SECURITY-FIXES.md §3.3）。
 const banStateBuckets = new Map(); // ip -> { last, minute: number[] }
@@ -1345,224 +1314,34 @@ export function createApiServer({
         return json(res, 200, { ok: true, fingerprint: fingerprint.slice(0, 16) }, { 'set-cookie': cookie });
       }
 
-      // ---- 申诉系统（docs/APPEAL-SYSTEM.md §3，O 批）----
-      // 邮件发送：From=SMTP 账号、Reply-To 可指定；失败只记日志；两封都写发送记录（§6）。
-      const sendAppealEmail = async ({ to, replyTo = null, subject, text, html, event }) => {
-        try {
-          const auth = await import('./email-auth.js');
-          const cfg = await auth.smtpConfig(q);
-          if (!auth.isSmtpConfigured(cfg)) {
-            logger?.info('appeal.notify_skipped', { event, reason: 'smtp_not_configured' });
-            return { ok: false, skipped: true };
-          }
-          const result = await notify.sendMail(
-            { host: cfg.host, port: cfg.port, secure: cfg.secure, user: cfg.user, pass: cfg.pass, from: cfg.from, to, subject, text, html, replyTo },
-            { logger },
-          );
-          await db.insertMailLog(q, { event, toEmail: to, subject, ok: result.ok, error: result.error ?? null }).catch(() => {});
-          if (!result.ok) logger?.warn('appeal.mail_failed', { event, to, error: result.error });
-          return result;
-        } catch (err) {
-          logger?.warn('appeal.mail_failed', { event, to, message: String(err.message).slice(0, 160) });
-          return { ok: false, error: String(err.message).slice(0, 160) };
-        }
-      };
+      // ---- CO-4/B4 第二轮（docs/DESIGN-AUDIT.md B4）：申诉域公开路由已抽到 src/routes/appeal.js ----
+      // 调用位置不能动：必须在认证上下文解析（must_change_password 白名单）之前——
+      // 已登录但被要求改密的用户也要能提交申诉（原位置语义，移动 = 改契约）。
+      // ctx 里 appealBucketLimited 与 /api/captcha 路由共用同一限流桶、newAppealCode 因 serveBanPage
+      // 仍用而留在本文件——两者都按引用传递（语义共享）；hit/deviceBan/deviceId 是拦截链只读结果。
+      if (
+        await handleAppealPublic({
+          path,
+          req,
+          res,
+          q,
+          logger,
+          json,
+          readBody,
+          ip,
+          captcha,
+          deviceId,
+          hit,
+          deviceBan,
+          appealBucketLimited,
+          newAppealCode,
+          siteName,
+          appealEmail,
+        })
+      )
+        return;
 
-      // POST /api/appeal：提交申诉（封禁拦截已放行；自带每 IP 3 条/小时 + 验证码 + 幂等）
-      if (path === '/api/appeal' && req.method === 'POST') {
-        let body;
-        try {
-          body = await readBody(req, 16 * 1024);
-        } catch {
-          return json(res, 400, { error: '请求格式错误' });
-        }
-        if (!body || typeof body !== 'object') return json(res, 400, { error: '请求格式错误' });
-        // 校验先于限流（§3.1 顺序）：非法请求不占用配额
-        const contact = normalizeEmail(body.contact);
-        if (!contact) return json(res, 400, { error: '请填写有效的联系邮箱' });
-        const message = String(body.message ?? '').trim();
-        if (message.length < 10 || message.length > 2000) return json(res, 400, { error: '申诉说明需 10–2000 字' });
-        if (captcha.enabled()) {
-          if (!(await captcha.verify(q, body.captchaToken, body.captchaAnswer))) {
-            return json(res, 400, { error: '验证码错误或已过期' });
-          }
-        }
-        // 频率限制：内存桶 + 库内双保险（只统计通过校验与验证码的提交）
-        if (appealBucketLimited(ip, 'submit', 3, 3600_000) || (ip && await db.countAppealsSince(q, { ip, minutes: 60 }) >= 3)) {
-          return json(res, 429, { error: '提交过于频繁，请 1 小时后再试' }, { 'retry-after': '3600' });
-        }
-        // 幂等：同一 IP + 相同说明（1 小时内）直接返回原编号，不重复入库
-        const dup = ip ? await db.recentAppealByIpMessage(q, { ip, message, minutes: 60 }) : null;
-        if (dup) return json(res, 200, { ok: true, code: dup, duplicate: true });
-        // 上下文快照：封禁原因与到期（ip_abuse / 设备封禁，取不到为空）
-        const deviceId = devices.normalizeDeviceId(cookies[DEVICE_COOKIE]);
-        const fingerprint = deviceId ? devices.fingerprintFor(deviceId) : null;
-        let reason = null;
-        let banUntil = null;
-        try {
-          const abuse = (await q('select banned_until, ban_source from ip_abuse where ip = $1', [ip])).rows[0];
-          if (abuse?.banned_until) {
-            banUntil = new Date(abuse.banned_until).toISOString();
-            reason = appealBanReasonLabel(abuse.ban_source);
-          }
-          const devBan = deviceId ? devices.isBanned({ deviceId }) : null;
-          if (devBan) {
-            reason = '设备封禁';
-            banUntil = devBan.until ? new Date(devBan.until).toISOString() : banUntil;
-          }
-        } catch {
-          /* 快照失败不阻塞提交 */
-        }
-        // CF 批（docs/ADMIN-UX-SECURITY.md §2.1）：申诉对所有封禁类型开放；取不到封禁记录直接提示，
-        // 不展示/不接受"未封禁"的申诉（与页面「当前未被封禁，无需申诉」一致）。
-        const rateUntil = ip ? ratelimit.bannedUntil(ip) : null;
-        if (!reason && !hit && !rateUntil && !deviceBan) {
-          logger?.info('appeal.not_banned', { ip: ip || null });
-          return json(res, 400, { error: '当前未被封禁，无需申诉' });
-        }
-        // BQ（§10.2）：动作 token 提交时生成——32 字节随机、只存 sha256、14 天有效
-        const { token, hash } = newActionToken();
-        const actionExpiresAt = new Date(Date.now() + 14 * 86400_000).toISOString();
-        let code = null;
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-          code = newAppealCode();
-          try {
-            await db.insertAppeal(q, { code, ip: ip || null, deviceId, fingerprint, reason, banUntil, contact, message, tokenHash: hash, actionExpiresAt });
-            break;
-          } catch (err) {
-            if (String(err?.code) === '23505' && attempt < 2) continue; // 编号撞车（概率极低）重试
-            throw err;
-          }
-        }
-        logger?.info('appeal.submitted', { code, ip: ip || null, contact: maskEmail(contact) });
-        // 管理员通知邮件：收件人=申诉邮箱回退链、From=SMTP 账号、Reply-To=申请人；失败只记日志
-        const origin = baseUrl(req);
-        const mail = appealAdminMail({
-          siteName: siteName(),
-          code,
-          ip: ip || null,
-          reason,
-          banUntil,
-          contact,
-          message,
-          actionUrl: appealActionUrl(origin, token),
-        });
-        const adminTo = appealEmail();
-        if (adminTo) {
-          await sendAppealEmail({ to: adminTo, replyTo: contact, subject: mail.subject, text: mail.text, html: mail.html, event: 'appeal_admin_notify' });
-        } else {
-          logger?.info('appeal.notify_skipped', { event: 'appeal_admin_notify', reason: 'no_appeal_email' });
-        }
-        return json(res, 200, { ok: true, code });
-      }
 
-      // GET /api/appeal/:code（可选，公开，限频）：申请人查进度，不回显 IP/指纹
-      const appealCodeMatch = path.match(/^\/api\/appeal\/([A-Za-z0-9-]{1,16})$/);
-      if (appealCodeMatch && path !== '/api/appeal/action' && req.method === 'GET') {
-        if (appealBucketLimited(ip, 'query', 20, 60_000)) {
-          return json(res, 429, { error: '请求过于频繁' }, { 'retry-after': '60' });
-        }
-        const row = await db.appealStatusByCode(q, appealCodeMatch[1]);
-        if (!row) return json(res, 404, { error: 'not found' });
-        return json(res, 200, { status: row.status, handled_at: row.handled_at ?? null, note: row.note ?? null });
-      }
-
-      // BQ（docs/APPEAL-SYSTEM.md §10.3）：POST /api/appeal/action——preview / trust / reject。
-      // POST-only（无任何 GET 副作用，防邮件预取/安全扫描）；token 即凭据、不要求登录；
-      // token 不存在/过期/伪造统一 404「链接无效或已过期」（防枚举）；日志绝不写 token。
-      if (path === '/api/appeal/action' && req.method === 'POST') {
-        let body;
-        try {
-          body = await readBody(req, 16 * 1024);
-        } catch {
-          return json(res, 400, { error: '请求格式错误' });
-        }
-        const op = String(body?.op ?? '');
-        if (!['preview', 'trust', 'reject'].includes(op)) return json(res, 400, { error: 'op 不合法' });
-        // 限流：每 IP 每分钟 10 次（独立内存桶）
-        if (appealBucketLimited(ip, 'action', 10, 60_000)) {
-          return json(res, 429, { error: '操作过于频繁，请稍后再试' }, { 'retry-after': '60' });
-        }
-        const token = String(body?.token ?? '').trim();
-        if (!token || !/^[A-Za-z0-9_-]{20,64}$/.test(token)) {
-          // §10.3：token 连续错误 10 次/小时 → 429；其余统一 404（防枚举）
-          if (appealBucketLimited(ip, 'action-bad', 10, 3600_000)) {
-            return json(res, 429, { error: '尝试次数过多，请稍后再试' }, { 'retry-after': '3600' });
-          }
-          logger?.warn('appeal.action_refused', { op, reason: 'bad_token', ip: ip || null });
-          return json(res, 404, { error: '链接无效或已过期' });
-        }
-        const hash = createHash('sha256').update(token).digest('hex');
-        const appeal = await db.appealByTokenHash(q, hash);
-        const expired = appeal && appeal.action_expires_at && new Date(appeal.action_expires_at).getTime() < Date.now();
-        if (!appeal || expired) {
-          if (appealBucketLimited(ip, 'action-bad', 10, 3600_000)) {
-            return json(res, 429, { error: '尝试次数过多，请稍后再试' }, { 'retry-after': '3600' });
-          }
-          logger?.warn('appeal.action_refused', { op, reason: expired ? 'expired' : 'bad_token', code: appeal?.code ?? null, ip: ip || null });
-          return json(res, 404, { error: '链接无效或已过期' });
-        }
-        if (op === 'preview') {
-          // 零副作用：不写任何状态（§10.7 验收 9/14）
-          return json(res, 200, {
-            code: appeal.code,
-            status: appeal.status,
-            ipMasked: visitors.maskIpForDisplay(appeal.ip),
-            reason: appeal.reason ?? null,
-            banUntil: appeal.ban_until ?? null,
-            contactMasked: maskEmail(appeal.contact),
-            message: String(appeal.message ?? '').slice(0, 1000),
-            createdAt: appeal.created_at,
-            handledAt: appeal.handled_at ?? null,
-            handledVia: appeal.handled_via ?? null,
-            canAct: appeal.status === 'pending',
-          });
-        }
-        // trust / reject：与后台共用状态机，先到先得（§10.7 验收 12）
-        if (appeal.status !== 'pending') {
-          logger?.info('appeal.action_email', { code: appeal.code, op, outcome: 'already_handled' });
-          return json(res, 409, { error: '该申诉已处理', status: appeal.status, handledAt: appeal.handled_at ?? null, handledVia: appeal.handled_via ?? null });
-        }
-        let note = null;
-        if (op === 'reject') {
-          const raw = String(body?.note ?? '').trim();
-          if (raw && raw.length < 5) return json(res, 400, { error: '拒绝理由至少 5 个字' });
-          note = raw || '未通过审核，如仍有疑问请回复本邮件'; // §10.3 默认文案
-        }
-        if (note && note.length > 500) return json(res, 400, { error: '理由最多 500 字' });
-        const nextStatus = op === 'trust' ? 'resolved' : 'rejected';
-        const updated = await db.consumeAppealToken(q, {
-          hash,
-          status: nextStatus,
-          action: op === 'trust' ? 'both' : 'reject',
-          note,
-          handledVia: 'email',
-        });
-        if (!updated) {
-          // 并发：事务抢 pending 失败——后到者显示已处理，不重复解封/发信
-          logger?.info('appeal.action_email', { code: appeal.code, op, outcome: 'already_handled' });
-          return json(res, 409, { error: '该申诉已处理', status: appeal.status, handledAt: appeal.handled_at ?? null });
-        }
-        // trust：解封 IP + 设备（与后台 resolve 同一套动作，§10.3）
-        if (op === 'trust') {
-          if (appeal.ip) {
-            await db.removeBlockedIp(q, appeal.ip).catch(() => {});
-            await db.clearAbuseBan(q, appeal.ip).catch(() => {});
-            ratelimit.clearBanMemory(appeal.ip);
-            await visitors.refreshBlocklist(q).catch(() => {});
-          }
-          const fp = appeal.fingerprint ?? (appeal.device_id ? await db.fingerprintOfDeviceId(q, appeal.device_id) : null);
-          if (fp) {
-            await db.removeDeviceBan(q, fp).catch(() => {});
-            devices.forgetBan(fp, appeal.device_id || '');
-          }
-        }
-        logger?.info('appeal.action_email', { code: appeal.code, op, outcome: 'ok' });
-        // 结果邮件给申请人（失败只记日志）
-        const mail = appealResultMail({ siteName: siteName(), code: appeal.code, resolved: op === 'trust', note: op === 'trust' ? '' : note });
-        await sendAppealEmail({ to: appeal.contact, replyTo: appealEmail(), subject: mail.subject, text: mail.text, html: mail.html, event: 'appeal_result' });
-        return json(res, 200, { ok: true, code: appeal.code, status: nextStatus });
-      }
 
       // CA-1（docs/APP-NATIVE.md §3.2）：先 Bearer、后 Cookie——Bearer 校验哈希 + 未过期 + 未撤销 +
       // 用户未禁用；失效统一 user=null（用户接口 401 login_required）。last_used_at 5 分钟节流写。
@@ -1727,71 +1506,25 @@ export function createApiServer({
         if (handled) return;
       }
 
-      // ---- 申诉管理（O-5/O-6，docs/APPEAL-SYSTEM.md §3.2/§3.3）----
-      if (path === '/api/admin/appeals' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const status = String(url.searchParams.get('status') ?? 'pending');
-        if (!['pending', 'done', 'all'].includes(status)) return json(res, 400, { error: 'status 只支持 pending / done / all' });
-        const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 20) || 20, 1), 100);
-        const page = Math.max(Number(url.searchParams.get('page') ?? 1) || 1, 1);
-        const rows = await db.listAppeals(q, { status, limit, page });
-        return json(res, 200, {
-          appeals: rows.map(appealRowPublic),
-          total: await db.countAppeals(q, { status }),
-          pending: await db.countPendingAppeals(q),
-        });
-      }
-
-      const appealResolveMatch = path.match(/^\/api\/admin\/appeals\/(\d+)\/resolve$/);
-      if (appealResolveMatch && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const id = Number(appealResolveMatch[1]);
-        let body;
-        try {
-          body = await readBody(req, 16 * 1024);
-        } catch {
-          return json(res, 400, { error: '请求格式错误' });
-        }
-        const action = String(body?.action ?? '');
-        if (!['unban_ip', 'unban_device', 'both', 'reject', 'note'].includes(action)) {
-          return json(res, 400, { error: 'action 不合法（unban_ip / unban_device / both / reject / note）' });
-        }
-        let note = String(body?.note ?? '').trim();
-        if (action === 'reject' && note.length < 5) return json(res, 400, { error: '拒绝理由至少 5 个字' });
-        if (note.length > 500) return json(res, 400, { error: '备注/理由最多 500 字' });
-        const appeal = await db.getAppealById(q, id);
-        if (!appeal) return json(res, 404, { error: '申诉不存在' });
-        // 并发保护：where status='pending' 抢锁，0 行 = 已处理
-        const updated = await db.resolveAppeal(q, { id, action, note: note || null, handledBy: user.id, handledVia: 'console' });
-        if (!updated) return json(res, 409, { error: '该申诉已处理' });
-        // 联动解封：与 BQ 邮件动作同一套动作（§3.3 / §10.3）
-        const unbanIp = action === 'unban_ip' || action === 'both';
-        const unbanDevice = action === 'unban_device' || action === 'both';
-        const unban = { ip: false, device: false };
-        if (unbanIp && appeal.ip) {
-          await db.removeBlockedIp(q, appeal.ip).catch(() => {});
-          await db.clearAbuseBan(q, appeal.ip).catch(() => {});
-          ratelimit.clearBanMemory(appeal.ip);
-          await visitors.refreshBlocklist(q).catch(() => {});
-          unban.ip = true;
-        }
-        if (unbanDevice && (appeal.fingerprint || appeal.device_id)) {
-          const fp = appeal.fingerprint ?? await db.fingerprintOfDeviceId(q, appeal.device_id);
-          if (fp) {
-            await db.removeDeviceBan(q, fp).catch(() => {});
-            devices.forgetBan(fp, appeal.device_id || '');
-          }
-          unban.device = true;
-        }
-        logger?.info('appeal.resolved', { id, code: appeal.code, action, by: user.username, unban });
-        // 结果邮件：resolved → 已解封可访问；rejected → 未通过+理由；note 不发
-        if (action !== 'note') {
-          const resolved = action !== 'reject';
-          const mail = appealResultMail({ siteName: siteName(), code: appeal.code, resolved, note: resolved ? '' : note });
-          await sendAppealEmail({ to: appeal.contact, replyTo: appealEmail(), subject: mail.subject, text: mail.text, html: mail.html, event: 'appeal_result' });
-        }
-        return json(res, 200, { ok: true, appeal: appealRowPublic(updated) });
-      }
+      // ---- CO-4/B4 第二轮：申诉域管理路由已抽到 src/routes/appeal.js（requireAdmin 就绪后调用）----
+      if (
+        await handleAppealAdmin({
+          path,
+          req,
+          res,
+          url,
+          q,
+          logger,
+          json,
+          readBody,
+          ip,
+          user,
+          requireAdmin,
+          siteName,
+          appealEmail,
+        })
+      )
+        return;
 
       // ---- 登录 / 登出 ----
       // ---- 图形验证码（登录前置，匿名可拿；缓存禁止）----

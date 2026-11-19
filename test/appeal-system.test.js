@@ -5,6 +5,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
+import { createHash, randomBytes } from 'node:crypto';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import { startApiServer, resetAppealBuckets } from '../src/server.js';
@@ -12,6 +16,87 @@ import { ensureEmailSchema } from '../src/email-auth.js';
 import * as ratelimit from '../src/ratelimit.js';
 import * as devices from '../src/devices.js';
 import * as visitors from '../src/visitors.js';
+
+// ---------------------------------------------------------------- CO-4/B4 第二轮：申诉域拆分静态契约
+// App 域拆分试点（docs/ARCHITECTURE.md §15）后第二个域——断言按新落点指向：
+//   · 表结构与申诉 SQL → src/store/appeal-repository.js；pg.js 必须 re-export（旧导入签名不变）；
+//   · 路由分支（提交/查进度/邮件动作/后台列表/后台处理）→ src/routes/appeal.js；
+//   · server.js 只留拦截链豁免中间件（appealExempt）与两段接线，且必须真实调用
+//     handleAppealPublic / handleAppealAdmin——删掉调用即红（防「死模块」）。
+// 反向自检口径：删掉 routes/appeal.js 任一路由分支 → 第 1 组红；删掉 server.js 的接线调用 → 第 3 组红；
+// 把分支抄回 server.js → 第 4 组「防双实现」红。
+
+const SRC = join(process.cwd(), 'src');
+const appealRoutesSrc = readFileSync(join(SRC, 'routes', 'appeal.js'), 'utf8');
+const appealRepoSrc = readFileSync(join(SRC, 'store', 'appeal-repository.js'), 'utf8');
+const serverSrc = readFileSync(join(SRC, 'server.js'), 'utf8');
+const pgSrc = readFileSync(join(SRC, 'store', 'pg.js'), 'utf8');
+
+test('CO-4/B4 第二轮：申诉路由分支全部在 src/routes/appeal.js（公开段 + 管理段）', () => {
+  assert.match(appealRoutesSrc, /path === '\/api\/appeal' && req\.method === 'POST'/, '提交申诉分支');
+  assert.match(appealRoutesSrc, /path !== '\/api\/appeal\/action' && req\.method === 'GET'/, '按编号查进度分支（排除 action 前缀）');
+  assert.match(appealRoutesSrc, /path === '\/api\/appeal\/action' && req\.method === 'POST'/, '邮件动作分支');
+  assert.match(appealRoutesSrc, /path === '\/api\/admin\/appeals' && req\.method === 'GET'/, '后台列表分支');
+  assert.match(appealRoutesSrc, /appealResolveMatch && req\.method === 'POST'/, '后台处理分支');
+  assert.match(appealRoutesSrc, /export async function handleAppealPublic\(ctx\)/, '公开段入口');
+  assert.match(appealRoutesSrc, /export async function handleAppealAdmin\(ctx\)/, '管理段入口');
+  assert.match(appealRoutesSrc, /当前未被封禁，无需申诉/, '未封禁拦截校验随路由移入');
+  // BQ 契约随路由：token 只存哈希、日志不写 token、连续错误限流
+  assert.match(appealRoutesSrc, /createHash\('sha256'\)\.update\(token\)/, '动作 token 先哈希再查库');
+  assert.match(appealRoutesSrc, /tokenHash: hash/, '提交只把哈希写入 insertAppeal');
+  const refusedLog = appealRoutesSrc.match(/logger\?\.warn\('appeal\.action_refused', \{[\s\S]{0,200}?\}\)/)?.[0] ?? '';
+  assert.ok(!/, token[,}]/.test(refusedLog), '拒登日志不引用 token 变量（只写 op/reason/code/ip；reason=bad_token 是原因码）');
+  assert.match(appealRoutesSrc, /appealBucketLimited\(ip, 'action-bad', 10, 3600_000\)/, 'token 连续错误限流');
+});
+
+test('CO-4/B4 第二轮：appeals 表结构与 12 个申诉 SQL 落 appeal-repository.js，pg.js re-export 兼容', () => {
+  assert.match(appealRepoSrc, /create table if not exists appeals \(/, 'DDL 在新 repository');
+  assert.match(appealRepoSrc, /action_token_hash\s+text/, 'BQ token 哈希列');
+  assert.match(appealRepoSrc, /create index if not exists appeals_action_token on appeals \(action_token_hash\)/, '动作 token 索引');
+  for (const fn of ['appealStatusByIp', 'insertAppeal', 'recentAppealByIpMessage', 'countAppealsSince', 'appealStatusByCode', 'listAppeals', 'countPendingAppeals', 'countAppeals', 'getAppealById', 'resolveAppeal', 'appealByTokenHash', 'consumeAppealToken']) {
+    assert.match(appealRepoSrc, new RegExp(`export async function ${fn}\\(`), `${fn} 落新 repository`);
+  }
+  // re-export 壳：pg.js 只许 re-export，旧定义不得残留（双实现会漂移）
+  assert.match(pgSrc, /from '\.\/appeal-repository\.js'/, 'pg.js 必须 import appeal-repository.js');
+  assert.match(
+    pgSrc,
+    /export \{[\s\S]{0,1200}APPEALS_DDL[\s\S]{0,1200}insertAppeal[\s\S]{0,1200}consumeAppealToken[\s\S]{0,1200}\} from '\.\/appeal-repository\.js'/,
+    '申诉函数必须整体 re-export（签名不变）',
+  );
+  assert.ok(!/export (async )?function (appealStatusByIp|insertAppeal|recentAppealByIpMessage|countAppealsSince|appealStatusByCode|listAppeals|countPendingAppeals|countAppeals|getAppealById|resolveAppeal|appealByTokenHash|consumeAppealToken)/.test(pgSrc), 'pg.js 不允许保留旧函数定义（只许 re-export）');
+  assert.ok(!/create table if not exists appeals \(/.test(pgSrc), 'DDL 不得残留在 pg.js');
+});
+
+test('CO-4/B4 第二轮：server.js 必须真实接线两个入口（删掉调用即红，防死模块）', () => {
+  assert.match(serverSrc, /import \{ handleAppealPublic, handleAppealAdmin \} from '\.\/routes\/appeal\.js'/, 'server.js 必须导入域路由入口');
+  assert.ok(!/if \(false[\s\S]{0,80}handleAppealPublic/.test(serverSrc), '公开段接线不能被 if(false) 包一层绕过');
+  assert.match(serverSrc, /if \(\s*await handleAppealPublic\(\{/, '公开段接线');
+  assert.match(serverSrc, /await handleAppealPublic\(\{[\s\S]{0,900}?appealBucketLimited,/, '限流桶按引用共享（与 /api/captcha 同桶）');
+  assert.match(serverSrc, /await handleAppealPublic\(\{[\s\S]{0,900}?newAppealCode,/, '编号函数按引用共享');
+  assert.match(serverSrc, /await handleAppealPublic\(\{[\s\S]{0,900}?hit,/, '拦截链 hit 只读结果');
+  assert.match(serverSrc, /await handleAppealPublic\(\{[\s\S]{0,900}?deviceBan,/, '拦截链 deviceBan 只读结果');
+  assert.match(serverSrc, /await handleAppealPublic\(\{[\s\S]{0,900}?captcha,/, '验证码模块');
+  assert.match(serverSrc, /await handleAppealPublic\(\{[\s\S]{0,900}?deviceId,/, '设备 ID 只读结果');
+  assert.match(serverSrc, /if \(\s*await handleAppealAdmin\(\{/, '管理段接线');
+  assert.match(serverSrc, /await handleAppealAdmin\(\{[\s\S]{0,900}?requireAdmin,/, '管理段传 requireAdmin 守卫');
+  assert.match(serverSrc, /await handleAppealAdmin\(\{[\s\S]{0,900}?url,/, '管理段传 url（searchParams）');
+});
+
+test('CO-4/B4 第二轮：申诉路由分支不得双实现（server.js 里保留旧分支即红）', () => {
+  assert.ok(!/path === '\/api\/appeal' && req\.method === 'POST'/.test(serverSrc), '提交分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/appeal\/action' && req\.method === 'POST'/.test(serverSrc), '邮件动作分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/appeals' && req\.method === 'GET'/.test(serverSrc), '后台列表分支不得残留在 server.js');
+  assert.ok(!/appealResolveMatch && req\.method === 'POST'/.test(serverSrc), '后台处理分支不得残留在 server.js');
+});
+
+test('CO-4/B4 第二轮：拦截链豁免与限流桶留在 server.js（中间件 ≠ 路由）', () => {
+  assert.match(serverSrc, /const appealExempt = appealPage \|\| appealApi \|\| \(path === '\/api\/captcha' && req\.method === 'GET'\)/, '豁免判定留在 server.js');
+  assert.match(serverSrc, /deviceBan && !appealExempt/, '设备封禁带申诉豁免');
+  assert.match(serverSrc, /hit && !appealExempt/, 'IP 黑名单带申诉豁免');
+  assert.match(serverSrc, /!visitors\.isPrivateAddress\(ip\) && !appealExempt/, '三振限流带申诉豁免');
+  assert.match(serverSrc, /export function appealBucketLimited/, '限流桶函数留在 server.js');
+  assert.match(serverSrc, /appealBucketLimited\(ip, 'captcha', 30, 60_000\)/, '验证码路由继续共用申诉限流桶');
+});
 
 process.env.TRUST_PROXY = '1';
 process.env.APPEAL_EMAIL = 'appeal@example.com';
@@ -330,10 +415,6 @@ test('O-7：GET /api/appeal/:code 查进度（不回显 IP/指纹/邮箱）；�
 });
 
 // ---------------------------------------------------------------- BQ 批（docs/APPEAL-SYSTEM.md §10.7 验收 9–17）
-import { createHash, randomBytes } from 'node:crypto';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 function makeToken() {
   const token = randomBytes(32).toString('base64url');

@@ -402,6 +402,8 @@ GOG 的 catalog 接口接受 `countryCode` + `currencyCode`，是目前唯一能
 | `user` / `bearer` | 认证结果 | 认证上下文解析**留在 server.js**，路由只读 |
 | `requireUser` / `requireAdmin` | 认证守卫 | 已在宿主闭包里写好 401/403 文案，直接调 |
 | `ip` / `whitelisted` | 拦截链结果 | 只读；路由不得自行调用计数型限流 |
+| `hit` / `deviceBan` / `deviceId` | 拦截链只读结果 | 黑名单命中 / 设备封禁 / 设备 ID——链上算好传入，路由不重复计算（申诉域用） |
+| `url` / `cookies` | 请求上下文 | `url.searchParams` 读分页参数（管理段用）；`cookies` 在链上已解析 |
 | `captcha` / `settings` 等 | 域需要的共享模块 | 按域按需加入 |
 
 **域特有**（按引用传递的可变状态，语义共享）：
@@ -409,23 +411,26 @@ GOG 的 catalog 接口接受 `countryCode` + `currencyCode`，是目前唯一能
 | 字段 | 例子 | 为什么按引用 |
 |---|---|---|
 | 进程级计数 Map | `loginIpFails` | App token 登录与 Web 登录**共用同一套失败计数**，各写各的会分家 |
+| 限流桶函数 | `appealBucketLimited` | 申诉接口与 `/api/captcha` 共用同一内存桶（闭包持有 server.js 的 Map） |
 | 单飞状态持有对象 | `appSync = { inFlight: null }` | 并发请求共享同一 Promise（single-flight） |
-| 闭包函数 | `tryAutoBan` | 依赖宿主的 `autoBanScope`/q/ratelimit 闭包 |
+| 闭包函数 | `tryAutoBan`、`siteName`、`appealEmail`、`newAppealCode` | 依赖宿主的 `autoBanScope`/q/ratelimit 闭包；`newAppealCode` 因封禁页仍用而留宿主 |
 
 **约定**：`ctx` 只加不减——新字段进基座表并写进本节；**传引用字段必须注释"语义共享"**，
 防止后人误改成"传值拷贝"。
 
-### 15.3 两个入口（顺序语义，不能合并）
+### 15.3 入口按位置语义分段（顺序语义，不能合并）
 
-域内路由对"跑在拦截链之前还是之后"有硬约束时，模块导出**两个入口**：
+域内路由对"跑在哪一段"有硬约束时，模块导出**多个入口**。两种已出现的形态：
 
 | 入口 | 调用位置 | 适用 |
 |---|---|---|
 | `handle<Domain>Preflight(ctx)` | `/api/ban/state` 之后、设备维度限流与封禁拦截链**之前** | 必须豁免拦截链的路由（如 `/api/app/status` 封禁自查） |
 | `handle<Domain>Routes(ctx)` | 认证上下文（user/bearer/requireAdmin）就绪之后 | 其余全部路由 |
+| `handle<Domain>Public(ctx)` / `handle<Domain>Admin(ctx)` | 公开段：拦截链之后、**认证上下文解析之前**；管理段：requireAdmin 之后 | 域内路由对"用户解析前后"有硬约束时（申诉域：已登录但 must_change_password 的用户也要能提交申诉，公开段必须在白名单检查之前；管理段需要 user/requireAdmin） |
 
-两个入口共享同一 ctx 构造约定；返回值统一 `true = 已处理并结束响应 / false = 未命中，宿主继续`。
-**移动调用位置 = 改契约**：预检段路由一旦挪到拦截链之后，就会新增限流/封禁副作用（App 契约 §3 不允许）。
+各入口共享同一 ctx 构造约定；返回值统一 `true = 已处理并结束响应 / false = 未命中，宿主继续`。
+**移动调用位置 = 改契约**：预检段路由一旦挪到拦截链之后，就会新增限流/封禁副作用（App 契约 §3 不允许）；
+公开段路由一旦挪到认证上下文之后，就会被 must_change_password 白名单拦下（申诉契约不允许）。
 
 ### 15.4 什么留在 server.js（中间件 ≠ 路由）
 
@@ -442,10 +447,11 @@ GOG 的 catalog 接口接受 `countryCode` + `currencyCode`，是目前唯一能
 1. 读 [TODO.md](TODO.md)/[ACTIVE-SESSIONS.md](ACTIVE-SESSIONS.md) 认领，文件面登记；**一次一个域**；
 2. 盘点域内路由：`grep -n "path === '<前缀>'" src/server.js`，逐条确认无其它路由抢占同一 path+method；
 3. 建 `src/routes/<domain>.js`：复制路由体，把 `q/logger/json/…` 改为从 `ctx` 解构；
-   需要预检段的路由进 `handle<Domain>Preflight`，其余进 `handle<Domain>Routes`；
+   按 15.3 选入口形态——需要预检段的路由进 `handle<Domain>Preflight`，其余进 `handle<Domain>Routes`；
+   域内对"用户解析前后"有硬约束时用 `handle<Domain>Public` / `handle<Domain>Admin` 两段（申诉域先例）；
 4. 抽该域 SQL：`grep -n "<域特征>" src/store/pg.js` 找到专属 DDL/函数 → 建 `src/store/<domain>-repository.js`
    （签名照抄）→ pg.js 顶部 import + re-export，`migrate()` 继续消费其 DDL 常量；
-5. 在 server.js 原位置换入两个入口调用（预检段位置**必须原样**），组装 ctx（基座 + 域特有）；
+5. 在 server.js 原位置换入各入口调用（预检段/公开段/管理段位置**必须原样**），组装 ctx（基座 + 域特有）；
 6. 修静态断言测试指向新文件，并加三条锁：路由分支在新文件、宿主真实接线（防死模块）、
    旧分支不残留在 server.js（防双实现）；**反向自检**：删一个路由分支 → 对应测试必须红；
 7. `node test/<域相关>.test.js` → `npm run test:1..4` → `node test/api.test.js` → `frontend:build` → `scan` 全绿；
@@ -457,3 +463,12 @@ GOG 的 catalog 接口接受 `countryCode` + `currencyCode`，是目前唯一能
 | 域 | 路由模块 | repository | 拆出内容 | 批次 |
 |---|---|---|---|---|
 | App 客户端 API + 分发 | `src/routes/app.js` | `src/store/app-repository.js` | `/api/app/status`、`/api/app/latest`、`/api/auth/token`、`/api/auth/token/revoke`、`/api/admin/app-sync`、`/api/admin/app-sync/status`；api_tokens 表 + 4 个 token 函数 | CO-4/B4（试点） |
+| 申诉系统（公开 + 管理） | `src/routes/appeal.js` | `src/store/appeal-repository.js` | `/api/appeal`、`/api/appeal/:code`、`/api/appeal/action`（公开段）、`/api/admin/appeals`、`/api/admin/appeals/:id/resolve`（管理段）；appeals 表 + 12 个申诉 SQL 函数 | CO-4/B4（第二轮） |
+
+**第二轮选申诉域的理由**（与认证域二选一）：① 边界最独立——全部 `/api/appeal*` 与
+`/api/admin/appeals*` 由申诉系统独占，唯一跨域共享的 `appealBucketLimited` 按 §15.2 闭包传引用即可，
+验证码路由留 server.js 不冲突；② 试点 QA（docs/QA-CO4-B4.md 条目 11）的「下一步建议」正是申诉域；
+③ 认证域是 App 认证 / Web 登录 / Steam 登录三方交汇点（`loginIpFails`/auto-ban/验证码共享最复杂，
+且 `/api/auth/token` 已在 App 域、命名易混淆），留到模式成熟后再拆。
+**与试点的差异**：试点是「预检段 + 主段」，申诉域是「公开段（用户解析前）+ 管理段（requireAdmin 后）」
+——没有预检段，但公开段必须在 must_change_password 白名单**之前**（§15.3 第三种形态，已写入 checklist）。

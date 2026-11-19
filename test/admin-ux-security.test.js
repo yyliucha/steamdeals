@@ -58,8 +58,11 @@ test('CF 审核四操作：临时封（10min/1h/1d）/永久封/信任/忽略 + 
 test('CF 申诉可见性：未封禁只提示不展示表单；后端校验封禁上下文', () => {
   assert.match(appealPage, /当前未被封禁，无需申诉/, '未封禁提示');
   assert.match(appealPage, /api\/ban\/state/, '挂载查封禁状态');
+  // CO-4/B4 第二轮：提交接口已抽到 src/routes/appeal.js——「未封禁 400」校验随路由移入新文件
   const server = readFileSync(join(process.cwd(), 'src', 'server.js'), 'utf8');
-  assert.match(server, /当前未被封禁，无需申诉/, '提交接口校验封禁上下文');
+  const appealRoutes = readFileSync(join(process.cwd(), 'src', 'routes', 'appeal.js'), 'utf8');
+  assert.match(appealRoutes, /当前未被封禁，无需申诉/, '提交接口校验封禁上下文（落 routes/appeal.js）');
+  assert.match(appealRoutes, /path === '\/api\/appeal' && req\.method === 'POST'/, '校验所在的是提交分支');
   assert.ok(!/BAN_ONLY_PAGES = new Set\(\[[^\]]*'\/appeal'/.test(server), '/appeal 移出仅封禁可见页');
 });
 
