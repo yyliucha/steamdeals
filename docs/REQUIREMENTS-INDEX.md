@@ -132,6 +132,8 @@
 | **DU** | 🐞 缺陷：个人资料「个人简介」placeholder 插值未绑定（显示 {{ }} 源码） | 本交接（TODO DU 条目） | 待开发（2026-11-19 截图发现，P3） | ✅ 本轮已给 |
 | **DV** | 游戏管理「ITAD」筛选改为来源筛选（game_source_sync matched） | [ITAD-SOURCE-FILTER.md](ITAD-SOURCE-FILTER.md) | 待开发（2026-11-19 方案 A 确认） | ✅ 本轮已给 |
 | **DW** | 🐞 缺陷：搜索关键词参数位错位风险（精确名匹配失效，中文名搜不到）——候选/主查询两套绑定显式化 + 锁行为测试 | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DW | 已发布 v2.27.1（2026-11-19，修复 fc410af + 锁行为测试 77f8214；QA-DW.md 第 1 轮 6/0/0/1） | ✅ 本轮已给 |
+| **DY** | 🐞 缺陷：安卓页面衔接状态丢失（详情返回后搜索/滚动/表单丢）——ViewModel/rememberSaveable 治理 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §DY | 待开发（2026-11-19） | ✅ 本轮已给 |
+| **DZ** | ⚙️ 调整：安卓公告未读角标无法清除（首页铃铛常驻 1）——弹层加「全部已读」 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §DZ | 待开发（2026-11-19） | ✅ 本轮已给 |
 | **DX** | 🧹 技术债：列表/站点接口性能优化（count 合并 + 短 TTL 缓存 + /api/site 缓存 + 压测） | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DX | 待开发（依赖 DW） | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
