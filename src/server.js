@@ -69,6 +69,12 @@ import { handleAuthPublic, handleAuthRoutes, MAX_ACCOUNTS_PER_USER } from './rou
 // 只被本域使用、随域移入模块（与认证域 passwordCheckHits 同先例）；/api/admin/watchlist*、
 // /api/admin/wishlists 属管理段（B4 队列 #16 后续轮次），留在本文件。
 import { handleWatchlistRoutes } from './routes/watchlist.js';
+// CO-5/B4-2 第五轮：公告域路由已抽到 src/routes/announcements.js——
+// handleAnnouncementsPublic 在认证上下文解析之前（公开段，游客与待改密用户也要能读到公告）、
+// handleAnnouncementsRoutes 在认证上下文就绪后（主段，已读写表）、handleAnnouncementsAdmin
+// 在 requireAdmin 就绪之后（管理段 CRUD）。resolveSession 闭包留在本文件（与 adminBypass /
+// 主 user 三处共享同一请求级 promise），按引用传入公开段（语义共享）。
+import { handleAnnouncementsPublic, handleAnnouncementsRoutes, handleAnnouncementsAdmin } from './routes/announcements.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -321,12 +327,6 @@ function serveAppealPage(res, outDir, frontendDir, { site, email, code }) {
   res.end(html);
   return true;
 }
-
-const toIso = (value) => {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-};
 
 // 封面图内存热缓存：数据库是持久层，这里只放最近访问的少量图片（LRU，约 300 张）
 const imgMemCache = new Map(); // appid/size -> { contentType, body }
@@ -1230,7 +1230,7 @@ export function createApiServer({
         return serveFrontendStatic(res, frontendDir, outDir, path);
       }
 
-      // ---- 公开接口：站点信息 / 公告 / 设备指纹上报 ----
+      // ---- 公开接口：站点信息（公告/设备指纹已分别抽到 routes/announcements.js、routes/auth.js 公开段）----
       if (path === '/api/site' && req.method === 'GET') {
         // AL 批（docs/AUTH-REDESIGN.md §5.3）：注册页用——开关与 SMTP 就绪状态（不可用时不显示表单）
         let registrationEnabled = true;
@@ -1252,32 +1252,11 @@ export function createApiServer({
           registration: { enabled: registrationEnabled, smtpReady: registrationSmtpReady },
         });
       }
-      if (path === '/api/announcements' && req.method === 'GET') {
-        const rows = await db.listAnnouncements(q, { activeOnly: true, limit: 200 });
-        // 登录用户附带服务端已读 id（跨设备跟随账号）；游客本地记录，接口只给空数组
-        const sessUser = await resolveSession();
-        let readIds = [];
-        if (sessUser) {
-          const reads = await q('select announcement_id from announcement_reads where user_id = $1', [sessUser.id]);
-          readIds = reads.rows.map((r) => Number(r.announcement_id));
-        }
-        return json(
-          res,
-          200,
-          {
-            announcements: rows.map((r) => ({
-              id: Number(r.id),
-              title: r.title,
-              body: r.body,
-              level: r.level,
-              startsAt: r.starts_at,
-              endsAt: r.ends_at,
-            })),
-            readIds,
-          },
-          { 'cache-control': 'no-store' },
-        );
-      }
+      // ---- CO-5/B4-2 第五轮（docs/DESIGN-AUDIT.md B4）：公告域路由已抽到 src/routes/announcements.js ----
+      // 公开段调用位置不能动：必须在认证上下文解析（must_change_password 白名单）之前——
+      // 游客与待改密用户也要能读到公告（原位置语义，移动 = 改契约）。
+      // resolveSession 与 adminBypass / 主 user 共享同一请求级 promise（BK 批 §3.2），按引用传入（语义共享）。
+      if (await handleAnnouncementsPublic({ path, req, res, q, json, resolveSession })) return;
       // ---- CO-5/B4-2 第三轮（docs/DESIGN-AUDIT.md B4）：认证域公开路由已抽到 src/routes/auth.js ----
       // 调用位置不能动：必须在认证上下文解析（must_change_password 白名单）之前——
       // 改密页也会注册设备（原位置语义，移动 = 改契约）。ctx 字段契约见 ARCHITECTURE §15。
@@ -1825,22 +1804,9 @@ export function createApiServer({
         return json(res, 200, gameCountCache.value);
       }
 
-      // ---- 公告已读（登录用户写表；游客只存浏览器本地，不调用）----
-      if (path === '/api/announcements/read' && req.method === 'POST') {
-        if (!requireUser()) return;
-        const body = await readBody(req);
-        const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
-        // 只写真实存在的公告 id（客户端可能带已删除的旧 id，FK 会拒绝）
-        const valid = ids.length ? (await q('select id from announcements where id = any($1::bigint[])', [ids])).rows.map((r) => Number(r.id)) : [];
-        if (valid.length) {
-          await q(
-            'insert into announcement_reads (user_id, announcement_id) select $1, x.id from unnest($2::bigint[]) as x(id) on conflict (user_id, announcement_id) do nothing',
-            [user.id, valid],
-          );
-        }
-        logger?.info('announcement.read', { userId: user.id, count: valid.length });
-        return json(res, 200, { ok: true, readIds: valid });
-      }
+      // ---- CO-5/B4-2 第五轮（docs/DESIGN-AUDIT.md B4）：公告已读路由已抽到 src/routes/announcements.js ----
+      // 主段调用位置不能动：必须在认证上下文（user/requireUser）就绪之后（401 语义依赖该位置）。
+      if (await handleAnnouncementsRoutes({ path, req, res, q, logger, json, readBody, user, requireUser })) return;
 
       // ---- 数据指纹（匿名可读）：前台轮询这个，变了才重新拉列表 ----
       // 只做低成本聚合：别再让每次自动刷新都跑一遍完整列表查询。
@@ -4083,55 +4049,24 @@ export function createApiServer({
         return json(res, 200, { removed });
       }
 
-      // ---- 管理员：站点公告 ----
-      if (path === '/api/admin/announcements' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 200) || 200, 1), 200);
-        return json(res, 200, { announcements: await db.listAnnouncements(q, { limit }) });
-      }
-      if (path === '/api/admin/announcements' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const body = await readBody(req);
-        const title = String(body.title ?? '').trim().slice(0, 120);
-        const text = String(body.body ?? '').trim().slice(0, 4000);
-        if (!title || !text) return json(res, 400, { error: '标题和内容不能为空' });
-        const row = await db.createAnnouncement(q, {
-          title,
-          body: text,
-          level: ['info', 'warning', 'critical'].includes(body.level) ? body.level : 'info',
-          active: body.active !== false,
-          startsAt: toIso(body.startsAt),
-          endsAt: toIso(body.endsAt),
-          createdBy: user.id,
-        });
-        logger?.info('announcement.created', { id: row.id, by: user.username });
-        return json(res, 200, { announcement: row });
-      }
-      const annMatch = path.match(/^\/api\/admin\/announcements\/(\d+)$/);
-      if (annMatch && (req.method === 'PATCH' || req.method === 'PUT')) {
-        if (!requireAdmin()) return;
-        const body = await readBody(req);
-        const title = String(body.title ?? '').trim().slice(0, 120);
-        const text = String(body.body ?? '').trim().slice(0, 4000);
-        if (!title || !text) return json(res, 400, { error: '标题和内容不能为空' });
-        const row = await db.updateAnnouncement(q, Number(annMatch[1]), {
-          title,
-          body: text,
-          level: ['info', 'warning', 'critical'].includes(body.level) ? body.level : 'info',
-          active: body.active !== false,
-          startsAt: toIso(body.startsAt),
-          endsAt: toIso(body.endsAt),
-        });
-        if (!row) return json(res, 404, { error: '公告不存在' });
-        logger?.info('announcement.updated', { id: row.id, by: user.username });
-        return json(res, 200, { announcement: row });
-      }
-      if (annMatch && req.method === 'DELETE') {
-        if (!requireAdmin()) return;
-        const removed = await db.deleteAnnouncement(q, Number(annMatch[1]));
-        logger?.info('announcement.deleted', { id: Number(annMatch[1]), removed, by: user.username });
-        return json(res, 200, { removed });
-      }
+      // ---- CO-5/B4-2 第五轮（docs/DESIGN-AUDIT.md B4）：公告管理路由已抽到 src/routes/announcements.js ----
+      // 管理段调用位置不能动：必须在 requireAdmin 就绪之后（401/403 语义依赖该位置）；
+      // toIso 只被本域使用、已随域移入模块。
+      if (
+        await handleAnnouncementsAdmin({
+          path,
+          req,
+          res,
+          url,
+          q,
+          logger,
+          json,
+          readBody,
+          user,
+          requireAdmin,
+        })
+      )
+        return;
 
       // ---- 管理员：设备指纹与设备封禁 ----
       if (path === '/api/admin/devices' && req.method === 'GET') {

@@ -66,6 +66,18 @@ export {
   deleteUserWatch,
   listUserWatches,
 } from './watchlist-repository.js';
+// CO-5/B4-2 第五轮（docs/DESIGN-AUDIT.md B4）：announcements 域 SQL 落 announcements-repository.js
+// （公告 CRUD 四函数 + 已读三新函数；无 DDL 搬家——announcements 表被后台批量操作 B4 #11 也读写）。
+// 这里 re-export 保持旧 db.* 导入签名不变（routes/announcements.js、server.js 其它段与现有测试照旧走聚合壳）。
+export {
+  listAnnouncements,
+  createAnnouncement,
+  updateAnnouncement,
+  deleteAnnouncement,
+  listAnnouncementReads,
+  filterExistingAnnouncementIds,
+  markAnnouncementsRead,
+} from './announcements-repository.js';
 
 export const SCHEMA = `
 create table if not exists platforms (
@@ -3360,44 +3372,10 @@ export async function setBanUntil(q, ip, minutes, source = 'rate') {
 }
 
 // ---------------------------------------------------------------- 站点公告
-
-export async function listAnnouncements(q, { activeOnly = false, limit = 50 } = {}) {
-  const where = activeOnly
-    ? `where active and (starts_at is null or starts_at <= now()) and (ends_at is null or ends_at > now())`
-    : '';
-  const r = await q(
-    `select id, title, body, level, active, starts_at, ends_at, created_at, updated_at
-       from announcements ${where} order by id desc limit $1`,
-    [Math.min(Math.max(Number(limit) || 50, 1), 200)],
-  );
-  return r.rows;
-}
-
-export async function createAnnouncement(q, { title, body, level = 'info', active = true, startsAt = null, endsAt = null, createdBy = null }) {
-  const r = await q(
-    `insert into announcements (title, body, level, active, starts_at, ends_at, created_by)
-     values ($1, $2, $3, $4, $5, $6, $7)
-     returning id, title, body, level, active, starts_at, ends_at, created_at, updated_at`,
-    [title, body, level, Boolean(active), startsAt, endsAt, createdBy],
-  );
-  return r.rows[0];
-}
-
-export async function updateAnnouncement(q, id, { title, body, level, active, startsAt = null, endsAt = null }) {
-  const r = await q(
-    `update announcements
-        set title = $2, body = $3, level = $4, active = $5, starts_at = $6, ends_at = $7, updated_at = now()
-      where id = $1
-      returning id, title, body, level, active, starts_at, ends_at, created_at, updated_at`,
-    [id, title, body, level, Boolean(active), startsAt, endsAt],
-  );
-  return r.rows[0] ?? null;
-}
-
-export async function deleteAnnouncement(q, id) {
-  const r = await q('delete from announcements where id = $1', [id]);
-  return r.rowCount ?? 0;
-}
+// CO-5/B4-2 第五轮（docs/DESIGN-AUDIT.md B4）：公告 CRUD 与已读 SQL 已抽到
+// announcements-repository.js（顶部 re-export 保持 db.* 签名不变）；表 DDL 与
+// 后台批量操作函数（bulkDeleteAnnouncements/bulkSetAnnouncementsActive）留本文件
+// ——announcements 表跨域共用（B4 #11 批量操作也读写），watchlist 先例：无 DDL 搬家。
 
 // ---------------------------------------------------------------- 设备指纹
 
