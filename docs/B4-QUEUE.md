@@ -71,7 +71,7 @@
 | 5 | announcements | /api/announcements* | 已拆 | v2.27.3 | 3022d6e |
 | 6 | me | /api/me/* | 已拆 | v2.27.3 | 4ed78db |
 | 7 | 杂项（site/steam/ban） | /api/site、/api/steam/*、/api/ban/state | 已拆（QA 放行，待发版） | | 552fb40 |
-| 8 | admin 访问安全 | visitors/views/devices/blacklist/whitelist/abuse/reviews | 未拆 | | |
+| 8 | admin 访问安全 | visitors/views/devices/blacklist/whitelist/abuse/reviews | 已拆（QA 放行，待发版） | | b3ebd8a |
 | 9 | admin 同步任务 | sync/heat/backfill/rename/circuit | 未拆 | | |
 | 10 | admin 系统设置 | smtp/mail/emails/announcements/proxies/version | 未拆 | | |
 | 11 | admin 用户批量 | users/bulk/bulk-ops | 未拆 | | |
@@ -121,3 +121,5 @@
 - 2026-11-20 05:42 开工：注册 ACTIVE-SESSIONS（夜班监工 v4 05:35 轮），进入开发循环，启动工人 B4 #7 杂项（site/steam/ban）。
 - 2026-11-20 06:30 工人完成 B4 #7 杂项（site/steam/ban）：提交 552fb40（server.js −243 / pg.js −50 / 新 routes/site.js 380 + store/site-repository.js 149 / 测试 +124）；QA-CO5-B4-2-site 第 1 轮 ✅ 放行（18/0/0/2，2 项人工确认均为本机沙箱环境限制，CI 兜底）；边界判定：/api/steam/* 全 10 条 + /api/site + /api/ban/state 拆走（预检/公开/主三段形态），/api/admin/wishlists 留 #16、/api/admin/steam-logs 留 #12、DT-2 排除区不动、steam-accounts.js 跨域模块原地；实测单域耗时 ≈45min（05:43→06:29）。
 - 2026-11-20 06:31 工人启动 B4 #8 admin 访问安全（visitors/views/devices/blacklist/whitelist/abuse/reviews）。
+- 2026-11-20 07:25 工人完成 B4 #8 admin 访问安全：提交 b3ebd8a（server.js −285 / pg.js −199 / 新 routes/admin-access.js 412 + store/admin-access-repository.js 348 / 测试 reviews +155）；QA-CO5-B4-2-admin-access 第 1 轮 ✅ 放行（20/0/0/1，1 项人工确认为沙箱环境限制，CI 兜底）；边界判定：20 条路由 + device-bans 3 条（管理段单入口）拆走，封禁拦截链/黑名单加载等中间件留宿主（§15.4）、跨域共用 SQL 留 pg.js；实测单域耗时 ≈50min（06:33→07:22）。两域齐（#7 552fb40 / #8 b3ebd8a，QA 全部放行）→ 进入批量构建 v2.27.4。
+- 2026-11-20 07:26 构建开始 v2.27.4（#7+#8 两域）：主树被 EF/EG 会话占用（未提交改动混在树里，其登记写明「与监工重叠面排队到监工轮收工后处理」）→ 构建改在独立 worktree nightshift-v2274（基 b3ebd8a）执行，本地门禁与发布文档全部在 worktree 做，主树不碰；worktree 独立 npm ci（主树 node_modules 当晚已残缺）。
