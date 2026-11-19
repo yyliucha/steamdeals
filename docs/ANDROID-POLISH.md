@@ -152,5 +152,62 @@
   本轮验证）；批量已读同样双口径（游客本地、登录服务端）。
 - **不改**：公告内容/发布流程/站点接口（批量已读接口复用既有 `/api/app/announcements/read`）。
 
+## EA / EB 实现说明（2026-11-19/20 开发会话，随 app-v2.23.0 发布）
+
+### EA-1 下拉刷新
+
+- 首页/搜索/愿望单/详情四个页面接 Material3 `PullToRefreshBox`，复用各页既有 refresh：
+  - 首页/愿望单：`isRefreshing = loading && 列表非空`，`onRefresh = 非加载中才 refresh()`；
+  - 搜索：已提交时重搜当前词（未提交下拉无效，保持历史页）；详情：重拉详情 + DLC 第一页。
+- 初始加载（空列表）仍走全屏 LoadingBox；`onRefresh` 只在非加载中触发，**不重复请求**。
+
+### EA-2 搜索空态优化
+
+- 无结果空态：引导文案「没找到「xx」\n试试别的关键词、拼音（如 xdlc）或英文名」+
+  「重试」（同词重搜）+「清空搜索」（`SearchScreenState.resetQuery()` 回历史关键词页）；
+- 历史词一键重搜沿用既有 chips（DC/既有逻辑保留）。
+
+### EA-3 详情页分享
+
+- 详情 TopAppBar 右侧「分享」→ 系统 `ACTION_SEND` chooser：文本
+  「《游戏名》SteamDeals 比价 <站点链接>」，链接用 `{API_BASE}/?q=<URL编码游戏名>` 直达站点搜索结果页
+  （站点游戏详情是弹层、无独立路由，故分享搜索直达链接）；`Common.shareGame()` 统一实现。
+
+### EA-4 我的页版本号 + 清缓存
+
+- 「我的」新增「当前版本」行（`BuildConfig.VERSION_NAME`，与 build.gradle versionName 同源，天然一致）；
+  游客态登录引导下也显示版本行（`VersionLine`）；
+- 「清除图片缓存」：仅清 Coil `memoryCache` + `diskCache`（均为 null 安全），**不动登录态**；
+  清后 toast「图片缓存已清除」，图片重新加载。
+
+### EA-5 详情页骨架屏
+
+- `DetailSkeleton.kt`：加载中（`detail == null`）以呼吸 alpha 动画骨架替换 loading 圈，
+  结构镜像详情首屏（封面 460:215 / 标题两行 / 价格行 / 指标三卡 / 描述五行），慢网下无「圈→内容」闪跳。
+
+### EA-6 全局弱网提示
+
+- `ApiClient.networkStateListener(ok)`：任何请求网络层失败（DNS/超时/断网，含更新下载）通知 false、
+  拿到任何响应通知 true；AppViewModel 据此显示/隐藏全局横幅（IO 线程回调，只写 StateFlow）；
+- AppRoot 底栏上方横幅：「网络不可用，请检查网络连接」+「重试」（轻量 ping `/api/app/status`，
+  恢复自动隐藏并 toast「网络已恢复」），**非阻塞、不遮挡页面**；
+- 踩坑：Scaffold bottomBar 是单 Slot，横幅与 NavigationBar 必须包进 `Column`，否则重叠被底栏遮挡
+  （模拟器复现后修复，App 749e580）。
+
+### EB 18R 内容选项
+
+- 首页/搜索筛选 chips 加「18R」（与 全部/折扣/史低/免费/未发售 并列）：开=请求 `adult=badge`
+  （显示 18R 游戏 + 卡片红色「18+」角标，与「成熟内容」tertiary 样式区分）；关=`adult=hide`（默认）；
+- 首次开启弹「确认已满 18 岁」（未确认不切换）；确认写 DataStore `adult_confirmed`，不再弹；
+- 开关状态 DataStore `adult_enabled`（SessionStore 布尔键 + SessionData 字段 + AppViewModel
+  `adultEnabled/adultConfirmed` StateFlow，首页/搜索共用）；重启/重进保留；
+- 首页请求 `HomeFilterParams.paramsFor(…, adultEnabled)` 显式带 adult（单测 +2 项断言 hide/badge 映射）；
+  搜索 `doSearch` 同样带 adult；开关变化由 `LaunchedEffect(adultEnabled)` 重拉当前词/筛选
+  （避开 DataStore 异步写入与请求的竞态）；
+- 详情接口 `gameDetail(appid)` 无 adult 过滤 → 18R 游戏详情可正常打开 ✅；
+- 边界：愿望单 `gamesSearch` 保持既有 `adult=hide`（本轮范围只做首页/搜索页）；线上数据当前
+  无 18R 内容（`/api/app/games` hide/badge 前 100 均 0 条 adult_flag）→「显示 18R 游戏」为
+  数据依赖项，模拟器以开关/弹窗/持久化验证为准，参数行为由单测锁定。
+
 
 
