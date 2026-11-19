@@ -195,7 +195,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-20 更新，App app-v2.23.0 已发布：DY + DZ + EA-1~6 + EB（站点零改动）；v2.27.2 已发布：CO-5/B4-2 认证域拆分；v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
+### 当前状态（2026-11-20 更新，App app-v2.23.0 已发布：DY + DZ + EA-1~6 + EB（站点零改动）；v2.27.3 已发布：CO-5/B4-2 三域拆分（watchlist/announcements/me）；v2.27.2 已发布：CO-5/B4-2 认证域拆分；v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 - **app-v2.23.0 已发布**（tag `app-v2.23.0`，App 仓库 d803612；Release 三资产：`steamdeals-2.23.0.apk` + `.apk.sha256` + `latest.json`）：
@@ -210,6 +210,12 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   验证（本机发版门禁）：主链四段（`npm run test:1..4` 串行）+ `node test/api.test.js` + `frontend:build` + `scan`（输出随 release 提交记录）。
   CI：docker-hub run 44548428207 ✅（publish 全 success）；docker-tcr run 44548428173 ✅；test-main **run 44559097058 ✅**（最终 HEAD ededf38；v2.27.2 发布后的文档提交被 concurrency 取消，测试在最终 HEAD 回归通过）。
   **服务器部署待执行**（升级到 `2.27.2`；本批无 schema 变更、无新增依赖——升级后直接可用）。
+- **v2.27.3 已发布**（tag `v2.27.3`，release 提交见 git log）：CO-5/B4-2 巨石拆分第四/五/六轮（watchlist/wishlist + announcements + me 三域，契约零变化）（技术债重构，无新功能面 → 小版本，2.27.2 → 2.27.3 连续递增）。
+  第四轮 watchlist/wishlist 用户段（1b087b4）`src/routes/watchlist.js`（6 条路由）+ `src/store/watchlist-repository.js`（3 函数搬家 + 域内联 SQL 新函数，`watchUserFails` 限流 Map 随域移入，admin 段/steam-accounts 段留宿主）；第五轮 announcements（3022d6e）`src/routes/announcements.js`（公开段+主段+管理段，首个三段域）+ `src/store/announcements-repository.js`（/api/admin/bulk 派发表 announcements 三条目留 #11）；第六轮 me（4ed78db）`src/routes/me.js`（6 条路由）+ `src/store/me-repository.js`（`/api/me/email/*` 与 `/api/auth/email*` 同模块（DT-2 排除区）整块留 auth-routes.js）；`src/server.js` 三域净 −319、`src/store/pg.js` 净 −165；pg.js re-export 兼容壳零删改；**外部契约零变化**（路径/参数/响应/错误码不变）。已交付 app/appeal/auth/watchlist/announcements/me 六域，剩余域拆分继续按 [B4-QUEUE.md](B4-QUEUE.md) 队列推进（下一域 #7 杂项 site/steam/ban）。
+  QA：B4-2 第四轮 ✅ [QA-CO5-B4-2-watchlist.md](QA-CO5-B4-2-watchlist.md) 第 1 轮（10/0/0/2）/ 第五轮 ✅ [QA-CO5-B4-2-announcements.md](QA-CO5-B4-2-announcements.md) 第 1 轮（16/0/0/2）/ 第六轮 ✅ [QA-CO5-B4-2-me.md](QA-CO5-B4-2-me.md) 第 1 轮（17/0/0/2）；需人工确认项均为本机沙箱环境限制（commit-own 测试 spawn EPERM、frontend:build 默认命令），CI 兜底。
+  验证（本机发版门禁）：主链 test:2/3/4 全绿（test:1 仅 commit-own 4 项已知沙箱环境红、与拆分前基线一致）+ `node test/api.test.js` 37/37 + `frontend:build` ✓（1.89s，native loader 变体）+ `scan` 干净；三域工人各自全链测试与反向自检记录见各 QA 报告。
+  CI：待确认（tag 推送后盯守中）。
+  **服务器部署待执行**（升级到 `2.27.3`；本批无 schema 变更、无新增依赖——升级后直接可用）。
 - **v2.27.1 已发布**（tag `v2.27.1`，release 提交见 git log）：CO-4/B4 巨石拆分两域（试点 App 域 + 第二轮申诉域）+ DW 搜索关键词参数位错位修复合并发版（技术债重构 + 缺陷修复，无新功能面 → 小版本，2.27.0 → 2.27.1 连续递增）。
   CO-4/B4：试点 App 域（0c8f5ff）`src/routes/app.js`（App 域 6 条路由）+ `src/store/app-repository.js`（`api_tokens` DDL + 4 个 token 函数）；第二轮申诉域（34a7bcc）`src/routes/appeal.js`（申诉域 5 条路由：公开段 + 管理段）+ `src/store/appeal-repository.js`（`appeals` DDL + 12 个申诉 SQL 函数）；`src/store/pg.js` 两域 re-export 兼容壳；`src/server.js` 试点 -216 行、第二轮再 -267 行（域路由换为入口接线，appealExempt 豁免与限流桶等中间件留原地）；**外部契约零变化**（路径/参数/响应/错误码不变）；已交付 app/appeal 两域，剩余 ~18 个域拆分另行立项（B4-2/CO-5）。
   DW：`gameSearch` 关键词归一化拆两个显式变量（`kwNormCandidate` 供候选探测/fuzzy、`kwNorm` 供主查询），注释约束两者不可互换（互换 = 精确名 LIKE 匹配 cap/42P18，新测试必红）；`filterParams` 顺序不变、候选查询绑定不变；新增 `test/game-search-exact.test.js` 进主链 test:3（精确名命中/region 值不命中/回归/零命中 + 注入错位反向自检）。

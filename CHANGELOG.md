@@ -1,5 +1,20 @@
 # 变更日志
 
+## [2.27.3] - 2026-11-20
+
+CO-5/B4-2 巨石拆分第四/五/六轮交付（watchlist/wishlist + announcements + me 三域，契约零变化）（技术债重构，无新功能面 → 小版本，2.27.2 → 2.27.3 连续递增）。
+
+### 技术债
+
+- **巨石拆分第四轮（CO-5/B4-2 watchlist/wishlist 域）**：`src/routes/watchlist.js`（用户段 6 条路由——`GET/POST /api/watchlist`、`DELETE /api/watchlist/:gameId`、`POST /api/wishlist`、`DELETE /api/wishlist/:appid`、`DELETE /api/wishlist/id/:gameId`）+ `src/store/watchlist-repository.js`（upsertUserWatch/deleteUserWatch/listUserWatches 签名照抄；域内联 SQL 抽新函数）；admin 段/steam-accounts 段留 server.js（B4 #16/#7）；`watchUserFails` 限流 Map 只被本域使用、随域移入（语义共享注释）；`src/server.js` 净 −53、`src/store/pg.js` 净 −33；**外部契约零变化**。
+- **巨石拆分第五轮（CO-5/B4-2 announcements 域）**：`src/routes/announcements.js`（公开段 `GET /api/announcements` + 主段 `POST /api/announcements/read` + 管理段 `GET/POST /api/admin/announcements` + `PATCH|PUT/DELETE /api/admin/announcements/:id`，首个「公开段 + 主段 + 管理段」三段域）+ `src/store/announcements-repository.js`（CRUD 4 函数签名不变 + 域内联 SQL 抽 3 新函数）；`/api/admin/bulk` 派发表 announcements 三条目留 #11；announcements 表 DDL 跨域共用留 pg.js；`src/server.js` 净 −65、`src/store/pg.js` 净 −22。
+- **巨石拆分第六轮（CO-5/B4-2 me 域）**：`src/routes/me.js`（`GET /api/me`、`POST /api/prefs`、`GET /api/avatar/:userId`、`PATCH /api/me/profile`、`POST|DELETE /api/me/avatar`、`GET /api/me/library`）+ `src/store/me-repository.js`；`/api/me/email/*` 与 `/api/auth/email*` 同属 auth-routes.js 模块（DT-2 排除区）整块留原地不拆半截；setDefaultSteamAccount/clearDefaultSteamIfMatches/userLibraryItems 与 user_prefs DDL 跨域共用留 pg.js；`src/server.js` 净 −201、`src/store/pg.js` 净 −110。
+- 拆分模式见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §15；已交付 app/appeal/auth/watchlist/announcements/me 六域；剩余域继续按 docs/B4-QUEUE.md 队列推进。
+
+### 测试
+
+- QA（本批 3 块全部放行）：B4-2 第四轮 ✅ docs/QA-CO5-B4-2-watchlist.md 第 1 轮（10/0/0/2）、第五轮 ✅ docs/QA-CO5-B4-2-announcements.md 第 1 轮（16/0/0/2）、第六轮 ✅ docs/QA-CO5-B4-2-me.md 第 1 轮（17/0/0/2）；需人工确认项均为本机沙箱环境限制（commit-own 测试 spawn EPERM、frontend:build 默认命令被拦），CI 兜底。
+
 ## [2.27.2] - 2026-11-19
 
 CO-5/B4-2 巨石拆分第三轮交付（认证域，契约零变化）（技术债重构，无新功能面 → 小版本，2.27.1 → 2.27.2 连续递增）。
