@@ -42,6 +42,21 @@ export {
   appealByTokenHash,
   consumeAppealToken,
 } from './appeal-repository.js';
+// CO-5/B4-2 第三轮（docs/DESIGN-AUDIT.md B4）：认证域 SQL 落 auth-repository.js（登录失败计数/
+// 锁定/改密/Steam 绑定专属 SQL，无 DDL 搬家）；这里 re-export 保持 routes/auth.js 与现有
+// 导入照旧走 pg.js 聚合壳（db.* 签名不变）。
+export {
+  bumpLoginFailCount,
+  lockUserAccount,
+  resetLoginFailState,
+  rehashUserPassword,
+  setUserWeakPassword,
+  userPasswordHash,
+  changeUserPassword,
+  steamAccountOwnerId,
+  countUserSteamAccounts,
+  upsertSteamAccount,
+} from './auth-repository.js';
 
 export const SCHEMA = `
 create table if not exists platforms (

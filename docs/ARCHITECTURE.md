@@ -400,6 +400,7 @@ GOG 的 catalog 接口接受 `countryCode` + `currencyCode`，是目前唯一能
 | `q` | 查询函数 | 传 repository 用；路由模块自己 `import * as db from '../store/pg.js'` |
 | `logger` / `json` / `readBody` | 基础设施 | 响应包装与请求体读取（与宿主同一实现） |
 | `user` / `bearer` | 认证结果 | 认证上下文解析**留在 server.js**，路由只读 |
+| `token` | 会话 cookie 值 | `cookies` 已解析；认证域登出/改密按 token 删会话（其它域不需要） |
 | `requireUser` / `requireAdmin` | 认证守卫 | 已在宿主闭包里写好 401/403 文案，直接调 |
 | `ip` / `whitelisted` | 拦截链结果 | 只读；路由不得自行调用计数型限流 |
 | `hit` / `deviceBan` / `deviceId` | 拦截链只读结果 | 黑名单命中 / 设备封禁 / 设备 ID——链上算好传入，路由不重复计算（申诉域用） |
@@ -414,6 +415,8 @@ GOG 的 catalog 接口接受 `countryCode` + `currencyCode`，是目前唯一能
 | 限流桶函数 | `appealBucketLimited` | 申诉接口与 `/api/captcha` 共用同一内存桶（闭包持有 server.js 的 Map） |
 | 单飞状态持有对象 | `appSync = { inFlight: null }` | 并发请求共享同一 Promise（single-flight） |
 | 闭包函数 | `tryAutoBan`、`siteName`、`appealEmail`、`newAppealCode` | 依赖宿主的 `autoBanScope`/q/ratelimit 闭包；`newAppealCode` 因封禁页仍用而留宿主 |
+| Steam 绑定 state Map | `bindStates` | 认证域 issue/consume 与 server.js 持有同一 Map（state 生命周期跨请求） |
+| 测试注入函数 | `steamVerify` | verifyCallback 替身（默认走 steam-login.js 真实现），测试传假实现离线验证绑定回调 |
 
 **约定**：`ctx` 只加不减——新字段进基座表并写进本节；**传引用字段必须注释"语义共享"**，
 防止后人误改成"传值拷贝"。
@@ -451,6 +454,9 @@ GOG 的 catalog 接口接受 `countryCode` + `currencyCode`，是目前唯一能
    域内对"用户解析前后"有硬约束时用 `handle<Domain>Public` / `handle<Domain>Admin` 两段（申诉域先例）；
 4. 抽该域 SQL：`grep -n "<域特征>" src/store/pg.js` 找到专属 DDL/函数 → 建 `src/store/<domain>-repository.js`
    （签名照抄）→ pg.js 顶部 import + re-export，`migrate()` 继续消费其 DDL 常量；
+   **域内联 SQL**（此前直接写在路由体里的字面量）同样抽成 repository 新函数——认证域先例：
+   登录失败计数/锁定/改密/Steam 绑定 10 函数；**跨域共用的通用 SQL 一律留 pg.js**
+   （判定：有没有别的域/模块也用，如 findUserByName/会话函数/insertDeviceLog）；
 5. 在 server.js 原位置换入各入口调用（预检段/公开段/管理段位置**必须原样**），组装 ctx（基座 + 域特有）；
 6. 修静态断言测试指向新文件，并加三条锁：路由分支在新文件、宿主真实接线（防死模块）、
    旧分支不残留在 server.js（防双实现）；**反向自检**：删一个路由分支 → 对应测试必须红；
@@ -464,6 +470,7 @@ GOG 的 catalog 接口接受 `countryCode` + `currencyCode`，是目前唯一能
 |---|---|---|---|---|
 | App 客户端 API + 分发 | `src/routes/app.js` | `src/store/app-repository.js` | `/api/app/status`、`/api/app/latest`、`/api/auth/token`、`/api/auth/token/revoke`、`/api/admin/app-sync`、`/api/admin/app-sync/status`；api_tokens 表 + 4 个 token 函数 | 已发布 v2.27.1（CO-4/B4 试点，2026-11-19） |
 | 申诉系统（公开 + 管理） | `src/routes/appeal.js` | `src/store/appeal-repository.js` | `/api/appeal`、`/api/appeal/:code`、`/api/appeal/action`（公开段）、`/api/admin/appeals`、`/api/admin/appeals/:id/resolve`（管理段）；appeals 表 + 12 个申诉 SQL 函数 | 已发布 v2.27.1（CO-4/B4 第二轮，2026-11-19） |
+| 认证（Web 登录/密码/验证码/设备 + Steam 绑定） | `src/routes/auth.js` | `src/store/auth-repository.js` | `/api/device`（公开段）、`/api/captcha`、`/api/login`、`/api/password/check`、`/api/logout`、`/api/user/password`、`/api/auth/steam/start`、`/api/auth/steam/callback`（主段）；登录失败计数/锁定/改密/Steam 绑定 10 个 SQL 新函数（本轮无 pg.js 现有函数搬家，域内联 SQL 抽新函数） | CO-5/B4-2（第三轮，已实现待发版） |
 
 **第二轮选申诉域的理由**（与认证域二选一）：① 边界最独立——全部 `/api/appeal*` 与
 `/api/admin/appeals*` 由申诉系统独占，唯一跨域共享的 `appealBucketLimited` 按 §15.2 闭包传引用即可，
@@ -472,3 +479,16 @@ GOG 的 catalog 接口接受 `countryCode` + `currencyCode`，是目前唯一能
 且 `/api/auth/token` 已在 App 域、命名易混淆），留到模式成熟后再拆。
 **与试点的差异**：试点是「预检段 + 主段」，申诉域是「公开段（用户解析前）+ 管理段（requireAdmin 后）」
 ——没有预检段，但公开段必须在 must_change_password 白名单**之前**（§15.3 第三种形态，已写入 checklist）。
+
+**第三轮选认证域的理由**（用户交接指定，与第二轮建议一致）：① 边界独立——除 `/api/auth/token*`
+（已在 App 域）外的全部 `/api/auth/*` 与 `/api/login|logout|password/check|user/password|captcha|device`
+由认证域独占，跨域共享的 `loginIpFails`（与 App token 登录同 Map）/`appealBucketLimited`
+（与 /api/captcha 同桶）/`bindStates` 按 §15.2 闭包传引用即可；② 测试齐——auth-redesign 相关
+（auth-lockout/password-change/password-policy）、captcha（api.test/appeal-system 共用桶断言）、
+device（devices/reviews/admin-bulk）三族断言锁定行为；③ 避开 `/api/games*`（DX 在途）与
+`/api/me*`（DT-2 在途）；邮箱验证码/注册/换邮箱（`src/auth-routes.js`）本轮不动——独立模块且
+`/api/me/email/*` 属 DT-2 排除区，与 `/api/auth/email*` 同模块不拆半截。
+**与第二轮的差异**：本轮是「公开段 + 主段」——`/api/device` 必须在 must_change_password 白名单
+**之前**（改密页也要注册设备），其余认证路由在白名单之后（主段）；pg.js 本轮零函数搬家
+（路由内联 SQL 抽 10 个新函数 + re-export 壳），`MAX_ACCOUNTS_PER_USER` 由 routes/auth.js 导出、
+server.js 导入（`/api/steam/accounts` 共用同一上限）。

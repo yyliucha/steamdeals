@@ -16,6 +16,7 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
+| CO-5/B4-2 第三轮（认证域） | src/routes/auth.js、src/store/auth-repository.js、src/server.js（仅认证区）、src/store/pg.js（仅认证 SQL 区）、test/auth-lockout.test.js 静态断言、docs/ARCHITECTURE.md §15、docs/TODO.md、docs/REQUIREMENTS-INDEX.md、docs/PROJECT-OVERVIEW.md、docs/DESIGN-AUDIT.md | 无 | 2026-11-19 19:30 | 2026-11-19 22:30 | 认证域拆分会话（本轮） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 

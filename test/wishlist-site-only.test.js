@@ -161,8 +161,9 @@ test('§4.4 接入（静态）：账号同步用该账号自己的 key（不回�
   assert.equal((server.match(/requireSteamApiKey\(\)/g) || []).length, 0, '不再有任何全局 key 回退调用');
   assert.match(server, /该账号未配置 API Key，请先在后台填写/, '缺 key 明确报错');
   assert.match(server, /该账号 API Key 无效，请检查/, 'key 无效明确报错');
-  // 绑定后不自动同步
-  assert.match(server, /steamNeedKey=1/, '绑定成功提示先配 key');
+  // 绑定后不自动同步（绑定回调已随 CO-5/B4-2 认证域移入 routes/auth.js，断言改指新文件）
+  const authRoutes = read('../src/routes/auth.js');
+  assert.match(authRoutes, /steamNeedKey=1/, '绑定成功提示先配 key');
   assert.doesNotMatch(server, /自动同步库 \+ 愿望单/, '绑定流程不再自动同步');
   // 调度任务：逐账号取 key，缺 key 跳过并记日志
   assert.match(cli, /steam\.account_sync_skipped/, '缺 key 的账号跳过并记日志');

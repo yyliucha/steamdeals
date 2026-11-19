@@ -59,6 +59,11 @@ import { handleAppPreflight, handleAppRoutes } from './routes/app.js';
 // handleAppealPublic 在认证上下文解析之前（公开段，保住 must_change_password 用户的申诉入口），
 // handleAppealAdmin 在 requireAdmin 就绪之后（管理段）。拦截链豁免（appealExempt）仍是中间件、留在本文件。
 import { handleAppealPublic, handleAppealAdmin } from './routes/appeal.js';
+// CO-5/B4-2 第三轮：认证域路由已抽到 src/routes/auth.js——
+// handleAuthPublic 在认证上下文解析之前（公开段，保住 must_change_password 用户的设备注册），
+// handleAuthRoutes 在认证上下文就绪后（主段）。拦截链豁免（appealExempt）、must_change_password
+// 白名单、loginIpFails/bindStates 共享状态仍是中间件、留在本文件。
+import { handleAuthPublic, handleAuthRoutes, MAX_ACCOUNTS_PER_USER } from './routes/auth.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -78,8 +83,6 @@ const DEVICE_COOKIE = 'gp_device';
 
 // 测试邮件限流：同一管理员 10 秒 1 次（docs/USER-LIFECYCLE.md §7.5）
 const mailTestCooldown = new Map();
-// AK-1（docs/AUTH-REDESIGN.md §4.1）：/api/password/check 匿名限流计数（每 IP 每分钟 30 次，内存态）
-const passwordCheckHits = new Map();
 // BK 批（docs/SESSION-MANAGEMENT.md §3.2）：last_seen_at 写节流——同一 token 5 分钟最多写一次（内存态）
 const sessionSeenAt = new Map();
 // CA-1：Bearer Token 的 last_used_at 5 分钟节流写（与 sessionSeenAt 同款内存节流）
@@ -326,12 +329,6 @@ function serveAppealPage(res, outDir, frontendDir, { site, email, code }) {
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
   res.end(html);
   return true;
-}
-
-function deviceCookie(req, value, maxAgeSec) {
-  const proto = String(req.headers['x-forwarded-proto'] ?? '').toLowerCase();
-  const https = proto === 'https' || Boolean(req.socket?.encrypted);
-  return `${DEVICE_COOKIE}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}${https ? '; Secure' : ''}`;
 }
 
 const toIso = (value) => {
@@ -1290,29 +1287,10 @@ export function createApiServer({
           { 'cache-control': 'no-store' },
         );
       }
-      if (path === '/api/device' && req.method === 'POST') {
-        let body;
-        try {
-          body = await readBody(req, 16 * 1024);
-        } catch {
-          return json(res, 400, { error: '请求格式错误' });
-        }
-        if (!body || typeof body !== 'object') return json(res, 400, { error: '请求格式错误' });
-        const deviceId = devices.normalizeDeviceId(body?.deviceId);
-        const details = devices.sanitizeDetails(body?.details);
-        const fingerprint = devices.fingerprintOf(details);
-        const cookie = deviceCookie(req, deviceId, deviceId ? 31536000 : 0);
-        const ban = devices.isBanned({ deviceId, fingerprint });
-        if (ban) {
-          logger?.warn('device.banned', { ip, deviceId: deviceId || null, fingerprint: fingerprint.slice(0, 16), until: ban.until });
-          return json(res, 403, { banned: true, until: ban.until, reason: ban.note || '设备已被封禁' }, { 'set-cookie': cookie });
-        }
-        if (deviceId) devices.rememberDevice(deviceId, fingerprint, details);
-        if (devices.shouldLog(deviceId || fingerprint)) {
-          db.insertDeviceLog(q, { ip, deviceId, fingerprint, userAgent: req.headers['user-agent'], details }).catch(() => {});
-        }
-        return json(res, 200, { ok: true, fingerprint: fingerprint.slice(0, 16) }, { 'set-cookie': cookie });
-      }
+      // ---- CO-5/B4-2 第三轮（docs/DESIGN-AUDIT.md B4）：认证域公开路由已抽到 src/routes/auth.js ----
+      // 调用位置不能动：必须在认证上下文解析（must_change_password 白名单）之前——
+      // 改密页也会注册设备（原位置语义，移动 = 改契约）。ctx 字段契约见 ARCHITECTURE §15。
+      if (await handleAuthPublic({ path, req, res, q, logger, json, readBody, ip })) return;
 
       // ---- CO-4/B4 第二轮（docs/DESIGN-AUDIT.md B4）：申诉域公开路由已抽到 src/routes/appeal.js ----
       // 调用位置不能动：必须在认证上下文解析（must_change_password 白名单）之前——
@@ -1526,175 +1504,35 @@ export function createApiServer({
       )
         return;
 
-      // ---- 登录 / 登出 ----
-      // ---- 图形验证码（登录前置，匿名可拿；缓存禁止）----
-      if (path === '/api/captcha' && req.method === 'GET') {
-        // O 批打回修复：放行拦截链后自带轻量限流（每 IP 30 张/分钟），防止被封 IP 刷验证码表
-        if (appealBucketLimited(ip, 'captcha', 30, 60_000)) {
-          return json(res, 429, { error: '请求过于频繁' }, { 'cache-control': 'no-store', 'retry-after': '60' });
-        }
-        const cap = await captcha.issue(q);
-        return json(res, 200, cap, { 'cache-control': 'no-store' });
-      }
-
-      if (path === '/api/login' && req.method === 'POST') {
-        const body = await readBody(req);
-        const username = String(body.username ?? '').trim();
-        const password = String(body.password ?? '');
-        // 验证码校验放在密码之前：没通过就不会消耗一次密码尝试，也不会泄露账号是否存在
-        if (captcha.enabled()) {
-          const okCaptcha = await captcha.verify(q, body.captchaToken, body.captchaAnswer);
-          if (!okCaptcha) {
-            logger?.warn('api.login_captcha_failed', { ip, username: username.slice(0, 32) });
-            return json(res, 400, { error: '验证码错误或已过期，请重新输入' });
-          }
-        }
-        // AK-2（docs/AUTH-REDESIGN.md §4.3）：IP 限速——同 IP 15 分钟失败 ≥20 次 → 429，不再消耗账号尝试次数
-        const now = Date.now();
-        const ipEntry = loginIpFails.get(ip) ?? { count: 0, windowStart: now };
-        if (now - ipEntry.windowStart >= 15 * 60_000) {
-          ipEntry.count = 0;
-          ipEntry.windowStart = now;
-        }
-        if (ipEntry.count >= 20) {
-          // CF 批：被 429 挡下的尝试也计入凭据爆破计数（≥50 次自动临时封）
-          if (autoBanScope) {
-            const t = autoBan.recordCredentialFail(ip);
-            if (t) await tryAutoBan(t, `登录凭据爆破：15 分钟失败 ${t.count} 次`);
-          }
-          const retryAfterSec = Math.ceil((ipEntry.windowStart + 15 * 60_000 - now) / 1000);
-          logger?.warn('auth.ip_throttled', { ip, count: ipEntry.count });
-          return json(res, 429, { error: '尝试次数过多，请稍后再试', retryAfterSec });
-        }
-        loginIpFails.set(ip, ipEntry);
-
-        const found = await db.findUserByName(q, username);
-        // 账号锁定：5 次失败锁 15 分钟（锁定期内即使密码正确也先 429）
-        if (found && found.locked_until && Date.parse(found.locked_until) > now) {
-          if (autoBanScope) {
-            const t = autoBan.recordCredentialFail(ip);
-            if (t) await tryAutoBan(t, `登录凭据爆破：15 分钟失败 ${t.count} 次`);
-          }
-          logger?.warn('auth.login_rejected_locked', { username });
-          return json(res, 429, {
-            error: '尝试次数过多，请稍后再试',
-            lockedUntil: found.locked_until,
-            retryAfterSec: Math.max(1, Math.ceil((Date.parse(found.locked_until) - now) / 1000)),
-          });
-        }
-        if (!found || found.disabled || !db.verifyPassword(password, found.password_hash)) {
-          // CF 批：失败计入凭据爆破计数（≥50 次自动临时封；20 次起只 429 不变）
-          if (autoBanScope) {
-            const t = autoBan.recordCredentialFail(ip);
-            if (t) await tryAutoBan(t, `登录凭据爆破：15 分钟失败 ${t.count} 次`);
-          }
-          // 统一 401「用户名或密码错误」：不再暴露账号是否存在/是否被禁用（验收 11）；原因只进日志
-          const reason = !found ? 'unknown' : found.disabled ? 'disabled' : 'bad_password';
-          let attempts = 0;
-          if (found && !found.disabled) {
-            const updated = await q('update users set failed_login_count = failed_login_count + 1 where id = $1 returning failed_login_count', [
-              found.id,
-            ]);
-            attempts = Number(updated.rows[0]?.failed_login_count ?? 0);
-            if (attempts >= 5) {
-              const locked = await q("update users set locked_until = now() + interval '15 minutes' where id = $1 returning locked_until", [
-                found.id,
-              ]);
-              logger?.warn('auth.login_locked', { username, until: locked.rows[0]?.locked_until });
-            }
-          }
-          ipEntry.count += 1;
-          loginIpFails.set(ip, ipEntry);
-          logger?.warn('auth.login_failed', { username: username.slice(0, 32), reason, attempts });
-          return json(res, 401, { error: '用户名或密码错误' });
-        }
-        // 成功：清零失败计数与锁定（验收 3「成功一次清零」）
-        await q('update users set failed_login_count = 0, locked_until = null where id = $1', [found.id]);
-        // AK-1：旧哈希静默升级 + 弱密码评估落库（不强制改密）
-        let rehashed = false;
-        if (db.passwordNeedsRehash(found.password_hash)) {
-          await q('update users set password_hash = $1, password_updated_at = now() where id = $2', [db.hashPassword(password), found.id]);
-          rehashed = true;
-          logger?.info('auth.password_rehashed', { userId: found.id });
-        }
-        const weak = passwordPolicy.evaluatePassword(password, { username: found.username, email: found.email ?? '' });
-        await q('update users set weak_password = $1 where id = $2', [!weak.ok, found.id]);
-        // 记住我：勾选 30 天，不勾 7 天（决策）
-        const days = body.rememberMe ? 30 : 7;
-        const sessionToken = await db.createSession(q, {
-          userId: found.id,
-          days,
-          // BK 批：建会话记录客户端指纹（IP/UA 归一化键 + 设备码）
+      // ---- CO-5/B4-2 第三轮（docs/DESIGN-AUDIT.md B4）：认证域路由主段已抽到 src/routes/auth.js ----
+      // 调用位置不能动：必须在 must_change_password 白名单之后（/api/captcha 在白名单里，
+      // /api/login 等匿名路由的拦截语义不变）；loginIpFails（与 App token 登录共用）、
+      // appealBucketLimited（与 /api/captcha 同桶）、bindStates、steamVerify 都按引用/注入传 ctx。
+      if (
+        await handleAuthRoutes({
+          path,
+          req,
+          res,
+          url,
+          q,
+          logger,
+          json,
+          readBody,
           ip,
-          ipKey: ipSessionKey(ip),
-          userAgent: req.headers['user-agent'] ?? null,
-          uaKey: uaSessionKey(req.headers['user-agent']),
+          user,
+          token,
           deviceId,
-        });
-        logger?.info('auth.login_ok', { userId: found.id, username: found.username, rehashed, weak: !weak.ok, days });
-        return json(
-          res,
-          200,
-          {
-            user: {
-              id: found.id,
-              username: found.username,
-              role: found.role,
-              mustChangePassword: Boolean(found.must_change_password),
-            },
-          },
-          { 'set-cookie': sessionCookie(req, sessionToken, days * 86400) },
-        );
-      }
-
-      // AK-1（docs/AUTH-REDESIGN.md §4.1）：密码强度评估（匿名，每 IP 每分钟 30 次，只评估不回显用户信息）
-      if (path === '/api/password/check' && req.method === 'POST') {
-        const body = await readBody(req);
-        const now = Date.now();
-        const minuteKey = Math.floor(now / 60_000);
-        const entry = passwordCheckHits.get(ip) ?? { minute: minuteKey, count: 0 };
-        if (entry.minute !== minuteKey) {
-          entry.minute = minuteKey;
-          entry.count = 0;
-        }
-        entry.count += 1;
-        if (entry.count > 30) return json(res, 429, { error: '请求过于频繁，请稍后再试' });
-        passwordCheckHits.set(ip, entry);
-        return json(
-          res,
-          200,
-          passwordPolicy.evaluatePassword(String(body.password ?? ''), {
-            username: String(body.username ?? ''),
-            email: String(body.email ?? ''),
-          }),
-        );
-      }
-
-      if (path === '/api/logout' && req.method === 'POST') {
-        await db.deleteSession(q, token);
-        return json(res, 200, { ok: true }, { 'set-cookie': sessionCookie(req, '', 0) });
-      }
-
-      // AK-3（docs/AUTH-REDESIGN.md §4.7）：登录用户修改密码——旧密码校验、策略、踢其它会话（保留当前）
-      if (path === '/api/user/password' && req.method === 'POST') {
-        if (!requireUser()) return;
-        const body = await readBody(req);
-        const oldPassword = String(body.oldPassword ?? '');
-        const newPassword = String(body.newPassword ?? '');
-        const row = (await q('select password_hash from users where id = $1', [user.id])).rows[0];
-        if (!row || !db.verifyPassword(oldPassword, row.password_hash)) {
-          return json(res, 400, { error: '当前密码不正确' });
-        }
-        const policyError = passwordPolicy.passwordPolicyError(newPassword, { username: user.username });
-        if (policyError) return json(res, 400, { error: policyError });
-        await q(
-          'update users set password_hash = $1, weak_password = false, must_change_password = false, password_updated_at = now() where id = $2',
-          [db.hashPassword(newPassword), user.id],
-        );
-        await q('delete from sessions where user_id = $1 and token <> $2', [user.id, token]);
-        logger?.info('auth.password_changed', { userId: user.id });
-        return json(res, 200, { ok: true, message: '密码已修改，其它设备已退出登录' });
-      }
+          captcha,
+          requireUser,
+          loginIpFails,
+          autoBanScope,
+          tryAutoBan,
+          appealBucketLimited,
+          bindStates,
+          steamVerify,
+        })
+      )
+        return;
 
       // ---- CH 批（docs/DISCOVERY-FOR-YOU.md §3）：个性化推荐 + 行为上报 ----
       if (path === '/api/games/for-you' && req.method === 'POST') {
@@ -2340,11 +2178,11 @@ export function createApiServer({
 
       // ---- 管理员：用户管理（编辑 / 改密码 / 禁用）----
       // ---- Steam 多账号绑定 / 游戏库 / 愿望单（身份由站点会话决定）----
-      const steamMod = await import('./steam-login.js');
+      // CO-5/B4-2 第三轮：Steam 绑定发起/回调（/api/auth/steam/*）已随认证域抽到 src/routes/auth.js
+      // （steamMod/steamLogMod 由该域模块自行 import，steamVerify/bindStates 经 ctx 注入）；
+      // MAX_ACCOUNTS_PER_USER 现从 routes/auth.js 导入（与认证域同一定义，避免两处漂移）。
       const steamAccountsMod = await import('./steam-accounts.js');
       const steamLogMod = await import('./steam-log.js');
-
-      const MAX_ACCOUNTS_PER_USER = 5;
 
       // BE 批（docs/WISHLIST-SITE-ONLY.md §4.4）：账号级同步（游戏库/愿望单）一律用该账号自己的 API Key；
       // 未配置或解密失败直接报错，**不回退**全局 STEAM_API_KEY（全局 key 只给系统级采集任务）。
@@ -2383,97 +2221,9 @@ export function createApiServer({
         return row;
       };
 
-      if (path === '/api/auth/steam/start' && req.method === 'GET') {
-        if (!requireUser()) return;
-        // CX 批：资料页发起的绑定带 back=profile，成功后回跳个人资料页；其余保持回 Steam 账号页
-        const back = url.searchParams.get('back') === 'profile' ? 'profile' : 'steam';
-        const state = steamMod.issueBindState(bindStates, user.id);
-        const target = steamMod.buildLoginUrl(steamMod.baseUrl(req), state, { back });
-        logger?.info('steam.bind_start', { userId: user.id, host: req.headers.host, back });
-        res.writeHead(302, { location: target, 'cache-control': 'no-store' });
-        res.end();
-        return;
-      }
-
-      if (path.startsWith('/api/auth/steam/callback')) {
-        // CX 批：绑定成功/失败都回到发起处（profile=个人资料页；默认=Steam 账号页）
-        const back = url.searchParams.get('back') === 'profile' ? 'profile' : 'steam';
-        const bindResult = (location) => {
-          const params = new URL(location, 'http://localhost').searchParams;
-          // 成功（带 steamBound）一律 302；错误时浏览器 302 到控制台展示提示、API 客户端回 JSON 状态码
-          if (params.has('steamBound') || !params.has('steamError')) {
-            res.writeHead(302, { location, 'cache-control': 'no-store' });
-            res.end();
-            return;
-          }
-          if (wantsHtml(req)) {
-            res.writeHead(302, { location, 'cache-control': 'no-store' });
-            res.end();
-          } else {
-            const code = String(params.get('steamError') ?? '');
-            const messages = {
-              state: '绑定链接已失效或过期，请重新发起绑定',
-              conflict: '该 Steam 账号已被其他用户绑定',
-              limit: '最多绑定 5 个 Steam 账号',
-              verify: 'Steam 校验失败，请重试',
-            };
-            const status = code === 'conflict' || code === 'limit' ? 409 : 400;
-            json(res, status, { error: messages[code] ?? '绑定失败，请重试', code });
-          }
-          return;
-        };
-        // 1) 校验 state（防 CSRF / 防串号）＋ 与当前站点会话用户一致
-        const stateUserId = steamMod.consumeBindState(bindStates, url.searchParams.get('state'));
-        if (!stateUserId) {
-          logger?.warn('steam.bind_state_invalid', { ip });
-          return bindResult(`/console?section=${back}&steamError=state`);
-        }
-        if (!user || Number(user.id) !== Number(stateUserId)) {
-          logger?.warn('steam.bind_session_mismatch', { stateUserId, sessionUserId: user?.id ?? null });
-          return bindResult(`/console?section=${back}&steamError=state`);
-        }
-        // 2) Steam OpenID 校验 → steamId
-        const steamId = await (steamVerify ?? steamMod.verifyCallback)(url, { logger });
-        if (!steamId) return bindResult(`/console?section=${back}&steamError=verify`);
-        // 3) 唯一性 / 上限校验
-        const existing = await q('select user_id from steam_accounts where steam_id = $1', [steamId]);
-        const ownerId = existing.rows[0]?.user_id ?? null;
-        if (ownerId != null && Number(ownerId) !== Number(user.id)) {
-          logger?.warn('steam.bind_conflict', { steamId, ownedBy: ownerId, by: user.id });
-          return bindResult(`/console?section=${back}&steamError=conflict`);
-        }
-        if (ownerId == null) {
-          const count = await q('select count(*)::int as n from steam_accounts where user_id = $1', [user.id]);
-          if (Number(count.rows[0]?.n ?? 0) >= MAX_ACCOUNTS_PER_USER) {
-            logger?.warn('steam.bind_limit', { steamId, userId: user.id, count: count.rows[0].n });
-            return bindResult(`/console?section=${back}&steamError=limit`);
-          }
-        }
-        // 4) 落库（已绑定同人 = 幂等，只刷新昵称/头像）
-        const apiKey = String(process.env.STEAM_API_KEY ?? '').trim();
-        const persona = await steamMod.fetchPersona({ apiKey, steamId, logger });
-        await q(
-          "insert into steam_accounts (steam_id, persona_name, avatar, user_id, last_login_at) values ($1, $2, $3, $4, now()) " +
-            'on conflict (steam_id) do update set persona_name = coalesce(excluded.persona_name, steam_accounts.persona_name), ' +
-            'avatar = coalesce(excluded.avatar, steam_accounts.avatar), last_login_at = now()',
-          [steamId, persona.personaName, persona.avatar, user.id],
-        );
-        logger?.info('steam.bind_ok', { steamId, userId: user.id, persona: persona.personaName ?? null });
-        // DQ 批（docs/PROFILE-UI-2026-11-19.md 决策 1/§3）：绑定新账号不再自动改动头像（头像永远由用户上传）。
-        // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：绑定落一条审计；同步类动作由 syncAccount* 各自记录。
-        await steamLogMod.recordSteamLog(q, {
-          action: 'bind',
-          steamId,
-          personaName: persona.personaName,
-          userId: user.id,
-          username: user.username,
-          actor: 'self',
-          result: 'ok',
-        });
-        // BE 批（docs/WISHLIST-SITE-ONLY.md §4.4 决策 5）：绑定新账号**不再自动同步**（此时还没有该账号的 key），
-        // 前台提示「请先为该账号配置 API Key，再点同步」。
-        return bindResult(`/console?section=${back}&steamBound=1&steamNeedKey=1`);
-      }
+      // CO-5/B4-2 第三轮（docs/DESIGN-AUDIT.md B4）：Steam 绑定发起/回调（/api/auth/steam/*）已随
+      // 认证域抽到 src/routes/auth.js（在主段 handleAuthRoutes 内处理）——本文件只留
+      // /api/steam/accounts 等 Steam 账号管理路由与 bindStates/steamVerify 的持有与注入。
 
       if (path === '/api/steam/accounts' && req.method === 'GET') {
         if (!requireUser()) return;

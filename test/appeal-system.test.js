@@ -29,6 +29,7 @@ import * as visitors from '../src/visitors.js';
 const SRC = join(process.cwd(), 'src');
 const appealRoutesSrc = readFileSync(join(SRC, 'routes', 'appeal.js'), 'utf8');
 const appealRepoSrc = readFileSync(join(SRC, 'store', 'appeal-repository.js'), 'utf8');
+const authRoutesSrc = readFileSync(join(SRC, 'routes', 'auth.js'), 'utf8');
 const serverSrc = readFileSync(join(SRC, 'server.js'), 'utf8');
 const pgSrc = readFileSync(join(SRC, 'store', 'pg.js'), 'utf8');
 
@@ -95,7 +96,8 @@ test('CO-4/B4 第二轮：拦截链豁免与限流桶留在 server.js（中间�
   assert.match(serverSrc, /hit && !appealExempt/, 'IP 黑名单带申诉豁免');
   assert.match(serverSrc, /!visitors\.isPrivateAddress\(ip\) && !appealExempt/, '三振限流带申诉豁免');
   assert.match(serverSrc, /export function appealBucketLimited/, '限流桶函数留在 server.js');
-  assert.match(serverSrc, /appealBucketLimited\(ip, 'captcha', 30, 60_000\)/, '验证码路由继续共用申诉限流桶');
+  assert.match(authRoutesSrc, /appealBucketLimited\(ip, 'captcha', 30, 60_000\)/, '验证码路由继续共用申诉限流桶（CO-5/B4-2 随认证域移入 routes/auth.js）');
+  assert.match(serverSrc, /await handleAuthRoutes\(\{[\s\S]{0,1500}?appealBucketLimited,/, '限流桶闭包按引用注入认证域（与 /api/captcha 同桶，语义共享）');
 });
 
 process.env.TRUST_PROXY = '1';
