@@ -1,6 +1,6 @@
 # 到价提醒治理：无报价标记 / 站点级迁移 / 史低抽检 / 刷新频率评估（CU）
 
-> 状态：**已确认待开发（2026-11-18，基于线上 watchlist 实测数据）**。
+> 状态：**CU-1 已交付质检通过（实现 b5f5663 + 恢复 77c9f8f，QA docs/QA-CU1.md 第 2 轮 ✅，2026-11-19）；CU-2 开发中；CU-3/CU-4 待开发（2026-11-18 决策）**。
 > 关联：[TODO.md](TODO.md) CU 条目、[USER-ALERTS.md](USER-ALERTS.md)（CL 批：用户级提醒）、
 > [DESIGN-AUDIT.md](DESIGN-AUDIT.md)（数据口径类技术债）。
 
