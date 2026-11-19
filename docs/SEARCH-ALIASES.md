@@ -1,64 +1,80 @@
-# 搜索别名（民间简写）：GTA6 这类简称能搜到（DS，待开发）
+# 搜索全自动派生（DS，待开发；零人工方案）
 
-> 状态：**已确认待开发（2026-11-19 所有者 5 项口径）**。关联：[SEARCH-I18N.md](SEARCH-I18N.md)（AD 批中英文搜索）、`src/store/pg.js` `gameKeywordSql`。
+> 状态：**已确认待开发（2026-11-19 所有者：全自动、完全摆脱人工）**。
+> 关联：[SEARCH-I18N.md](SEARCH-I18N.md)（AD 中英文搜索）、`src/store/pg.js` `gameKeywordSql`。
+> 业界先例：Prysm（pg_trgm + unaccent 模糊，自动处理缩写/拼错/地区名）、电商拼音字段（全拼+首字母自动派生）、
+> Elasticsearch pinyin 分词器、阿里云 OpenSearch 拼音简拼——本方案与其一致，**不建人工别名库**。
 
-## 1. 问题与现状（代码证据）
+## 0. 决策（2026-11-19）
 
-- 搜索只匹配 `name / name_en / game_aliases.platform_title`（pg.js:1615 三源 exists 子查询）；
-- 「Grand Theft Auto VI」不含 `gta6` 连续串，也没有罗马数字↔阿拉伯转换 → 搜 `gta6` / `GTA 6` 无结果；
-- `game_aliases` 是**平台商品标题**（有 `platform_code` 外键、唯一键 `(platform_code, platform_product_id)`），不适合存「搜索别名」。
+1. **零人工**：不做 `manual_aliases`、不做后台别名维护入口、不依赖「别名配了才有」的机制；
+2. 派生索引**全部由算法生成**（拼音 / 缩写 / 罗马数字↔阿拉伯 / token），可随时全量重建；
+3. 匹配 = 派生 token 包含匹配 + **pg_trgm 模糊兜底**（拼错容忍）；
+4. 排序：原名/中文名直接命中 > 派生 token 命中 > 模糊命中。
 
-## 2. 已确认的决策（2026-11-19 所有者）
-
-| # | 决策 |
-|---|---|
-| 1 | 搜索别名存 **`games.search_aliases text[]`**（不用 game_aliases 表） |
-| 2 | **自动生成 + 人工维护**：自动（英文缩写 + 罗马数字变体）与人工并存，人工不被自动覆盖 |
-| 3 | 自动规则：英文名**首字母缩写**（跳过 The/A/An/Of/And/In/On/At/To/For）+ **罗马数字↔阿拉伯双向**（VI↔6）+ 去空格/大写归一；如 `Grand Theft Auto VI` → `GTAVI / GTA 6 / GTA6 / Grand Theft Auto 6`；中文别名（侠盗猎车手6）靠人工补 |
-| 4 | 人工别名入口：后台「游戏目录 → 编辑」弹窗加「搜索别名（逗号分隔）」字段 |
-| 5 | 别名命中**降权**（原名/中文名命中优先，别名命中次之） |
-
-## 3. 数据模型
+## 1. 数据模型（纯派生，可重建）
 
 ```sql
-alter table games add column if not exists search_aliases text[] not null default '{}';  -- 自动生成
-alter table games add column if not exists manual_aliases text[] not null default '{}';  -- 人工维护（不被覆盖）
-create index if not exists games_alias_trgm on games
-  using gin (replace(lower(coalesce(array_to_string(search_aliases || manual_aliases, ' '), '')), ' ', '') gin_trgm_ops);
+alter table games add column if not exists search_tokens text[] not null default '{}';
+create index if not exists games_search_tokens on games using gin (search_tokens);
 ```
 
-- 自动变体**上限 20 条**（去重、去空、按长度排序）；
-- 人工别名写入 `manual_aliases`；自动生成任务**只重算 `search_aliases`**，绝不碰 `manual_aliases`。
+- `search_tokens` 是**派生数据**（不是人工录入），内容变化只靠重建/增量任务；
+- 现有 `game_aliases.platform_title` 仍参与匹配（平台商品标题，保留现状）。
 
-## 4. 自动生成（写入 name_en 的路径统一调用）
+## 2. 派生规则（`src/search-derive.js` 纯函数，单测覆盖）
 
-- 触发点：`upsertGameMeta` / `rename`（回填中文名时）/ `backfill`（写 name_en 时）；
-- 规则：
-  1. 分词（空格/连字符/冒号拆分）→ 跳虚词 → 首字母连写（`GTA`）；单词数 <2 时跳过缩写；
-  2. 罗马数字识别（词为 I/II/III/IV/V/VI/VII/VIII/IX/X/XI/XII 且位于末尾附近）→ 阿拉伯数字变体；阿拉伯→罗马反向也给一条；
-  3. 组合生成：`缩写+数字连写 / 缩写+空格+数字 / 全名+阿拉伯数字 / 全名+罗马数字`；
-  4. 与原名相同或为空的结果丢弃。
+输入 `{ name, nameEn }`，输出归一化 token 列表（去重、上限 40 条）：
 
-## 5. 搜索与排序（`gameKeywordSql`）
+1. **归一化**：小写；去标点/空格/商标符号（`™®©`）；全角→半角；英文去重音（JS `normalize('NFD')` 去 `\p{M}`，**不依赖 PG unaccent 扩展**，pglite/PG 行为一致）；
+2. **token 拆分**：字母/数字/汉字边界（`GTA6` → `gta` + `6`；`Grand Theft Auto VI` → 5 个 token）；
+3. **缩写**：`nameEn` 分词（跳过 the/a/an/of/and/in/on/at/to/for）→ 首字母连写（`GTA`）+ 与末尾数字组合（`GTA VI` / `GTA 6` / `GTA6` / `GTAVI`）；
+4. **罗马数字↔阿拉伯**：词为 I/II/III/IV/V/VI/VII/VIII/IX/X/XI/XII → 阿拉伯变体；阿拉伯 1–12（位于末尾附近）→ 罗马变体；双向各一条；
+5. **拼音**（中文名）：`pinyin-pro` → 全拼（`xia dao lie che shou`）+ 首字母（`xdlcs`）+ 数字组合（`xdlcs6`）；
+6. **原名变体**：原名/英文名去空格连写（`grandtheftautovi`）。
 
-- 关键词侧：与现有归一化一致（去空格、小写）；`search_aliases || manual_aliases` 任一元素归一化后 LIKE/`%kw%` 命中（走 trgm 索引）；
-- 排序：`case when (name/name_en 命中) then 0 else 1 end` 作为次级排序键（别名命中降权）；其余排序口径不变；
-- **对齐匹配不受影响**：`match.js` 不读 `search_aliases`/`manual_aliases`（别名只服务搜索）。
+## 3. 触发与维护（全自动）
 
-## 6. 后台
+- **写入路径顺带生成**：`upsertGameMeta` / `rename` / `backfill` 写 `name`/`name_en` 时同步计算 `search_tokens`（与现有写库同一条 SQL）；
+- **定时任务 `search-tokens-rebuild`**（并入 `jobsFromEnv`）：每轮扫描 `search_tokens='{}'` 或名字已变更的行，增量重算；
+  支持 `--full` 全量重建（CLI：`node src/cli.js search-tokens --full`）；
+- 派生失败只记日志（`search.derive_failed`），不阻断写库。
 
-- 游戏目录「编辑」弹窗：新增「搜索别名（逗号分隔）」输入框，读/写 `manual_aliases`；
-  保存后提示「别名仅影响搜索，不影响对齐」；接口 `PATCH /api/admin/games/:id` 扩展 `manualAliases` 字段（校验 ≤20 条、单条 ≤40 字、去重）。
+## 4. 搜索与排序（`gameKeywordSql`）
 
-## 7. 验收
+- 查询侧用**同一派生函数**处理关键词（归一化 + token + 拼音/缩写变体，取 1–3 个查询 token）；
+- 命中条件：`search_tokens && $tokens`（数组包含）**或** `exists(select 1 from unnest(search_tokens) t where t like '%'||kw||'%')`
+  （兼容子串）；保留现有 `name / name_en / game_aliases.platform_title` 三源；
+- **模糊兜底**：主查询（上述）无结果时，再用 `similarity(name_or_env, kw) ≥ 0.4` 或 `search_tokens % 0.6`（trgm）跑第二级；
+  结果标注 `matchedBy: 'fuzzy'`（前端不展示，仅日志/调试）；
+- 排序：`case` 分级（name/name_en 命中 0 > token 命中 1 > 模糊命中 2），再走原有 sort；
+- 日志：`search.miss`（词、派生 token、耗时）——**只记日志，不建人工映射**（供后续评估阈值）。
 
-1. 搜 `gta6`、`GTA 6`、`gta vi` 均命中 `Grand Theft Auto VI`（自动变体生效），且**排在原名命中的结果之后**；
-2. 搜 `侠盗猎车手6` 命中（该中文名若在 name 中则直接命中；否则人工别名补充后命中）；
-3. 后台给某游戏加人工别名 `testalias1` → 搜索命中；再跑一次自动生成任务，人工别名**仍在**；
-4. 别名不参与对齐匹配：`game_source_map` 匹配结果不因别名变化；
-5. 自动变体上限/去重生效；`npm test`（分段，含新增 search-alias 测试）+ `npm run frontend:build` + `npm run scan` 全绿；
-6. 反向自检：删掉别名 JOIN → `gta6` 用例必须红。
+## 5. 依赖与兼容
+
+- 新增 npm 依赖 **`pinyin-pro`**（纯 JS、无网络、无原生编译；构建/扫描需验证）——若 CI/scan 不允许新增，退化为内置精简拼音表（常用 3500 字）；
+- `pg_trgm` 扩展已在用（D1 批索引）；**不依赖 `unaccent` 扩展**（重音归一在 JS 层）；
+- pglite（本地测试）与 PG 行为一致：派生在 JS 层、索引只是加速。
+
+## 6. 验收
+
+1. 搜 `gta6` / `GTA VI` / `gta 6` → 命中 `Grand Theft Auto VI`（派生缩写+罗马数字）；原名命中排最前；
+2. 搜 `xdlc6` / `xia dao lie che shou 6` → 命中 `侠盗猎车手6`（拼音派生）；
+3. 搜 `gtaa6`（拼错）→ 模糊兜底命中（阈值可调，默认 0.4）；
+4. 派生任务：新写 name 的游戏下一轮即有 tokens；`--full` 全量重建可跑（19.8 万行预算内完成）；
+5. **零人工确认**：代码/后台无 manual_aliases、无「别名管理」入口（grep 断言）；
+6. 反向自检：清空某游戏 search_tokens → `gta6` 用例必须红；
+7. `npm test`（分段）+ `npm run frontend:build` + `npm run scan` 全绿；pglite 与 PG 语义一致；
+8. 性能：搜索 P95 ≤ 300ms（19.8 万行，现 LIKE 实测 114ms，token 匹配走 GIN 应更快；模糊兜底仅无结果时触发）。
+
+## 7. 覆盖边界（如实告知）
+
+| 输入 | 覆盖 |
+|---|---|
+| `gta6` / `GTA VI` / `GTA 6` / `gtaa6` | ✅ 缩写 + 罗马数字 + 模糊 |
+| `xdlc6` / `xia dao lie che shou 6` | ✅ 拼音全拼/首字母 |
+| `给她爱6`（谐音梗） | ❌ 算法无法覆盖；后续可选「无结果自动学习」（置信度阈值自动建映射，不人工）或向量检索，本批不做 |
 
 ## 8. 待确认
 
-无（5 项口径已定）。
+无（阈值/规则细节由实现自定，验收按 §6）。
