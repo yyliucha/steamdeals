@@ -59,19 +59,26 @@ signature = sha1(join '|' [
   `ALIGN_SNAPSHOT_INTERVAL_MIN`（默认 30）、`ALIGN_SNAPSHOT_INITIAL_DELAY_SEC`（默认 30）；
   每轮：算签名 → 比对最新快照 → 不同则重算写库；失败写 `error` 字段 + 日志 `align.snapshot_failed`（任务健康条可见）。
 - `GET /api/admin/align`：**读最新快照**（分页在内存切片，参数 `page/pageSize` 不变）→
-  `{ groups, total, counts, generatedAt, cached: true, stale, refreshing }`；
+  `{ groups, total, counts, generatedAt, cached: true, dirty, refreshing }`；
   - 无快照（首次部署）→ `202 { generating: true, firstRun: true }` 并触发一次后台生成（single-flight）；
   - `?refresh=1` → 请求后台立即重算（**不阻塞**），返回当前快照 + `refreshing: true`；
-  - 快照 `stale`（签名已变）→ 返回旧快照 + `stale: true`（前端轻提示「数据已更新，后台同步中」）。
-- **确认/忽略后**：`alignRunner.invalidate()` 改为「标记快照 stale + 触发后台重算」；前台本地移除该组。
+  - **快照永远是「操作后有效队列」**（见下条），`dirty` 只表示后台将重算一致性，**不阻断返回**。
+- **确认/忽略成功后立即同事务更新快照**（2026-11-19 追加，彻底解决「确认后要再审」）：
+  从 `payload.items` 移除已处理的组（keys）、`counts` 相应递减、`dirty = true`、`last_action_at = now()` ——
+  任何随后的读请求立刻拿到**不含已处理组**的队列，**不再经过「生成中 + 旧列表」**；
+  后台重算完成后写新快照（覆盖），做一致性校验（日志差异）。
+- **废弃现有内存语义**：不再需要 `alignRunner.invalidate()` 清缓存、也不再需要 `staleCache`（库快照即真相）；
+  「生成中」只在**首次无快照**时出现，日常操作/读请求不再出现生成中进度。
 - 观测：`align.snapshot_generated`（groups/counts/ms/signature）、`align.snapshot_fresh`、
   `align.snapshot_failed`（reason）、`align.snapshot_read`（stale/refreshing）。
 
 ## 6. 前端（AlignAdmin.vue）
 
 - 进入页面：只读快照，**不再显示进度条/「生成中 0/0」**（首次生成除外：显示「首次生成中，完成后自动展示」）；
+- **确认/忽略成功后立即本地移除已处理组并更新 counts**（乐观更新），再 `load()` 读快照（必为新队列）——
+  不依赖「生成中轮询」刷新；操作后这几行必须**立刻消失**，不出现「要再审一遍」；
 - 头部显示「上次生成于 HH:mm」+ 「刷新」按钮（触发后台重算，按钮短暂 loading）；
-- 数据变化时显示轻提示「数据已更新，后台同步中」，完成后静默刷新；
+- 数据变化（签名变化被后台重算）时轻提示「数据已更新」，完成后静默刷新；
 - 分页/搜索/筛选、确认/忽略交互不变（DE 批的 demo 布局保留）。
 
 ## 7. 补充约定（需求会话增补）
@@ -86,10 +93,11 @@ signature = sha1(join '|' [
 ## 8. 验收
 
 1. 部署重启后首次进入：有库快照 → 秒回（无「生成中」）；无快照 → 202 firstRun，后台生成后自动展示；
-2. 签名不变时连续访问：`cached: true`、无重算（日志 `snapshot_fresh`）；
-3. 数据变化（改 skus.json / games / game_source_map）→ 下一轮后台任务生成新快照（签名变化可观测）；
-4. 确认/忽略后：快照标记 stale 并触发后台重算；前台该组立即消失；
-5. 24h 强制重算兜底生效（可用 env 缩短验证）；
-6. 生成失败：快照 `error` 写入 + 任务健康可见；
-7. prune 只保留最近 5 条；
-8. `npm test`（分段）+ `npm run frontend:build` + `npm run scan` 全绿。
+2. **确认 3 组后立即刷新页面 → 这 3 组立刻消失、counts 递减、不再出现「生成中」**（2026-11-19 追加，彻底解决）；
+3. 签名不变时连续访问：`cached: true`、无重算（日志 `snapshot_fresh`）；
+4. 数据变化（改 skus.json / games / game_source_map）→ 下一轮后台任务生成新快照（签名变化可观测）；
+5. 确认/忽略后：快照同事务更新 + 触发后台重算；**操作后队列即刻正确**；
+6. 24h 强制重算兜底生效（可用 env 缩短验证）；
+7. 生成失败：快照 `error` 写入 + 任务健康可见；
+8. prune 只保留最近 5 条；
+9. `npm test`（分段）+ `npm run frontend:build` + `npm run scan` 全绿。
