@@ -2616,3 +2616,55 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **验收**：沿用 QA-CO4-B4.md 口径（域代码在 routes/+repository（拆分前后行数对比）；全量 `test:1..4` +
   `api.test` + `frontend:build` + `scan` 全绿；静态断言全绿 + 反向自检（删路由分支必红）；
   ARCHITECTURE §15 步骤清单与实际一致；交付说明含域选择理由/净减行数/下一轮建议）。
+
+## DY. ~~待开发（🐞 缺陷）：安卓页面衔接状态丢失~~ → **已发布 app-v2.23.0（2026-11-20）**
+
+**类型：** 🐞 缺陷（App 端导航状态）
+**状态：已发布 app-v2.23.0（2026-11-20，App 3f14b04；QA docs/QA-DY-DZ.md 第 2 轮 ✅）**
+**涉及 App 仓库**：是（app-v2.23.0 随本批）
+**规格**：[ANDROID-POLISH.md](ANDROID-POLISH.md) §DY（站点零改动）
+
+- **方案**：搜索状态提升 ViewModel（SearchScreenState）；Home/Wishlist/Profile 数据与筛选提升 AppViewModel
+  （账号切换 reset 防串号）；Detail 转返回栈级 viewModel(key=detail-appid)；列表滚动 LazyListState.Saver、
+  表单滚动 ScrollState.Saver；非敏感输入 rememberSaveable（密码/验证码按安全惯例不落）；ARCHITECTURE §16
+  「Android 导航状态保存规范」。
+- **交付**：模拟器实测——搜索→详情→返回（词/结果/滚动保留）、首页滚动保留、注册表单旋转/进程重建保留；
+  JVM 单测 + 构建全绿（78 项）。
+
+## DZ. ~~待开发（⚙️ 调整）：公告未读角标无法清除~~ → **已发布 app-v2.23.0（2026-11-20）**
+
+**类型：** ⚙️ 调整（App 端公告体验）
+**状态：已发布 app-v2.23.0（2026-11-20，App 7c5cb58；QA docs/QA-DY-DZ.md 第 2 轮 ✅）**
+**涉及 App 仓库**：是（app-v2.23.0 随本批）
+**规格**：[ANDROID-POLISH.md](ANDROID-POLISH.md) §DZ
+
+- **方案**：弹层「全部已读」（登录 markAnnouncementsRead / 游客本地 DataStore）→ 角标立即消失；
+  markInFlight 闩防「全部已读后立即刷新」回跳；单条已读保留；游客↔登录合并沿用 DC 批 mergeLocalReadsToServer。
+- **交付**：模拟器实测——角标 1 → 全部已读 → 立即消失 → 重启不回来；游客本地已读落盘取证；
+  AnnouncementsModelTest +2 项。
+
+## EA. ~~待开发（⚙️ 调整）：安卓体验包（攒批）~~ → **已发布 app-v2.23.0（2026-11-20）**
+
+**类型：** ⚙️ 调整（App 端体验优化）
+**状态：已发布 app-v2.23.0（2026-11-20，App fb56db5/4e837e0/0258d2d/5f071e5/c5317af/0db5266+749e580；QA docs/QA-EA-1-3.md、QA-EA-4-6.md 第 1 轮 ✅）**
+**涉及 App 仓库**：是（app-v2.23.0 随本批）
+**规格**：[ANDROID-POLISH.md](ANDROID-POLISH.md) §EA
+
+- **子项**：EA-1 下拉刷新（首页/搜索/愿望单/详情 PullToRefreshBox）；EA-2 搜索空态引导（没找到「xx」+ 重试/清空搜索）；
+  EA-3 详情分享（系统 ACTION_SEND：名称 + 站点 ?q= 直达链接）；EA-4 我的页版本号（BuildConfig.VERSION_NAME）+
+  清除图片缓存（仅 Coil 缓存，不动登录态）；EA-5 详情骨架屏（呼吸 alpha，镜像首屏结构）；EA-6 全局弱网提示条
+  （ApiClient 网络层回调 + 底栏上方横幅可重试，修复 bottomBar 单 Slot 重叠 749e580）。
+- **交付**：模拟器逐项实测（下拉刷新/空态/分享面板/版本行/断网横幅+恢复重试）；78 项单测全绿。
+
+## EB. ~~待开发（✨ 功能）：安卓 18R 内容选项~~ → **已发布 app-v2.23.0（2026-11-20）**
+
+**类型：** ✨ 功能（App 端内容选项）
+**状态：已发布 app-v2.23.0（2026-11-20，App 5346afb；QA docs/QA-EB.md 第 1 轮 ✅）**
+**涉及 App 仓库**：是（app-v2.23.0 随本批）
+**规格**：[ANDROID-POLISH.md](ANDROID-POLISH.md) §EB（含三源核对）
+
+- **口径**：首页/搜索 chips「18R」；开=adult=badge（显示 + 红色「18+」角标，与成熟内容样式区分）/ 关=adult=hide；
+  首次开启弹「确认已满 18 岁」（未确认不切换）；默认关闭 + DataStore（adult_enabled/adult_confirmed）记忆；
+  站点零改动（服务端 adult 参数已支持）。
+- **交付**：模拟器实测（chip/首次弹窗/确认落盘/重启记忆）；HomeFilterParamsTest +2 项（hide/badge 映射）；
+  详情接口无 adult 过滤（18R 详情可打开）。线上当前无 18R 数据，「显示 18R 游戏」目视待真实数据出现后补验。

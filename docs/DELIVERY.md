@@ -195,9 +195,15 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-19 更新，v2.27.2 已发布：CO-5/B4-2 认证域拆分；v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
+### 当前状态（2026-11-20 更新，App app-v2.23.0 已发布：DY + DZ + EA-1~6 + EB（站点零改动）；v2.27.2 已发布：CO-5/B4-2 认证域拆分；v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
+- **app-v2.23.0 已发布**（tag `app-v2.23.0`，App 仓库 d803612；Release 三资产：`steamdeals-2.23.0.apk` + `.apk.sha256` + `latest.json`）：
+  DY 页面衔接状态保存（搜索/首页/愿望单/我的进详情或切 Tab 返回保持状态，详情旋转不重拉，表单非敏感输入旋转/进程重建不丢）+ DZ 公告「全部已读」（角标立即消失、刷新/重启不复现、单条已读与游客↔登录合并保留）+ EA-1~6 体验包（下拉刷新/搜索空态/详情分享/版本号+清缓存/骨架屏/全局弱网提示）+ EB 18R 内容选项（18R chip + 18+ 角标 + 首次年龄确认 + 默认关闭本地记忆）。
+  站点零改动（本批为 App 纯端功能，服务端 adult 参数已支持）。
+  QA：DY/DZ ✅ [QA-DY-DZ.md](QA-DY-DZ.md) 第 2 轮（12/0/0/3）/ EA-1~3 ✅ [QA-EA-1-3.md](QA-EA-1-3.md) 第 1 轮（9/0/0/1）/ EA-4~6 ✅ [QA-EA-4-6.md](QA-EA-4-6.md) 第 1 轮（8/0/0/2）/ EB ✅ [QA-EB.md](QA-EB.md) 第 1 轮（8/0/0/2）。
+  验证：App JVM 单测 78/78 全绿；`gradlew assembleRelease` ✓（2.23.0/22300，sha256 960cebfe…）；模拟器覆盖安装自测 ✓（2.22.0 → 2.23.0 覆盖安装成功、「我的」版本行 v2.23.0）。
+  **同步提示**：所有者打开后台 → 同步与回填 → App 版本卡点「立即同步」（或等 15 分钟自动同步）后，手机即可见更新；本机只读核对 `curl -s https://sd.yyliucha.cn/api/app/latest`（返回 versionCode 22300 即同步完成）。
 - **v2.27.2 已发布**（tag `v2.27.2`，release 提交见 git log）：CO-5/B4-2 巨石拆分第三轮（认证域，契约零变化）（技术债重构，无新功能面 → 小版本，2.27.1 → 2.27.2 连续递增）。
   CO-5/B4-2：认证域（00a838f）`src/routes/auth.js`（认证域 8 条路由——公开段 `POST /api/device` + 主段 `GET /api/captcha`、`POST /api/login`、`POST /api/password/check`、`POST /api/logout`、`POST /api/user/password`、`GET /api/auth/steam/start`、`GET /api/auth/steam/callback`）+ `src/store/auth-repository.js`（登录失败计数/锁定/改密/Steam 绑定 10 个 SQL 新函数）；`src/store/pg.js` re-export 兼容壳；`src/server.js` 认证区换为两入口接线（`loginIpFails`/`appealBucketLimited`/`bindStates` 共享状态留宿主）；**外部契约零变化**（路径/参数/响应/错误码不变）；已交付 app/appeal/auth 三域，剩余域拆分继续按 [B4-QUEUE.md](B4-QUEUE.md) 队列推进（watchlist 为下一域）。
   QA：B4-2 ✅ [QA-CO5-B4-2.md](QA-CO5-B4-2.md) 第 1 轮（16/0/0/1）。

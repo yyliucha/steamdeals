@@ -16,7 +16,6 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| DY+DZ+EA-1~6+EB | App 仓库 `F:\dsh\steamdeals-app` 的 app/（src/main/java + src/test + res/values/strings.xml）；站点 docs/（ARCHITECTURE.md、ANDROID-POLISH.md、TODO.md、REQUIREMENTS-INDEX.md、DELIVERY.md、DONE.md、ACTIVE-SESSIONS.md） | Android 模拟器（自测/验收截图）；打 tag 构建（app-v2.23.0，QA 通过后） | 2026-11-19 23:20 | 2026-11-20 凌晨 | 安卓打磨+发版会话（lead） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 

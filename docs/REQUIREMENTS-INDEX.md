@@ -132,10 +132,10 @@
 | **DU** | 🐞 缺陷：个人资料「个人简介」placeholder 插值未绑定（显示 {{ }} 源码） | 本交接（TODO DU 条目） | 待开发（2026-11-19 截图发现，P3） | ✅ 本轮已给 |
 | **DV** | 游戏管理「ITAD」筛选改为来源筛选（game_source_sync matched） | [ITAD-SOURCE-FILTER.md](ITAD-SOURCE-FILTER.md) | 待开发（2026-11-19 方案 A 确认） | ✅ 本轮已给 |
 | **DW** | 🐞 缺陷：搜索关键词参数位错位风险（精确名匹配失效，中文名搜不到）——候选/主查询两套绑定显式化 + 锁行为测试 | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DW | 已发布 v2.27.1（2026-11-19，修复 fc410af + 锁行为测试 77f8214；QA-DW.md 第 1 轮 6/0/0/1） | ✅ 本轮已给 |
-| **DY** | 🐞 缺陷：安卓页面衔接状态丢失（详情返回后搜索/滚动/表单丢）——ViewModel/rememberSaveable 治理 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §DY | 质检通过（2026-11-20，QA docs/QA-DY-DZ.md；app-v2.23.0 随本批） | ✅ 本轮已给 |
-| **DZ** | ⚙️ 调整：安卓公告未读角标无法清除（首页铃铛常驻 1）——弹层加「全部已读」 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §DZ | 质检通过（2026-11-20，QA docs/QA-DY-DZ.md；app-v2.23.0 随本批） | ✅ 本轮已给 |
-| **EA** | ⚙️ 调整：安卓体验包（攒批）——下拉刷新/搜索空态/详情分享/版本号+清缓存/骨架屏/弱网提示 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EA | 已实现待发版（2026-11-19/20，App fb56db5…749e580；app-v2.23.0 随本批） | ✅ 本轮已给 |
-| **EB** | ✨ 功能：安卓 18R 内容选项（筛选 chips「18R」+ adult=badge 显示/角标 + 首次 18+ 确认 + 本地记忆，攒批） | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EB | 已实现待发版（2026-11-19/20，App 5346afb；app-v2.23.0 随本批） | ✅ 本轮已给 |
+| **DY** | 🐞 缺陷：安卓页面衔接状态丢失（详情返回后搜索/滚动/表单丢）——ViewModel/rememberSaveable 治理 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §DY | 已发布 app-v2.23.0（2026-11-20，App d803612/tag app-v2.23.0；QA docs/QA-DY-DZ.md 第 2 轮 ✅） | ✅ 本轮已给 |
+| **DZ** | ⚙️ 调整：安卓公告未读角标无法清除（首页铃铛常驻 1）——弹层加「全部已读」 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §DZ | 已发布 app-v2.23.0（2026-11-20，App d803612/tag app-v2.23.0；QA docs/QA-DY-DZ.md 第 2 轮 ✅） | ✅ 本轮已给 |
+| **EA** | ⚙️ 调整：安卓体验包（攒批）——下拉刷新/搜索空态/详情分享/版本号+清缓存/骨架屏/弱网提示 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EA | 已发布 app-v2.23.0（2026-11-20，App d803612/tag app-v2.23.0；QA docs/QA-EA-1-3.md、QA-EA-4-6.md 第 1 轮 ✅） | ✅ 本轮已给 |
+| **EB** | ✨ 功能：安卓 18R 内容选项（筛选 chips「18R」+ adult=badge 显示/角标 + 首次 18+ 确认 + 本地记忆，攒批） | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EB | 已发布 app-v2.23.0（2026-11-20，App d803612/tag app-v2.23.0；QA docs/QA-EB.md 第 1 轮 ✅） | ✅ 本轮已给 |
 | **EC** | ⚙️ 调整：图片覆盖治理（后台覆盖看板 + 缺图回填任务 + 前端占位图） | [IMAGE-COVERAGE.md](IMAGE-COVERAGE.md) §8 | 待开发（2026-11-19 立项） | ✅ 本轮已给 |
 | **ED** | 🧪 测试基建：test-main 加文档路径忽略（纯 docs 提交不跑测试，避免夜班文档提交反复取消 CI） | 本条目正文 | 待开发（2026-11-19 夜班观察） | ✅ 本轮已给 |
 | **DX** | 🧹 技术债：列表/站点接口性能优化（count 合并 + 短 TTL 缓存 + /api/site 缓存 + 压测） | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DX | 待开发（依赖 DW） | ✅ 本轮已给 |
