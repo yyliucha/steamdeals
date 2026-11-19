@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>后台用户管理与权限打磨 demo（2026-11-19）</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b1020;font-family:'Noto Sans SC',-apple-system,'Segoe UI',sans-serif;color:#e6eaf2;padding:26px}
+  .wrap{display:flex;gap:26px;justify-content:center;align-items:flex-start;flex-wrap:wrap}
+  .frame{background:#101a2e;border:1px solid #22304c;border-radius:14px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.4)}
+  .fr-user{width:760px}
+  .fr-dialog{width:390px}
+  .cap{text-align:center;font-size:12px;color:#8b98b8;margin-top:10px}
+  .top{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #1d2a42}
+  .top h3{font-size:15px;font-weight:800}
+  .top .sub{font-size:11px;color:#8b98b8;margin-top:2px}
+  .top-right{display:flex;align-items:center;gap:10px;position:relative}
+  .btn{border:1px solid #2c3a56;background:#162238;color:#cfd6e6;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer}
+  .btn.primary{background:#4f46e5;border-color:#4f46e5;color:#fff}
+  .btn.danger{color:#ef8a96;border-color:#5a2c34}
+  .btn.warn{color:#f0a34c;border-color:#5a4a2c}
+  .btn:disabled{opacity:.45;cursor:default}
+  .userchip{display:flex;align-items:center;gap:8px;border:1px solid #2c3a56;background:#162238;border-radius:9px;padding:5px 10px;font-size:12px;color:#9fe0b0}
+  .avatar{width:24px;height:24px;border-radius:50%;background:linear-gradient(145deg,#635bdf,#22d3ee);display:grid;place-items:center;color:#fff;font-size:12px;font-weight:800}
+  .dropdown{position:absolute;right:0;top:44px;width:170px;background:#162238;border:1px solid #2c3a56;border-radius:10px;box-shadow:0 14px 34px rgba(0,0,0,.5);overflow:hidden;z-index:5}
+  .dropdown div{padding:10px 14px;font-size:12px;color:#cfd6e6}
+  .dropdown div:hover{background:#1d2a42}
+  .dropdown .sep{height:1px;background:#25344f;padding:0;margin:4px 0}
+  .dropdown .logout{color:#ef8a96}
+  .bar{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #1d2a42}
+  .search{flex:1;background:#0d1628;border:1px solid #22304c;border-radius:8px;padding:8px 12px;color:#8b98b8;font-size:12px}
+  .bulkbar{display:flex;align-items:center;gap:10px;padding:9px 18px;background:#141f36;border-bottom:1px solid #1d2a42;font-size:12px;color:#f0a34c}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:11px 18px;font-size:12.5px;border-bottom:1px solid #16223a}
+  th{color:#8b98b8;font-weight:700;font-size:11.5px}
+  .role-admin{color:#9fe0b0;background:#123322;border:1px solid #1f5a3c;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700}
+  .role-user{color:#9ab4e6;background:#12223a;border:1px solid #24406a;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700}
+  .ops{display:flex;gap:8px;flex-wrap:wrap}
+  .ops span{font-size:12px;color:#8b98b8;cursor:pointer}
+  .ops .edit{color:#8fb3ff}
+  .ops .reset{color:#c7a6ff}
+  .ops .kick{color:#f0a34c}
+  .ops .del{color:#ef8a96}
+  .dlg{padding:18px;border:1px solid #22304c;border-radius:14px;background:#101a2e}
+  .dlg h4{font-size:15px;font-weight:800;margin-bottom:4px}
+  .dlg .desc{font-size:12px;color:#8b98b8;margin-bottom:14px}
+  .field{margin-bottom:13px}
+  .field label{display:block;font-size:11.5px;color:#8b98b8;margin-bottom:6px}
+  .field .val{background:#0d1628;border:1px solid #22304c;border-radius:8px;padding:9px 12px;font-size:12.5px;color:#cfd6e6}
+  .role-opts{display:flex;gap:10px}
+  .role-opt{flex:1;border:1px solid #2c3a56;border-radius:9px;padding:9px 12px;font-size:12.5px;color:#cfd6e6;background:#0d1628}
+  .role-opt.on{border-color:#635bdf;background:#1a1c3a;color:#c9c5ff}
+  .bound{background:#0d1628;border:1px solid #22304c;border-radius:8px;padding:9px 12px;font-size:12px;color:#8b98b8;line-height:1.7}
+  .bound b{color:#cfd6e6}
+  .dlg-foot{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+  .code-row{display:flex;gap:10px}
+  .code-row .val{flex:1}
+  .hint-red{font-size:11.5px;color:#ef8a96;margin-top:8px}
+  .hint-ok{font-size:11.5px;color:#8b98b8;margin-top:8px}
+  .count{color:#f0a34c;font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- 左：用户管理页 -->
+  <div>
+    <div class="frame fr-user">
+      <div class="top">
+        <div><h3>用户管理</h3><div class="sub">管理账号与角色；用户只能自助注册，不提供新增入口</div></div>
+        <div class="top-right">
+          <span class="btn">返回网站 ↗</span>
+          <span class="userchip"><span class="avatar">A</span>admin</span>
+          <!-- 用户菜单树（DT-5） -->
+          <div class="dropdown">
+            <div>个人资料</div>
+            <div>修改密码</div>
+            <div>返回网站 ↗</div>
+            <div class="sep"></div>
+            <div class="logout">退出登录</div>
+          </div>
+        </div>
+      </div>
+      <div class="bar">
+        <div class="search">搜索用户名 / 邮箱</div>
+        <span class="btn">刷新</span>
+      </div>
+      <div class="bulkbar">已选 2 位用户　——　<span class="btn warn">批量踢会话</span><span style="color:#8b98b8">（唯一的批量操作）</span></div>
+      <table>
+        <tr><th style="width:34px"></th><th>用户</th><th>角色</th><th>绑定账号</th><th>状态</th><th>操作</th></tr>
+        <tr>
+          <td><input type="checkbox" checked></td>
+          <td>admin<br><span style="color:#6d7a98;font-size:11px">admin@sd.local</span></td>
+          <td><span class="role-admin">管理员</span></td>
+          <td>2 个</td><td>正常</td>
+          <td class="ops"><span class="edit">编辑</span><span class="reset">重置密码</span><span class="kick">踢会话</span><span class="del">删除</span></td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" checked></td>
+          <td>sunboxiang<br><span style="color:#6d7a98;font-size:11px">sunboxiang@qq.com</span></td>
+          <td><span class="role-user">普通用户</span></td>
+          <td>1 个</td><td>正常</td>
+          <td class="ops"><span class="edit">编辑</span><span class="reset">重置密码</span><span class="warn" style="color:#f0a34c">禁用</span><span class="kick">踢会话</span><span class="del">删除</span></td>
+        </tr>
+        <tr>
+          <td><input type="checkbox"></td>
+          <td>guest_test<br><span style="color:#6d7a98;font-size:11px">—</span></td>
+          <td><span class="role-user">普通用户</span></td>
+          <td>0 个</td><td style="color:#ef8a96">已禁用</td>
+          <td class="ops"><span class="edit">编辑</span><span class="reset">重置密码</span><span style="color:#9fe0b0">启用</span><span class="del">删除</span></td>
+        </tr>
+      </table>
+    </div>
+    <div class="cap">① 用户管理新版：无「新建用户」· 行内操作 · 批量只留「踢会话」· 右上用户菜单树含「退出登录」</div>
+  </div>
+
+  <!-- 右：两个弹窗 -->
+  <div style="display:flex;flex-direction:column;gap:22px">
+    <div>
+      <div class="frame fr-dialog">
+        <div class="dlg">
+          <h4>编辑用户</h4>
+          <div class="desc">sunboxiang · 仅可修改角色</div>
+          <div class="field"><label>用户名（只读）</label><div class="val">sunboxiang</div></div>
+          <div class="field"><label>邮箱（只读）</label><div class="val">sunboxiang@qq.com</div></div>
+          <div class="field"><label>角色</label>
+            <div class="role-opts"><div class="role-opt on">普通用户</div><div class="role-opt">管理员</div></div>
+          </div>
+          <div class="field"><label>绑定的 Steam 账号（只读）</label>
+            <div class="bound"><b>FF</b> · 76561198…2591（默认）<br><b>Happy</b> · 76561199…0255</div>
+          </div>
+          <div class="dlg-foot"><span class="btn">取消</span><span class="btn primary">保存</span></div>
+        </div>
+      </div>
+      <div class="cap">② 编辑弹窗：仅改角色 · 用户名/邮箱只读 · 绑定账号只读展示（管理员不看个人信息）</div>
+    </div>
+
+    <div>
+      <div class="frame fr-dialog">
+        <div class="dlg">
+          <h4>重置密码</h4>
+          <div class="desc">给 sunboxiang 发送重置验证码</div>
+          <div class="field"><label>邮箱</label><div class="val">sunboxiang@qq.com</div></div>
+          <div class="field"><label>验证码</label>
+            <div class="code-row"><div class="val">6 位数字</div><span class="btn primary" style="padding:9px 12px">发送验证码</span></div>
+          </div>
+          <div class="hint-ok">已发送，<span class="count">58 秒</span>后可重发；验证码 10 分钟有效</div>
+          <div class="hint-red">验证码错误（还剩 3 次机会）——弹窗不关闭，可直接重试</div>
+          <div class="dlg-foot"><span class="btn">取消</span><span class="btn primary">确认重置</span></div>
+        </div>
+      </div>
+      <div class="cap">③ 重置密码弹窗：打开不发码 · 手动发送 + 倒计时 · 失败不关闭 · 剩余次数提示</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

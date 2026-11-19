@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>菜单权限两套对比 + 前台登录入口 demo（2026-11-19）</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0b1020;font-family:'Noto Sans SC',-apple-system,'Segoe UI',sans-serif;color:#e6eaf2;padding:26px}
+  .wrap{display:flex;gap:26px;justify-content:center;align-items:flex-start;flex-wrap:wrap}
+  .frame{background:#101a2e;border:1px solid #22304c;border-radius:14px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.4)}
+  .menu{width:280px;padding:14px}
+  .menu h4{font-size:12px;color:#8b98b8;font-weight:800;padding:9px 10px 6px;letter-spacing:.06em}
+  .item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;font-size:12.5px;color:#cfd6e6}
+  .item .g{width:20px;text-align:center;color:#7d8bab}
+  .item.on{background:#1a1e3a;color:#c9c5ff}
+  .item.hidden{opacity:.28;text-decoration:line-through}
+  .cap{text-align:center;font-size:12px;color:#8b98b8;margin-top:10px;max-width:300px;line-height:1.6}
+  .topbar{width:700px;background:#101a2e;border:1px solid #22304c;border-radius:14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:15px}
+  .mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(145deg,#635bdf,#22d3ee);display:grid;place-items:center;font-size:14px}
+  .actions{display:flex;align-items:center;gap:10px}
+  .btn{border:1px solid #2c3a56;background:#162238;color:#cfd6e6;border-radius:8px;padding:7px 13px;font-size:12px;font-weight:700}
+  .btn.primary{background:#4f46e5;border-color:#4f46e5;color:#fff}
+  .avatar{width:26px;height:26px;border-radius:50%;background:linear-gradient(145deg,#635bdf,#22d3ee);display:grid;place-items:center;color:#fff;font-size:12px;font-weight:800}
+  .nick{font-size:12.5px;color:#cfd6e6}
+  .note{font-size:11px;color:#6d7a98;margin-top:10px}
+  .col{display:flex;flex-direction:column;gap:22px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- 管理员菜单（全量） -->
+  <div>
+    <div class="frame menu">
+      <h4>内容运营</h4>
+      <div class="item"><span class="g">▦</span>游戏管理</div>
+      <div class="item"><span class="g">▤</span>回收站</div>
+      <div class="item"><span class="g">▱</span>站点通知</div>
+      <div class="item"><span class="g">★</span>愿望单</div>
+      <div class="item"><span class="g">🔔</span>到价提醒</div>
+      <h4>访问与安全</h4>
+      <div class="item"><span class="g">◉</span>访问记录</div>
+      <div class="item"><span class="g">❧</span>申诉管理</div>
+      <h4>账号与服务</h4>
+      <div class="item on"><span class="g">♙</span>用户管理</div>
+      <div class="item"><span class="g">↻</span>登录会话</div>
+      <div class="item"><span class="g">✉</span>邮件服务</div>
+      <h4>日志审计 · 系统</h4>
+      <div class="item"><span class="g">☰</span>操作日志</div>
+      <div class="item"><span class="g">⚙</span>系统设置</div>
+      <div class="item"><span class="g">▥</span>数据统计</div>
+    </div>
+    <div class="cap">管理员菜单（全量）<br>「Steam 账号」菜单已删除（并入个人资料）</div>
+  </div>
+
+  <!-- 普通用户菜单（5 项） -->
+  <div>
+    <div class="frame menu">
+      <h4>我的</h4>
+      <div class="item on"><span class="g">👤</span>个人资料</div>
+      <div class="item"><span class="g">↻</span>登录会话（我的设备）</div>
+      <div class="item"><span class="g">🔔</span>我的到价提醒</div>
+      <div class="item"><span class="g">★</span>我的愿望单</div>
+      <div class="item"><span class="g">▱</span>站点公告</div>
+    </div>
+    <div class="cap">普通用户菜单（5 项）<br>其余分组不渲染；直接访问无权限 section 会被路由守卫跳回个人资料</div>
+  </div>
+
+  <!-- 前台顶栏：未登录 vs 已登录 -->
+  <div class="col">
+    <div>
+      <div class="frame topbar">
+        <div class="brand"><span class="mark">S</span>SteamDeals</div>
+        <div class="actions"><span class="btn primary">登录</span></div>
+      </div>
+      <div class="note">前台未登录：只显示「登录」按钮（点击跳登录页）</div>
+    </div>
+    <div>
+      <div class="frame topbar">
+        <div class="brand"><span class="mark">S</span>SteamDeals</div>
+        <div class="actions"><span class="avatar">S</span><span class="nick">sunboxiang</span></div>
+      </div>
+      <div class="note">前台已登录：不显示「退出 / 修改密码」（退出统一在后台用户菜单里）</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
