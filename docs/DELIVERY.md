@@ -195,9 +195,17 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-19 更新，v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
+### 当前状态（2026-11-19 更新，v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
+- **v2.27.1 已发布**（tag `v2.27.1`，release 提交见 git log）：CO-4/B4 巨石拆分两域（试点 App 域 + 第二轮申诉域）+ DW 搜索关键词参数位错位修复合并发版（技术债重构 + 缺陷修复，无新功能面 → 小版本，2.27.0 → 2.27.1 连续递增）。
+  CO-4/B4：试点 App 域（0c8f5ff）`src/routes/app.js`（App 域 6 条路由）+ `src/store/app-repository.js`（`api_tokens` DDL + 4 个 token 函数）；第二轮申诉域（34a7bcc）`src/routes/appeal.js`（申诉域 5 条路由：公开段 + 管理段）+ `src/store/appeal-repository.js`（`appeals` DDL + 12 个申诉 SQL 函数）；`src/store/pg.js` 两域 re-export 兼容壳；`src/server.js` 试点 -216 行、第二轮再 -267 行（域路由换为入口接线，appealExempt 豁免与限流桶等中间件留原地）；**外部契约零变化**（路径/参数/响应/错误码不变）；已交付 app/appeal 两域，剩余 ~18 个域拆分另行立项（B4-2/CO-5）。
+  DW：`gameSearch` 关键词归一化拆两个显式变量（`kwNormCandidate` 供候选探测/fuzzy、`kwNorm` 供主查询），注释约束两者不可互换（互换 = 精确名 LIKE 匹配 cap/42P18，新测试必红）；`filterParams` 顺序不变、候选查询绑定不变；新增 `test/game-search-exact.test.js` 进主链 test:3（精确名命中/region 值不命中/回归/零命中 + 注入错位反向自检）。
+  QA：B4 ✅ [QA-CO4-B4.md](QA-CO4-B4.md) 第 1/2 轮（16/0/0/1）/ DW ✅ [QA-DW.md](QA-DW.md) 第 1 轮（6/0/0/1）。
+  验证（本机发版门禁）：主链四段全绿（`npm run test:1..4` 串行，合计 1020 通过 / 0 失败——B4 涉及全部路由故跑全量主链；DW 搜索用例在 test:3 的 `game-search-exact.test.js` 4/4）+ `node test/api.test.js` 37/37 + `frontend:build` ✓（2.25s）+ `scan` 干净（699 文件，无高置信度凭据）。
+  CI：待确认。
+  **部署提示**：本批**无 schema 变更、无新增依赖**——升级后直接可用，无需迁移/首次回填等一次性关注项；部署后按 DW 规格 §DW 线上复验「侠盗猎车手」精确名搜索。
+  **服务器部署待执行**（升级到 `2.27.1`）；发版后 e2e 全量由独立报告会话按 steamdeals-test §2.3 执行（PDF 落 `F:\dsh\e2e-reports\`），不在本会话跑。
 - **v2.27.0 已发布**（tag `v2.27.0`，release 提交见 git log）：DP（实现 24780ef）+ DQ（站点 e62fb4e/a1af397 + App 795c791）+ DN（实现 0c5fde4）+ DR（站点 39aaebb + App 仓库 98dabca）+ DS（实现 d607e27）+ DL（实现 1e49eeb）合并发版（含新功能面 DS 搜索派生 / DL 快照落库 / DR 后台立即同步 → 大版本，2.26.0 → 2.27.0 连续递增）。App 仓库同步发布 **app-v2.22.0（22200）**。
   DP e2e 默认浏览器 Edge → Chrome（探测顺序 Program Files Chrome → PF(x86) Chrome → PATH chrome → 回退 Edge 并提示；预检/报告/PDF 打印走 Chrome）；DQ 个人资料页打磨（`users.default_steam_id` + 迁移、头像只认 custom 否则首字+品牌色、账号卡两行按钮/统计三项/开关副说明，Web + App）；DN 内容词 SKU 默认归档（季票/服装/DLC 自动 ignored 不进待对齐队列、不占计数、可恢复）；DR App 发版后即刻可更新（`POST /api/admin/app-sync` + 「App 版本卡」立即同步、同步间隔默认 15 分钟可配热加载、App 节流 24h→1h）；DS 搜索全自动派生（`search_tokens` 缩写/罗马数字/拼音 + 三级排序 + 模糊兜底，零人工）；DL 对齐审核快照落库（`align_snapshots` + 数据签名动态失效 + 操作同事务更新快照——重启即读、确认后旧列表不再出现）。
   QA：DP ✅ [QA-DP.md](QA-DP.md) 第 1 轮（4/0/0/0）/ DQ ✅ [QA-DQ.md](QA-DQ.md) 第 1 轮（9/0/0/3）/ DN ✅ [QA-DN.md](QA-DN.md) 第 1 轮（10/0/0/1）/ DR ✅ [QA-DR.md](QA-DR.md) 第 1 轮（8/0/0/2）/ DS ✅ [QA-DS.md](QA-DS.md) 第 1 轮（5/0/0/3）/ DL ✅ [QA-DL.md](QA-DL.md) 第 1 轮（9/0/0/0）。

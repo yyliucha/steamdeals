@@ -1,5 +1,21 @@
 # 变更日志
 
+## [2.27.1] - 2026-11-19
+
+CO-4/B4 巨石拆分两域交付（试点 App 域 + 第二轮申诉域，契约零变化）+ DW 搜索关键词参数位错位修复（技术债重构 + 缺陷修复，无新功能面 → 小版本，2.27.0 → 2.27.1 连续递增）。
+
+### 修复
+
+- **搜索关键词参数位错位（DW，P0）**：`src/store/pg.js` `gameSearch` 关键词归一化拆两个显式变量——`kwNormCandidate`（`$1`=kw，仅供候选探测 SQL 与 `fuzzyCandidateIds`，绑定 `[kw, …]`）与 `kwNorm`（`$2`=kw，主查询 count/rows/排序，绑定 `filterParams=[region, kw, …]`），注释约束两者不可互换（互换 = 精确名 LIKE 匹配 cap/42P18，新测试必红）；`filterParams` 顺序不变、候选查询绑定不变、其它搜索逻辑不动。新增 `test/game-search-exact.test.js` 进主链 test:3（无 `search_tokens` 游戏精确名命中「侠盗猎车手」/「Grand Theft Auto V」、搜索不因 region 值命中、`gta5/gta6/xdlc6/grand theft auto` 回归、`zzz不存在词`/`cn` 零命中；注入错位（表达式与绑定参数位不一致）反向自检必红后转绿）。
+
+### 技术债
+
+- **巨石拆分两域（CO-4/B4）**：试点 App 域 `src/routes/app.js`（App 域 6 条路由——`GET /api/app/status` 预检段 + `/api/auth/token`、`/api/auth/token/revoke`、`/api/app/latest`、`/api/admin/app-sync/status`、`/api/admin/app-sync` 主段）+ `src/store/app-repository.js`（`api_tokens` DDL + 4 个 token 函数）；第二轮申诉域 `src/routes/appeal.js`（申诉域 5 条路由——公开段 `/api/appeal`、`/api/appeal/:code`、`/api/appeal/action` + 管理段 `/api/admin/appeals`、`/api/admin/appeals/:id/resolve`）+ `src/store/appeal-repository.js`（`appeals` DDL + 12 个申诉 SQL 函数）；`src/store/pg.js` 两域 re-export 兼容壳；`src/server.js` 试点 -216 行、第二轮再 -267 行（域路由换为入口接线，appealExempt 豁免与限流桶等中间件留原地）；**外部契约零变化**（路径/参数/响应/错误码不变）。已交付 app/appeal 两域；剩余 ~18 个域拆分另行立项（B4-2/CO-5）。拆分模式见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §15。
+
+### 测试
+
+- QA（本批 2 块全部放行）：B4 ✅ docs/QA-CO4-B4.md 第 1/2 轮（16/0/0/1）、DW ✅ docs/QA-DW.md 第 1 轮（6/0/0/1）。
+
 ## [2.27.0] - 2026-11-19
 
 DP + DQ + DN + DR + DS + DL 合并发版：e2e 浏览器 Edge → Chrome、个人资料页打磨（头像与 Steam 账号解耦，Web + App）、对齐审核内容词 SKU 默认归档、App 发版后即刻可更新（后台立即同步）、搜索全自动派生（缩写/罗马数字/拼音，零人工）、对齐审核快照落库（含新功能面 → 大版本，2.26.0 → 2.27.0）。App 仓库同步发布 app-v2.22.0（22200）。

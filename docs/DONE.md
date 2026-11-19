@@ -2116,7 +2116,9 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 - **已确认（2026-11-18）**：保留「本次自动继承」卡；不加「候选来源平台」列；本批不做「批量手动搜索」（二期）。
 
 
-## CO. 已完成子项（2026-11-18 自 TODO 移入）
+## CO. ~~待开发：设计审计技术债清理（21 项 → 4 批，每日推进）~~ → **已发布 v2.27.1（2026-11-19）**
+
+**状态：已发布 v2.27.1（2026-11-19；21 项全部收口——B4 已交付 app/appeal 两域，QA docs/QA-CO4-B4.md 第 1/2 轮 ✅ 16/0/0/1；E1 文档归档已完成（不进版本）；剩余 ~18 个域拆分另行立项（B4-2/CO-5），本次发布只结两域）**
 
 | 批次 | 子项 | 内容 | 状态 |
 |---|---|---|---|
@@ -2133,6 +2135,7 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
 | **CO-4** | D4 | 移动/桌面双结构 `v-if` 渐进合并（CSS 优先） | 已发布 v2.26.0（56d8573；QA docs/QA-D4.md 第 1 轮 ✅） |
 | **CO-4** | D6 | 覆盖率/性能基线门禁（与 CK 的 e2e 报告联动） | 已发布 v2.26.0（40517d5；QA docs/QA-D6.md 第 1 轮 ✅） |
 | **CO-4** | E4 | 日志统一字段规范（关键域失败字段 + 告警阈值） | 已发布 v2.26.0（551f4b1 + e5cfef1；QA docs/QA-CO4-E4.md ✅ 放行 4/0/0/1） |
+| **CO-4** | B4 | 巨石拆分（`server.js`/`pg.js`/`cli.js` 渐进拆 routes/repository，先一个域试点） | 已发布 v2.27.1（2026-11-19，试点 App 域 0c8f5ff + 第二轮申诉域 34a7bcc；QA docs/QA-CO4-B4.md 第 1/2 轮 ✅ 16/0/0/1；**已交付 app/appeal 两域（routes/app.js + app-repository.js、routes/appeal.js + appeal-repository.js，契约零变化）；剩余 ~18 个域拆分另行立项（B4-2/CO-5）**——本次发布只结两域） |
 
 
 ## DG. ~~质检通过：对齐匹配修复（副标题/别名导致低分 → 无候选）~~ → **已发布 v2.24.5（2026-11-18，afc5a91 + 12a6de7）**
@@ -2564,3 +2567,30 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   `dirty=true`）——读请求立即拿到新队列，**彻底消除「确认后旧列表还要再审」**；废弃 `invalidate()`/`staleCache`
   内存语义；⑥ 前端操作成功后本地乐观移除该组 + counts 更新，再读快照；「生成中」进度只在首次生成出现。
 - **验收**：见规格 §8 的 9 条——含「确认 3 组后立即刷新页面 → 这 3 组立刻消失、counts 递减、无生成中」。
+
+
+## DW. ~~质检通过（🐞 缺陷）：搜索关键词参数错位——精确名匹配实际在匹配 region~~ → **已发布 v2.27.1（2026-11-19）**
+
+**类型：** 🐞 缺陷（Bug，P0）
+**状态：已发布 v2.27.1（2026-11-19，修复 fc410af + 锁行为测试 77f8214；QA 报告 docs/QA-DW.md 第 1 轮 ✅ 6/0/0/1）**
+**优先级：** P0 —— 搜索功能正确性（中文精确名搜不到）
+**依赖：** 无
+**解锁：** 无
+**规格**：[SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DW
+
+- **根因**：`src/store/pg.js` `gameSearch` 里关键词归一化有两套参数位——候选探测/fuzzy 是独立查询
+  （绑定 `[kw, cap]`，`$1`=kw），主查询绑定 `filterParams=[region, kw]`（`$2`=kw）；同名 `kwNorm`（`$1` 版）
+  与 `kwNorm2`（`$2` 版）并存易误用。线上「侠盗猎车手」0 条的实测绑定 `$1='cn'、$2='侠盗猎车手'` 表明
+  精确名匹配一度绑到 region 位（本仓库 HEAD 经 pglite 实测各查询绑定正确，疑为线上部署版本差异；
+  修复以「参数位显式化 + 测试锁行为」为准，线上复验留部署后验收）。
+- **线上表现**：搜「侠盗猎车手」「侠盗猎车手 V」→ 0 条（GTA V 的 name 明明存在）；「侠盗」98 条、
+  「Grand Theft Auto」142 条全靠 token/trgm 兜底；DS 测试 9/9 绿因为用例没覆盖「仅 name 精确匹配」。
+- **修复**：`gameSearch` 关键词归一化拆两个显式变量——`kwNormCandidate`（`$1` 版，仅供候选探测 SQL 与
+  `fuzzyCandidateIds`，绑定 `[kw, …]`）与 `kwNorm`（`$2` 版，主查询 count/rows/排序，绑定 `[region, kw, …]`），
+  注释写明两者不可互换（互换 = 精确名 LIKE 匹配 cap/42P18，新测试必红）；`filterParams` 顺序不变、
+  候选查询绑定不变、其它搜索逻辑不动。
+- **补测试（反向自检）**：新增 `test/game-search-exact.test.js`（进主链 test:3）——无 `search_tokens` 的游戏
+  搜中文名「侠盗猎车手」/英文名「Grand Theft Auto V」必须命中；注入错位（表达式与绑定参数位不一致）
+  实测必红后才修复转绿；回归 `gta5/gta6/xdlc6/grand theft auto` 仍命中；`zzz不存在词`、`cn` → 0；
+  搜索不因 region 值命中。
+- **验收**：见规格 §DW（本地用例全绿；线上「侠盗猎车手」返回 GTA 系列；`npm test`（分段）+ `frontend:build` + `scan` 全绿）。

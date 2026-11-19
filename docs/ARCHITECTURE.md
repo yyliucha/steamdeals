@@ -462,8 +462,8 @@ GOG 的 catalog 接口接受 `countryCode` + `currencyCode`，是目前唯一能
 
 | 域 | 路由模块 | repository | 拆出内容 | 批次 |
 |---|---|---|---|---|
-| App 客户端 API + 分发 | `src/routes/app.js` | `src/store/app-repository.js` | `/api/app/status`、`/api/app/latest`、`/api/auth/token`、`/api/auth/token/revoke`、`/api/admin/app-sync`、`/api/admin/app-sync/status`；api_tokens 表 + 4 个 token 函数 | CO-4/B4（试点） |
-| 申诉系统（公开 + 管理） | `src/routes/appeal.js` | `src/store/appeal-repository.js` | `/api/appeal`、`/api/appeal/:code`、`/api/appeal/action`（公开段）、`/api/admin/appeals`、`/api/admin/appeals/:id/resolve`（管理段）；appeals 表 + 12 个申诉 SQL 函数 | CO-4/B4（第二轮） |
+| App 客户端 API + 分发 | `src/routes/app.js` | `src/store/app-repository.js` | `/api/app/status`、`/api/app/latest`、`/api/auth/token`、`/api/auth/token/revoke`、`/api/admin/app-sync`、`/api/admin/app-sync/status`；api_tokens 表 + 4 个 token 函数 | 已发布 v2.27.1（CO-4/B4 试点，2026-11-19） |
+| 申诉系统（公开 + 管理） | `src/routes/appeal.js` | `src/store/appeal-repository.js` | `/api/appeal`、`/api/appeal/:code`、`/api/appeal/action`（公开段）、`/api/admin/appeals`、`/api/admin/appeals/:id/resolve`（管理段）；appeals 表 + 12 个申诉 SQL 函数 | 已发布 v2.27.1（CO-4/B4 第二轮，2026-11-19） |
 
 **第二轮选申诉域的理由**（与认证域二选一）：① 边界最独立——全部 `/api/appeal*` 与
 `/api/admin/appeals*` 由申诉系统独占，唯一跨域共享的 `appealBucketLimited` 按 §15.2 闭包传引用即可，
