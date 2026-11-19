@@ -16,6 +16,8 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
+| DW | src/store/pg.js（仅 gameSearch 区 ~1700–2075，不含 re-export 行）+ test/game-search-exact.test.js（新）+ package.json（test:3 一行）+ docs/TODO.md、REQUIREMENTS-INDEX.md、PROJECT-OVERVIEW.md | 无 | 2026-11-19 18:05 | 2026-11-19 20:00 | dw-search-fix（与 CO-4/B4 二轮并行，文件面不重叠：B4 为 server.js 域区 + routes/store + pg.js re-export 行） |
+| CO-4/B4（第二轮：申诉域，dev 已提交 34a7bcc → 现 QA 复检） | server.js 申诉域区 / pg.js 申诉域区 / src/routes/appeal.js（新）/ src/store/appeal-repository.js（新）/ test/appeal-system.test.js / test/admin-ux-security.test.js / docs/QA-CO4-B4.md（第 2 轮报告，不提交）/ docs/ARCHITECTURE.md / docs/PROJECT-OVERVIEW.md / docs/DESIGN-AUDIT.md / docs/REQUIREMENTS-INDEX.md / docs/TODO.md | 无 | 2026-11-19 18:00 | 2026-11-19 21:00 | lead（本轮会话） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 

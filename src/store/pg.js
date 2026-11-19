@@ -1692,6 +1692,7 @@ async function trgmAvailable(q) {
  *       走 AU 批的 games_name_trgm / games_name_en_trgm GIN 索引）；
  * 段 2：段 1 无结果时再对 search_tokens 做 token 级相似度 ≥ 0.6（unnest 全表，代价高但触发概率低）。
  * 返回游戏 id 列表（空 = 无模糊命中或扩展不可用）。
+ * 本函数是独立查询：绑定 [kw, 阈值, cap]，$1=kw——kwNormExpr 必须用 $1 版（kwNormCandidate）。
  */
 async function fuzzyCandidateIds(q, kw, kwNormExpr, norm, cap, nameThreshold) {
   if (!(await trgmAvailable(q))) return [];
@@ -1763,7 +1764,13 @@ export async function gameSearch(
   const FUZZY_NAME_THRESHOLD = Math.max(0.1, Math.min(0.9, Number(process.env.SEARCH_FUZZY_THRESHOLD) || 0.4));
   const startedAt = Date.now();
   const norm = (expr) => `replace(replace(lower(coalesce(${expr}, '')), ' ', ''), '　', '')`;
-  const kwNorm = `replace(replace(lower($1), ' ', ''), '　', '')`;
+  // DW（docs/SEARCH-FIX-PERF.md §DW）：关键词归一化两套参数位、两套表达式，显式区分：
+  // - 候选探测 SQL 与 fuzzy 兜底是独立查询，绑定 [kw, …]——$1=kw，用 kwNormCandidate；
+  // - 主查询（count/rows/排序）绑定 filterParams=[region, kw, …]——$2=kw，用 kwNorm。
+  // 二者绝不能互换：把 $2 版表达式塞进候选查询会让精确名 LIKE 匹配 cap（42804/0 命中），
+  // 把候选查询绑定改成 [region, kw, …] 会让未引用的 $1 触发 42P18（pglite/生产一致）。
+  const kwNormCandidate = `replace(replace(lower($1), ' ', ''), '　', '')`;
+  const kwNorm = `replace(replace(lower($2), ' ', ''), '　', '')`;
   const isAppidKw = /^\d{1,10}$/.test(kw);
   // DS 批：查询侧与存储侧同一派生函数；纯数字（AppID 语义）与空关键词不派生 token。
   const queryTokens = deriveQueryTokens(kw);
@@ -1786,11 +1793,11 @@ export async function gameSearch(
     const found = await q(
       `select id from (
           select g.id from games g
-           where ${norm('g.name')} like '%' || ${kwNorm} || '%'
-              or ${norm('g.name_en')} like '%' || ${kwNorm} || '%'
+           where ${norm('g.name')} like '%' || ${kwNormCandidate} || '%'
+              or ${norm('g.name_en')} like '%' || ${kwNormCandidate} || '%'
           union
           select a.game_id as id from game_aliases a
-           where ${norm('a.platform_title')} like '%' || ${kwNorm} || '%'
+           where ${norm('a.platform_title')} like '%' || ${kwNormCandidate} || '%'
           union
           select g.id from games g
            where ${hasTokenArm ? `g.search_tokens && ${tokSql} or exists (select 1 from unnest(g.search_tokens) t where t like any (${patSql}))` : 'false'}
@@ -1801,7 +1808,7 @@ export async function gameSearch(
     let ids = found.rows.map((r) => Number(r.id)).filter((n) => Number.isFinite(n) && n > 0);
     // DS 批：主查询零命中 → pg_trgm 模糊兜底（拼错容忍；无扩展环境整体跳过）
     if (!ids.length && hasTokenArm) {
-      const fuzzyIds = await fuzzyCandidateIds(q, kw, kwNorm, norm, KEYWORD_CANDIDATE_CAP, FUZZY_NAME_THRESHOLD);
+      const fuzzyIds = await fuzzyCandidateIds(q, kw, kwNormCandidate, norm, KEYWORD_CANDIDATE_CAP, FUZZY_NAME_THRESHOLD);
       if (fuzzyIds.length) {
         ids = fuzzyIds;
         matchedBy = 'fuzzy';
@@ -1825,14 +1832,13 @@ export async function gameSearch(
   }
   // DS 批（docs/SEARCH-ALIASES.md §4）：命中分级排序——原名/中文名直接命中 0 > 派生 token/平台别名命中 1 > 模糊 2；
   // 再走原有 sort（无搜索词时 rankPrefix 为空，排序行为完全不变）。
-  // 注意主查询里 $1=region、$2=kw（候选探测 SQL 才用 $1=kw），所以这里必须用 $2 版关键词归一化。
-  const kwNorm2 = `replace(replace(lower($2), ' ', ''), '　', '')`;
+  // 主查询里 $1=region、$2=kw——排序分级用 $2 版关键词归一化（kwNorm；候选探测才用 $1 版 kwNormCandidate）。
   const rankExpr = !kw
     ? null
     : matchedBy === 'fuzzy'
       ? '2'
-      : `(case when ${norm('g.name')} like '%' || ${kwNorm2} || '%' or ${norm('g.name_en')} like '%' || ${kwNorm2} || '%' then 0 ` +
-        `when ${tokenArmSql} or exists (select 1 from game_aliases a where a.game_id = g.id and ${norm('a.platform_title')} like '%' || ${kwNorm2} || '%') then 1 else 2 end)`;
+      : `(case when ${norm('g.name')} like '%' || ${kwNorm} || '%' or ${norm('g.name_en')} like '%' || ${kwNorm} || '%' then 0 ` +
+        `when ${tokenArmSql} or exists (select 1 from game_aliases a where a.game_id = g.id and ${norm('a.platform_title')} like '%' || ${kwNorm} || '%') then 1 else 2 end)`;
   const rankPrefix = rankExpr ? `${rankExpr} asc, ` : '';
   const conds = [
     // DA 批：unreleased 筛选要能看到「无报价/无历史的未来游戏」，豁免 legacy 的 daily_prices 前置条件
