@@ -1,0 +1,35 @@
+name: test-main
+
+# 防回退哨兵（2026-11-19 多会话串扰事故 d089bbd 后落地）：
+# 任何 push 到 main 的提交立即跑主链测试 + api.test + 前端构建 + 凭据扫描——
+# 把 main 树改坏/回退的提交（如暂存区陈旧快照入提交）几分钟内自动红灯，不再依赖人工纪律发现。
+# 与 docker-hub/docker-tcr 不同：不构建镜像、不推镜像；tag 推送由那两个 workflow 处理。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: test-main-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: node test/api.test.js
+      - run: npm run frontend:build
+      - run: npm run scan
+      - run: node scripts/check-html-syntax.mjs web/index.html web/console.html web/setup.html
