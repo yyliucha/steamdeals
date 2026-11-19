@@ -107,3 +107,5 @@
 - 2026-11-20 03:42 工人完成 B4 #6 me：提交 4ed78db（server.js −201 / pg.js −110 / 新 routes 298 + repository 189 / 测试 +87）；QA-CO5-B4-2-me 第 1 轮 ✅ 放行（17/0/0/2，人工确认同前为沙箱环境限制）；边界判定：/api/me/email/* 与 /api/auth/email* 同属 auth-routes.js 模块（DT-2 排除区）整块留原地；/api/prefs、/api/avatar/:id 与 me 区块同模块随域拆走。实测单域耗时 30min（03:12→03:42）。
 - 2026-11-20 03:45 构建开始 v2.27.3：三域齐（#4 1b087b4 / #5 3022d6e / #6 4ed78db，QA 全部放行）→ 本地快速门禁 → 版本+文档 → 提交 → tag → CI。
 - 2026-11-20 04:25 构建完成 v2.27.3：本地门禁（主链 test:1 仅 commit-own 4 项已知沙箱环境红（基线同）、test:2/3/4 全绿、api.test 37/37、frontend:build ✓、scan 干净）；版本 2.27.2→2.27.3、CHANGELOG/ARCHITECTURE §15.6/PROJECT-OVERVIEW/B4-QUEUE/DELIVERY 已更新 → 提交 + annotated tag + 推送，进入 CI 盯守。
+- 2026-11-20 04:48 CI 结果 v2.27.3：**双绿 + push 门禁全绿**——docker-hub 44608440588 ✅（test/smoke/publish 全 success，20m10s）、docker-tcr 44608440514 ✅（test/publish 全 success，18m20s）、test-main 44608412265 ✅（release 提交 02d62aa，14m13s）。两个镜像源均已推送。
+- 2026-11-20 04:50 收尾：本轮拆 #4/#5/#6 三域（37/38/30min 每域）→ v2.27.3 已发布 CI 双绿；剩余未拆 #7–#21（15 域）；下一轮从 #7 杂项（site/steam/ban）接；ACTIVE-SESSIONS 注销监工登记。
