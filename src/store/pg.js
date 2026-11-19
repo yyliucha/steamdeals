@@ -5,6 +5,7 @@
 //
 // 所有函数都接收同一个 q(sql, params) 查询函数，因此同一套 SQL 既能在
 // 真实 PG 上跑，也能在测试里的 PGlite 上跑（PGlite 是编译成 wasm 的真 PG）。
+import { deriveSearchTokens, deriveQueryTokens, queryOverlapTokens, queryLikePatterns } from '../search-derive.js';
 
 export const SCHEMA = `
 create table if not exists platforms (
@@ -555,6 +556,11 @@ const ALTERS = [  'alter table games add column if not exists interested boolean
   'alter table user_prefs drop column if exists only_discount',
   'create index if not exists idx_games_release_date on games (release_date desc nulls last)',
   'create index if not exists idx_offers_discount on offers (game_id) where discount_pct > 0',
+  // DS 批（docs/SEARCH-ALIASES.md §1）：搜索派生 token——纯派生数据（非人工录入），
+  // search_tokens_at 作「名字已变更」的增量重算信号（updated_at > search_tokens_at 即重算）。
+  // GIN 索引在 migrate() 的 try/catch 里建（pglite 无 GIN 时跳过，与 tags/trgm 同模式）。
+  "alter table games add column if not exists search_tokens text[] not null default '{}'",
+  'alter table games add column if not exists search_tokens_at timestamptz',
 ];
 
 export async function migrate(store, { logger = null } = {}) {
@@ -597,6 +603,13 @@ create index if not exists idx_user_search_logs_user on user_search_logs (user_i
     await store.exec('create index if not exists games_tags_gin on games using gin (tags)');
   } catch {
     /* pglite 无 GIN 时跳过（与 pg_trgm 同模式） */
+  }
+  // DS 批（docs/SEARCH-ALIASES.md §1）：search_tokens 的 GIN 索引——`&&`（数组包含）走它。
+  // 本地 pglite 无 GIN：跳过不中断（生产 PostgreSQL 15 建索引）。
+  try {
+    await store.exec('create index if not exists games_search_tokens_gin on games using gin (search_tokens)');
+  } catch {
+    /* pglite 无 GIN 时跳过 */
   }
   await store.query(
     `insert into game_source_sync (game_id, platform_code, status)
@@ -766,10 +779,13 @@ export async function ensureGame(q, { steamAppid = null, name = null, nameEn = n
           ? row.name
           : null;
       if (patchName || patchNameEn || moveNameEn) {
-        await q(
-          `update games set name = coalesce($1, name), name_en = coalesce($2, name_en), updated_at = now() where id = $3`,
+        const r = await q(
+          `update games set name = coalesce($1, name), name_en = coalesce($2, name_en), updated_at = now()
+            where id = $3 returning id, name, name_en`,
           [patchName ? name : null, moveNameEn ?? (patchNameEn ? nameEn : null), row.id],
         );
+        // DS 批：名字动了就顺带重算 search_tokens（is distinct from 幂等）
+        await refreshSearchTokens(q, { id: Number(r.rows[0].id), name: r.rows[0].name, nameEn: r.rows[0].name_en });
       } else {
         await q('update games set updated_at = now() where id = $1', [row.id]);
       }
@@ -781,7 +797,9 @@ export async function ensureGame(q, { steamAppid = null, name = null, nameEn = n
       const row = found.rows[0];
       // 没有 appid 的行也要能补英文名（杉果页面带 sku_ename，首次采集时可能还没有）
       if (nameEn && !row.name_en) {
-        await q('update games set name_en = $1, updated_at = now() where id = $2', [nameEn, row.id]);
+        const r = await q('update games set name_en = $1, updated_at = now() where id = $2 returning id, name, name_en', [nameEn, row.id]);
+        // DS 批：补英文名顺带重算 search_tokens
+        await refreshSearchTokens(q, { id: Number(r.rows[0].id), name: r.rows[0].name, nameEn: r.rows[0].name_en });
       } else {
         await q('update games set updated_at = now() where id = $1', [row.id]);
       }
@@ -790,8 +808,8 @@ export async function ensureGame(q, { steamAppid = null, name = null, nameEn = n
   }
 
   const inserted = await q(
-    `insert into games (steam_appid, name, name_en, app_type, is_free, header_image, release_date)
-     values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+    `insert into games (steam_appid, name, name_en, app_type, is_free, header_image, release_date, search_tokens)
+     values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
     [
       steamAppid,
       name,
@@ -800,6 +818,8 @@ export async function ensureGame(q, { steamAppid = null, name = null, nameEn = n
       Boolean(meta?.isFree),
       meta?.headerImage ?? null,
       meta?.releaseDate ?? null,
+      // DS 批：新行直接带派生 token（与写库同一条 SQL）
+      deriveSearchTokens({ name, nameEn }),
     ],
   );
   return { id: Number(inserted.rows[0].id), created: true };
@@ -1617,14 +1637,62 @@ export async function gameOverview(q, { region = 'cn', limit = 200 } = {}) {
  * 当前 like '%kw%' 本来就不走索引（198k 行实测约 114ms），可接受。
  * appidAsInt：纯数字关键词按 AppID 精确匹配；appidAsText：任意关键词安全比较（不抛 int 转换错）。
  */
-export function gameKeywordSql(kwParam, { appidAsInt = false, appidAsText = false } = {}) {
+export function gameKeywordSql(kwParam, { appidAsInt = false, appidAsText = false, tokenCond = null } = {}) {
   const kw = `replace(replace(lower(${kwParam}), ' ', ''), '　', '')`;
   const f = (col) => `replace(replace(lower(coalesce(${col}, '')), ' ', ''), '　', '')`;
   const appid = appidAsInt ? ` or g.steam_appid = ${kwParam}::int` : appidAsText ? ` or cast(g.steam_appid as text) = ${kwParam}` : '';
+  // DS 批（docs/SEARCH-ALIASES.md §4）：派生 token 源（在原有 name/name_en/platform_title 三源之外）。
+  // tokenCond：gameSearch 传入完整条件（数组重叠 + LIKE 模式，带参数编号）；
+  // 不给时退化为「归一化关键词整体子串」——后台「游戏管理」搜索（server.js）复用此 helper，无 token 参数位。
+  const tokenArm = tokenCond
+    ? ` or (${tokenCond})`
+    : ` or exists (select 1 from unnest(g.search_tokens) t where t like '%' || ${kw} || '%')`;
   return (
     `(${kw} = '' or ${f('g.name')} like '%' || ${kw} || '%' or ${f('g.name_en')} like '%' || ${kw} || '%' ` +
-    `or exists (select 1 from game_aliases a where a.game_id = g.id and ${f('a.platform_title')} like '%' || ${kw} || '%')${appid})`
+    `or exists (select 1 from game_aliases a where a.game_id = g.id and ${f('a.platform_title')} like '%' || ${kw} || '%')${tokenArm}${appid})`
   );
+}
+
+// DS 批（docs/SEARCH-ALIASES.md §4）：pg_trgm 可用性探测——pglite（本地测试）没有 pg_trgm 扩展，
+// 探测一次后缓存，模糊兜底在无扩展环境整体跳过（主查询行为不受影响）。
+let trgmProbe = null;
+async function trgmAvailable(q) {
+  if (trgmProbe === null) {
+    try {
+      await q(`select similarity($1::text, $2::text) as s`, ['a', 'a']);
+      trgmProbe = true;
+    } catch {
+      trgmProbe = false;
+    }
+  }
+  return trgmProbe;
+}
+
+/**
+ * DS 批（docs/SEARCH-ALIASES.md §4）：模糊兜底候选（拼错容忍），仅在主查询零命中时调用。
+ * 段 1：name/name_en 的 trgm 相似度 ≥ 阈值（默认 0.4，`SEARCH_FUZZY_THRESHOLD` 可调；
+ *       走 AU 批的 games_name_trgm / games_name_en_trgm GIN 索引）；
+ * 段 2：段 1 无结果时再对 search_tokens 做 token 级相似度 ≥ 0.6（unnest 全表，代价高但触发概率低）。
+ * 返回游戏 id 列表（空 = 无模糊命中或扩展不可用）。
+ */
+async function fuzzyCandidateIds(q, kw, kwNormExpr, norm, cap, nameThreshold) {
+  if (!(await trgmAvailable(q))) return [];
+  const arm1 = await q(
+    `select g.id from games g
+      where similarity(${norm('g.name')}, ${kwNormExpr}) >= $2
+         or similarity(${norm('g.name_en')}, ${kwNormExpr}) >= $2
+      limit $3`,
+    [kw, nameThreshold, cap],
+  );
+  const pick = (rows) => rows.map((r) => Number(r.id)).filter((n) => Number.isFinite(n) && n > 0);
+  if (arm1.rows.length) return pick(arm1.rows);
+  const arm2 = await q(
+    `select g.id from games g
+      where exists (select 1 from unnest(g.search_tokens) t where similarity(t, ${kwNormExpr}) >= $2)
+      limit $3`,
+    [kw, 0.6, cap],
+  );
+  return pick(arm2.rows);
 }
 
 /**
@@ -1635,6 +1703,7 @@ export function gameKeywordSql(kwParam, { appidAsInt = false, appidAsText = fals
 export async function gameSearch(
   q,
   { region = 'cn', page = 1, pageSize = 20, keyword = '', sort = 'discount', interest = 'all', owned = 'exclude', blocked = 'exclude', userId = null, typeFilter = 'all', released = 'all', marks = 'any', compact = false, guestFlags = null, wishlist = false, adult = 'hide', reviewMin = null, deck = 'all', discountOnly = false, histLowOnly = false, freeOnly = false, unreleased = false } = {},
+  logger = null,
 ) {
   // DA 批（docs/APP-FILTER-SERVER-SIDE.md §2）：四个筛选开关互斥（App 单选 chip），
   // 同时传多个按优先级 unreleased > freeOnly > histLowOnly > discountOnly 取第一个——在这里归一，口径对全部调用方一致。
@@ -1666,17 +1735,36 @@ export async function gameSearch(
   // AV 批（docs/READ-MODEL.md §5）：读模型模式下「有历史/有报价」的语义由快照行存在承担，
   // 去掉 exists(daily_prices)；READ_MODEL=legacy 保留旧 SQL 作回滚开关（表保留不删数据）。
   const useReadModel = process.env.READ_MODEL !== 'legacy';
-  // AY 批（docs/READ-MODEL.md §10）：关键词先走三张 trigram 表达式索引取候选 ID——
+  // AY 批（docs/READ-MODEL.md §10）：关键词先走 trigram/别名候选取 ID——
   // 零命中直接返回（生产实测原「逐行 LIKE + 别名 EXISTS」零命中 800ms+，还触发 JIT +220ms）；
   // 命中数在阈值内用 g.id = any($n)（主键 ScalarArrayOp）替代逐行函数计算；
   // 超过阈值（宽泛词）才回落原 LIKE 条件，保证 total 精确。
   // 上限可用环境变量覆盖（测试专用；生产默认 5000）：命中数达到上限时回退原 LIKE，保证 total 精确。
   const KEYWORD_CANDIDATE_CAP = Math.max(1, Number(process.env.SEARCH_KEYWORD_CANDIDATE_CAP) || 5000);
+  // DS 批（docs/SEARCH-ALIASES.md §4）：模糊兜底相似度阈值（拼错容忍；规格：阈值可调，默认 0.4）。
+  const FUZZY_NAME_THRESHOLD = Math.max(0.1, Math.min(0.9, Number(process.env.SEARCH_FUZZY_THRESHOLD) || 0.4));
+  const startedAt = Date.now();
+  const norm = (expr) => `replace(replace(lower(coalesce(${expr}, '')), ' ', ''), '　', '')`;
+  const kwNorm = `replace(replace(lower($1), ' ', ''), '　', '')`;
+  const isAppidKw = /^\d{1,10}$/.test(kw);
+  // DS 批：查询侧与存储侧同一派生函数；纯数字（AppID 语义）与空关键词不派生 token。
+  const queryTokens = deriveQueryTokens(kw);
+  const overlapTokens = queryOverlapTokens(queryTokens);
+  const likePatterns = queryLikePatterns(queryTokens);
+  const hasTokenArm = kw !== '' && queryTokens.length > 0;
+  // token 命中条件：数组重叠（GIN）或任意 token 子串兼容（xdlc6 → 存储 xdlcs6 靠 %xdlc% 命中）。
+  // 派生 token 只含 [a-z0-9\u4e00-\u9fff]、模式为 '%tok%'，无引号/反斜杠——安全内联，避免参数
+  // 在 count（无 order by）查询里未被引用而触发 42P18，且参数编号与 userId/ids 绑定完全解耦。
+  const inlineArr = (arr) => (arr.length ? `array[${arr.map((t) => `'${t}'`).join(', ')}]::text[]` : "'{}'::text[]");
+  const tokSql = inlineArr(overlapTokens);
+  const patSql = inlineArr(likePatterns);
+  const tokenArmSql = hasTokenArm
+    ? `(g.search_tokens && ${tokSql} or exists (select 1 from unnest(g.search_tokens) t where t like any (${patSql})))`
+    : 'false';
+  let matchedBy = null;
   let keywordCond;
   if (kw) {
-    const norm = (expr) => `replace(replace(lower(coalesce(${expr}, '')), ' ', ''), '　', '')`;
-    const kwNorm = `replace(replace(lower($1), ' ', ''), '　', '')`;
-    const appidArm = /^\d{1,10}$/.test(kw) ? ' union select g.id from games g where g.steam_appid = $1::int' : '';
+    const appidArm = isAppidKw ? ' union select g.id from games g where g.steam_appid = $1::int' : '';
     const found = await q(
       `select id from (
           select g.id from games g
@@ -1685,16 +1773,31 @@ export async function gameSearch(
           union
           select a.game_id as id from game_aliases a
            where ${norm('a.platform_title')} like '%' || ${kwNorm} || '%'
+          union
+          select g.id from games g
+           where ${hasTokenArm ? `g.search_tokens && ${tokSql} or exists (select 1 from unnest(g.search_tokens) t where t like any (${patSql}))` : 'false'}
           ${appidArm}
         ) t limit $2`,
       [kw, KEYWORD_CANDIDATE_CAP],
     );
-    const ids = found.rows.map((r) => Number(r.id)).filter((n) => Number.isFinite(n) && n > 0);
+    let ids = found.rows.map((r) => Number(r.id)).filter((n) => Number.isFinite(n) && n > 0);
+    // DS 批：主查询零命中 → pg_trgm 模糊兜底（拼错容忍；无扩展环境整体跳过）
+    if (!ids.length && hasTokenArm) {
+      const fuzzyIds = await fuzzyCandidateIds(q, kw, kwNorm, norm, KEYWORD_CANDIDATE_CAP, FUZZY_NAME_THRESHOLD);
+      if (fuzzyIds.length) {
+        ids = fuzzyIds;
+        matchedBy = 'fuzzy';
+      }
+    }
     if (!ids.length) {
-      return { rows: [], total: 0, page: pg, pageSize: size, pages: 1 };
+      // DS 批：零命中日志——词、派生 token、耗时；只记日志，不建人工映射（规格 §4）。
+      logger?.info('search.miss', { kw, tokens: queryTokens, fuzzy: matchedBy === 'fuzzy', elapsedMs: Date.now() - startedAt });
+      return { rows: [], total: 0, page: pg, pageSize: size, pages: 1, matchedBy };
     }
     if (ids.length >= KEYWORD_CANDIDATE_CAP) {
-      keywordCond = /^\d{1,10}$/.test(kw) ? gameKeywordSql('$2', { appidAsInt: true }) : gameKeywordSql('$2');
+      keywordCond = isAppidKw
+        ? gameKeywordSql('$2', { appidAsInt: true })
+        : gameKeywordSql('$2', { tokenCond: tokenArmSql });
     } else {
       // 保留 $2 引用：userJoin 固定用 $3，参数编号不能变，未被引用的 $2 会让 PG 无法推断类型（42P18）
       keywordCond = `$2::text is not null and g.id = any(${bindFilter(ids)}::bigint[])`;
@@ -1702,6 +1805,17 @@ export async function gameSearch(
   } else {
     keywordCond = gameKeywordSql('$2');
   }
+  // DS 批（docs/SEARCH-ALIASES.md §4）：命中分级排序——原名/中文名直接命中 0 > 派生 token/平台别名命中 1 > 模糊 2；
+  // 再走原有 sort（无搜索词时 rankPrefix 为空，排序行为完全不变）。
+  // 注意主查询里 $1=region、$2=kw（候选探测 SQL 才用 $1=kw），所以这里必须用 $2 版关键词归一化。
+  const kwNorm2 = `replace(replace(lower($2), ' ', ''), '　', '')`;
+  const rankExpr = !kw
+    ? null
+    : matchedBy === 'fuzzy'
+      ? '2'
+      : `(case when ${norm('g.name')} like '%' || ${kwNorm2} || '%' or ${norm('g.name_en')} like '%' || ${kwNorm2} || '%' then 0 ` +
+        `when ${tokenArmSql} or exists (select 1 from game_aliases a where a.game_id = g.id and ${norm('a.platform_title')} like '%' || ${kwNorm2} || '%') then 1 else 2 end)`;
+  const rankPrefix = rankExpr ? `${rankExpr} asc, ` : '';
   const conds = [
     // DA 批：unreleased 筛选要能看到「无报价/无历史的未来游戏」，豁免 legacy 的 daily_prices 前置条件
     ...(useReadModel || unreleased ? [] : ['exists (select 1 from daily_prices d where d.game_id = g.id and d.region = $1)']),
@@ -1888,7 +2002,7 @@ export async function gameSearch(
     left join price_rollup pr on pr.game_id = g.id
     left join daily_rollup dr on dr.game_id = g.id
     ${where}
-    order by ${primaryOrder ?? `g.heat desc nulls last, ${sort === 'name' ? 'name asc' : sort === 'price' ? 'pr.current_low asc nulls last, name asc' : 'pr.discount desc nulls last, pr.current_low asc nulls last, name asc'}, g.id asc`}
+    order by ${rankPrefix}${primaryOrder ?? `g.heat desc nulls last, ${sort === 'name' ? 'name asc' : sort === 'price' ? 'pr.current_low asc nulls last, name asc' : 'pr.discount desc nulls last, pr.current_low asc nulls last, name asc'}, g.id asc`}
     limit __LIST_LIMIT__ offset __LIST_OFFSET__`;
   // AV 批（docs/READ-MODEL.md §5.1）：compact 读模型查询——与旧 compact 同字段（价格/史低来自 rs.*，
   // 补 rs.platform_names），排序与旧 CTE 版一致（含 g.id 兜底）。
@@ -1911,17 +2025,17 @@ export async function gameSearch(
       rs.last_seen_at, rs.low_platform_name, rs.low_platform, rs.platform_names
     ${rmFromList}
     ${rmWhereStr}
-    order by ${primaryOrder ?? `g.heat desc nulls last, ${rmSort}, g.id asc`}
+    order by ${rankPrefix}${primaryOrder ?? `g.heat desc nulls last, ${rmSort}, g.id asc`}
     limit __LIST_LIMIT__ offset __LIST_OFFSET__`;
   const limitIndex = filterParams.length + 1;
   const rows = (await q(
     useReadModel
       ? compact
         ? compactRmQuery.replace('__LIST_LIMIT__', `$${limitIndex}`).replace('__LIST_OFFSET__', `$${limitIndex + 1}`)
-        : `${GAME_SELECT_RM}${extra} ${rmFromFull} ${rmWhereStr} order by ${primaryOrder ?? `g.heat desc nulls last, ${rmSort}`} limit $${limitIndex} offset $${limitIndex + 1}`
+        : `${GAME_SELECT_RM}${extra} ${rmFromFull} ${rmWhereStr} order by ${rankPrefix}${primaryOrder ?? `g.heat desc nulls last, ${rmSort}`} limit $${limitIndex} offset $${limitIndex + 1}`
       : compact
         ? compactQuery.replace('__LIST_LIMIT__', `$${limitIndex}`).replace('__LIST_OFFSET__', `$${limitIndex + 1}`)
-        : `${GAME_SELECT}${extra} from games g ${userJoin(3)} ${where} order by ${primaryOrder ?? `g.heat desc nulls last, ${order}`} limit $${limitIndex} offset $${limitIndex + 1}`,
+        : `${GAME_SELECT}${extra} from games g ${userJoin(3)} ${where} order by ${rankPrefix}${primaryOrder ?? `g.heat desc nulls last, ${order}`} limit $${limitIndex} offset $${limitIndex + 1}`,
     [...filterParams, size, offset],
   )).rows;
   if (userId && !compact) {
@@ -1941,7 +2055,7 @@ export async function gameSearch(
       row.site_wishlisted = false;
     }
   }
-  return { rows, total, page: pg, pageSize: size, pages: Math.max(1, Math.ceil(total / size)) };
+  return { rows, total, page: pg, pageSize: size, pages: Math.max(1, Math.ceil(total / size)), matchedBy };
 }
 
 /** 单个游戏的每日最低价（跨官方平台取最小），按天升序。 */
@@ -3740,6 +3854,70 @@ export async function markStaleSyncRuns(q) {
 // ---------------------------------------------------------------- 元数据写入
 
 /**
+ * DS 批（docs/SEARCH-ALIASES.md §3）：写入路径顺带生成 search_tokens。
+ * 用「最终生效的名字」重算（upsertGameMeta/ensureGame 的名字覆盖保护在 SQL 里，先 returning 拿到
+ * 落库后的真实 name/name_en 再算，永不与保护逻辑漂移）；`is distinct from` 保证幂等——名字没变、
+ * token 没变时一行都不写。
+ */
+export async function refreshSearchTokens(q, { id, name, nameEn }) {
+  const tokens = deriveSearchTokens({ name, nameEn });
+  await q(
+    'update games set search_tokens = $2, search_tokens_at = now() where id = $1 and search_tokens is distinct from $2',
+    [id, tokens],
+  );
+}
+
+/**
+ * DS 批（docs/SEARCH-ALIASES.md §3）：增量/全量重建 search_tokens。
+ * 增量口径：search_tokens 为空、从未生成过、或名字在生成后被改过（updated_at > search_tokens_at）；
+ * 重算后 search_tokens_at 前进，条件收敛，没活时一轮秒退。--full 全量按 id 游标翻页。
+ * 每批一条 VALUES 批量 UPDATE；token 没变的行也把 search_tokens_at 推到 now()（否则永远留在候选里不收敛），
+ * returning 区分「token 真变化」（written 口径）与「只 touch 时间」。
+ * 返回 { processed, written }。
+ */
+export async function rebuildSearchTokens(q, { full = false, limit = 50000, batch = 500 } = {}) {
+  const cond = full
+    ? ''
+    : "(g.search_tokens = '{}' or g.search_tokens_at is null or g.updated_at > g.search_tokens_at)";
+  const where = cond ? `where ${cond} and g.id > $1` : 'where g.id > $1';
+  let processed = 0;
+  let written = 0;
+  let lastId = 0;
+  while (processed < limit) {
+    const size = Math.min(batch, limit - processed);
+    const r = await q(
+      `select g.id, g.name, g.name_en, g.search_tokens from games g ${where} order by g.id limit $2`,
+      [lastId, size],
+    );
+    if (!r.rows.length) break;
+    const values = [];
+    const params = [];
+    const changedRows = [];
+    for (const row of r.rows) {
+      const tokens = deriveSearchTokens({ name: row.name, nameEn: row.name_en });
+      params.push(Number(row.id), tokens);
+      values.push(`($${params.length - 1}::bigint, $${params.length}::text[])`);
+      if (JSON.stringify(row.search_tokens ?? []) !== JSON.stringify(tokens)) changedRows.push(row.id);
+    }
+    // token 没变的行也把 search_tokens_at 推到 now()（否则永远留在候选里，不收敛）；
+    // 「token 真变化」在 JS 侧对比更新前值计数（UPDATE 的 returning 只能看到新值，测不出变化）。
+    await q(
+      `update games g
+          set search_tokens = case when g.search_tokens is distinct from v.tokens then v.tokens else g.search_tokens end,
+              search_tokens_at = now()
+         from (values ${values.join(', ')}) as v(id, tokens)
+        where g.id = v.id`,
+      params,
+    );
+    written += changedRows.length;
+    processed += r.rows.length;
+    lastId = Number(r.rows[r.rows.length - 1].id);
+    if (r.rows.length < size) break;
+  }
+  return { processed, written };
+}
+
+/**
  * 写入/更新游戏元数据。
  *
  * 名字策略：**只补空缺，唯一例外是"机器英文名"**。
@@ -3751,14 +3929,16 @@ export async function markStaleSyncRuns(q) {
  *   - 其余（人工维护的中文名、或 name_en 与 name 不同的人工英文名）→ 不覆盖，
  *     避免 730 的 sc_schinese 旧名把「反恐精英 2」改坏。
  * 其余字段（类型/封面/发行日期/is_free）仍以元数据为准。
+ * DS 批：search_tokens 随本次写入顺带生成（插入走同一条 SQL，更新 returning 最终名字后对齐）。
  */
 export async function upsertGameMeta(q, item) {
   // 类型统一小写：老数据里有 PICS 镜像的 'Game'/'DLC' 大小写混用，前端按小写匹配
   const appType = item.appType == null ? null : String(item.appType).toLowerCase();
+  const tokens = deriveSearchTokens({ name: item.nameZh ?? null, nameEn: item.nameEn ?? null });
   const r = await q(
     `insert into games (steam_appid, name, name_en, app_type, is_free, header_image, release_date,
-                        developers, publishers, genres, tags, description, dlc_appids)
-     values ($1, $2, $3, $4, coalesce($5, false), $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
+                        developers, publishers, genres, tags, description, dlc_appids, search_tokens)
+     values ($1, $2, $3, $4, coalesce($5, false), $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::text[])
      on conflict (steam_appid) do update set
        name = case
          when excluded.name is null then games.name
@@ -3789,7 +3969,7 @@ export async function upsertGameMeta(q, item) {
        -- BP 批（docs/GAME-DLC.md §3.1）：GetItems 路径没有 dlcAppIds（null）——不能把已有值清空
        dlc_appids = case when excluded.dlc_appids is null then games.dlc_appids else excluded.dlc_appids end,
        updated_at = now()
-     returning id, (xmax = 0) as inserted`,
+     returning id, name, name_en, (xmax = 0) as inserted`,
     [
       item.steamAppid,
       item.nameZh ?? null,
@@ -3804,9 +3984,15 @@ export async function upsertGameMeta(q, item) {
       item.tags ?? null,
       item.description ?? null,
       item.dlcAppIds == null ? null : JSON.stringify(item.dlcAppIds),
+      tokens,
     ],
   );
   const row = r.rows[0];
+  // 更新分支的名字可能被覆盖保护改写（returning 是落库后的真实值），按真实名字对齐 search_tokens；
+  // 插入分支已在同一条 SQL 写入，这里 `is distinct from` 不会产生额外写。
+  if (row && !row.inserted) {
+    await refreshSearchTokens(q, { id: Number(row.id), name: row.name, nameEn: row.name_en });
+  }
   return { id: Number(row.id), created: row.inserted === true };
 }
 

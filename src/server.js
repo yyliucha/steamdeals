@@ -2530,7 +2530,7 @@ export function createApiServer({
           unreleased,
           // 愿望单是登录用户专属维度；游客传入的 wishlist=true 一律无效
           wishlist: Boolean(user && guestSearchPost && body?.wishlist === true),
-        });
+        }, logger);
         return json(res, 200, {
           games: result.rows,
           total: result.total,

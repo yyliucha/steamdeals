@@ -18,7 +18,7 @@
 ## 2. 事件命名（`域.动作`，不回归）
 
 - 格式：`域.动作`，动作段只允许 `[a-z0-9_.-]`；域白名单（`src/log.js` 的 `EVENT_DOMAINS`）：
-  `http` / `db` / `adapter.<平台>` / `ingest` / `sync` / `scheduler` / `diagnose` / `process`。
+  `http` / `db` / `adapter.<平台>` / `ingest` / `sync` / `scheduler` / `diagnose` / `process` / `search`（DS 批起）。
 - **事件名不回归**：试点域内既有事件名一律不改、不删（新增事件必须用白名单域）。
   `steam.*` / `discover.*` / `store_browse.*` 是白名单外历史前缀，本批冻结现状，统一改名需单独立项。
 - 测试锁：`test/log-schema.test.js` 快照试点域全部事件名——改名/删除即红；新增须显式加进快照并核对域白名单。

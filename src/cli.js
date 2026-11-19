@@ -2436,6 +2436,23 @@ async function cmdRename() {
   console.log(`完成：处理 ${done} 款，写入元数据 ${stored} 条（其中带回中文名 ${renamed} 款），单条回退 ${fallback}，失败 ${failed}`);
 }
 
+/**
+ * DS 批（docs/SEARCH-ALIASES.md §3）：派生搜索 token 重建。
+ * 默认增量（search_tokens 为空/从未生成/名字在生成后被改过的行），--full 全量按 id 游标翻页；
+ * 纯本地计算、无 Steam 请求；token 未变化的行不写（is distinct from）。调度器每 6 小时一轮。
+ */
+async function cmdSearchTokens() {
+  const full = Boolean(flag('full'));
+  const limit = Math.max(1, Math.min(Number(flag('limit', '50000')) || 50000, 1000000));
+  const r = await withStore(async (store) =>
+    db.rebuildSearchTokens((sql, p) => store.query(sql, p), { full, limit }),
+  );
+  const mode = full ? '全量' : '增量';
+  logger.info('search.tokens_rebuilt', { full, processed: r.processed, written: r.written });
+  console.log(`搜索 token 重建（${mode}）完成：处理 ${r.processed} 行，写入 ${r.written} 行（token 未变化的跳过）`);
+  syncNote = `搜索 token 重建（${mode}）：处理 ${r.processed}，写入 ${r.written}`;
+}
+
 // 定期清理：访问记录/采集与任务记录/验证码/Steam 账号日志（默认由调度器每周跑一次）
 async function cmdPrune() {
   const visitorDays = Math.max(1, Number(flag('visitor-days', '180')) || 180);
@@ -2773,6 +2790,7 @@ const commands = {
   diagnose: cmdDiagnose,
   backfill: cmdBackfill,
   rename: cmdRename,
+  'search-tokens': cmdSearchTokens,
   heat: cmdHeat,
   'steam-status': cmdSteamStatus,
   prune: cmdPrune,
@@ -3037,6 +3055,7 @@ async function main() {
     'steam-status': cmdSteamStatus,
     heat: cmdHeat,
     rename: cmdRename,
+    'search-tokens': cmdSearchTokens,
     backfill: cmdBackfill,
     discover: cmdDiscover,
     images: cmdImages,
@@ -3094,6 +3113,8 @@ async function main() {
                        --limit 200000 --batch 100 --sleep 3000 --fallback 10（回退数设 0 关闭单条回退）
   rename               存量修复：把目录导入留下的英文名换成中文名（GetItems schinese）
                        --limit 200000 --batch 100 --sleep 1500 --fallback 10（无简中的行保持英文）
+  search-tokens        派生搜索 token 重建：增量（token 空/未生成/名字已变更，--limit 50000 每轮）
+                       --full 全量重建（19.8 万行预算内完成；纯本地计算，无 Steam 请求）
   heat                 热度回填：评测数 + 发行日期（逐 appid 请求，约 1.7s/款）
                        --limit 200000 --sleep 1700（按 heat_at 为 null 自动续跑；全量约 90 小时，可分多周跑）
   steam-status         Steam 同步状态判定 + 内容分级（逐 appid 全量 appdetails，cc=cn 失败补 cc=hk）

@@ -140,8 +140,9 @@ export function failFields(err, { url = null, reason = null } = {}) {
   return fields;
 }
 
-/** E4 批（docs/LOGGING-SCHEMA.md §2）：事件名白名单域。`adapter` 域下还必须带平台段（adapter.<平台>.<动作>）。 */
-export const EVENT_DOMAINS = ['http', 'db', 'adapter', 'ingest', 'sync', 'scheduler', 'diagnose', 'process'];
+/** E4 批（docs/LOGGING-SCHEMA.md §2）：事件名白名单域。`adapter` 域下还必须带平台段（adapter.<平台>.<动作>）。
+ *  DS 批（docs/SEARCH-ALIASES.md §4）：增 `search` 域（search.miss 零命中观测）。 */
+export const EVENT_DOMAINS = ['http', 'db', 'adapter', 'ingest', 'sync', 'scheduler', 'diagnose', 'process', 'search'];
 
 function fmtValue(v) {
   if (v == null) return String(v);

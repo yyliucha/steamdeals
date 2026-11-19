@@ -69,7 +69,7 @@ test('AC11：状态文件带健康面板字段（耗时/结果/失败原因）�
 test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清理、gog / humble / discover / backup / alerts / images / readmodel），各自间隔', () => {
   const jobs = jobsFromEnv({});
   assert.deepEqual(jobs.map((j) => j.name), [
-    'steam-prices', 'heat', 'steam-status', 'steam-discovery', 'app-release-sync', 'rename', 'backfill', 'prune', 'proxy-probe', 'readmodel', 'sonkwo', 'itad', 'gog', 'humble',
+    'steam-prices', 'heat', 'steam-status', 'steam-discovery', 'app-release-sync', 'rename', 'backfill', 'prune', 'proxy-probe', 'readmodel', 'search-tokens-rebuild', 'sonkwo', 'itad', 'gog', 'humble',
     'discover', 'backup', 'logs', 'alerts', 'images',
   ]);
   const interval = (name) => jobs.find((j) => j.name === name).intervalMin;
@@ -101,6 +101,9 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.deepEqual(args('backfill'), ['backfill', '--limit', '5000', '--batch', '100', '--sleep', '3000'], 'BL 批：回填默认每天上限 5000');
   assert.deepEqual(args('prune'), ['prune']);
   assert.deepEqual(args('readmodel'), ['readmodel', 'check', '--sample', '200', '--fix'], 'B5 批：每日抽样 200 对账 + 自动修复（手动 check 默认仍只报告）');
+  assert.equal(interval('search-tokens-rebuild'), 360, 'DS 批：搜索 token 增量重建默认每 6 小时一轮');
+  assert.deepEqual(args('search-tokens-rebuild'), ['search-tokens', '--limit', '50000'], 'DS 批：每轮上限 5 万行（轻任务，无 Steam 请求）');
+  assert.ok(!jobsFromEnv({ SEARCH_TOKENS_ENABLED: '0' }).some((j) => j.name === 'search-tokens-rebuild'), 'DS 批：SEARCH_TOKENS_ENABLED=0 可关闭');
   assert.deepEqual(args('proxy-probe'), ['probe', '--proxy'], 'BB 批：探测命令与参数');
   assert.ok(!jobsFromEnv({ PROXY_PROBE_ENABLED: '0' }).some((j) => j.name === 'proxy-probe'), 'BB 批：PROXY_PROBE_ENABLED=0 可关闭');
 });
@@ -247,7 +250,7 @@ test('显式禁用或间隔为 0 的任务会被剔除', () => {
     READMODEL_ENABLED: '0',
     PROXY_PROBE_ENABLED: '0',
   });
-  assert.deepEqual(jobs.map((j) => j.name), ['heat', 'steam-discovery', 'app-release-sync', 'rename', 'backfill', 'prune', 'sonkwo', 'alerts']);
+  assert.deepEqual(jobs.map((j) => j.name), ['heat', 'steam-discovery', 'app-release-sync', 'rename', 'backfill', 'prune', 'search-tokens-rebuild', 'sonkwo', 'alerts']);
 });
 
 test('从未跑过的任务在 initialDelay 之后才算到点', () => {

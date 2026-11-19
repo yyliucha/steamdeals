@@ -154,6 +154,16 @@ export function jobsFromEnv(env = process.env) {
       enabled: env.READMODEL_ENABLED !== '0',
     },
     {
+      name: 'search-tokens-rebuild',
+      // DS 批（docs/SEARCH-ALIASES.md §3）：增量重算派生搜索 token（search_tokens 为空/从未生成/
+      // 名字在生成后被改过的行）；轻任务（纯本地计算、无 Steam 请求），每 6 小时一轮、
+      // 每轮上限 5 万行——迁移后存量约 19.8 万行首轮铺满约 1 天，此后每轮秒退。--full 全量重建走 CLI。
+      args: ['search-tokens', '--limit', String(num(env.SEARCH_TOKENS_LIMIT, 50000))],
+      intervalMin: num(env.SEARCH_TOKENS_INTERVAL_MIN, 360),
+      initialDelaySec: num(env.SEARCH_TOKENS_INITIAL_DELAY_SEC, 900),
+      enabled: env.SEARCH_TOKENS_ENABLED !== '0',
+    },
+    {
       name: 'sonkwo',
       args: ['sync', 'sonkwo'],
       intervalMin: num(env.SONKWO_INTERVAL_MIN, 60),

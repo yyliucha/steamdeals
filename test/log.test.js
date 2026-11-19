@@ -82,8 +82,8 @@ test('E4 failFields：无状态码时取错误 code，无 code 显式 unknown', 
   assert.deepEqual(failFields(bare, { reason: 'shape_priceCents' }), { reason: 'shape_priceCents', status: null }, '显式 reason 优先');
 });
 
-test('E4 EVENT_DOMAINS：域白名单不变（事件名规范依据）', () => {
-  assert.deepEqual(EVENT_DOMAINS, ['http', 'db', 'adapter', 'ingest', 'sync', 'scheduler', 'diagnose', 'process']);
+test('E4 EVENT_DOMAINS：域白名单（事件名规范依据；DS 批起含 search 域）', () => {
+  assert.deepEqual(EVENT_DOMAINS, ['http', 'db', 'adapter', 'ingest', 'sync', 'scheduler', 'diagnose', 'process', 'search']);
 });
 
 test('redactObject 对深层嵌套和数组生效', () => {
