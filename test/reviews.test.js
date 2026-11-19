@@ -854,4 +854,159 @@ test('BR：纯 API 高频仍会被拦并升级（脚本防护不丢）', async (
   }
 });
 
+// ============================================================ CO-5/B4-2 第八轮静态锁
+// admin-access 域（B4 #8：views/visitors/blacklist/whitelist/abuse/devices/reviews）从
+// server.js/pg.js 巨石拆出后，四组静态断言按新落点指向：
+//   · 路由分支 → src/routes/admin-access.js；
+//   · 域专属 SQL → src/store/admin-access-repository.js；pg.js 必须 re-export
+//     （旧 db.* 导入签名不变），无 DDL 搬家（本域表跨域共用：中间件/拦截链/批量操作读写）；
+//   · server.js 只留单入口接线（管理段），且必须真实调用——删掉调用即红（防死模块）；
+//   · 旧分支不得残留在 server.js（防双实现）。
+// 反向自检口径：删掉 routes/admin-access.js 任一路由分支 → 第 1 组断言红；
+// 删掉 server.js 的入口接线 → 第 2 组红；把分支抄回 server.js → 第 3 组红；
+// 删 pg.js re-export → 第 4 组红。
+
+const AA_ROUTES = readFileSync(fileURLToPath(new URL('../src/routes/admin-access.js', import.meta.url)), 'utf8');
+const AA_REPO = readFileSync(fileURLToPath(new URL('../src/store/admin-access-repository.js', import.meta.url)), 'utf8');
+const AA_SERVER = readFileSync(fileURLToPath(new URL('../src/server.js', import.meta.url)), 'utf8');
+const AA_PG = readFileSync(fileURLToPath(new URL('../src/store/pg.js', import.meta.url)), 'utf8');
+
+test('CO-5/B4-2 第八轮：admin-access 路由分支全部在 src/routes/admin-access.js（管理段单入口，删任一支即红）', () => {
+  // views
+  assert.match(AA_ROUTES, /path === '\/api\/admin\/views' && req\.method === 'GET'/, 'views 分支在新文件');
+  // visitors 三条 + 详情正则
+  assert.match(AA_ROUTES, /path === '\/api\/admin\/visitors' && req\.method === 'GET'/, 'visitors 列表分支在新文件');
+  assert.match(AA_ROUTES, /path === '\/api\/admin\/visitors\/by-ip' && req\.method === 'GET'/, 'visitors/by-ip 分支在新文件');
+  assert.match(AA_ROUTES, /const visitorIpMatch = path\.match\(\/\^\\\/api\\\/admin\\\/visitors\\\/by-ip\\\/\(\.\+\)\$\/\)/, 'visitors/by-ip/:ip 正则分支在新文件');
+  // blacklist 三条
+  assert.match(AA_ROUTES, /path === '\/api\/admin\/blacklist' && req\.method === 'GET'/, 'blacklist GET 分支在新文件');
+  assert.match(AA_ROUTES, /path === '\/api\/admin\/blacklist' && req\.method === 'POST'/, 'blacklist POST 分支在新文件');
+  assert.match(AA_ROUTES, /const unbanMatch = path\.match\(\/\^\\\/api\\\/admin\\\/blacklist\\\/\(\[\^\/\]\+\)\$\/\)/, 'blacklist DELETE 正则分支在新文件');
+  // whitelist 三条
+  assert.match(AA_ROUTES, /path === '\/api\/admin\/whitelist' && req\.method === 'GET'/, 'whitelist GET 分支在新文件');
+  assert.match(AA_ROUTES, /path === '\/api\/admin\/whitelist' && req\.method === 'POST'/, 'whitelist POST 分支在新文件');
+  assert.match(AA_ROUTES, /const wlMatch = path\.match\(\/\^\\\/api\\\/admin\\\/whitelist\\\/\(\[\^\/\]\+\)\$\/\)/, 'whitelist DELETE 正则分支在新文件');
+  // abuse 两条
+  assert.match(AA_ROUTES, /path === '\/api\/admin\/abuse' && req\.method === 'GET'/, 'abuse GET 分支在新文件');
+  assert.match(AA_ROUTES, /const abuseUnban = path\.match\(\/\^\\\/api\\\/admin\\\/abuse\\\/\(\[\^\/\]\+\)\$\/\)/, 'abuse DELETE 正则分支在新文件');
+  // devices 四条
+  assert.match(AA_ROUTES, /path === '\/api\/admin\/devices' && req\.method === 'GET'/, 'devices 列表分支在新文件');
+  assert.match(AA_ROUTES, /path === '\/api\/admin\/device-bans' && req\.method === 'GET'/, 'device-bans 列表分支在新文件');
+  assert.match(AA_ROUTES, /path === '\/api\/admin\/devices\/ban' && req\.method === 'POST'/, 'devices/ban 分支在新文件');
+  assert.match(AA_ROUTES, /const devBanMatch = path\.match\(\/\^\\\/api\\\/admin\\\/device-bans\\\/\(\[a-f0-9\]\{16,64\}\)\$\/\)/, 'device-bans/:fp DELETE 正则分支在新文件');
+  // reviews 四条
+  assert.match(AA_ROUTES, /path === '\/api\/admin\/reviews' && req\.method === 'GET'/, 'reviews GET 分支在新文件');
+  assert.match(AA_ROUTES, /path === '\/api\/admin\/reviews\/approve' && req\.method === 'POST'/, 'reviews/approve 分支在新文件');
+  assert.match(AA_ROUTES, /path === '\/api\/admin\/reviews\/reject' && req\.method === 'POST'/, 'reviews/reject 分支在新文件');
+  assert.match(AA_ROUTES, /path === '\/api\/admin\/reviews\/act' && req\.method === 'POST'/, 'reviews/act 分支在新文件');
+  // 单入口形态（§15.3 位置语义：管理段）
+  assert.match(AA_ROUTES, /export async function handleAdminAccessAdmin\(ctx\)/, '管理段入口');
+  // 守卫与校验随路由
+  assert.match(AA_ROUTES, /if \(!requireAdmin\(\)\) return true/, '管理段守卫');
+  assert.match(AA_ROUTES, /error: 'IP 格式不正确（支持 1\.2\.3\.4 单个 IP 或 1\.2\.3\.0\/24 网段）'/, '黑名单 IP 校验语义随路由');
+  assert.match(AA_ROUTES, /error: 'fingerprint 不合法'/, '设备指纹校验语义随路由');
+  assert.match(AA_ROUTES, /error: '审核记录不存在或已处理'/, '审核 404 语义随路由');
+  assert.match(AA_ROUTES, /error: '该记录没有 IP，无法执行该操作'/, 'act 无 IP 400 语义随路由');
+  assert.match(AA_ROUTES, /blacklistKept: true/, '解封只清 ip_abuse 不动黑名单语义随路由');
+  assert.match(AA_ROUTES, /await banIpExclusive\(/, '互斥封禁/信任走 ctx.banIpExclusive 闭包（语义共享）');
+  // 路由模块只做编排：不许出现 SQL 字面量（全部走 repository）
+  assert.ok(!/select |insert |update |delete from /.test(AA_ROUTES), 'routes/admin-access.js 不写 SQL 字面量');
+  // 已写响应必须 return true（防宿主二次写头 ERR_HTTP_HEADERS_SENT，watchlist 域拆分回归教训）
+  assert.match(AA_ROUTES, /return false;/s, '未命中返回 false，宿主继续');
+});
+
+test('CO-5/B4-2 第八轮：server.js 必须真实接线管理段入口（删掉调用即红，防死模块）', () => {
+  assert.match(AA_SERVER, /import \{ handleAdminAccessAdmin \} from '\.\/routes\/admin-access\.js'/, 'server.js 必须导入域路由入口');
+  // 锁「完整调用形态」：必须是 if (await handleXxx(...)) return;——只断言字符串存在会被 if(false) 包一层绕过；
+  // 这个形态锁住"调用且消费返回值结束响应"。
+  assert.match(AA_SERVER, /if \(\s*await handleAdminAccessAdmin\(\{[\s\S]{0,900}?path,[\s\S]{0,900}?req,[\s\S]{0,900}?res,[\s\S]{0,900}?banIpExclusive,[\s\S]{0,400}?\}\)\s*\)\s*return;/, '管理段接线（完整形态，且消费返回值）');
+  // 管理段 ctx 关键字段必须传齐：漏传 url 分页参数丢失、漏传 requireAdmin 守卫失效、
+  // 漏传 user 审计落空、漏传 banIpExclusive 互斥口径与 #11 批量操作分家
+  assert.match(AA_SERVER, /await handleAdminAccessAdmin\(\{[\s\S]{0,900}?url,/);
+  assert.match(AA_SERVER, /await handleAdminAccessAdmin\(\{[\s\S]{0,900}?requireAdmin,/);
+  assert.match(AA_SERVER, /await handleAdminAccessAdmin\(\{[\s\S]{0,900}?user,/);
+  assert.match(AA_SERVER, /await handleAdminAccessAdmin\(\{[\s\S]{0,900}?banIpExclusive,/);
+  // 位置语义锁：调用必须在 requireAdmin 就绪之后的管理段（banIpExclusive 定义之后、
+  // 其它 admin 域路由之前——本域最早路由 views 的原位置）
+  assert.match(AA_SERVER, /const banIpExclusive = \([^)]*\) => banIpExclusiveSql\(q, ip, note, kind, opts\)[\s\S]*?await handleAdminAccessAdmin\(\{/s, '接线在 banIpExclusive 定义之后（管理段）');
+  assert.match(AA_SERVER, /await handleAdminAccessAdmin\(\{[\s\S]*?path === '\/api\/admin\/users' && req\.method === 'POST'/s, '接线在本域原位置（users POST 之前）');
+});
+
+test('CO-5/B4-2 第八轮：admin-access 路由分支不得双实现（server.js 里保留旧分支即红，防拆分后两处漂移）', () => {
+  assert.ok(!/path === '\/api\/admin\/views' && req\.method/.test(AA_SERVER), 'views 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/visitors' && req\.method/.test(AA_SERVER), 'visitors 分支不得残留在 server.js');
+  assert.ok(!/const visitorIpMatch = path\.match/.test(AA_SERVER), 'visitors/by-ip 正则分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/blacklist' && req\.method/.test(AA_SERVER), 'blacklist 分支不得残留在 server.js');
+  assert.ok(!/const unbanMatch = path\.match/.test(AA_SERVER), 'blacklist DELETE 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/whitelist' && req\.method/.test(AA_SERVER), 'whitelist 分支不得残留在 server.js');
+  assert.ok(!/const wlMatch = path\.match/.test(AA_SERVER), 'whitelist DELETE 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/abuse' && req\.method/.test(AA_SERVER), 'abuse 分支不得残留在 server.js');
+  assert.ok(!/const abuseUnban = path\.match/.test(AA_SERVER), 'abuse DELETE 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/devices' && req\.method/.test(AA_SERVER), 'devices 分支不得残留在 server.js');
+  assert.ok(!/const devBanMatch = path\.match/.test(AA_SERVER), 'device-bans 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/reviews' && req\.method/.test(AA_SERVER), 'reviews 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/reviews\/approve' && req\.method/.test(AA_SERVER), 'reviews/approve 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/reviews\/reject' && req\.method/.test(AA_SERVER), 'reviews/reject 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/reviews\/act' && req\.method/.test(AA_SERVER), 'reviews/act 分支不得残留在 server.js');
+  assert.ok(!/error: '临时封时长必须是 10 \/ 60 \/ 1440 分钟'/.test(AA_SERVER), 'act 校验文案不得残留在 server.js');
+  // 边界锁：其它 admin 域路由留宿主（#11 users 批量、#13 images、#12 reports、#10 mail/proxies）
+  assert.match(AA_SERVER, /path === '\/api\/admin\/users' && req\.method === 'POST'/, 'admin users 段留 server.js（B4 #11）');
+  assert.match(AA_SERVER, /path === '\/api\/admin\/images' && req\.method === 'GET'/, 'admin images 段留 server.js（B4 #13）');
+  assert.match(AA_SERVER, /path === '\/api\/admin\/reports\/price' && req\.method === 'GET'/, 'admin reports 段留 server.js（B4 #12）');
+  assert.match(AA_SERVER, /path === '\/api\/admin\/mail\/log' && req\.method === 'GET'/, 'admin mail 段留 server.js（B4 #10）');
+  // 中间件判据锁：banIpExclusiveSql 本体留 server.js（#11 批量操作共用，不随域搬走）
+  assert.match(AA_SERVER, /async function banIpExclusiveSql\(q, ip, note, kind/, 'banIpExclusiveSql 留 server.js（#11 共用）');
+});
+
+test('CO-5/B4-2 第八轮：admin-access-repository.js 签名不变 + pg.js re-export（删 re-export 即红）', () => {
+  // 搬家函数签名与拆分前一致（旧 db.* 导入签名不变）
+  assert.match(AA_REPO, /export async function viewStats\(q, \{ limit = 20 \} = \{\}\)/, 'viewStats 签名与拆分前一致');
+  assert.match(AA_REPO, /export function visitorOrderClause\(sort = 'time', order = 'desc'\)/, 'visitorOrderClause 签名与拆分前一致');
+  assert.match(AA_REPO, /export async function listVisitorLogs\(q, \{ page = 1, pageSize = 50, ip = null, path = null, filter = 'visits', sort = 'time', order = 'desc', days = null \} = \{\}\)/, 'listVisitorLogs 签名与拆分前一致');
+  assert.match(AA_REPO, /export async function visitorSummary\(q\)/, 'visitorSummary 签名与拆分前一致');
+  assert.match(AA_REPO, /export async function listVisitorsByIp\(q, \{ days = 7, page = 1, pageSize = 20, q: kw = '', sort = 'visits', status = 'all' \} = \{\}\)/, 'listVisitorsByIp 签名与拆分前一致');
+  assert.match(AA_REPO, /export async function visitorIpDetail\(q, \{ ip, days = 7 \} = \{\}\)/, 'visitorIpDetail 签名与拆分前一致');
+  assert.match(AA_REPO, /export async function listWhitelist\(q\)/, 'listWhitelist 签名与拆分前一致');
+  assert.match(AA_REPO, /export async function removeWhitelistIp\(q, ip\)/, 'removeWhitelistIp 签名与拆分前一致');
+  assert.match(AA_REPO, /export async function listAbuse\(q, \{ limit = 50, status = 'active' \} = \{\}\)/, 'listAbuse 签名与拆分前一致');
+  assert.match(AA_REPO, /export async function listDevices\(q, \{ limit = 50 \} = \{\}\)/, 'listDevices 签名与拆分前一致');
+  assert.match(AA_REPO, /export async function listDeviceBans\(q, \{ limit = 100 \} = \{\}\)/, 'listDeviceBans 签名与拆分前一致');
+  assert.match(AA_REPO, /export async function listAbuseReviews\(q, \{ status = 'pending', limit = 500 \} = \{\}\)/, 'listAbuseReviews 签名与拆分前一致');
+  assert.match(AA_REPO, /export async function getAbuseReview\(q, id\)/, 'getAbuseReview 签名与拆分前一致');
+  assert.match(AA_REPO, /export async function countPendingReviews\(q\)/, 'countPendingReviews 签名与拆分前一致');
+  assert.match(AA_REPO, /export async function lastUaByIp\(q, ip\)/, 'lastUaByIp 签名与拆分前一致');
+  // 域内联 SQL 抽出的四个新函数
+  assert.match(AA_REPO, /export async function adminViewsGameMap\(q, \{ appids = \[\], ids = \[\] \}\)/, 'views 路径解析增强内联 SQL 已抽 adminViewsGameMap');
+  assert.match(AA_REPO, /export async function ipAbuseBanRow\(q, ip\)/, '解封前 banned_until 内联 SQL 已抽 ipAbuseBanRow');
+  assert.match(AA_REPO, /export async function applyManualTempBan\(q, \{ ip, until \}\)/, 'tempban 内联 SQL 已抽 applyManualTempBan');
+  assert.match(AA_REPO, /export async function trustIpDb\(q, \{ ip, note \}\)/, 'trust 三条内联 SQL 已抽 trustIpDb');
+  assert.match(AA_REPO, /'manual:temp'/, 'tempban 来源标记随 SQL 移入 repository');
+  // 19 个函数必须整体 re-export（旧 db.* 导入签名不变；test 与 server.js 其它段照旧走聚合壳）
+  assert.match(
+    AA_PG,
+    /export \{[\s\S]{0,800}viewStats[\s\S]{0,800}adminViewsGameMap[\s\S]{0,800}visitorOrderClause[\s\S]{0,800}listVisitorLogs[\s\S]{0,800}visitorSummary[\s\S]{0,800}listVisitorsByIp[\s\S]{0,800}visitorIpDetail[\s\S]{0,800}listWhitelist[\s\S]{0,800}removeWhitelistIp[\s\S]{0,800}listAbuse[\s\S]{0,800}ipAbuseBanRow[\s\S]{0,800}listDevices[\s\S]{0,800}listDeviceBans[\s\S]{0,800}listAbuseReviews[\s\S]{0,800}getAbuseReview[\s\S]{0,800}countPendingReviews[\s\S]{0,800}lastUaByIp[\s\S]{0,800}applyManualTempBan[\s\S]{0,800}trustIpDb[\s\S]{0,800}\} from '\.\/admin-access-repository\.js'/,
+    'pg.js 必须 re-export 19 个函数',
+  );
+  // 旧定义不得残留在 pg.js（双实现会漂移）
+  assert.ok(
+    !/export (async )?function (viewStats|visitorOrderClause|listVisitorLogs|visitorSummary|listVisitorsByIp|visitorIpDetail|listWhitelist|removeWhitelistIp|listAbuse|listDevices|listDeviceBans|listAbuseReviews|getAbuseReview|countPendingReviews|lastUaByIp)/.test(AA_PG),
+    'pg.js 不允许保留旧函数定义（只许 re-export）',
+  );
+  // 边界判据锁：跨域共用 SQL 与 DDL 留在 pg.js（中间件/拦截链/批量操作/申诉域共用）
+  assert.match(AA_PG, /create table if not exists visitor_logs \(/, 'visitor_logs 表 DDL 留 pg.js');
+  assert.match(AA_PG, /create table if not exists abuse_reviews \(/, 'abuse_reviews 表 DDL 留 pg.js');
+  assert.match(AA_PG, /create table if not exists device_bans \(/, 'device_bans 表 DDL 留 pg.js');
+  assert.match(AA_PG, /export async function insertVisitorLog\(q, \{/, 'insertVisitorLog 留 pg.js（中间件写访问日志）');
+  assert.match(AA_PG, /export async function listBlockedIps\(q\)/, 'listBlockedIps 留 pg.js（visitors.js 拦截链共用）');
+  assert.match(AA_PG, /export async function addBlockedIp\(q, \{ ip, note = null \}\)/, 'addBlockedIp 留 pg.js（banIpExclusiveSql 共用）');
+  assert.match(AA_PG, /export async function removeBlockedIp\(q, ip\)/, 'removeBlockedIp 留 pg.js（申诉域共用）');
+  assert.match(AA_PG, /export async function addWhitelistIp\(q, \{ ip, note = null \}\)/, 'addWhitelistIp 留 pg.js（banIpExclusiveSql 共用）');
+  assert.match(AA_PG, /export async function upsertDeviceBan\(q, \{ fingerprint, deviceId = null, note = null, until = null \}\)/, 'upsertDeviceBan 留 pg.js（#11 批量封设备共用）');
+  assert.match(AA_PG, /export async function removeDeviceBan\(q, fingerprint\)/, 'removeDeviceBan 留 pg.js（申诉域共用）');
+  assert.match(AA_PG, /export async function finishAbuseReview\(q, id, \{ status, reviewedBy = null, note = null \}\)/, 'finishAbuseReview 留 pg.js（#11 批量审核共用）');
+  assert.match(AA_PG, /export async function markReviewsAutoBanned\(q, \{ ip, note = '自动封禁' \}\)/, 'markReviewsAutoBanned 留 pg.js（拦截链共用）');
+  // repository 不搬家 DDL
+  assert.ok(!/create table/.test(AA_REPO), 'admin-access-repository.js 不搬家 DDL');
+});
+
 

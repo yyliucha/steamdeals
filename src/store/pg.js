@@ -78,6 +78,31 @@ export {
   filterExistingAnnouncementIds,
   markAnnouncementsRead,
 } from './announcements-repository.js';
+// CO-5/B4-2 第八轮（docs/DESIGN-AUDIT.md B4）：admin-access 域 SQL 落 admin-access-repository.js
+// （后台访问安全：views/visitors/whitelist/abuse/devices/reviews 专属 15 函数 + 域内联 4 新函数；
+// 无 DDL 搬家——本域表跨域共用：中间件/拦截链/批量操作都读写）。这里 re-export 保持旧 db.*
+// 导入签名不变（routes/admin-access.js、server.js 其它段与现有测试照旧走聚合壳）。
+export {
+  viewStats,
+  adminViewsGameMap,
+  visitorOrderClause,
+  listVisitorLogs,
+  visitorSummary,
+  listVisitorsByIp,
+  visitorIpDetail,
+  listWhitelist,
+  removeWhitelistIp,
+  listAbuse,
+  ipAbuseBanRow,
+  listDevices,
+  listDeviceBans,
+  listAbuseReviews,
+  getAbuseReview,
+  countPendingReviews,
+  lastUaByIp,
+  applyManualTempBan,
+  trustIpDb,
+} from './admin-access-repository.js';
 // CO-5/B4-2 第六轮（docs/DESIGN-AUDIT.md B4）：me 域 SQL 落 me-repository.js（本人资料/
 // 偏好/头像/游戏库统计专属 SQL + 两个域内联 SQL 新函数；无 DDL 搬家——user_prefs 表被
 // watchCandidates（alerts 引擎）也 join，属跨域共用表）。
@@ -2898,14 +2923,10 @@ export async function purgeOldViews(q, { days = 90 } = {}) {
   return r.rowCount ?? 0;
 }
 
-export async function viewStats(q, { limit = 20 } = {}) {
-  const r = await q(
-    `select path, count(*)::int as views, max(created_at) as last_at
-       from page_views group by path order by views desc limit $1`,
-    [limit],
-  );
-  return r.rows;
-}
+// ---- 页面浏览统计（/api/admin/views）----
+// CO-5/B4-2 第八轮（docs/DESIGN-AUDIT.md B4）：viewStats 与路径解析增强 SQL 已抽到
+// admin-access-repository.js（顶部 re-export 保持 db.* 签名不变）；purgeOldViews /
+// insertPageView 等访问记数中间件 SQL（server.js 全链与调度器使用）留本文件。
 
 // ---------------------------------------------------------------- 访问记录与 IP 黑名单
 
@@ -2934,127 +2955,11 @@ export async function setVisitorRegion(q, id, region) {
   await q('update visitor_logs set region = $1 where id = $2', [String(region).slice(0, 120), id]);
 }
 
-/**
- * 分页查访问记录。
- * filter: visits（默认，只看正常访问）| blocked（只看被拦截）| all
- */
-/**
- * 访问明细排序子句（AQ 批 docs/ADMIN-REVIEW-LISTS.md §3.2）。
- * 白名单：sort ∈ time|ip|status，order ∈ asc|desc；非法值回落默认，**不拼接用户输入**。
- * IP 用零填充字符串键排序：等价于数值序，又不会像 ip::inet 那样被脏数据（空串/非 IP）炸掉整条查询。
- */
-export function visitorOrderClause(sort = 'time', order = 'desc') {
-  const dir = order === 'asc' ? 'asc' : 'desc';
-  if (sort === 'ip') {
-    const key =
-      "case when ip ~ '^[0-9]{1,3}(\\.[0-9]{1,3}){3}$' then " +
-      "lpad(split_part(ip,'.',1),3,'0')||'.'||lpad(split_part(ip,'.',2),3,'0')||'.'||" +
-      "lpad(split_part(ip,'.',3),3,'0')||'.'||lpad(split_part(ip,'.',4),3,'0') else 'zzz'||ip end";
-    return `${key} ${dir} nulls last, id desc`;
-  }
-  if (sort === 'status') return `blocked ${dir}, id desc`;
-  return `id ${dir}`;
-}
-
-export async function listVisitorLogs(q, { page = 1, pageSize = 50, ip = null, path = null, filter = 'visits', sort = 'time', order = 'desc', days = null } = {}) {
-  const blockedCond = filter === 'blocked' ? 'and blocked' : filter === 'all' ? '' : 'and not blocked';
-  // BH 批（docs/VISIT-IP-STATS.md §3.1）：时间窗与 IP 统计视图共用；days 由服务端白名单校验后传入
-  const where = `where ($1 = '' or ip = $1 or remote_ip = $1) and ($2 = '' or path like '%' || $2 || '%') ${blockedCond} and ($5::int is null or created_at >= now() - ($5::int * interval '1 day'))`;
-  // 计数查询只传 3 个参数：未被引用的 $3/$4 会让 PG 无法推断参数类型（42P18），所以把时间窗占位符换成 $3
-  const whereCount = where.replaceAll('$5', '$3');
-  const cnt = await q(`select count(*)::int as n from visitor_logs ${whereCount}`, [ip ?? '', path ?? '', days]);
-  const rows = await q(
-    `select id, ip, remote_ip, region, path, method, user_agent, status, blocked, block_reason, created_at
-       from visitor_logs ${where}
-      order by ${visitorOrderClause(sort, order)} limit $3 offset $4`,
-    [ip ?? '', path ?? '', pageSize, (page - 1) * pageSize, days],
-  );
-  return { total: cnt.rows[0]?.n ?? 0, rows: rows.rows };
-}
-
-/** 今日访问量 / 独立 IP / 黑名单数 / 被拦截请求数 + 近 24h 高频 IP（只统计正常访问）。 */
-export async function visitorSummary(q) {
-  const today = await q(
-    `select (select count(*)::int from visitor_logs where not blocked and created_at >= date_trunc('day', now())) as today_visits,
-            (select count(distinct ip)::int from visitor_logs where not blocked and created_at >= date_trunc('day', now())) as today_ips,
-            (select count(*)::int from visitor_logs where blocked and created_at >= date_trunc('day', now())) as today_blocked,
-            (select count(*)::int from ip_blacklist) as blocked_count`,
-  );
-  const top = await q(
-    `select ip, max(region) as region, count(*)::int as n, max(created_at) as last_at
-       from visitor_logs
-      where not blocked and created_at >= now() - interval '1 day'
-      group by ip order by n desc limit 10`,
-  );
-  return { ...today.rows[0], topIps: top.rows };
-}
-
-/** IP 统计视图（BH 批 docs/VISIT-IP-STATS.md §3.1）：时间窗内每 IP 一行，默认按访问次数倒序。 */
-export async function listVisitorsByIp(q, { days = 7, page = 1, pageSize = 20, q: kw = '', sort = 'visits', status = 'all' } = {}) {
-  const windowSql = `created_at >= now() - ($1::int * interval '1 day')`;
-  const kwSql = `($2 = '' or ip ilike '%' || $2 || '%')`;
-  // BI 批（docs/VISIT-IP-STATS.md §8）：状态四态 + 状态筛选；手动黑名单优先于自动临时封禁
-  const statusSql = `($3 = 'all' or status = $3)`;
-  const base = `
-     select ip,
-            count(*)::int as visits,
-            min(created_at) as first_at,
-            max(created_at) as last_at,
-            count(distinct path)::int as paths,
-            coalesce((select count(distinct coalesce(nullif(d.device_id, ''), d.fingerprint))::int
-                        from device_logs d
-                       where d.ip = visitor_logs.ip and d.created_at >= now() - ($1::int * interval '1 day')), 0) as devices,
-            (select l.region from visitor_logs l
-              where l.ip = visitor_logs.ip and l.region is not null
-              order by l.created_at desc limit 1) as region,
-            (select a.banned_until from ip_abuse a
-              where a.ip = visitor_logs.ip and a.banned_until > now()
-              order by a.banned_until desc limit 1) as ban_until,
-            (select a.ban_source from ip_abuse a
-              where a.ip = visitor_logs.ip and a.banned_until > now()
-              limit 1) as ban_source,
-            case when exists (select 1 from ip_blacklist b where b.ip = visitor_logs.ip) then 'blocked'
-                 when exists (select 1 from ip_abuse a where a.ip = visitor_logs.ip and a.banned_until > now()) then 'banned'
-                 when bool_or(blocked) then 'intercepted'
-                 else 'normal' end as status
-       from visitor_logs
-      where ${windowSql} and ${kwSql}
-      group by ip`;
-  const count = await q(`with agg as (${base}) select count(*)::int as n from agg where ${statusSql}`, [days, kw, status]);
-  // 排序白名单：visits（默认）/ lastAt / ip；IP 用补零字符串做 IPv4 数值序（IPv6 退化为字典序）
-  const orderSql =
-    sort === 'lastAt'
-      ? 'order by last_at desc, visits desc'
-      : sort === 'ip'
-        ? `order by case when ip ~ '^[0-9]{1,3}(\\.[0-9]{1,3}){3}$'
-                       then lpad(split_part(ip,'.',1),3,'0')||lpad(split_part(ip,'.',2),3,'0')||lpad(split_part(ip,'.',3),3,'0')||lpad(split_part(ip,'.',4),3,'0')
-                       else 'zzz:' || ip end`
-        : 'order by visits desc, last_at desc';
-  const rows = await q(
-    `with agg as (${base}) select * from agg where ${statusSql} ${orderSql} limit $4 offset $5`,
-    [days, kw, status, pageSize, (page - 1) * pageSize],
-  );
-  return { total: count.rows[0]?.n ?? 0, rows: rows.rows };
-}
-
-/** 展开行：该 IP 时间窗内最近 20 条访问 + 访问最多的路径 top 5（BH 批 §3.1）。 */
-export async function visitorIpDetail(q, { ip, days = 7 } = {}) {
-  const recent = await q(
-    `select id, path, method, status, blocked, created_at
-       from visitor_logs
-      where ip = $1 and created_at >= now() - ($2::int * interval '1 day')
-      order by created_at desc limit 20`,
-    [ip, days],
-  );
-  const top = await q(
-    `select path, count(*)::int as n
-       from visitor_logs
-      where ip = $1 and created_at >= now() - ($2::int * interval '1 day')
-      group by path order by n desc, path limit 5`,
-    [ip, days],
-  );
-  return { recent: recent.rows, topPaths: top.rows };
-}
+// ---- 访问明细/IP 统计视图（/api/admin/visitors*）----
+// CO-5/B4-2 第八轮（docs/DESIGN-AUDIT.md B4）：visitorOrderClause / listVisitorLogs /
+// visitorSummary / listVisitorsByIp / visitorIpDetail 只被本域路由使用、已抽到
+// admin-access-repository.js（顶部 re-export 保持 db.* 签名不变）；
+// insertVisitorLog / setVisitorRegion 是访问记录中间件 SQL（server.js 全链写访问日志），留本文件。
 /** 黑名单（BH 批）：每行追加近 7 天访问次数 / 最近访问 / 设备数（无记录为 0/null）。 */
 export async function listBlockedIps(q) {
   const r = await q(
@@ -3093,28 +2998,16 @@ export async function removeBlockedIp(q, ip) {
 
 // ---------------------------------------------------------------- IP 白名单 / 超频记录
 
-/** 白名单（BH 批）：每行追加近 7 天访问次数 / 最近访问 / 设备数。 */
-export async function listWhitelist(q) {
-  const r = await q(
-    `select w.ip, w.note, w.created_at,
-            coalesce(v.visits, 0)::int as visits, v.last_at, coalesce(d.devices, 0)::int as devices
-       from ip_whitelist w
-       left join lateral (
-         select count(*)::int as visits, max(created_at) as last_at
-           from visitor_logs
-          where ip = w.ip and created_at >= now() - interval '7 days'
-       ) v on true
-       left join lateral (
-         select count(distinct coalesce(nullif(device_id, ''), fingerprint))::int as devices
-           from device_logs
-          where ip = w.ip and created_at >= now() - interval '7 days'
-       ) d on true
-      order by w.created_at desc`,
-  );
-  return r.rows;
-}
+// ---- 白名单/超频记录管理（/api/admin/whitelist|abuse）----
+// CO-5/B4-2 第八轮（docs/DESIGN-AUDIT.md B4）：listWhitelist / removeWhitelistIp /
+// listAbuse 只被本域路由使用、已抽到 admin-access-repository.js（顶部 re-export 保持
+// db.* 签名不变）；addWhitelistIp 被 banIpExclusiveSql（server.js #11 批量操作共用
+// helper）使用、clearAbuseBan / recordPathStrike / setBanUntil 被 ratelimit.js 限流
+// 中间件使用，留本文件。
 
-/** 加入白名单：与黑名单互斥（删掉同 IP 的黑名单条目），返回 { ip, note, removedFromBlacklist }。 */
+/**
+ * 加入白名单：与黑名单互斥（删掉同 IP 的黑名单条目），返回 { ip, note, removedFromBlacklist }。
+ */
 export async function addWhitelistIp(q, { ip, note = null }) {
   const removed = await q('delete from ip_blacklist where ip = $1', [ip]);
   const r = await q(
@@ -3124,38 +3017,6 @@ export async function addWhitelistIp(q, { ip, note = null }) {
     [ip, note],
   );
   return { ...r.rows[0], removedFromBlacklist: (removed.rowCount ?? 0) > 0 };
-}
-
-export async function removeWhitelistIp(q, ip) {
-  const r = await q('delete from ip_whitelist where ip = $1', [ip]);
-  return r.rowCount ?? 0;
-}
-
-/**
- * 超频/路径封禁记录（BJ 批 B1，docs/BAN-AND-SECURITY-FIXES.md §10.4.2）：
- * status = active（默认，仅生效中）/ expired（过期或无封禁时间）/ all（全部）；
- * 每行带 active（banned_until > now()）与 blacklist_note（精确等值子查询，CIDR 覆盖由服务端运行时补）。
- */
-export async function listAbuse(q, { limit = 50, status = 'active' } = {}) {
-  const mode = ['active', 'expired', 'all'].includes(String(status)) ? String(status) : 'active';
-  const where =
-    mode === 'active'
-      ? 'where a.banned_until is not null and a.banned_until > now()'
-      : mode === 'expired'
-        ? 'where a.banned_until is null or a.banned_until <= now()'
-        : '';
-  const order = mode === 'active' ? 'order by a.banned_until asc' : 'order by a.banned_until desc nulls last, a.updated_at desc';
-  const r = await q(
-    `select a.ip, a.strikes, a.path_strikes, a.ban_source, a.banned_until, a.updated_at,
-            coalesce(a.banned_until > now(), false) as active,
-            (select note from ip_blacklist b where b.ip = a.ip) as blacklist_note
-       from ip_abuse a
-       ${where}
-       ${order}
-       limit $1`,
-    [Math.min(Math.max(Number(limit) || 50, 1), 200)],
-  );
-  return r.rows;
 }
 
 /**
@@ -3225,52 +3086,15 @@ export async function insertDeviceLog(q, { ip = null, deviceId = null, fingerpri
   return Number(r.rows[0].id);
 }
 
-/**
- * 最近设备（BH 批）：按设备码 `device_id` 聚合（无设备码的老记录按 fingerprint 归组），
- * 返回 { key, deviceId, fingerprint, fingerprints, ips, userAgent, lastAt, count, banned }。
- * 封禁仍按指纹（banned = 组内任一指纹在 device_bans）。
- */
-export async function listDevices(q, { limit = 50 } = {}) {
-  const r = await q(
-    `select coalesce(nullif(device_id, ''), fingerprint) as key,
-            max(nullif(device_id, '')) as device_id,
-            (array_agg(fingerprint order by created_at desc))[1] as fingerprint,
-            array_agg(distinct fingerprint) as fingerprints,
-            array_agg(distinct ip) filter (where ip is not null) as ips,
-            max(user_agent) as user_agent,
-            max(created_at) as last_at,
-            count(*)::int as count,
-            bool_or(exists (select 1 from device_bans b where b.fingerprint = device_logs.fingerprint)) as banned
-       from device_logs
-      group by 1
-      order by last_at desc
-      limit $1`,
-    [Math.min(Math.max(Number(limit) || 50, 1), 200)],
-  );
-  return r.rows.map((row) => ({
-    key: row.key,
-    deviceId: row.device_id ?? null,
-    fingerprint: row.fingerprint,
-    fingerprints: (row.fingerprints ?? []).filter(Boolean),
-    ips: (row.ips ?? []).filter(Boolean),
-    userAgent: row.user_agent ?? null,
-    lastAt: row.last_at,
-    count: row.count,
-    banned: Boolean(row.banned),
-  }));
-}
+// ---- 设备指纹管理（/api/admin/devices*）----
+// CO-5/B4-2 第八轮（docs/DESIGN-AUDIT.md B4）：listDevices / listDeviceBans 只被本域
+// 路由使用、已抽到 admin-access-repository.js（顶部 re-export 保持 db.* 签名不变）；
+// insertDeviceLog / activeDeviceBans 被 devices.js 设备拦截中间件使用、
+// upsertDeviceBan / removeDeviceBan 被 server.js #11 批量封设备段与 routes/appeal.js
+// 申诉解封使用、fingerprintOfDeviceId 被申诉域使用，留本文件。
 
 export async function activeDeviceBans(q) {
   const r = await q(`select fingerprint, device_id, note, until from device_bans where until is null or until > now()`);
-  return r.rows;
-}
-
-export async function listDeviceBans(q, { limit = 100 } = {}) {
-  const r = await q(
-    `select fingerprint, device_id, note, until, created_at from device_bans
-      order by created_at desc limit $1`,
-    [Math.min(Math.max(Number(limit) || 100, 1), 500)],
-  );
   return r.rows;
 }
 
@@ -3305,6 +3129,13 @@ export async function fingerprintOfDeviceId(q, deviceId) {
 
 // ---------------------------------------------------------------- 异常请求审核（不自动封）
 
+// ---- 异常请求审核管理（/api/admin/reviews*）----
+// CO-5/B4-2 第八轮（docs/DESIGN-AUDIT.md B4）：listAbuseReviews / getAbuseReview /
+// countPendingReviews / lastUaByIp 只被本域路由使用、已抽到 admin-access-repository.js
+// （顶部 re-export 保持 db.* 签名不变）；recordAbuseReview / markReviewsAutoBanned /
+// finishAbuseReview 被 server.js 拦截链（路径/超频记录与自动标记）与 #11 批量审核段
+// 使用，留本文件。
+
 /**
  * 记录一条待审核的异常请求；同一 IP 同一规则在 pending 状态下合并计数。
  * 注意：这只写审核表，**不封禁**。
@@ -3328,23 +3159,10 @@ export async function recordAbuseReview(q, { ip = null, deviceId = null, fingerp
 }
 
 // 待审口径（docs/BAN-AND-SECURITY-FIXES.md §5）：待审 = 所有 pending。
-// v1.9.0 起封禁动作已把该 IP 的旧 pending 标成 auto_banned 永久退出待审，所以这里
+// v1.9.0 起封禁动作已把该 IP 的旧 pending 标成 auto_banned 永久退出待审，所以列表
 // **不再**按"IP 是否处于临时封禁"二次过滤——封禁期间新产生的 pending 恰恰是最该看的，
-// 而且状态列本来就写着「待审」。列表与 countPendingReviews 必须同一口径。
-export async function listAbuseReviews(q, { status = 'pending', limit = 500 } = {}) {
-  // pending：只看待审；all：审计视图（含 auto_banned）。
-  const statusCond = status === 'all' ? '' : "and status = 'pending'";
-  const r = await q(
-    `select id, ip, device_id, fingerprint, rule, detail, path, hits, status, note, reviewed_at, created_at, last_seen
-       from abuse_reviews
-      where true
-        ${statusCond}
-      order by last_seen desc
-      limit $1`,
-    [Math.min(Math.max(Number(limit) || 500, 1), 500)],
-  );
-  return r.rows;
-}
+// 而且状态列本来就写着「待审」。列表与 countPendingReviews 必须同一口径
+// （两者 SQL 均已随域抽到 admin-access-repository.js）。
 
 /**
  * 封禁动作发生时的清理：把该 IP 的 pending 审核标记为 auto_banned（旧记录永久退出待审）。
@@ -3360,11 +3178,6 @@ export async function markReviewsAutoBanned(q, { ip, note = '自动封禁' }) {
   return r.rowCount ?? 0;
 }
 
-export async function getAbuseReview(q, id) {
-  const r = await q('select * from abuse_reviews where id = $1', [id]);
-  return r.rows[0] ?? null;
-}
-
 export async function finishAbuseReview(q, id, { status, reviewedBy = null, note = null }) {
   const r = await q(
     `update abuse_reviews
@@ -3374,18 +3187,6 @@ export async function finishAbuseReview(q, id, { status, reviewedBy = null, note
     [id, String(status), reviewedBy, note ? String(note).slice(0, 300) : null],
   );
   return r.rows[0] ?? null;
-}
-
-export async function countPendingReviews(q) {
-  const r = await q(`select count(*)::int as n from abuse_reviews where status = 'pending'`);
-  return Number(r.rows[0]?.n ?? 0);
-}
-
-/** CF 批：该 IP 最近一次访问的 User-Agent（证据抽屉用，已有数据不新增抓取）。 */
-export async function lastUaByIp(q, ip) {
-  if (!ip) return null;
-  const r = await q('select user_agent from visitor_logs where ip = $1 and user_agent is not null order by created_at desc limit 1', [String(ip)]);
-  return r.rows[0]?.user_agent ?? null;
 }
 
 // ── CH 批（docs/DISCOVERY-FOR-YOU.md §2/§4）：行为学习 ─────────────────────────

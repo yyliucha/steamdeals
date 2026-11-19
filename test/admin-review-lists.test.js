@@ -24,16 +24,18 @@ test('visitorOrderClause：IP 用零填充键排序，绝不使用 ip::inet', ()
 });
 
 test('访问明细路由透传 sort/order 白名单', () => {
-  const server = read('../src/server.js');
-  assert.match(server, /\[['"]time['"], ['"]ip['"], ['"]status['"]\]\.includes\(rawSort\)/);
-  assert.match(server, /listVisitorLogs\(q, \{[^}]*sort, order/);
+  // CO-5/B4-2 第八轮（docs/DESIGN-AUDIT.md B4）：admin-access 域拆出后，路由分支在
+  // src/routes/admin-access.js、SQL 在 src/store/admin-access-repository.js，断言按新落点指向。
+  const routes = read('../src/routes/admin-access.js');
+  assert.match(routes, /\[['"]time['"], ['"]ip['"], ['"]status['"]\]\.includes\(rawSort\)/);
+  assert.match(routes, /listVisitorLogs\(q, \{[^}]*sort, order/);
 });
 
 test('待审列表上限 500（前端不传 limit 也拿满）', () => {
-  const pg = read('../src/store/pg.js');
-  assert.match(pg, /Math\.min\(Math\.max\(Number\(limit\) \|\| 500, 1\), 500\)/);
-  const server = read('../src/server.js');
-  assert.match(server, /'limit'\) \?\? 500/);
+  const repo = read('../src/store/admin-access-repository.js');
+  assert.match(repo, /Math\.min\(Math\.max\(Number\(limit\) \|\| 500, 1\), 500\)/);
+  const routes = read('../src/routes/admin-access.js');
+  assert.match(routes, /'limit'\) \?\? 500/);
 });
 
 test('前端排序接线：访问明细（表头 + 持久化 + 数值 IP + 服务端参数）与合并视图排序', () => {
