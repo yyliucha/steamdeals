@@ -24,7 +24,7 @@
 | ✨ 功能 | 2 | DT-2 / EB |
 | ⚙️ 调整 | 8 | DT-1 / DT-3 / DT-4 / DT-5 / DV / DZ / EA / EC |
 | 🧹 技术债 | 1 | DX |
-| 🧪 测试基建 | 0 | — |
+| 🧪 测试基建 | 1 | ED |
 | 📝 文档流程 | 0 | — |
 | 🔬 调研 | 0 | — |
 | 已过时 | 1 | DM |
@@ -213,3 +213,20 @@
   EC-3 前端缺图占位（品牌占位图，列表/详情统一）。
 - **验收**：见规格 §8（看板数据一致；回填后缺图数下降；占位图显示；
 pm test（分段）+ rontend:build + scan 全绿）。
+
+## ED. 待开发（🧪 测试基建）：test-main 加文档路径忽略（纯文档提交不跑测试）
+
+**类型：** 🧪 测试基建（CI 效率）
+**状态：** 待开发（2026-11-19 夜班观察确认）
+**优先级：** P3 —— 省 CI 时间，不影响功能
+**依赖：** 无
+**解锁：** 无
+**规格**：本条目正文（workflow 配置小改，无独立规格）
+
+- **背景**：2026-11-19 夜班期间多次文档提交（B4-QUEUE/ANDROID-POLISH/DELIVERY 等），test-main 每次 push
+  都触发并被 concurrency 取消重跑（当晚 十几次 cancelled），浪费 CI 时间。
+- **方案**：.github/workflows/test-main.yml 的 on.push 加 paths-ignore：
+  docs/**、**/*.md、CHANGELOG.md、data/**（**不能忽略**：src/**、rontend/**、	est/**、
+  scripts/**、package.json、package-lock.json、.github/**）。docker-hub/docker-tcr 只在 tag 触发，不动。
+- **验收**：① 只改 docs 的提交不触发 test-main（gh run list 确认）；② 改 src/package.json 仍触发；
+  ③ workflow 语法有效（push 后 Actions 正常解析）；④ 连续文档提交不再产生 cancelled run。
