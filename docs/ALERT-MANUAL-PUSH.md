@@ -1,6 +1,6 @@
-# 到价提醒手动推送（DF，已实现待发版）
+# 到价提醒手动推送（DF，质检通过）
 
-> 状态：**已实现待发版（2026-11-19，实现 578f063，待质检；所有者：这里做个功能，支持重发，有个推送按钮）**；4 个口径已确认（§5）。
+> 状态：**质检通过（2026-11-19，实现 578f063，QA docs/QA-DF.md 第 1 轮 ✅ 9/0/0/2，待发版）**；4 个口径已确认（§5）。
 > 关联：[TODO.md](TODO.md) DF 条目、[USER-ALERTS.md](USER-ALERTS.md)（CL）、[DATA-ISOLATION.md](DATA-ISOLATION.md)（CY）、
 > `src/alerts.js`（evaluateAlerts/renderDigest/toPayload）、`src/notify.js`（投递）、`src/cli.js`（`alerts --mark` 语义）。
 > Demo：[design/alert-manual-push-2026-11-18.html](design/alert-manual-push-2026-11-18.html)
