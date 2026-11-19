@@ -63,7 +63,7 @@ import { handleAppealPublic, handleAppealAdmin } from './routes/appeal.js';
 // handleAuthPublic 在认证上下文解析之前（公开段，保住 must_change_password 用户的设备注册），
 // handleAuthRoutes 在认证上下文就绪后（主段）。拦截链豁免（appealExempt）、must_change_password
 // 白名单、loginIpFails/bindStates 共享状态仍是中间件、留在本文件。
-import { handleAuthPublic, handleAuthRoutes, MAX_ACCOUNTS_PER_USER } from './routes/auth.js';
+import { handleAuthPublic, handleAuthRoutes } from './routes/auth.js';
 // CO-5/B4-2 第四轮：watchlist/wishlist 域用户段路由已抽到 src/routes/watchlist.js——
 // handleWatchlistRoutes 在认证上下文就绪后（主段）。用户级写限流计数 Map（watchUserFails）
 // 只被本域使用、随域移入模块（与认证域 passwordCheckHits 同先例）；/api/admin/watchlist*、
@@ -80,6 +80,13 @@ import { handleAnnouncementsPublic, handleAnnouncementsRoutes, handleAnnouncemen
 // （p === '/api/me'、p.startsWith('/api/avatar/')）仍是中间件、留在本文件；
 // /api/me/email/* 留在 src/auth-routes.js（与 /api/auth/email* 同模块，DT-2 排除区）。
 import { handleMeRoutes } from './routes/me.js';
+// CO-5/B4-2 第七轮：site 域（B4 #7 杂项）路由已抽到 src/routes/site.js——
+// handleSitePreflight 在拦截链之前（/api/ban/state 封禁自查，原位置语义）、
+// handleSitePublic 在认证上下文解析之前（/api/site，原位置语义）、handleSiteRoutes
+// 在认证上下文就绪后的主段（/api/steam/* Steam 账号管理）。banState 限流桶随域移入模块
+// （只被本域使用）；siteName/appealEmail 宿主闭包经 ctx 按引用传入（语义共享）；
+// /api/admin/wishlists（B4 #16）、/api/admin/steam-logs（B4 #12）留本文件。
+import { handleSitePreflight, handleSitePublic, handleSiteRoutes } from './routes/site.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -204,27 +211,8 @@ export function newAppealCode() {
 // 说明：BQ 邮件动作 token（newActionToken）、封禁原因文案（appealBanReasonLabel）、
 // 管理员申诉行视图（appealRowPublic）已随 CO-4/B4 第二轮移入 src/routes/appeal.js；
 // newAppealCode 因 serveBanPage 仍使用、且被 test/appeal-security.test.js 导入，保留在本文件。
-
-// /api/ban/state 的自带限流：每 IP 1 次/秒、30 次/分钟（防被当成探测接口；docs/BAN-AND-SECURITY-FIXES.md §3.3）。
-const banStateBuckets = new Map(); // ip -> { last, minute: number[] }
-function banStateLimited(ip) {
-  const key = String(ip || 'anon');
-  if (banStateBuckets.size > 10_000) banStateBuckets.clear();
-  const now = Date.now();
-  const bucket = banStateBuckets.get(key);
-  const minute = (bucket?.minute ?? []).filter((t) => now - t < 60_000);
-  if (minute.length >= 30) {
-    banStateBuckets.set(key, { last: now, minute });
-    return true;
-  }
-  if (bucket && now - bucket.last < 1000) {
-    banStateBuckets.set(key, { last: bucket.last, minute });
-    return true;
-  }
-  minute.push(now);
-  banStateBuckets.set(key, { last: now, minute });
-  return false;
-}
+// /api/ban/state 的自带限流桶（banStateBuckets/banStateLimited）已随 CO-5/B4-2 第七轮
+// 移入 src/routes/site.js（只被本域使用，watchlist 域 watchUserFails 同先例）。
 
 // 申诉接口自带限流（docs/APPEAL-SYSTEM.md §7 / §10.3）：内存桶 + 库内双保险。
 // 提交每 IP 3 次/小时；编号查询每 IP 20 次/分钟；BQ 动作每 IP 10 次/分钟。
@@ -885,26 +873,9 @@ export function createApiServer({
       }
 
       // ---- 只读封禁状态接口（客户端复核用，docs/BAN-AND-SECURITY-FIXES.md §3.3）----
-      // 必须在拦截链之前：被封禁者也要拿得到自己的状态。只用内存态（devices.isBanned /
-      // ratelimit.bannedUntil / visitors.blockedBy），不查库、不计数；自带限流 1 次/秒、30 次/分钟；
-      // 只回调用者自己的 {banned,type,until,ip,whitelisted}（BR 批 §11.4 自查三件套），
-      // 不含名单内容、不含他人 IP。
-      if (path === '/api/ban/state' && req.method === 'GET') {
-        if (banStateLimited(ip)) {
-          return json(res, 429, { error: '请求过于频繁' }, { 'cache-control': 'no-store', 'retry-after': '1' });
-        }
-        let state = { banned: false, ip: ip || null, whitelisted };
-        if (!whitelisted) {
-          const devBan = deviceId ? devices.isBanned({ deviceId }) : null;
-          const ipBlocked = ip ? visitors.blockedBy(ip) : null;
-          const rateUntil = ip ? ratelimit.bannedUntil(ip) : null;
-          // BJ 批 A1：类型优先级 设备 → 黑名单 → 自动封禁（与拦截链一致；黑名单 IP 不再被报成 rate）
-          if (devBan) state = { banned: true, type: 'device', until: devBan.until ? new Date(devBan.until).toISOString() : null, ip: ip || null, whitelisted: false };
-          else if (ipBlocked) state = { banned: true, type: 'ip', until: null, ip: ip || null, whitelisted: false };
-          else if (rateUntil) state = { banned: true, type: 'rate', until: new Date(rateUntil).toISOString(), ip: ip || null, whitelisted: false };
-        }
-        return json(res, 200, state, { 'cache-control': 'no-store' });
-      }
+      // CO-5/B4-2 第七轮：已抽到 src/routes/site.js 的 handleSitePreflight。
+      // 调用位置不能动：必须在拦截链之前——被封禁者也要拿得到自己的状态（契约不变）。
+      if (await handleSitePreflight({ path, req, res, json, ip, whitelisted, deviceId })) return;
 
       // CO-4/B4（docs/DESIGN-AUDIT.md B4）：App 域预检段（/api/app/status）已抽到 src/routes/app.js。
       // 调用位置不能动：必须在设备维度限流与封禁拦截链之前（契约 §3：仍只受全局基础限流）。
@@ -1235,28 +1206,11 @@ export function createApiServer({
         return serveFrontendStatic(res, frontendDir, outDir, path);
       }
 
-      // ---- 公开接口：站点信息（公告/设备指纹已分别抽到 routes/announcements.js、routes/auth.js 公开段）----
-      if (path === '/api/site' && req.method === 'GET') {
-        // AL 批（docs/AUTH-REDESIGN.md §5.3）：注册页用——开关与 SMTP 就绪状态（不可用时不显示表单）
-        let registrationEnabled = true;
-        let registrationSmtpReady = false;
-        try {
-          const regRow = (await q("select value from app_settings where key = 'auth.registrationEnabled'")).rows[0];
-          registrationEnabled = regRow ? String(regRow.value) !== '0' : process.env.AUTH_REGISTRATION_ENABLED !== '0';
-          const { smtpConfig, isSmtpConfigured } = await import('./email-auth.js');
-          registrationSmtpReady = isSmtpConfigured(await smtpConfig(q));
-        } catch {
-          /* 表不存在等兜底：默认开放、SMTP 未就绪 */
-        }
-        return json(res, 200, {
-          name: siteName(),
-          version: VERSION,
-          appealEmail: appealEmail(),
-          // 前台成人内容展示策略（hide/badge/show），Home 卡片按它决定角标
-          adultDisplay: String(process.env.SITE_ADULT_DISPLAY ?? 'hide'),
-          registration: { enabled: registrationEnabled, smtpReady: registrationSmtpReady },
-        });
-      }
+      // ---- CO-5/B4-2 第七轮（docs/DESIGN-AUDIT.md B4）：site 域公开路由已抽到 src/routes/site.js ----
+      // 调用位置不能动：必须在认证上下文解析（must_change_password 白名单）之前——
+      // 注册页/改密页在认证前也要读站点信息（原位置语义，移动 = 改契约）。
+      // siteName / appealEmail 是宿主闭包（serveBanPage / 申诉域仍用），经 ctx 按引用传入（语义共享）。
+      if (await handleSitePublic({ path, req, res, q, json, siteName, appealEmail })) return;
       // ---- CO-5/B4-2 第五轮（docs/DESIGN-AUDIT.md B4）：公告域路由已抽到 src/routes/announcements.js ----
       // 公开段调用位置不能动：必须在认证上下文解析（must_change_password 白名单）之前——
       // 游客与待改密用户也要能读到公告（原位置语义，移动 = 改契约）。
@@ -1932,238 +1886,31 @@ export function createApiServer({
         return json(res, 200, { game: row });
       }
 
-      // ---- 管理员：用户管理（编辑 / 改密码 / 禁用）----
-      // ---- Steam 多账号绑定 / 游戏库 / 愿望单（身份由站点会话决定）----
-      // CO-5/B4-2 第三轮：Steam 绑定发起/回调（/api/auth/steam/*）已随认证域抽到 src/routes/auth.js
-      // （steamMod/steamLogMod 由该域模块自行 import，steamVerify/bindStates 经 ctx 注入）；
-      // MAX_ACCOUNTS_PER_USER 现从 routes/auth.js 导入（与认证域同一定义，避免两处漂移）。
+      // ---- CO-5/B4-2 第七轮（docs/DESIGN-AUDIT.md B4）：site 域主段路由已抽到 src/routes/site.js ----
+      // 调用位置不能动：必须在认证上下文（user/requireUser/requireAdmin）就绪后的主段
+      // （401/403 语义依赖该位置，原位置语义，移动 = 改契约）；本域无跨模块共享状态
+      // （banState 限流桶随域移入模块），ctx 只需基座字段。
+      // steamAccountsMod / steamLogMod 动态 import 保留——本文件 admin 段仍用
+      // （/api/admin/wishlists 属 B4 #16、/api/admin/steam-logs 属 B4 #12）。
+      if (
+        await handleSiteRoutes({
+          path,
+          req,
+          res,
+          url,
+          q,
+          logger,
+          json,
+          readBody,
+          user,
+          requireUser,
+          requireAdmin,
+        })
+      )
+        return;
+
       const steamAccountsMod = await import('./steam-accounts.js');
       const steamLogMod = await import('./steam-log.js');
-
-      // BE 批（docs/WISHLIST-SITE-ONLY.md §4.4）：账号级同步（游戏库/愿望单）一律用该账号自己的 API Key；
-      // 未配置或解密失败直接报错，**不回退**全局 STEAM_API_KEY（全局 key 只给系统级采集任务）。
-      const requireAccountApiKey = async (steamId) => {
-        const row = (await q('select api_key_enc from steam_accounts where steam_id = $1', [steamId])).rows[0];
-        if (!row?.api_key_enc) {
-          json(res, 400, { error: '该账号未配置 API Key，请先在后台填写' });
-          return null;
-        }
-        try {
-          const auth = await import('./email-auth.js');
-          const apiKey = auth.decryptSecret(row.api_key_enc, auth.loadSecretKey());
-          if (!apiKey) throw new Error('decrypt_failed');
-          return apiKey;
-        } catch {
-          json(res, 400, { error: '该账号 API Key 无效，请检查' });
-          return null;
-        }
-      };
-
-      // 当前登录用户对该账号的所有权检查：返回账号行（含昵称/归属用户名快照，供审计），无权/不存在返回 null（响应已写出）
-      const requireAccountOwner = async (steamId) => {
-        const found = await q(
-          'select a.steam_id, a.user_id, a.persona_name, u.username from steam_accounts a left join users u on u.id = a.user_id where a.steam_id = $1',
-          [steamId],
-        );
-        const row = found.rows[0];
-        if (!row) {
-          json(res, 404, { error: '没有该 Steam 账号' });
-          return null;
-        }
-        if (row.user_id == null || Number(row.user_id) !== Number(user.id)) {
-          json(res, 403, { error: '这个 Steam 账号不属于当前用户' });
-          return null;
-        }
-        return row;
-      };
-
-      // CO-5/B4-2 第三轮（docs/DESIGN-AUDIT.md B4）：Steam 绑定发起/回调（/api/auth/steam/*）已随
-      // 认证域抽到 src/routes/auth.js（在主段 handleAuthRoutes 内处理）——本文件只留
-      // /api/steam/accounts 等 Steam 账号管理路由与 bindStates/steamVerify 的持有与注入。
-
-      if (path === '/api/steam/accounts' && req.method === 'GET') {
-        if (!requireUser()) return;
-        const accounts = await steamAccountsMod.listUserAccounts(q, user.id);
-        const unowned = user.role === 'admin' ? await steamAccountsMod.listUnownedAccounts(q) : [];
-        return json(res, 200, { accounts, unowned, limit: MAX_ACCOUNTS_PER_USER });
-      }
-
-      if (path === '/api/steam/me' && req.method === 'GET') {
-        // 兼容接口：旧单账号字段取第一个绑定账号，新前端用 accounts 数组。
-        const accounts = user ? await steamAccountsMod.listUserAccounts(q, user.id) : [];
-        const first = accounts[0] ?? null;
-        return json(res, 200, {
-          steamId: first?.steam_id ?? null,
-          persona_name: first?.persona_name ?? null,
-          avatar: first?.avatar ?? null,
-          accounts,
-        });
-      }
-
-      const accountMatch = path.match(/^\/api\/steam\/accounts\/([^/]+)$/);
-      const accountAction = path.match(/^\/api\/steam\/accounts\/([^/]+)\/(library|wishlist|claim)(?:\/(sync))?$/);
-      if (accountAction) {
-        if (!requireUser()) return;
-        const steamId = decodeURIComponent(accountAction[1]);
-
-        // 认领（迁移）：管理员把未归属账号划到自己名下
-        if (accountAction[2] === 'claim' && req.method === 'POST') {
-          if (!requireAdmin()) return;
-          const found = await q('select user_id, persona_name from steam_accounts where steam_id = $1', [steamId]);
-          if (!found.rows[0]) return json(res, 404, { error: '没有该 Steam 账号' });
-          if (found.rows[0].user_id != null) return json(res, 409, { error: '该账号已被认领' });
-          await q('update steam_accounts set user_id = $1, last_login_at = now() where steam_id = $2 and user_id is null', [user.id, steamId]);
-          // DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：认领账号不再自动改动头像。
-          // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：认领落审计（失败吞异常，不影响认领）
-          await steamLogMod.recordSteamLog(q, {
-            action: 'claim',
-            steamId,
-            personaName: found.rows[0].persona_name,
-            userId: user.id,
-            username: user.username,
-            actor: `admin:${user.username}`,
-            result: 'ok',
-          });
-          logger?.info('steam.claim', { steamId, userId: user.id, by: user.username });
-          return json(res, 200, { ok: true });
-        }
-        if (accountAction[2] === 'library' && req.method === 'POST' && accountAction[3] === 'sync') {
-          const row = await requireAccountOwner(steamId);
-          if (!row) return;
-          const apiKey = await requireAccountApiKey(steamId);
-          if (!apiKey) return;
-          try {
-            const result = await steamAccountsMod.syncAccountLibrary(q, {
-              steamId,
-              apiKey,
-              logger,
-              log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
-            });
-            // 补全目录类型（类型未知数靠 app_type；只挑缺失的，天然收敛）
-            const types = await steamAccountsMod.backfillOwnedAppTypes(q, { steamId, apiKey, logger });
-            const stats = await steamAccountsMod.ownedTypeStats(q, steamId);
-            return json(res, 200, { ...result, typeUnknown: stats.typeUnknown, typesChecked: types.checked, typesTyped: types.typed });
-          } catch (err) {
-            if (err?.status === 401 || err?.status === 403) return json(res, 400, { error: '该账号 API Key 无效，请检查' });
-            return json(res, 502, { error: '拉取游戏库失败：' + String(err.message).slice(0, 160) });
-          }
-        }
-        if (accountAction[2] === 'wishlist' && req.method === 'POST' && accountAction[3] === 'sync') {
-          const row = await requireAccountOwner(steamId);
-          if (!row) return;
-          const apiKey = await requireAccountApiKey(steamId);
-          if (!apiKey) return;
-          try {
-            const result = await steamAccountsMod.syncAccountWishlist(q, {
-              steamId,
-              apiKey,
-              userId: user.id,
-              logger,
-              log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
-            });
-            return json(res, 200, result);
-          } catch (err) {
-            if (err?.status === 401 || err?.status === 403) return json(res, 400, { error: '该账号 API Key 无效，请检查' });
-            return json(res, 502, { error: '拉取愿望单失败：' + String(err.message).slice(0, 160) });
-          }
-        }
-        // CX 批（docs/USER-PROFILE-EDIT.md §3）：库列表支持搜索/分页（弹窗用）；
-        // 不带参数保持旧行为（一次取到 500 条，后台「Steam 账号」页沿用 in_db/current_low 字段）。
-        if (accountAction[2] === 'library' && req.method === 'GET') {
-          const row = await requireAccountOwner(steamId);
-          if (!row) return;
-          const hasParams = url.searchParams.has('q') || url.searchParams.has('page') || url.searchParams.has('pageSize');
-          const kw = String(url.searchParams.get('q') ?? '').trim().slice(0, 80);
-          const page = Number(url.searchParams.get('page') ?? 1);
-          const pageSize = hasParams ? Number(url.searchParams.get('pageSize') ?? 10) : 500;
-          const data = await db.userLibraryItems(q, { steamId, kind: 'library', kw, page, pageSize });
-          return json(res, 200, {
-            steamId,
-            games: data.items,
-            total: data.total,
-            page: data.page,
-            pageSize: data.pageSize,
-          });
-        }
-        // CX 批：愿望单条目列表（弹窗「愿望单」tab）
-        if (accountAction[2] === 'wishlist' && req.method === 'GET') {
-          const row = await requireAccountOwner(steamId);
-          if (!row) return;
-          const kw = String(url.searchParams.get('q') ?? '').trim().slice(0, 80);
-          const page = Number(url.searchParams.get('page') ?? 1);
-          const pageSize = Number(url.searchParams.get('pageSize') ?? 10);
-          const data = await db.userLibraryItems(q, { steamId, kind: 'wishlist', kw, page, pageSize });
-          return json(res, 200, {
-            steamId,
-            items: data.items,
-            total: data.total,
-            page: data.page,
-            pageSize: data.pageSize,
-          });
-        }
-        return json(res, 404, { error: 'not found' });
-      }
-
-      if (accountMatch && req.method === 'PATCH') {
-        if (!requireUser()) return;
-        const steamId = decodeURIComponent(accountMatch[1]);
-        const row = await requireAccountOwner(steamId);
-        if (!row) return;
-        const body = await readBody(req);
-        const raw = String(body.alias ?? '').trim().slice(0, 64);
-        const alias = raw || null;
-        await q('update steam_accounts set alias = $1 where steam_id = $2', [alias, steamId]);
-        // 账号自配 API Key（写愿望单用）：明文只进不出，AES-256-GCM 加密落库；clearApiKey=true 清除
-        let apiKeyChanged = null;
-        if (typeof body.apiKey === 'string' && body.apiKey.trim()) {
-          const auth = await import('./email-auth.js');
-          const enc = auth.encryptSecret(body.apiKey.trim(), auth.loadSecretKey());
-          await steamAccountsMod.setAccountApiKey(q, {
-            steamId,
-            apiKeyEnc: enc,
-            log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
-          });
-          apiKeyChanged = true;
-        } else if (body.clearApiKey === true) {
-          await steamAccountsMod.setAccountApiKey(q, {
-            steamId,
-            apiKeyEnc: null,
-            log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
-          });
-          apiKeyChanged = false;
-        }
-        const after = await q('select (api_key_enc is not null) as api_key_set from steam_accounts where steam_id = $1', [steamId]);
-        logger?.info('steam.alias_set', { steamId, alias, userId: user.id, apiKeyChanged });
-        return json(res, 200, { ok: true, alias, apiKeySet: after.rows[0]?.api_key_set ?? false });
-      }
-
-      if (accountMatch && req.method === 'DELETE') {
-        if (!requireUser()) return;
-        const steamId = decodeURIComponent(accountMatch[1]);
-        const row = await requireAccountOwner(steamId);
-        if (!row) return;
-        const result = await steamAccountsMod.unbindAccount(q, {
-          steamId,
-          userId: user.id,
-          logger,
-          log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
-        });
-        // DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：解绑的是默认账号 → 只清 default_steam_id（头像不受影响）
-        await db.clearDefaultSteamIfMatches(q, { userId: user.id, steamId });
-        return json(res, 200, result);
-      }
-
-      // DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：设为默认 Steam 账号——只写 default_steam_id（每用户一个默认），与头像解耦
-      const accountDefaultMatch = path.match(/^\/api\/steam\/accounts\/([^/]+)\/default$/);
-      if (accountDefaultMatch && req.method === 'POST') {
-        if (!requireUser()) return;
-        const steamId = decodeURIComponent(accountDefaultMatch[1]);
-        const row = await requireAccountOwner(steamId);
-        if (!row) return;
-        const me = await db.setDefaultSteamAccount(q, { userId: user.id, steamId });
-        logger?.info('steam.default_set', { steamId, userId: user.id });
-        return json(res, 200, { ok: true, defaultSteamId: me.default_steam_id ?? null });
-      }
 
       // ---- CO-5/B4-2 第四轮：watchlist/wishlist 域用户段路由已抽到 src/routes/watchlist.js ----
       // 调用位置不能动：必须在认证上下文（user/requireUser）就绪后的主段；本域无跨模块共享状态

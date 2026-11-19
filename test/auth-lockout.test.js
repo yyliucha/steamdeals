@@ -176,6 +176,8 @@ const AUTH_ROUTES = readFileSync(fileURLToPath(new URL('../src/routes/auth.js', 
 const AUTH_REPO = readFileSync(fileURLToPath(new URL('../src/store/auth-repository.js', import.meta.url)), 'utf8');
 const AUTH_PG = readFileSync(fileURLToPath(new URL('../src/store/pg.js', import.meta.url)), 'utf8');
 const AUTH_SERVER = readFileSync(fileURLToPath(new URL('../src/server.js', import.meta.url)), 'utf8');
+// CO-5/B4-2 第七轮：MAX_ACCOUNTS_PER_USER 的消费方（/api/steam/accounts）已随 site 域抽到 routes/site.js
+const SITE_ROUTES_SRC = readFileSync(fileURLToPath(new URL('../src/routes/site.js', import.meta.url)), 'utf8');
 
 test('CO-5/B4-2：认证路由分支全部在 src/routes/auth.js（公开段 + 主段）', () => {
   for (const [branch, label] of [
@@ -220,7 +222,11 @@ test('CO-5/B4-2：认证 SQL 落 auth-repository.js，pg.js re-export 兼容，�
 });
 
 test('CO-5/B4-2：server.js 必须真实接线两个入口（删掉调用即红，防死模块）', () => {
-  assert.match(AUTH_SERVER, /import \{ handleAuthPublic, handleAuthRoutes, MAX_ACCOUNTS_PER_USER \} from '\.\/routes\/auth\.js'/, 'server.js 必须导入域路由入口');
+  assert.match(AUTH_SERVER, /import \{ handleAuthPublic, handleAuthRoutes \} from '\.\/routes\/auth\.js'/, 'server.js 必须导入域路由入口');
+  // CO-5/B4-2 第七轮：MAX_ACCOUNTS_PER_USER 的消费方（/api/steam/accounts 上限）已随 site 域
+  // 抽到 routes/site.js——定义仍在 routes/auth.js（与认证域同一定义，防两处漂移），
+  // server.js 不再直接使用，改由 site 域从 auth.js 导入。
+  assert.match(SITE_ROUTES_SRC, /import \{ MAX_ACCOUNTS_PER_USER \} from '\.\/auth\.js'/, 'MAX_ACCOUNTS_PER_USER 由 site 域导入（定义仍在 routes/auth.js）');
   assert.match(AUTH_SERVER, /if \(await handleAuthPublic\(\{ path, req, res, q, logger, json, readBody, ip \}\)\) return;/, '公开段接线（拦截链后、认证上下文前）');
   assert.match(
     AUTH_SERVER,

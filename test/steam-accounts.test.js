@@ -1,12 +1,30 @@
 // Steam 多账号绑定：schema 迁移、库/愿望单差集删除、愿望单→到价提醒对账、
 // 认领/解绑/别名 API、已拥有推导（owned_by / wishlisted / 手动排除恢复）。
+// CO-5/B4-2 第七轮（docs/DESIGN-AUDIT.md B4）：site 域（/api/ban/state、/api/site、
+// /api/steam/*）从 server.js/pg.js 巨石拆出后，末尾四组静态断言按新落点指向：
+//   · 路由分支 → src/routes/site.js；
+//   · Steam 账号 SQL → src/store/site-repository.js；pg.js 必须 re-export
+//     （旧 db.* 导入签名不变），无 DDL 搬家（steam_accounts 等表 DDL 在 steam-login.js）；
+//   · server.js 只留三入口接线（预检段/公开段/主段），且必须真实调用——删掉调用即红（防死模块）；
+//   · 旧分支不得残留在 server.js（防双实现）。
+// 反向自检口径：删掉 routes/site.js 任一路由分支 → 第 1 组断言红；
+// 删掉 server.js 的任一入口接线 → 第 2 组红；把分支抄回 server.js → 第 3 组红；
+// 删 pg.js re-export → 第 4 组红。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import { startApiServer } from '../src/server.js';
 import { ensureSteamSchema } from '../src/steam-login.js';
 import * as steamAccounts from '../src/steam-accounts.js';
+
+// CO-5/B4-2 第七轮静态锁素材（与 announcements.test.js / profile.test.js 同口径）
+const SITE_ROUTES = readFileSync(fileURLToPath(new URL('../src/routes/site.js', import.meta.url)), 'utf8');
+const SITE_REPO = readFileSync(fileURLToPath(new URL('../src/store/site-repository.js', import.meta.url)), 'utf8');
+const SITE_SERVER = readFileSync(fileURLToPath(new URL('../src/server.js', import.meta.url)), 'utf8');
+const SITE_PG = readFileSync(fileURLToPath(new URL('../src/store/pg.js', import.meta.url)), 'utf8');
 
 process.env.CAPTCHA_ENABLED = '0';
 // 测试环境不能真的出网：绑定回调里的自动同步只会在有 API Key 时触发
@@ -561,3 +579,96 @@ test('CL 批已拥有口径：owned 只由 Steam 库并集决定，user_game_fla
     await store.close();
   }
 });
+
+// ============================================================ CO-5/B4-2 第七轮静态锁
+
+test('CO-5/B4-2 第七轮：site 域路由分支全部在 src/routes/site.js（预检/公开/主三入口，删任一支即红）', () => {
+  // 预检段：/api/ban/state（拦截链前，封禁自查）
+  assert.match(SITE_ROUTES, /path !== '\/api\/ban\/state' \|\| req\.method !== 'GET'/, 'ban/state 分支在新文件');
+  assert.match(SITE_ROUTES, /banStateLimited\(ip\)/, 'ban/state 自带限流随路由');
+  // 公开段：/api/site
+  assert.match(SITE_ROUTES, /path !== '\/api\/site' \|\| req\.method !== 'GET'/, 'site 分支在新文件');
+  assert.match(SITE_ROUTES, /name: siteName\(\)/, '站点名走 ctx.siteName 闭包（语义共享）');
+  assert.match(SITE_ROUTES, /appealEmail: appealEmail\(\)/, '申诉邮箱走 ctx.appealEmail 闭包（语义共享）');
+  // 主段：/api/steam/*
+  assert.match(SITE_ROUTES, /path === '\/api\/steam\/accounts' && req\.method === 'GET'/, '账号列表分支在新文件');
+  assert.match(SITE_ROUTES, /path === '\/api\/steam\/me' && req\.method === 'GET'/, 'steam/me 兼容分支在新文件');
+  assert.match(SITE_ROUTES, /accountAction\[2\] === 'claim' && req\.method === 'POST'/, '认领分支在新文件');
+  assert.match(SITE_ROUTES, /accountAction\[2\] === 'library' && req\.method === 'POST' && accountAction\[3\] === 'sync'/, '库同步分支在新文件');
+  assert.match(SITE_ROUTES, /accountAction\[2\] === 'wishlist' && req\.method === 'POST' && accountAction\[3\] === 'sync'/, '愿望单同步分支在新文件');
+  assert.match(SITE_ROUTES, /accountAction\[2\] === 'library' && req\.method === 'GET'/, '库列表分支在新文件');
+  assert.match(SITE_ROUTES, /accountAction\[2\] === 'wishlist' && req\.method === 'GET'/, '愿望单列表分支在新文件');
+  assert.match(SITE_ROUTES, /accountMatch && req\.method === 'PATCH'/, '别名/API Key 分支在新文件');
+  assert.match(SITE_ROUTES, /accountMatch && req\.method === 'DELETE'/, '解绑分支在新文件');
+  assert.match(SITE_ROUTES, /accountDefaultMatch && req\.method === 'POST'/, '设默认账号分支在新文件');
+  // 三个入口形态（§15.3 位置语义：预检段 + 公开段 + 主段）
+  assert.match(SITE_ROUTES, /export async function handleSitePreflight\(ctx\)/, '预检段入口');
+  assert.match(SITE_ROUTES, /export async function handleSitePublic\(ctx\)/, '公开段入口');
+  assert.match(SITE_ROUTES, /export async function handleSiteRoutes\(ctx\)/, '主段入口');
+  // 守卫与校验随路由：主段 requireUser（claim 另加 requireAdmin）、所有权/API Key 检查
+  assert.match(SITE_ROUTES, /if \(!requireUser\(\)\) return true/, '主段登录守卫');
+  assert.match(SITE_ROUTES, /if \(!requireAdmin\(\)\) return true/, '认领管理员守卫');
+  assert.match(SITE_ROUTES, /error: '这个 Steam 账号不属于当前用户'/, '所有权 403 语义随路由');
+  assert.match(SITE_ROUTES, /error: '该账号未配置 API Key，请先在后台填写'/, 'API Key 未配置语义随路由');
+  assert.match(SITE_ROUTES, /error: '该账号已被认领'/, '认领冲突 409 语义随路由');
+  // 路由模块只做编排：不许出现 SQL 字面量（全部走 repository）
+  assert.ok(!/select |insert |update |delete from /.test(SITE_ROUTES), 'routes/site.js 不写 SQL 字面量');
+  // 已写响应必须 return true（防宿主二次写头 ERR_HTTP_HEADERS_SENT，watchlist 域拆分回归教训）
+  assert.match(SITE_ROUTES, /return false;/s, '未命中返回 false，宿主继续');
+  assert.match(SITE_ROUTES, /'cache-control': 'no-store'/, 'ban/state no-store 头随路由');
+});
+
+test('CO-5/B4-2 第七轮：server.js 必须真实接线三个入口（删掉调用即红，防死模块）', () => {
+  assert.match(SITE_SERVER, /import \{ handleSitePreflight, handleSitePublic, handleSiteRoutes \} from '\.\/routes\/site\.js'/, 'server.js 必须导入域路由三入口');
+  // 锁「完整调用形态」：必须是 if (await handleXxx(...)) return;——只断言字符串存在会被 if(false) 包一层绕过；
+  // 这个形态锁住"调用且消费返回值结束响应"。
+  assert.match(SITE_SERVER, /if \(\s*await handleSitePreflight\(\{ path, req, res, json, ip, whitelisted, deviceId \}\)\) return;/, '预检段接线（含 ip/whitelisted/deviceId，且消费返回值）');
+  assert.match(SITE_SERVER, /if \(\s*await handleSitePublic\(\{ path, req, res, q, json, siteName, appealEmail \}\)\) return;/, '公开段接线（含 siteName/appealEmail，且消费返回值）');
+  assert.match(SITE_SERVER, /if \(\s*await handleSiteRoutes\(\{[\s\S]{0,900}?url,[\s\S]{0,900}?user,[\s\S]{0,900}?requireUser,[\s\S]{0,900}?requireAdmin,/, '主段接线（含 url/user/requireUser/requireAdmin）');
+  assert.match(SITE_SERVER, /if \(\s*await handleSiteRoutes\(\{[\s\S]{0,900}?q,[\s\S]{0,900}?logger,[\s\S]{0,900}?json,[\s\S]{0,900}?readBody,/, '主段接线（基座字段传齐）');
+  // 三入口位置语义锁：预检段必须在 handleAppPreflight 之前、公开段必须在 handleAnnouncementsPublic 之前、
+  // 主段必须在 handleWatchlistRoutes 之前（移动调用位置 = 改契约，§15.3）
+  assert.match(SITE_SERVER, /handleSitePreflight\([\s\S]*?handleAppPreflight\(/s, '预检段调用在 App 预检段之前（拦截链前）');
+  assert.match(SITE_SERVER, /handleSitePublic\([\s\S]*?handleAnnouncementsPublic\(/s, '公开段调用在公告公开段之前（认证上下文前）');
+  assert.match(SITE_SERVER, /handleSiteRoutes\([\s\S]*?handleWatchlistRoutes\(/s, '主段调用在 watchlist 主段之前（原位置）');
+});
+
+test('CO-5/B4-2 第七轮：site 域路由分支不得双实现（server.js 里保留旧分支即红，防拆分后两处漂移）', () => {
+  assert.ok(!/path === '\/api\/ban\/state' && req\.method/.test(SITE_SERVER), 'ban/state 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/site' && req\.method/.test(SITE_SERVER), 'site 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/steam\/accounts' && req\.method/.test(SITE_SERVER), '账号列表分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/steam\/me' && req\.method/.test(SITE_SERVER), 'steam/me 分支不得残留在 server.js');
+  assert.ok(!/const accountAction = path\.match/.test(SITE_SERVER), 'claim/library/wishlist 分支不得残留在 server.js');
+  assert.ok(!/const accountMatch = path\.match/.test(SITE_SERVER), 'PATCH/DELETE 分支不得残留在 server.js');
+  assert.ok(!/const accountDefaultMatch = path\.match/.test(SITE_SERVER), 'default 分支不得残留在 server.js');
+  // 域内 helper 已随域移入模块（断言定义与调用两处都不残留）
+  assert.ok(!/const requireAccountOwner =/.test(SITE_SERVER), 'requireAccountOwner 定义不得残留在 server.js');
+  assert.ok(!/const requireAccountApiKey =/.test(SITE_SERVER), 'requireAccountApiKey 定义不得残留在 server.js');
+  assert.ok(!/const banStateBuckets = new Map/.test(SITE_SERVER), 'banState 限流桶定义不得残留在 server.js');
+  assert.ok(!/function banStateLimited/.test(SITE_SERVER), 'banStateLimited 定义不得残留在 server.js');
+  // 边界锁：admin 段仍留宿主（/api/admin/wishlists 属 B4 #16、/api/admin/steam-logs 属 B4 #12）
+  assert.match(SITE_SERVER, /path === '\/api\/admin\/wishlists' && req\.method === 'GET'/, 'admin wishlists 段留 server.js（B4 #16）');
+  assert.match(SITE_SERVER, /path === '\/api\/admin\/steam-logs' && req\.method === 'GET'/, 'admin steam-logs 段留 server.js（B4 #12）');
+});
+
+test('CO-5/B4-2 第七轮：site-repository.js 签名不变 + pg.js re-export（删 re-export 即红）', () => {
+  // 搬家函数签名与拆分前一致（旧 db.* 导入签名不变）
+  assert.match(SITE_REPO, /export async function setDefaultSteamAccount\(q, \{ userId, steamId \}\)/, 'setDefaultSteamAccount 签名与拆分前一致');
+  assert.match(SITE_REPO, /export async function clearDefaultSteamIfMatches\(q, \{ userId, steamId \}\)/, 'clearDefaultSteamIfMatches 签名与拆分前一致');
+  assert.match(SITE_REPO, /export async function userLibraryItems\(q, \{ steamId, kind, kw = '', page = 1, pageSize = 10 \}\)/, 'userLibraryItems 签名与拆分前一致');
+  // 域内联 SQL 抽出的七个新函数
+  assert.match(SITE_REPO, /export async function registrationEnabledRow\(q\)/, '注册开关内联 SQL 已抽 registrationEnabledRow');
+  assert.match(SITE_REPO, /export async function accountApiKeyEnc\(q, steamId\)/, 'API Key 内联 SQL 已抽 accountApiKeyEnc');
+  assert.match(SITE_REPO, /export async function accountOwnerRow\(q, steamId\)/, '所有权检查内联 SQL 已抽 accountOwnerRow');
+  assert.match(SITE_REPO, /export async function claimTargetRow\(q, steamId\)/, '认领目标内联 SQL 已抽 claimTargetRow');
+  assert.match(SITE_REPO, /export async function claimSteamAccount\(q, \{ steamId, userId \}\)/, '认领写入内联 SQL 已抽 claimSteamAccount');
+  assert.match(SITE_REPO, /export async function updateSteamAccountAlias\(q, \{ steamId, alias \}\)/, '别名写入内联 SQL 已抽 updateSteamAccountAlias');
+  assert.match(SITE_REPO, /export async function steamAccountApiKeySet\(q, steamId\)/, 'API Key 回显内联 SQL 已抽 steamAccountApiKeySet');
+  // 十个函数必须整体 re-export（旧 db.* 导入签名不变；test 与 server.js 其它段照旧走聚合壳）
+  assert.match(SITE_PG, /export \{[\s\S]{0,500}setDefaultSteamAccount[\s\S]{0,500}clearDefaultSteamIfMatches[\s\S]{0,500}userLibraryItems[\s\S]{0,500}registrationEnabledRow[\s\S]{0,500}accountApiKeyEnc[\s\S]{0,500}accountOwnerRow[\s\S]{0,500}claimTargetRow[\s\S]{0,500}claimSteamAccount[\s\S]{0,500}updateSteamAccountAlias[\s\S]{0,500}steamAccountApiKeySet[\s\S]{0,500}\} from '\.\/site-repository\.js'/, 'pg.js 必须 re-export 十个函数');
+  // 旧定义不得残留在 pg.js（双实现会漂移）
+  assert.ok(!/export (async )?function (setDefaultSteamAccount|clearDefaultSteamIfMatches|userLibraryItems)/.test(SITE_PG), 'pg.js 不允许保留旧函数定义（只许 re-export）');
+  // 边界判据锁：steam 表 DDL 在 steam-login.js（跨模块共用），site-repository 不放 DDL
+  assert.ok(!/create table/.test(SITE_REPO), 'site-repository.js 不搬家 DDL（steam 表 DDL 在 steam-login.js）');
+});
+

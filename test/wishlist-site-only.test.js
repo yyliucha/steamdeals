@@ -152,15 +152,17 @@ test('CY 批：批量 wishlists/delete 已从白名单移除——管理员 400�
 });
 
 test('§4.4 接入（静态）：账号同步用该账号自己的 key（不回退全局）、绑定后不自动同步、后台文案改「API Key」', () => {
+  // CO-5/B4-2 第七轮：/api/steam/* 账号同步路由已随 site 域抽到 src/routes/site.js，断言改指新文件
   const server = read('../src/server.js');
+  const siteRoutes = read('../src/routes/site.js');
   const cli = read('../src/cli.js');
   const extras = read('../frontend/src/pages/AdminExtras.vue');
   // 账号同步入口：用 requireAccountApiKey（两条路由），且不再出现 requireSteamApiKey() 调用
-  assert.match(server, /const requireAccountApiKey = async \(steamId\)/, '有账号级 key 解析');
-  assert.match(server, /const apiKey = await requireAccountApiKey\(steamId\);\s*\n\s*if \(!apiKey\) return;/, '同步路由改用账号 key');
-  assert.equal((server.match(/requireSteamApiKey\(\)/g) || []).length, 0, '不再有任何全局 key 回退调用');
-  assert.match(server, /该账号未配置 API Key，请先在后台填写/, '缺 key 明确报错');
-  assert.match(server, /该账号 API Key 无效，请检查/, 'key 无效明确报错');
+  assert.match(siteRoutes, /const requireAccountApiKey = async \(steamId\)/, '有账号级 key 解析');
+  assert.match(siteRoutes, /const apiKey = await requireAccountApiKey\(steamId\);\s*\n\s*if \(!apiKey\) return true;/, '同步路由改用账号 key');
+  assert.equal((siteRoutes.match(/requireSteamApiKey\(\)/g) || []).length, 0, '不再有任何全局 key 回退调用');
+  assert.match(siteRoutes, /该账号未配置 API Key，请先在后台填写/, '缺 key 明确报错');
+  assert.match(siteRoutes, /该账号 API Key 无效，请检查/, 'key 无效明确报错');
   // 绑定后不自动同步（绑定回调已随 CO-5/B4-2 认证域移入 routes/auth.js，断言改指新文件）
   const authRoutes = read('../src/routes/auth.js');
   assert.match(authRoutes, /steamNeedKey=1/, '绑定成功提示先配 key');

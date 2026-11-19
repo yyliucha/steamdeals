@@ -523,8 +523,10 @@ test('CO-5/B4-2 第六轮：me-repository.js 签名不变 + pg.js re-export（�
   // 旧定义不得残留在 pg.js（双实现会漂移）
   assert.ok(!/export (async )?function (getUserPublic|updateUserProfile|avatarOfUser|setUserAvatar|clearUserAvatar|userLibraryStats|getPrefs|savePrefs)/.test(ME_PG), 'pg.js 不允许保留旧函数定义（只许 re-export）');
   assert.ok(!/export (async )?function (normalizePrefs)|export const PREF_TABS/.test(ME_PG), 'pg.js 不允许保留 normalizePrefs/PREF_TABS 旧定义');
-  // 跨域 SQL 不得误搬：steam accounts 域（B4 #7）仍在 pg.js 用这三个函数
-  assert.ok(/export async function (setDefaultSteamAccount|clearDefaultSteamIfMatches|userLibraryItems)/.test(ME_PG), '跨域函数 setDefaultSteamAccount/clearDefaultSteamIfMatches/userLibraryItems 留在 pg.js');
+  // 第七轮边界（B4 #7）：setDefaultSteamAccount/clearDefaultSteamIfMatches/userLibraryItems
+  // 已随 site 域搬入 site-repository.js，pg.js 只许 re-export（旧 db.* 导入签名不变），
+  // 不得保留旧函数定义（双实现会漂移）
+  assert.ok(!/export (async )?function (setDefaultSteamAccount|clearDefaultSteamIfMatches|userLibraryItems)/.test(ME_PG), 'pg.js 不得保留 setDefaultSteamAccount/clearDefaultSteamIfMatches/userLibraryItems 旧定义（已随 site 域 B4 #7 搬走）');
 });
 
 test('CO-5/B4-2 第六轮：域边界——/api/me/email/* 留 auth-routes.js，不拆半截', () => {

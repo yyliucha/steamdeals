@@ -80,12 +80,8 @@ export {
 } from './announcements-repository.js';
 // CO-5/B4-2 第六轮（docs/DESIGN-AUDIT.md B4）：me 域 SQL 落 me-repository.js（本人资料/
 // 偏好/头像/游戏库统计专属 SQL + 两个域内联 SQL 新函数；无 DDL 搬家——user_prefs 表被
-// watchCandidates（alerts 引擎）也 join，属跨域共用表；setDefaultSteamAccount /
-// clearDefaultSteamIfMatches / userLibraryItems 留本文件——steam accounts 域 B4 #7 使用）。
-// 这里 re-export 保持旧 db.* 导入签名不变（routes/me.js、server.js 其它段与现有测试照旧走聚合壳）；
-// getUserPublic 另 import 供本文件内部调用（re-export 不创建本地绑定——setDefaultSteamAccount
-// 依赖它，直接改 import 自 me-repository.js）。
-import { getUserPublic } from './me-repository.js';
+// watchCandidates（alerts 引擎）也 join，属跨域共用表）。
+// 这里 re-export 保持旧 db.* 导入签名不变（routes/me.js、server.js 其它段与现有测试照旧走聚合壳）。
 export {
   getUserPublic,
   updateUserProfile,
@@ -101,6 +97,24 @@ export {
   countBoundSteamAccounts,
   boundAtOfSteamAccount,
 } from './me-repository.js';
+// CO-5/B4-2 第七轮（docs/DESIGN-AUDIT.md B4）：site 域 SQL 落 site-repository.js——站点信息
+// （/api/site）与 Steam 账号管理（/api/steam/*）专属 SQL。setDefaultSteamAccount /
+// clearDefaultSteamIfMatches / userLibraryItems 第六轮因「steam accounts 域 B4 #7 使用」留
+// 本文件，本轮随域搬走（函数签名与拆分前完全一致）；无 DDL 搬家——steam_accounts 等表
+// DDL 在 steam-login.js（跨模块共用）。这里 re-export 保持旧 db.* 导入签名不变
+// （routes/site.js、server.js 其它段与现有测试照旧走 pg.js 聚合壳）。
+export {
+  setDefaultSteamAccount,
+  clearDefaultSteamIfMatches,
+  userLibraryItems,
+  registrationEnabledRow,
+  accountApiKeyEnc,
+  accountOwnerRow,
+  claimTargetRow,
+  claimSteamAccount,
+  updateSteamAccountAlias,
+  steamAccountApiKeySet,
+} from './site-repository.js';
 
 export const SCHEMA = `
 create table if not exists platforms (
@@ -2540,76 +2554,8 @@ export async function updateUser(q, { username, displayName = undefined, role = 
 // ---------------------------------------------------------------- CX 批（docs/USER-PROFILE-EDIT.md §3）：个人资料
 // getUserPublic / updateUserProfile / avatarOfUser / setUserAvatar / clearUserAvatar 已随
 // me 域抽到 me-repository.js（CO-5/B4-2 第六轮）；setDefaultSteamAccount /
-// clearDefaultSteamIfMatches 留本文件——steam accounts 域路由（B4 #7）使用，非 me 域。
-
-/** DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：设为默认 Steam 账号——只写 users.default_steam_id，不再联动头像。 */
-export async function setDefaultSteamAccount(q, { userId, steamId }) {
-  await q('update users set default_steam_id = $2 where id = $1', [userId, steamId]);
-  return getUserPublic(q, userId);
-}
-
-/** DQ 批：解绑/删除默认账号后收口——只清 default_steam_id（头像不受影响）。 */
-export async function clearDefaultSteamIfMatches(q, { userId, steamId }) {
-  await q('update users set default_steam_id = null where id = $1 and default_steam_id = $2', [userId, steamId]);
-}
-
-/**
- * 我的游戏库与统计（CX §2 #12/#14）的 userLibraryStats 已随 me 域抽到 me-repository.js
- * （CO-5/B4-2 第六轮）；userLibraryItems 留本文件——steam accounts 域库/愿望单弹窗（B4 #7）使用。
- */
-
-/**
- * 某绑定账号的库 / 愿望单条目（CX §2 #13 弹窗）：搜索（游戏名/英文名/AppID）+ 分页。
- * kind = 'library' | 'wishlist'；只返回本人名下账号（server 层先过所有权检查）。
- */
-export async function userLibraryItems(q, { steamId, kind, kw = '', page = 1, pageSize = 10 }) {
-  const isWishlist = kind === 'wishlist';
-  const like = kw ? `%${kw}%` : null;
-  const params = [steamId];
-  const cond = ['src.steam_id = $1'];
-  if (like) {
-    params.push(like);
-    params.push(kw);
-    cond.push(
-      `(coalesce(g.name, src.name) ilike $2 or coalesce(nullif(g.name_en, ''), g.name_en) ilike $2 or cast(src.appid as text) = $3)`,
-    );
-  }
-  const whereSql = 'where ' + cond.join(' and ');
-  const src = isWishlist
-    ? `steam_wishlist src left join games g on g.steam_appid = src.appid`
-    : `steam_games src left join games g on g.steam_appid = src.appid`;
-  const total = (await q(`select count(*)::int as n from ${src} ${whereSql}`, params)).rows[0]?.n ?? 0;
-  const safePage = Math.max(1, Number.isInteger(page) ? page : 1);
-  const safeSize = Math.min(Math.max(Number.isInteger(pageSize) ? pageSize : 10, 1), 500);
-  const offset = (safePage - 1) * safeSize;
-  params.push(safeSize, offset);
-  // steam_wishlist 没有 playtime/last_played 列：愿望单模式下这两列置 null（列形状保持一致）
-  const playCols = isWishlist ? 'null as playtime_minutes, null as last_played_at' : 'src.playtime_minutes, src.last_played_at';
-  const rows = (
-    await q(
-      `select src.appid,
-              coalesce(g.name, src.name) as name,
-              g.name_en,
-              ${playCols},
-              src.synced_at,
-              g.steam_appid is not null as in_db,
-              (select min(o.price_cents) from offers o
-                 join platforms p on p.code = o.platform_code
-                where o.game_id = g.id and o.region = 'cn' and o.in_stock
-                  and p.kind in ${OFFICIAL_KINDS}) as current_low,
-              (select min(d.min_price_cents) from daily_prices d
-                 join platforms p on p.code = d.platform_code
-                where d.game_id = g.id and d.region = 'cn'
-                  and p.kind in ${OFFICIAL_KINDS}) as hist_low
-         from ${src}
-        ${whereSql}
-        order by ${isWishlist ? 'src.synced_at desc nulls last, src.appid' : 'src.playtime_minutes desc nulls last, src.appid'}
-        limit $${params.length - 1} offset $${params.length}`,
-      params,
-    )
-  ).rows;
-  return { steamId, kind, items: rows, total: Number(total), page: safePage, pageSize: safeSize };
-}
+// clearDefaultSteamIfMatches / userLibraryItems 已随 site 域抽到 site-repository.js
+// （CO-5/B4-2 第七轮，顶部 re-export 保旧 db.* 签名）。
 
 /** 改密码：踢掉该用户所有会话，旧 cookie 立即失效；AK-3 起不再顺带启用账号（启用/禁用是独立动作）。 */
 export async function setUserPassword(q, { username = null, userId = null, password, mustChange = false }) {

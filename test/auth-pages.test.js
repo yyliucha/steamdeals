@@ -18,6 +18,7 @@ const adminExtras = read('../frontend/src/pages/AdminExtras.vue');
 const userCreateDrawer = read('../frontend/src/components/UserCreateDrawer.vue');
 const mainJs = read('../frontend/src/main.js');
 const siteServer = read('../src/server.js');
+const siteRoutes = read('../src/routes/site.js');
 
 test('三条路由与标题（§5.1）', () => {
   for (const [path, title] of [['/login', '登录 · SteamDeals'], ['/register', '注册 · SteamDeals'], ['/change-password', '修改密码 · SteamDeals']]) {
@@ -80,7 +81,9 @@ test('后台：随机生成 + 临时密码弹窗（只显示一次）+ 重置留
 });
 
 test('站点信息带注册就绪状态（/api/site → registration.enabled/smtpReady）', () => {
-  assert.match(siteServer, /registration: \{ enabled: registrationEnabled, smtpReady: registrationSmtpReady \}/, '/api/site 返回注册状态');
+  // CO-5/B4-2 第七轮：/api/site 已随 site 域抽到 src/routes/site.js（B4 #7），断言指向新落点
+  assert.match(siteRoutes, /registration: \{ enabled: registrationEnabled, smtpReady: registrationSmtpReady \}/, '/api/site 返回注册状态');
+  assert.ok(!siteServer.includes("path === '/api/site'"), '/api/site 分支不得残留在 server.js（防双实现）');
 });
 
 // ---------------------------------------------------------------- BT 批（docs/MOBILE-LOGIN-ENTRY-FIX.md §6）
