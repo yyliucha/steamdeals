@@ -18,8 +18,10 @@ $env:E2E_BUDGET_MS='60000'; npm run e2e                     # 整轮总预算 60
 
 **前置条件**：
 
-1. Node ≥ 22.5（用内置 WebSocket 直连 Edge DevTools 协议，**没有引入 playwright/puppeteer**）；
-2. Microsoft Edge 已安装（`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`）；
+1. Node ≥ 22.5（用内置 WebSocket 直连 Chrome DevTools 协议，**没有引入 playwright/puppeteer**）；
+2. Google Chrome 已安装（探测顺序：`C:\Program Files\Google\Chrome\Application\chrome.exe` →
+   `C:\Program Files (x86)\…` → PATH `chrome`；**Chrome 缺失时回退 Microsoft Edge 并提示**——
+   兼容说明：Edge 仅作环境兜底，受限沙箱下 Edge mojo 命名管道会被拒，建议安装 Chrome）；
 3. `frontend/dist` 已构建（缺了会自动跑一次 `npm run frontend:build`）；
 4. App 行需要 adb + 模拟器 `steamdeals35`（`F:\Android\sdk`；全量会自动拉起并在结束时关闭，真机用 `--device=real`）；
 5. 邮件行需要仓库外凭据 `F:\dsh\e2e-secrets\mail.env`（**严禁入库**），缺了该行按"环境不具备"跳过并写明原因：
@@ -45,7 +47,7 @@ $env:E2E_BUDGET_MS='60000'; npm run e2e                     # 整轮总预算 60
 ## 2. 报告在哪
 
 - PDF：`F:\dsh\e2e-reports\<日期>-<提交短哈希>.pdf`（仓库外，**禁止 git add**）；
-- 逐次产物（HTML/截图/UI 树/Edge 配置目录）：`F:\dsh\e2e-reports\<日期>-run-<时间>\`；
+- 逐次产物（HTML/截图/UI 树/浏览器配置目录）：`F:\dsh\e2e-reports\<日期>-run-<时间>\`；
 - 报告内容：环境与版本、矩阵**逐行**结果（含断言明细/失败截图/Console/skip 原因/耗时）、线上验收明细、收尾检查。
 - 报告中绝不出现邮箱密码与管理员口令（打码），账号名只保留 `e2e_` 前缀形态。
 
@@ -58,7 +60,7 @@ $env:E2E_BUDGET_MS='60000'; npm run e2e                     # 整轮总预算 60
   "id": "my-feature",                  // 唯一 id（--only 用它）
   "name": "功能：一句话",
   "tag": ["front"],                    // front/admin/app/online/smoke；核心链路加 smoke
-  "kind": "browser",                   // browser（Edge 页面）/ api（真实 HTTP）/ adb（设备）/ online（公网只读）
+  "kind": "browser",                   // browser（Chrome 页面）/ api（真实 HTTP）/ adb（设备）/ online（公网只读）
   "steps": ["人工可读的怎么做"],
   "assert": ["守什么行为"],
   "expect": "预期",

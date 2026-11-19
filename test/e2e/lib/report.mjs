@@ -1,9 +1,10 @@
-// 报告（CK 批，docs/E2E-SUITE.md §1 #7、§6.4）：HTML → Edge --print-to-pdf → F:\dsh\e2e-reports\<日期>-<短哈希>.pdf。
+// 报告（CK 批，docs/E2E-SUITE.md §1 #7、§6.4）：HTML → Chrome --print-to-pdf → F:\dsh\e2e-reports\<日期>-<短哈希>.pdf。
+// DP 批（2026-11-19）：打印浏览器 Edge → Chrome（Chrome 缺失回退 Edge，见 lib/browser.mjs findChrome）。
 // 内容：环境与版本 / 矩阵逐行结果 / 失败截图与 Console / skip 原因 / 耗时 / 真实测试清单状态。
 // 报告与截图一律在仓库外（F:\dsh\e2e-reports\），禁止 git add。
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
-import { edgePrintHtmlToPdf } from './browser.mjs';
+import { chromePrintHtmlToPdf } from './browser.mjs';
 
 const esc = (s) =>
   String(s ?? '')
@@ -94,7 +95,7 @@ th{background:#eef2f9;position:sticky;top:0}
   <div><b>日期</b><br>${esc(run.startedAt)}</div>
   <div><b>提交</b><br>${esc(run.gitHash)}</div>
   <div><b>设备模式</b><br>${esc(run.deviceMode)}</div>
-  <div><b>Node / Edge</b><br>${esc(run.nodeVersion)} / ${esc(run.edgePath ?? '—')}</div>
+  <div><b>Node / 浏览器</b><br>${esc(run.nodeVersion)} / ${esc(run.browserPath ?? '—')}${run.browserKind === 'edge' ? '（Chrome 缺失，Edge 回退）' : ''}</div>
   <div><b>总耗时</b><br>${(run.elapsedMs / 1000).toFixed(1)}s</div>
   <div><b>通过 / 失败 / 跳过</b><br>${run.passed} / ${run.failed} / ${run.skipped}</div>
   <div><b>预算截断</b><br>${run.truncated ?? 0}${run.budgetMs > 0 ? `（预算 ${(run.budgetMs / 1000).toFixed(0)}s）` : ''}</div>
@@ -106,7 +107,7 @@ th{background:#eef2f9;position:sticky;top:0}
 ${checks}
 ${budgetNote}
 <h2>真实测试清单状态</h2>
-<p>本报告覆盖 R1（本地全栈 + headless Edge + Android 模拟器/真机 + 公网只读）。R2（所有者目视：真机微信/邮箱客户端/字体触控）与
+<p>本报告覆盖 R1（本地全栈 + headless Chrome + Android 模拟器/真机 + 公网只读）。R2（所有者目视：真机微信/邮箱客户端/字体触控）与
 R3（部署）清单见 docs/DELIVERY.md「部署后验证」表；本套件不代替 R2/R3，只提供 R1 自动证据。</p>
 <p style="color:#888">生成自 test/e2e/runner.mjs · 报告目录 F:\\dsh\\e2e-reports\\（仓库外，不入库）</p>
 <script type="application/json" id="e2e-results">${JSON.stringify({
@@ -124,10 +125,7 @@ R3（部署）清单见 docs/DELIVERY.md「部署后验证」表；本套件不�
 }
 
 /**
- * 写 HTML + 生成 PDF。PDF 路径：F:\dsh\e2e-reports\<YYYY-MM-DD>-<短哈希>.pdf。
- */
-/**
- * 写 HTML 报告（PDF 由 runner 用现有 Edge CDP 打印，避免再起一个 Edge 进程）。
+ * 写 HTML 报告（PDF 由 runner 用现有 Chrome CDP 打印，避免再起一个 Chrome 进程）。
  */
 export function writeHtml(run) {
   const htmlPath = join(run.reportDir, 'report.html');
@@ -141,10 +139,10 @@ export function pdfTargetPath(run) {
 }
 
 /**
- * 兜底打印：独立 Edge 进程 --print-to-pdf（runner 首选 CDP 打印，失败才用它）。
+ * 兜底打印：独立 Chrome 进程 --print-to-pdf（runner 首选 CDP 打印，失败才用它；Chrome 缺失按探测顺序回退 Edge）。
  */
-export function edgePrintHtmlToPdfPath(htmlPath, pdfPath) {
+export function chromePrintHtmlToPdfPath(htmlPath, pdfPath) {
   mkdirSync(dirname(pdfPath), { recursive: true });
-  edgePrintHtmlToPdf(htmlPath, pdfPath);
+  chromePrintHtmlToPdf(htmlPath, pdfPath);
   return pdfPath;
 }

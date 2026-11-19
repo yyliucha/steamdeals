@@ -1,5 +1,5 @@
-// e2e 入口（CK 批，docs/E2E-SUITE.md §3/§5；DJ 批加整轮总预算）：
-// 解析参数 → 预检（Edge/设备/前端产物）→ 起本地服务栈 → 开场清 e2e_ 孤儿 → 逐行跑矩阵（整轮总预算内）→ 收尾（清账号/关服务/关模拟器）→ 报告 PDF。
+// e2e 入口（CK 批，docs/E2E-SUITE.md §3/§5；DJ 批加整轮总预算；DP 批 2026-11-19 默认浏览器 Edge → Chrome）：
+// 解析参数 → 预检（Chrome/设备/前端产物）→ 起本地服务栈 → 开场清 e2e_ 孤儿 → 逐行跑矩阵（整轮总预算内）→ 收尾（清账号/关服务/关模拟器）→ 报告 PDF。
 // 用法：npm run e2e（全量）/ npm run e2e:smoke（--tag=smoke）/ node test/e2e/runner.mjs --only=games,appeals --tag=admin --device=real --online --expect-version=2.22.0
 // 整轮总预算（DJ 批）：默认 20 分钟（E2E_BUDGET_MS 环境变量 / --budget-ms= 可调），到点强制收尾——剩余未跑项标「预算截断」、照常生成 HTML/PDF 报告；
 // 退出码三态：0 全绿 / 1 有失败 / 2 预算截断（口径见 lib/budget.mjs）。
@@ -95,7 +95,7 @@ async function main() {
   // 现象：导入偶发返回"已登记但未初始化"的命名空间（键在、值 undefined），且同 URL 的
   // 命名空间会被 loader 缓存，重试必须换 URL（?r=N 缓存击穿）才可能拿到新实例。
   const LOAD_SENTINELS = {
-    browser: 'launchEdge',
+    browser: 'launchChrome',
     server: 'startE2EStack',
     account: 'apiLogin',
     adb: 'ensureDevice',
@@ -122,7 +122,7 @@ async function main() {
   const report = await loadLib('report');
   const steps = await loadLib('steps');
   const budget = await loadLib('budget');
-  const { findEdge, launchEdge } = browser;
+  const { findChrome, launchChrome } = browser;
   const { startE2EStack, ADMIN_USERNAME, ADMIN_PASSWORD } = serverMod;
   const { executeRow, ensureAdminBrowserLogin, SkipError } = steps;
 
@@ -145,10 +145,16 @@ async function main() {
   }
 
   // ---- 预检 ----
-  const edgePath = findEdge();
-  if (!edgePath) {
-    log('❌ 未找到 Microsoft Edge（C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe）');
+  // DP 批（2026-11-19）：Chrome 优先——Program Files → Program Files (x86) → PATH chrome → 回退 Edge 并提示。
+  const browserInfo = findChrome();
+  if (!browserInfo) {
+    log('❌ 未找到 Google Chrome（C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe / C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe / PATH chrome），且无 Microsoft Edge 可回退');
     return 1;
+  }
+  if (browserInfo.kind === 'edge') {
+    log(`⚠️ Chrome 缺失，回退使用 Microsoft Edge：${browserInfo.path}（受限沙箱下 Edge mojo 命名管道可能被拒；建议安装 Chrome）`);
+  } else {
+    log(`浏览器：Chrome（${browserInfo.path}）`);
   }
   if (!existsSync(join(REPO_ROOT, 'frontend', 'dist', 'index.html'))) {
     log('frontend/dist 缺失 → 自动执行 npm run frontend:build …');
@@ -187,15 +193,15 @@ async function main() {
   const needsLocal = rows.some((r) => r.kind !== 'online');
   const needsBrowser = rows.some((r) => r.kind === 'browser' || r.kind === 'online');
   let stack = null;
-  let edge = null;
+  let browserCdp = null;
   try {
     stack = needsLocal ? await startE2EStack(REPO_ROOT, join(runDir, 'server.log')) : null;
     log(`本地服务：${stack ? stack.base : '未启动（仅 online）'}`);
 
     // ---- 浏览器（纯 api/adb 行不需要）----
     if (needsBrowser) {
-      edge = await launchEdge({ profileDir: join(runDir, 'edge-profile') });
-      log('headless Edge 已就绪');
+      browserCdp = await launchChrome({ profileDir: join(runDir, 'chrome-profile'), browser: browserInfo });
+      log('headless Chrome 已就绪');
     }
   } catch (err) {
     // 服务/浏览器起不来也要收尾（关闭本次拉起的模拟器）——验收 ②「结束时关闭」
@@ -204,14 +210,15 @@ async function main() {
       log('已关闭本次拉起的模拟器');
     }
     if (stack) await stack.close().catch(() => {});
-    if (edge) await edge.close().catch(() => {});
+    if (browserCdp) await browserCdp.close().catch(() => {});
     throw err;
   }
 
   const ctx = {
     base: stack?.base ?? args.base ?? ONLINE_DEFAULT_BASE,
     q: stack?.q ?? null,
-    edge,
+    // ctx.edge 键名由 lib/steps.mjs 引用（DP 批不改 steps 面），值为 Chrome 驱动实例。
+    edge: browserCdp,
     repoRoot: REPO_ROOT,
     reportDir: runDir,
     adminUsername: ADMIN_USERNAME,
@@ -390,7 +397,7 @@ async function main() {
       }
     }
 
-    // ---- 报告（先出 HTML，再用现有 Edge CDP 打印 PDF，最后才关浏览器）----
+    // ---- 报告（先出 HTML，再用现有 Chrome CDP 打印 PDF，最后才关浏览器）----
     const elapsedMs = performance.now() - t0;
     const passed = results.filter((r) => r.status === 'pass').length;
     const failed = results.filter((r) => r.status === 'fail').length;
@@ -403,7 +410,8 @@ async function main() {
       gitHash,
       deviceMode: args.device,
       nodeVersion: process.version,
-      edgePath,
+      browserPath: browserInfo.path,
+      browserKind: browserInfo.kind,
       elapsedMs,
       passed,
       failed,
@@ -422,18 +430,18 @@ async function main() {
     const htmlPath = report.writeHtml(run);
     const pdfPath = report.pdfTargetPath(run);
     let pdfOk = false;
-    if (edge) {
+    if (browserCdp) {
       try {
-        await edge.goto(`file:///${htmlPath.replaceAll('\\', '/')}`, { timeoutMs: 15_000 });
-        await edge.printPdf(pdfPath);
+        await browserCdp.goto(`file:///${htmlPath.replaceAll('\\', '/')}`, { timeoutMs: 15_000 });
+        await browserCdp.printPdf(pdfPath);
         pdfOk = true;
       } catch (err) {
-        log(`⚠️ CDP 打印 PDF 失败（${err.message.slice(0, 120)}）→ 兜底独立 Edge --print-to-pdf`);
+        log(`⚠️ CDP 打印 PDF 失败（${err.message.slice(0, 120)}）→ 兜底独立 Chrome --print-to-pdf`);
       }
     }
     if (!pdfOk) {
       try {
-        report.edgePrintHtmlToPdfPath(htmlPath, pdfPath);
+        report.chromePrintHtmlToPdfPath(htmlPath, pdfPath);
         pdfOk = true;
       } catch (err2) {
         log(`⚠️ PDF 兜底也失败：${err2.message.slice(0, 200)}；报告仅 HTML`);
@@ -455,7 +463,7 @@ async function main() {
       log('已关闭本次拉起的模拟器');
     }
     if (stack) await stack.close().catch(() => {});
-    if (edge) await edge.close().catch(() => {});
+    if (browserCdp) await browserCdp.close().catch(() => {});
   }
 }
 

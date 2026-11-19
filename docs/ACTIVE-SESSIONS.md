@@ -17,6 +17,10 @@
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
 | （示例）DL | src/align*.js、server.js(align 区)、AlignAdmin.vue | 无 | 11-20 09:00 | 11-20 18:00 | dev-DL |
+| DN | src/align.js、src/server.js(align 区：computeAlignGroups/alignGroupCounts 调用点)、frontend/src/components/AlignAdmin.vue、test/{align,align-perf,api}.test.js | 无 | 11-19 11:00 | 11-19 13:00 | dev-DN(lead) |
+| DQ | src/store/pg.js(profile 区)、src/server.js(profile/avatar 区，2191-3091)、frontend/src/pages/ProfilePage.vue、frontend/src/components/UserAvatar.vue、frontend/src/utils/avatar.js、test/profile.test.js、docs/PROFILE-UI-2026-11-19.md、docs/PROJECT-OVERVIEW.md；App 仓库 ui/profile、ui/me、data/api | Android 模拟器（cm35，DQ 验收用，用完即释放）+ 本地服务栈（8090 联调，用完即关） | 11-19 11:50 | 11-19 18:00 | dev-DQ(lead) |
+| DP | test/e2e/lib/{browser,report}.mjs、test/e2e/runner.mjs、docs/E2E-SUITE.md、docs/TESTING-E2E.md | headless 浏览器报告 + 真实服务栈（仅 e2e:smoke 冒烟档） | 11-19 11:40 | 11-19 12:30 | dev-DP |
+| DR | server.js(app-sync 区)、src/settings.js、frontend/src/pages/AdminModules.vue(同步与回填)、.dsh/skills/{steamdeals-app-build,steamdeals-build}；App 仓库 UpdateManager.kt + UpdateManagerTest.kt | 无 | 11-19 11:45 | 11-19 18:00 | dev-DR(lead) |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 

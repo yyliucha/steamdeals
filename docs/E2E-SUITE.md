@@ -1,6 +1,6 @@
-# e2e 测试套件（功能矩阵 + headless Edge + Android 模拟器/真机 + 公网只读 + PDF 报告）（已实现并发布 v2.24.0）
+# e2e 测试套件（功能矩阵 + headless Chrome + Android 模拟器/真机 + 公网只读 + PDF 报告）（已实现并发布 v2.24.0）
 
-> 状态：**已实现并发布 v2.24.0（2026-11-17，test(e2e) 65af42b；QA ✅ docs/QA-E2E-SUITE-CK.md 第 1 轮）**；DJ 追加（§1 #14 整轮总预算 + steamdeals-test §2.3 独立报告流程）**已发布 v2.24.5（2026-11-18，实现 c87dfe0；QA ✅ docs/QA-DJ.md 第 1 轮）**。使用说明见 [TESTING-E2E.md](TESTING-E2E.md)。
+> 状态：**已实现并发布 v2.24.0（2026-11-17，test(e2e) 65af42b；QA ✅ docs/QA-E2E-SUITE-CK.md 第 1 轮）**；DJ 追加（§1 #14 整轮总预算 + steamdeals-test §2.3 独立报告流程）**已发布 v2.24.5（2026-11-18，实现 c87dfe0；QA ✅ docs/QA-DJ.md 第 1 轮）**；DP 批（2026-11-19，默认浏览器 Edge → Chrome）**已实现待发版**。使用说明见 [TESTING-E2E.md](TESTING-E2E.md)。
 > 关联：[steamdeals-test](../.dsh/skills/steamdeals-test/SKILL.md)（测试方法库与真实测试门槛）、
 > [TODO.md](TODO.md) CK 条目、[HANDOVER.md](HANDOVER.md)（流程与状态词）、[DELIVERY.md](DELIVERY.md)（部署后验证）。
 
@@ -10,14 +10,14 @@
 |---|---|
 | 1 | 两档：`npm run e2e`（**全量**：完整功能矩阵 + 后台建删 e2e 测试账号）/ `npm run e2e:smoke`（核心链路，≤5 分钟）。**发版后由独立报告会话跑全量并出 PDF**（流程见 [steamdeals-test](../.dsh/skills/steamdeals-test/SKILL.md) §2.3 / TODO DJ；不阻塞构建）；**每轮 QA 跑本批相关矩阵行**（`--only`/`--tag`）。 |
 | 2 | 功能矩阵文件化、**可自定义**：`test/e2e/matrix.json`，支持 `--only=<id列表>`、`--tag=<组>`；**新功能必须加行**，否则 QA 按覆盖不足打回。 |
-| 3 | 真实浏览器：**headless Edge**（`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`）做 DOM/Console/截图断言；不引入 playwright/puppeteer。 |
+| 3 | 真实浏览器：**headless Chrome**（DP 批 2026-11-19，所有者指定）做 DOM/Console/截图断言；不引入 playwright/puppeteer。探测顺序：`C:\Program Files\Google\Chrome\Application\chrome.exe` → `C:\Program Files (x86)\…` → PATH `chrome` → **回退 Microsoft Edge 并提示**（兼容说明：Edge 仅作环境兜底；受限沙箱下 Edge mojo 命名管道会被拒，Chrome 才是默认） |
 | 4 | 移动端：**默认 Android 模拟器 `steamdeals35`（API 35，WHPX）**；真机用 `--device=real`。**设备未连接/掉线 → 立即中断**并提示连接步骤（USB 模式选“传输文件(MTP)”、开发者选项开 USB 调试与 USB 调试（安全设置）、手机点允许）。 |
 | 5 | 后台测试从**新建用户**开始：`e2e_<时间戳>`（强密码走密码策略）→ 登录/改密 → 后台 13 模块 → 前台行为 → **彻底删除**并断言用户不存在；**开场先清理 `e2e_%` 孤儿账号**，只删该前缀。 |
 | 6 | 邮件真实收件：163 测试邮箱凭据放**仓库外** `F:\dsh\e2e-secrets\mail.env`（脚本只读环境变量，严禁入库）；优先 IMAP 拉取断言，网页邮箱登录仅兜底。 |
-| 7 | 报告：运行结束生成 HTML → Edge `--print-to-pdf` → 输出 **`F:\dsh\e2e-reports\<日期>-<提交短哈希>.pdf`**（仓库外，**不提交 GitHub**）；含矩阵逐行结果/失败截图/Console/耗时/skip 原因；**HTML 内嵌 `e2e-results` JSON（行级 status/durationMs），供 CO-4/D6 基线门禁联动**（`node scripts/baseline-gate.mjs --mode=e2e --e2e-report=<HTML>`：失败行/超时行即红）。 |
-| 8 | 微信内置浏览器**不做**客户端自动化（条款/封号风险）：用 Edge 设微信 UA 做页面级自动断言；真机微信只留一次性人工确认。 |
+| 7 | 报告：运行结束生成 HTML → Chrome `--print-to-pdf` → 输出 **`F:\dsh\e2e-reports\<日期>-<提交短哈希>.pdf`**（仓库外，**不提交 GitHub**）；含矩阵逐行结果/失败截图/Console/耗时/skip 原因；**HTML 内嵌 `e2e-results` JSON（行级 status/durationMs），供 CO-4/D6 基线门禁联动**（`node scripts/baseline-gate.mjs --mode=e2e --e2e-report=<HTML>`：失败行/超时行即红）。 |
+| 8 | 微信内置浏览器**不做**客户端自动化（条款/封号风险）：用 Chrome 设微信 UA 做页面级自动断言；真机微信只留一次性人工确认。 |
 | 9 | 部署后**公网只读验收**可自动跑（`--online`）：`/api/site` 版本、页面 dump-dom、截图、关键接口 200、TTFB——不碰服务器/生产库。 |
-| 10 | 不新增运行时依赖；e2e 仅用 Node 内置能力 + Edge + adb 子进程。 |
+| 10 | 不新增运行时依赖；e2e 仅用 Node 内置能力 + Chrome + adb 子进程。 |
 | 11 | **后台矩阵深度**：用户 / 愿望单 / 站点通知 / Steam 账号 **四类走增删改**；其余模块到列表/筛选/详情即可。 |
 | 12 | **App 覆盖安装**：以 `frontend/public/app/steamdeals-2.19.0.apk` 作为"旧版"包测覆盖安装（同签名、数据保留）。 |
 | 13 | **`--online` 公网验收在部署后跑**（带 `--expect-version=X.Y.Z` 断言新版本）；发版前不跑。 |
@@ -29,6 +29,9 @@
   链外 `api.test.js`（真 HTTP + pglite）等。**没有浏览器级/App 级 e2e**。
 - 本机能力（实测）：Edge 存在；`F:\Android\sdk\emulator\emulator.exe` + AVD `steamdeals35`；`adb` 可用；
   JDK 17 可构建 APK；`npm ls playwright puppeteer` 为空（不引入）。
+- 本机能力（DP 批，2026-11-19 实测）：Chrome 157（`C:\Program Files\Google\Chrome\Application\chrome.exe`）
+  headless 正常（dump-dom 成功、stderr 干净）；受限沙箱下 Edge mojo 命名管道被拒——**e2e 默认浏览器改为 Chrome**，
+  Edge 仅作 Chrome 缺失时的回退。
 - 历史手工验证成本高：BT/BW/BY/CG 等批次都靠“部署后真机/线上目视”收尾，缺少可重复脚本。
 
 ## 3. 交付物与目录
@@ -38,7 +41,7 @@ test/e2e/
   matrix.json          # 功能矩阵（id/name/tag/断言点/步骤/预期）
   runner.mjs           # 入口：解析参数 → 起本地服务 → 跑矩阵 → 报告
   lib/server.mjs       # 本地服务启动/关闭（pglite 临时库 + setup 建管理员）
-  lib/browser.mjs      # headless Edge：dump-dom / screenshot / console 采集 / print-to-pdf
+  lib/browser.mjs      # headless Chrome（Chrome 缺失回退 Edge）：dump-dom / screenshot / console 采集 / print-to-pdf
   lib/adb.mjs          # 设备预检 / 启动模拟器 / 安装 APK / tap / uiautomator dump / screencap
   lib/report.mjs       # HTML 报告 + PDF
   lib/budget.mjs       # 整轮总预算（DJ 批）：默认 20 分钟 deadline / 到点「预算截断」/ 退出码三态（纯函数，可单测）
@@ -61,7 +64,7 @@ test/e2e/
 
 ## 5. 执行流程（全量一次的标准顺序）
 
-1. 预检：Edge 存在；`--device=real` 时 `adb devices` 必须有设备，否则**中断**；模拟器模式自动启动 `steamdeals35`。
+1. 预检：Chrome 存在（探测顺序见 §1 #3；Chrome 缺失回退 Edge 并提示，两者皆无立即报错）；`--device=real` 时 `adb devices` 必须有设备，否则**中断**；模拟器模式自动启动 `steamdeals35`。
 2. 起本地服务：临时 pglite 库（随机端口 + 临时目录）→ setup 建管理员 → 最小种子数据（若干游戏/报价/快照）。
 3. 清理孤儿 `e2e_%` 用户 → 新建 `e2e_<ts>` → 登录/改密。
 4. 跑矩阵（前台 → 后台 → App → 可选线上），逐行记录结果/截图/Console；**整轮总预算**默认 20 分钟（决策 #14），到点剩余未跑项标「预算截断」后照常收尾。
