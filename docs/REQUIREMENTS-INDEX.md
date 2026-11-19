@@ -130,6 +130,7 @@
 | **DT-4** | 验证码体验（冷却分桶 + 倒计时 60s + 重置密码弹窗不发码/失败不关/可重发） | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-4 | 待开发（2026-11-19 沟通确认） | ✅ 本轮已给 |
 | **DT-5** | 前后台入口（前台登录按钮/去退出改密；Console 全局顶栏用户菜单树） | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-5 | 待开发（2026-11-19 沟通确认） | ✅ 本轮已给 |
 | **DU** | 🐞 缺陷：个人资料「个人简介」placeholder 插值未绑定（显示 {{ }} 源码） | 本交接（TODO DU 条目） | 待开发（2026-11-19 截图发现，P3） | ✅ 本轮已给 |
+| **DV** | 游戏管理「ITAD」筛选改为来源筛选（game_source_sync matched） | [ITAD-SOURCE-FILTER.md](ITAD-SOURCE-FILTER.md) | 待开发（2026-11-19 方案 A 确认） | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
 

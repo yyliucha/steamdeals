@@ -22,7 +22,7 @@
 |---|---|---|
 | 🐞 缺陷 | 1 | DU |
 | ✨ 功能 | 1 | DT-2 |
-| ⚙️ 调整 | 4 | DT-1 / DT-3 / DT-4 / DT-5 |
+| ⚙️ 调整 | 5 | DT-1 / DT-3 / DT-4 / DT-5 / DV |
 | 🧹 技术债 | 1 | CO-4 B4 |
 | 🧪 测试基建 | 0 | — |
 | 📝 文档流程 | 0 | — |
@@ -90,6 +90,24 @@
   全项目扫描仅此一处（grep `="[^"]*\{\{` 无其它命中）。
 - **验收**：admin 显示「介绍一下自己（可选）」、普通用户显示「介绍一下自己（1–200 字）」；
   `npm test`（分段）+ `npm run frontend:build` + `npm run scan` 全绿。
+
+## DV. 待开发（⚙️ 调整）：游戏管理「ITAD」筛选改为来源筛选
+
+**类型：** ⚙️ 调整（筛选语义修正）
+**状态：** 待开发（2026-11-19 排查确认：ITAD 是来源不是平台，平台筛选永远 0 条）
+**优先级：** P2 —— 后台筛选可用性
+**依赖：** 无
+**解锁：** 无
+**规格**：[ITAD-SOURCE-FILTER.md](ITAD-SOURCE-FILTER.md)
+
+- **根因**：ITAD 报价归具体商店平台（steam/gog/humble/fanatical/itad_*），**从不写 platform_code='itad'**；
+  后台「平台」筛选对 ITAD 用 `offers.platform_code='itad'` → 永远 0 条。ITAD 真实覆盖在
+  `game_source_sync(platform_code='itad', status='matched')`。
+- **修复（方案 A）**：`platform=itad` 改走来源判定
+  `exists (select 1 from game_source_sync gs where gs.game_id=g.id and gs.platform_code='itad' and gs.status='matched')`；
+  前端下拉 `itad` 标签改「ITAD（来源）」并视觉区分；其余平台筛选不变；不动采集链路。
+- **验收**：见规格 §3（ITAD（来源）筛出有匹配标记的游戏；其它平台不变；采集新匹配后刷新可见；标签区分清楚；
+  `npm test`（分段）+ `frontend:build` + `scan` 全绿）。
 
 ## DT. 待开发：后台用户管理与权限隔离（拆 5 个子需求，一次会话一个）
 
