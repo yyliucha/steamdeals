@@ -11,10 +11,8 @@
 
 <script setup>
 // CX 批（docs/USER-PROFILE-EDIT.md §2 #8）：有头像处统一头像组件。
-// DQ 批（docs/PROFILE-UI-2026-11-19.md §4）：头像只有 custom 走 /api/avatar/:userId；
-// 无头像或加载失败回退首字（昵称首字母英文大写/第一个汉字 + 品牌色），规则统一在 utils/avatar.js。
+// 有头像（自定义/Steam 默认）显示 /api/avatar/:userId；无头像或加载失败回退首字（显示名首字符）。
 import { computed, ref, watch } from 'vue';
-import { avatarInitial } from '../utils/avatar.js';
 
 const props = defineProps({
   userId: { type: Number, default: null },
@@ -28,7 +26,10 @@ watch(
     failed.value = false;
   },
 );
-const initial = computed(() => avatarInitial(props.name, '?'));
+const initial = computed(() => {
+  const s = String(props.name ?? '').trim();
+  return s ? [...s][0].toUpperCase() : '?';
+});
 const title = computed(() => String(props.name ?? '').trim() || `用户 #${props.userId ?? ''}`);
 </script>
 

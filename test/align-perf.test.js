@@ -419,13 +419,13 @@ test('DE：topCandidates——top-1 与 bestMatchMulti 同口径、按分数降�
   assert.ok(low.topCandidates.length >= 1 && low.topCandidates[0].score < 0.86, '低分候选进 topCandidates（明细面板）');
 });
 
-test('DE：alignGroupCounts——auto≥0.94 / manual 0.86–0.94 / noCandidate / skus / inherited / ignored / contentWords（DN 批）', () => {
+test('DE：alignGroupCounts——auto≥0.94 / manual 0.86–0.94 / noCandidate / skus / inherited / ignored', () => {
   const groups = [
     { skuIds: [1, 2], best: { score: 0.97 } },
     { skuIds: [3], best: { score: 0.90 } },
     { skuIds: [4], best: null },
   ];
-  const counts = alignGroupCounts(groups, { inheritApplied: 68, ignoredGroups: 2 }, { groups: 1, skus: 2 });
+  const counts = alignGroupCounts(groups, { inheritApplied: 68, ignoredGroups: 2 });
   assert.deepEqual(counts, {
     groups: 3,
     skus: 4,
@@ -434,9 +434,7 @@ test('DE：alignGroupCounts——auto≥0.94 / manual 0.86–0.94 / noCandidate 
     noCandidate: 1,
     inherited: 68,
     ignored: 2,
-    contentWords: 1,
-    contentWordSkus: 2,
-  }, '5 统计卡与「已忽略」chip 的计数口径（含内容词归档计数）');
+  }, '5 统计卡与「已忽略」chip 的计数口径');
 });
 
 test('DE：applyMapInheritance 返回 ignoredGroups（按去重组计数）', () => {

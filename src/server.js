@@ -10,7 +10,7 @@
 // 折扣数据永远只由调度器写入，这里没有任何改价的接口——这是硬约束。
 import { createServer } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
-import { readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, statSync } from 'node:fs';
 import { join, extname, resolve, sep } from 'node:path';
 import * as db from './store/pg.js';
 import { createConcurrencyGate } from './http-guard.js';
@@ -139,6 +139,9 @@ export function isTimeoutExemptPath(path) {
   if (path.startsWith('/img/') || path.startsWith('/app/dl/') || path.startsWith('/out/')) return true;
   if (/\.csv$/.test(path)) return true;
   if (path === '/api/admin/backup') return true;
+  // DR 批（docs/APP-INSTANT-UPDATE.md §3.1）：手动 App 同步要下载 APK（数十 MB），不套 15s 看门狗；
+  // 并发与排队已由 single-flight + GitHub 超时保护。
+  if (path === '/api/admin/app-sync') return true;
   return false;
 }
 
@@ -479,6 +482,8 @@ export function createApiServer({
   gateMaxQueue = 20, // B1 批测试注入：并发闸队列长度上限（超出立即 503）
   adminCacheTtlMs = 3000, // B2 批测试注入：/api/admin/games 短缓存 TTL
   syncStatusTtlMs = 3000, // B2 批测试注入：/api/admin/sync/status 短缓存 TTL
+  appSyncFetchImpl = null, // DR 批测试注入：POST /api/admin/app-sync 的 GitHub fetch 替身（默认真实 fetch）
+  appSyncDir = null, // DR 批测试注入：app-sync 落盘目录（默认 env APP_DATA_DIR ?? data/app）
 }) {
   const q = query;
   // B1 批（docs/DESIGN-AUDIT.md B1）：重型接口并发闸——按 key 每实例一把闸，
@@ -550,6 +555,9 @@ export function createApiServer({
   let syncOutput = ''; // 子进程输出尾巴，供前端轮询
   let syncSettled = true;
   let syncStopRequested = false; // 后台点了"停止"，子进程退出后记为 cancelled
+  // DR 批（docs/APP-INSTANT-UPDATE.md §3.1）：App 手动同步 single-flight——并发请求共享同一 Promise，
+  // GitHub 只被请求一轮（验收 §4.1「并发两次只跑一次」）。
+  let appSyncInFlight = null;
 
   // Steam 绑定 state 的进程内登记表：随机串 → { userId, expiresAt }，5 分钟过期。
   // 必须放在请求处理器之外：/start 签发、/callback 消费，跨两次请求共享（steam-login.js 实现）。
@@ -719,16 +727,7 @@ export function createApiServer({
     const items = align.loadSonkwoItems(entries, orphanRows);
     const allSkuIds = items.map((i) => String(i.skuId));
     const maps = await db.sourceMapsByProducts(q, 'sonkwo', allSkuIds);
-    // DN 批（docs/TODO.md DN）：内容词 SKU 默认归档——名称命中内容词（复用 match.js hasContentWord，
-    // 季票/服装/DLC 等，含杉果自定义命名）且库无映射 → 不进待对齐队列（自动归档，不计入「待对齐组」）；
-    // 归档写 game_source_map（ignored, method=content_word）供「已忽略」视图查看/恢复（DH 能力）；
-    // confirmed/pending/ignored 的人工决定优先（恢复为 pending 后重新入队、不重复归档）。
-    const contentWords = align.archiveContentWordItems(items, maps);
-    const archivedWritten = await align.writeContentWordArchives({ q, archived: contentWords.archived, logger });
-    if (contentWords.groups) {
-      logger?.info('align.content_word_skipped', { groups: contentWords.groups, skus: contentWords.skus, archived: archivedWritten });
-    }
-    const inherit = align.applyMapInheritance(contentWords.items, maps);
+    const inherit = align.applyMapInheritance(items, maps);
     // DH 批（docs/ALIGN-INTEGRITY.md §2 A1/§5.1）：skus.json 已带 appid、库无映射 →
     // 计算时自动补写 game_source_map（confirmed，method=skus_backfill）+ 日志 align.map_backfilled。
     const backfilled = await align.writeBackfilledMaps({ q, backfill: inherit.backfill, steamGames: games, logger });
@@ -763,8 +762,8 @@ export function createApiServer({
         g.lastReviewed = { by: traces[0].username ?? null, at: traces[0].reviewed_at, action: '恢复' };
       }
     }
-    logger?.info('align.computed', { groups: groups.length, partial, backfilled, contentWordGroups: contentWords.groups, ms: Date.now() - wallStartedAt });
-    return { align, entries, games, groups, inherit, contentWords, partial, generatedAt: Date.now() };
+    logger?.info('align.computed', { groups: groups.length, partial, backfilled, ms: Date.now() - wallStartedAt });
+    return { align, entries, games, groups, inherit, partial, generatedAt: Date.now() };
   };
   const alignRunner = createAlignRunner({ compute: computeAlignGroups, ttlMs: ALIGN_CACHE_TTL_MS });
   const buildAlignGroups = ({ refresh = false } = {}) => alignRunner.run({ refresh });
@@ -2188,14 +2187,23 @@ export function createApiServer({
 
       // ---- CX 批（docs/USER-PROFILE-EDIT.md §3）：个人资料编辑（只改自己；管理员与用户同一套接口）----
 
-      // 头像公开只读：custom 输出库内字节（ETag/长缓存）；无头像 404（前端回退首字）。
-      // DQ 批（docs/PROFILE-UI-2026-11-19.md 决策 1）：steam: 头像来源已退役（迁移清空），不再 302 到 Steam CDN。
+      // 头像公开只读：custom 输出库内字节（ETag/长缓存）；steam:<id> 302 到该账号 Steam CDN 头像；无头像 404。
       const avatarMatch = path.match(/^\/api\/avatar\/(\d+)$/);
       if (avatarMatch && req.method === 'GET') {
         const avatarUserId = Number(avatarMatch[1]);
         const row = await db.avatarOfUser(q, avatarUserId);
         if (!row) return json(res, 404, { error: '没有该用户' });
         const source = row.avatar_source ?? null;
+        if (source && source.startsWith('steam:')) {
+          const steamId = source.slice('steam:'.length);
+          const acct = (await q('select avatar from steam_accounts where steam_id = $1', [steamId])).rows[0];
+          if (acct?.avatar) {
+            res.writeHead(302, { location: acct.avatar, 'cache-control': 'public, max-age=300' });
+            res.end();
+            return;
+          }
+          return json(res, 404, { error: 'no avatar' });
+        }
         if (source === 'custom' && row.avatar_bytes) {
           const etag = `"av-${avatarUserId}-${row.avatar_updated_at ? new Date(row.avatar_updated_at).getTime() : 0}"`;
           if (req.headers['if-none-match'] === etag) {
@@ -2363,8 +2371,7 @@ export function createApiServer({
               ? new Date(Math.max(new Date(a.library_synced_at).getTime(), new Date(a.wishlist_synced_at).getTime())).toISOString()
               : a.library_synced_at ?? a.wishlist_synced_at ?? null,
           boundAt: bindTimes.get(a.steam_id),
-          // DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：默认判定读 default_steam_id（与头像解耦）
-          isDefault: me.default_steam_id != null && String(me.default_steam_id) === String(a.steam_id),
+          isDefault: me.avatar_source === 'steam:' + a.steam_id,
         }));
         const stats = await db.userLibraryStats(q, user.id);
         return json(res, 200, { accounts: list, stats });
@@ -2879,7 +2886,9 @@ export function createApiServer({
           [steamId, persona.personaName, persona.avatar, user.id],
         );
         logger?.info('steam.bind_ok', { steamId, userId: user.id, persona: persona.personaName ?? null });
-        // DQ 批（docs/PROFILE-UI-2026-11-19.md 决策 1/§3）：绑定新账号不再自动改动头像（头像永远由用户上传）。
+        // CX 批（docs/USER-PROFILE-EDIT.md §2 #3）：头像默认取已绑 Steam 账号——首个账号绑定后自动成为默认
+        // （仅当用户从未显式设置过头像来源；之后可在资料页换选任一账号或自定义）。
+        await db.setDefaultSteamAccountIfUnset(q, { userId: user.id, steamId });
         // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：绑定落一条审计；同步类动作由 syncAccount* 各自记录。
         await steamLogMod.recordSteamLog(q, {
           action: 'bind',
@@ -2927,7 +2936,8 @@ export function createApiServer({
           if (!found.rows[0]) return json(res, 404, { error: '没有该 Steam 账号' });
           if (found.rows[0].user_id != null) return json(res, 409, { error: '该账号已被认领' });
           await q('update steam_accounts set user_id = $1, last_login_at = now() where steam_id = $2 and user_id is null', [user.id, steamId]);
-          // DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：认领账号不再自动改动头像。
+          // CX 批：认领的首个账号同样自动成为默认头像来源（未显式设置过时）
+          await db.setDefaultSteamAccountIfUnset(q, { userId: user.id, steamId });
           // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：认领落审计（失败吞异常，不影响认领）
           await steamLogMod.recordSteamLog(q, {
             action: 'claim',
@@ -3062,12 +3072,12 @@ export function createApiServer({
           logger,
           log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
         });
-        // DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：解绑的是默认账号 → 只清 default_steam_id（头像不受影响）
+        // CX 批（docs/USER-PROFILE-EDIT.md §3）：解绑的是默认账号 → 头像来源清空（回退首字/重选），不留悬挂引用
         await db.clearDefaultSteamIfMatches(q, { userId: user.id, steamId });
         return json(res, 200, result);
       }
 
-      // DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：设为默认 Steam 账号——只写 default_steam_id（每用户一个默认），与头像解耦
+      // CX 批：设为默认 Steam 账号（头像默认取该账号；每用户一个默认）
       const accountDefaultMatch = path.match(/^\/api\/steam\/accounts\/([^/]+)\/default$/);
       if (accountDefaultMatch && req.method === 'POST') {
         if (!requireUser()) return;
@@ -3076,7 +3086,7 @@ export function createApiServer({
         if (!row) return;
         const me = await db.setDefaultSteamAccount(q, { userId: user.id, steamId });
         logger?.info('steam.default_set', { steamId, userId: user.id });
-        return json(res, 200, { ok: true, defaultSteamId: me.default_steam_id ?? null });
+        return json(res, 200, { ok: true, avatarSource: me.avatar_source });
       }
 
       // ---- CL 批（docs/USER-ALERTS.md §3.1）：用户级到价提醒（登录必需；POST/DELETE 每用户 30 次/分）----
@@ -3903,6 +3913,107 @@ export function createApiServer({
           if (err.code === 'BUSY') return json(res, 409, { error: err.message, run: err.run });
           throw err;
         }
+      }
+
+      // ---- DR 批（docs/APP-INSTANT-UPDATE.md §3.1）：App 版本卡状态（只读）+ 管理员立即同步 ----
+      if (path === '/api/admin/app-sync/status' && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const { readLatestMeta } = await import('./app-release.js');
+        const appDir = appSyncDir ?? process.env.APP_DATA_DIR ?? 'data/app';
+        const file = process.env.APP_LATEST_FILE ?? resolve(frontendDir ?? 'frontend/dist', 'app', 'latest.json');
+        const { data, source } = readLatestMeta(appDir, file);
+        let lastSyncAt = null;
+        try {
+          const p = join(resolve(process.cwd(), appDir), 'latest.json');
+          if (existsSync(p)) lastSyncAt = new Date(statSync(p).mtimeMs).toISOString();
+        } catch { /* 无本地文件 */ }
+        let lastError = null;
+        try {
+          lastError = await db.lastFailedSyncRun(q, 'app-sync');
+        } catch { /* sync_runs 缺失时忽略 */ }
+        return json(res, 200, {
+          latest: data
+            ? {
+                version: data.version ?? null,
+                versionCode: data.versionCode == null ? null : Number(data.versionCode),
+                releasedAt: data.releasedAt ?? null,
+              }
+            : null,
+          source,
+          lastSyncAt,
+          lastError,
+          syncing: Boolean(appSyncInFlight),
+        });
+      }
+
+      if (path === '/api/admin/app-sync' && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const appDir = appSyncDir ?? process.env.APP_DATA_DIR ?? 'data/app';
+        const syncedAt = new Date().toISOString();
+        // single-flight：并发请求共用同一个进行中的 Promise（验收 §4.1「并发两次只跑一次」）
+        const startedHere = !appSyncInFlight;
+        if (!appSyncInFlight) {
+          appSyncInFlight = (async () => {
+            const { syncAppRelease } = await import('./app-release.js');
+            return syncAppRelease({
+              repo: process.env.APP_RELEASE_SYNC_REPO ?? 'yyliucha/steamdeals-app',
+              keep: Number(process.env.APP_RELEASE_SYNC_KEEP ?? 3),
+              dir: appDir,
+              force: true,
+              logger,
+              fetchImpl: appSyncFetchImpl,
+            });
+          })().finally(() => {
+            appSyncInFlight = null;
+          });
+        }
+        let result;
+        try {
+          result = await appSyncInFlight;
+        } catch (err) {
+          const message = String(err?.message ?? err).slice(0, 120);
+          if (startedHere) logger?.warn('app.sync_manual', { by: user.username, reason: 'exception', message });
+          else logger?.info('app.sync_manual_joined', { by: user.username, reason: 'exception' });
+          await db
+            .writeAuditLog(q, {
+              actorId: user.id,
+              actor: user.username,
+              action: 'admin.app_sync',
+              target: 'app-release-sync',
+              detail: { outcome: 'exception', message, joined: !startedHere },
+              ip,
+            })
+            .catch(() => {});
+          return json(res, 502, { ok: false, reason: 'exception', syncedAt });
+        }
+        const reason = result.apkFailed ?? (result.synced ? null : result.reason);
+        if (startedHere) {
+          logger?.info('app.sync_manual', {
+            by: user.username,
+            version: result.version ?? null,
+            reason: reason ?? null,
+            synced: result.synced,
+          });
+        } else {
+          logger?.info('app.sync_manual_joined', { by: user.username, version: result.version ?? null, reason: reason ?? null });
+        }
+        await db
+          .writeAuditLog(q, {
+            actorId: user.id,
+            actor: user.username,
+            action: 'admin.app_sync',
+            target: 'app-release-sync',
+            detail: { version: result.version ?? null, reason: reason ?? null, synced: result.synced, joined: !startedHere },
+            ip,
+          })
+          .catch(() => {});
+        return json(res, result.synced ? 200 : 502, {
+          ok: result.synced,
+          version: result.version ?? null,
+          apk: result.apk ?? null,
+          reason: reason ?? null,
+          syncedAt,
+        });
       }
 
       if (path === '/api/admin/sync/status' && req.method === 'GET') {
@@ -5038,7 +5149,7 @@ export function createApiServer({
             body.stale = true;
             body.cachedRows = rows.slice((page - 1) * pageSize, page * pageSize);
             body.cachedTotal = rows.length;
-            body.cachedCounts = stale.align.alignGroupCounts(stale.groups, stale.inherit, stale.contentWords);
+            body.cachedCounts = stale.align.alignGroupCounts(stale.groups, stale.inherit);
             body.cachedGeneratedAt = stale.generatedAt ?? null;
           } else {
             body.stale = false;
@@ -5048,7 +5159,7 @@ export function createApiServer({
         const result = await buildAlignGroups({ refresh });
         const { groups, inherit } = result;
         const rows = mapAlignRows(groups);
-        const counts = result.align.alignGroupCounts(groups, inherit, result.contentWords);
+        const counts = result.align.alignGroupCounts(groups, inherit);
         return json(res, 200, {
           groups: rows.slice((page - 1) * pageSize, page * pageSize),
           total: rows.length,
@@ -5850,8 +5961,10 @@ export function startApiServer({
   gateMaxQueue = 20,
   adminCacheTtlMs = 3000,
   syncStatusTtlMs = 3000,
+  appSyncFetchImpl = null, // DR 批测试注入：POST /api/admin/app-sync 的 GitHub fetch 替身
+  appSyncDir = null, // DR 批测试注入：app-sync 落盘目录（默认 env APP_DATA_DIR ?? data/app）
 }) {
-  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, imgMissTtl, dlcFetchImpl, dlcReadThrottleMs, requestTimeoutMs, gateWaitMs, gateMaxQueue, adminCacheTtlMs, syncStatusTtlMs });
+  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, imgMissTtl, dlcFetchImpl, dlcReadThrottleMs, requestTimeoutMs, gateWaitMs, gateMaxQueue, adminCacheTtlMs, syncStatusTtlMs, appSyncFetchImpl, appSyncDir });
   // 黑名单定时刷新（管理端增删后也会即时刷新；unref 不阻止进程退出）
   const blockTimer = setInterval(() => {
     visitors.refreshBlocklist(query).catch(() => {});

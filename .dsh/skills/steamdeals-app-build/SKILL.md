@@ -48,8 +48,12 @@ description: SteamDeals App（F:\dsh\steamdeals-app，yyliucha/steamdeals-app）
 5. **打 tag 推 tag**：`git tag -a app-vX.Y.Z -m "SteamDeals App vX.Y.Z：<摘要>"` → 推送。
 6. **建 Release**：`gh release create app-vX.Y.Z <apk> <sha256 文件> <latest.json> --title "SteamDeals App X.Y.Z" --notes "<摘要>"`；
    三资产缺一不可（站点 `app-release-sync` 从 Release 资产读 versionCode 与下载链接）。
-7. **站点同步验证**：站点仓库 `node src/cli.js app-sync --force`（或等每小时自动任务），
-   然后本机起站点服务确认 `GET /api/app/latest` 返回新 versionCode。
+7. **站点同步验证（DR 批：发版后即刻可更新，docs/APP-INSTANT-UPDATE.md §3.3）**：Release 建好后
+   **提示所有者**「打开后台 → 游戏管理 → 同步与回填 → App 版本卡点『立即同步』」——点完数十秒内
+   手机打开 App（或「我的 → 检查更新」）即可看到更新提示；不点则 15 分钟自动同步（站点
+   `app.syncIntervalMin` 默认 15 分钟）+ 手机 1h 节流兜底。也可站点仓库 `node src/cli.js app-sync --force`；
+   然后在汇报里给出本机只读核对命令：`curl -s https://sd.yyliucha.cn/api/app/latest`
+   （或本地起站点 `GET /api/app/latest`），确认返回新 versionCode。
 8. **自测**：模拟器（steamdeals35）安装新 APK 覆盖安装成功、版本号显示正确。
 
 ## 4. 验证与验收
@@ -68,7 +72,8 @@ description: SteamDeals App（F:\dsh\steamdeals-app，yyliucha/steamdeals-app）
 ```
 📦 App 版本：app-vX.Y.Z（versionCode NNNNN；站点联动版本 vX.Y.Z 如有）
 🔖 tag：app-vX.Y.Z 已推送（<短哈希>）；Release 已建，三资产齐全
-✅ 验证：模拟器覆盖安装 OK；站点 /api/app/latest = 新 versionCode（app-sync 后）
+✅ 验证：模拟器覆盖安装 OK；站点 /api/app/latest = 新 versionCode（后台「立即同步」后）
+🔎 核对：curl -s https://sd.yyliucha.cn/api/app/latest（本机只读，发版后即刻可更新）
 🖥 服务器：站点版本待部署（如本批依赖站点接口）
 ⚠️ 未纳入：<App 仓库未推送的提交 / 未发原因>
 ```

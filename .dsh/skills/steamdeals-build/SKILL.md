@@ -150,6 +150,9 @@ gh auth switch --user boxiang-sun_shortcut          # 切回默认账号
 
 本批发布范围里存在「**涉及 App 仓库**：是」的条目 → 加载 `steamdeals-app-build` 技能，按它的流程发对应
 `app-vX.Y.Z`（打 tag + Release 三资产 + 站点 app-sync 验证 + 模拟器覆盖安装自测）；
+**DR 批（docs/APP-INSTANT-UPDATE.md §3.3）**：App Release 建好后同步提示所有者
+「打开后台 → 游戏管理 → 同步与回填 → App 版本卡点『立即同步』」（站点已部署时），并给本机只读核对
+`curl -s https://sd.yyliucha.cn/api/app/latest` 返回新 versionCode——手机打开 App 即可看到更新提示。
 汇报按 §4 同时给站点与 App 两版，并注明 App 是否依赖本批站点接口（依赖则等站点部署后再提示用户升级路径）。
 
 ## 4. 汇报格式（缺一段都算没汇报）

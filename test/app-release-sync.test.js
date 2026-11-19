@@ -75,7 +75,7 @@ test('CJ 接线：cli 命令/调度默认参数/下载路由白名单/GitHub 兜
   const page = readFileSync(join(root, 'frontend', 'src', 'pages', 'AppDownloadPage.vue'), 'utf8');
   assert.match(cli, /app-sync/, 'CLI 命令');
   assert.match(sched, /name: 'app-release-sync'/, '调度任务');
-  assert.match(sched, /APP_RELEASE_SYNC_INTERVAL_MIN, 60/, '默认 60 分钟');
+  assert.match(sched, /APP_RELEASE_SYNC_INTERVAL_MIN, 15/, 'DR 批（docs/APP-INSTANT-UPDATE.md）：默认 15 分钟（原 CJ 60 分钟）');
   assert.ok(!/STEAM_HEAVY = new Set\(\[[\s\S]{0,300}'app-release-sync'/.test(sched), '轻任务不进 STEAM_HEAVY');
   assert.ok(server.includes('steamdeals-[\\d.]+'), '下载路由白名单（仅 steamdeals-x.y.z.apk）');
   assert.match(server, /readLatestMeta/, 'latest 优先读 data/app');

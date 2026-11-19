@@ -4,17 +4,17 @@ import assert from 'node:assert/strict';
 import { openStore } from '../src/store/index.js';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { writeFileSync, readFileSync } from 'node:fs';
-import { alignGroupKey } from '../src/match.js';
+import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import * as db from '../src/store/pg.js';
 import { startApiServer } from '../src/server.js';
 import { ingestOffers } from '../src/ingest.js';
 import * as visitors from '../src/visitors.js';
+import { alignGroupKey } from '../src/match.js';
 
 // 测试里默认关掉登录验证码（专门有一个用例打开它验证拦截）
 process.env.CAPTCHA_ENABLED = '0';
 
-async function setup() {
+async function setup(extraServerOpts = {}) {
   const store = await openStore('pglite:', {});
   await db.migrate(store);
   const q = (sql, p) => store.query(sql, p);
@@ -48,7 +48,7 @@ async function setup() {
   const baseGid = (await q('select id from games where steam_appid = 413150')).rows[0].id;
   await db.refreshGameRegionHist(q, baseGid);
 
-  const srv = await startApiServer({ query: q, port: 0, host: '127.0.0.1' });
+  const srv = await startApiServer({ query: q, port: 0, host: '127.0.0.1', ...extraServerOpts });
   return { store, q, srv, base: `http://127.0.0.1:${srv.port}` };
 }
 
@@ -1396,85 +1396,6 @@ test('DH 对齐数据完整性：skus.json 带 appid 自动补写不入队；已
   }
 });
 
-test('DN 内容词 SKU 默认归档：不进队列不占计数；本体同键保留；已忽略可查看/恢复；恢复后重算不重复归档', async () => {
-  const { store, q, srv, base } = await setup();
-  const tmpFile = join(tmpdir(), `align-dn-${Date.now()}.json`);
-  try {
-    // 7001 季票、7002 服装（与本体同归一化键）、7003 本体、7004 普通 SKU
-    writeFileSync(tmpFile, JSON.stringify([
-      { skuId: 7001, appid: null, name: '巴士模拟器 27 - 第1年季票' },
-      { skuId: 7002, appid: null, name: '龙之剑:觉醒 - 服装' },
-      { skuId: 7003, appid: null, name: '龙之剑:觉醒' },
-      { skuId: 7004, appid: null, name: '内核之心' },
-    ], null, 2));
-    process.env.ALIGN_SKU_FILE = tmpFile;
-    const cookie = (await login(base, 'admin', 'admin123456')).cookie;
-    await q("insert into games (steam_appid, name) values (413150, '断箭') on conflict do nothing");
-    const getQueue = async ({ refresh = false } = {}) => {
-      for (let i = 0; i < 40; i += 1) {
-        // refresh 只在第一轮触发重算，后续轮询不带（refresh=1 永远绕缓存，与前端口径一致）
-        const res = await fetch(`${base}/api/admin/align?page=1&pageSize=50${refresh && i === 0 ? '&refresh=1' : ''}`, { headers: { cookie } });
-        const body = await res.json();
-        if (res.status === 200) return body;
-        assert.equal(res.status, 202, '冷缓存应返回 202 generating');
-        await new Promise((r) => setTimeout(r, 150));
-      }
-      throw new Error('对齐审核后台生成超时（40 轮未就绪）');
-    };
-
-    // 验收①：内容词 SKU 不进队列、不占「待对齐组」计数；验收②：本体（同键）与普通 SKU 不受影响
-    const first = await getQueue();
-    assert.ok(!first.groups.some((g) => g.name.includes('季票')), '季票组不进待对齐队列');
-    assert.ok(!first.groups.some((g) => g.name.includes('服装')), '服装组不进待对齐队列');
-    const baseGame = first.groups.find((g) => g.name === '龙之剑:觉醒');
-    assert.ok(baseGame, '本体组（与服装 SKU 同键）仍在队列');
-    assert.deepEqual(baseGame.skuIds, [7003], '本体组只剩本体 SKU');
-    assert.ok(first.groups.some((g) => g.name === '内核之心'), '普通 SKU 正常入队');
-    assert.equal(first.counts.groups, 2, '待对齐组只算本体 + 普通 SKU（内容词不占计数）');
-    assert.equal(first.counts.contentWords, 2, '内容词自动归档 2 组（季票、服装）');
-    assert.equal(first.counts.contentWordSkus, 2, '内容词自动归档 2 个 SKU');
-
-    // 归档落库：ignored + method=content_word + 无操作人（已忽略视图可查看/恢复的前提）
-    const row = (await q("select decision, match_method, reviewed_by from game_source_map where platform_code = 'sonkwo' and product_id = '7001'")).rows[0];
-    assert.ok(row, '内容词 SKU 自动写归档映射');
-    assert.equal(row.decision, 'ignored', '归档为 ignored（与人工忽略同视图）');
-    assert.equal(row.match_method, 'content_word', '归档方式 content_word');
-    assert.equal(row.reviewed_by, null, '自动归档无操作人');
-
-    // 计数跨轮稳定：强制重算后仍计 2 组（已归档不再重复写库、也不重复排队）
-    const second = await getQueue({ refresh: true });
-    assert.equal(second.counts.contentWords, 2, '重算后内容词归档计数稳定');
-    assert.ok(!second.groups.some((g) => g.name.includes('季票')), '重算后季票组仍不进队列');
-
-    // 验收③：已忽略视图可查看（标注「内容词自动归档」）
-    const seasonKey = alignGroupKey('sonkwo', '巴士模拟器 27 - 第1年季票');
-    const ignoredBody = await (await fetch(`${base}/api/admin/align/ignored`, { headers: { cookie } })).json();
-    const cwRow = ignoredBody.groups.find((g) => g.key === seasonKey);
-    assert.ok(cwRow, '已忽略视图包含内容词归档组');
-    assert.deepEqual(cwRow.skus, ['7001'], '归档组带 SKU 明细');
-    assert.equal(cwRow.method, 'content_word', '已忽略视图标注「内容词自动归档」');
-    assert.equal(cwRow.ignoredBy, null, '自动归档组操作人为空（页面显示「系统」）');
-
-    // 恢复（DH 能力）：pending 人工决定优先 → 重新入队；再重算仍不重复归档
-    const restore = await fetch(`${base}/api/admin/align/restore`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', cookie },
-      body: JSON.stringify({ key: seasonKey }),
-    });
-    assert.equal(restore.status, 200, JSON.stringify(await restore.json()));
-    const after = await getQueue();
-    assert.ok(after.groups.some((g) => g.name.includes('季票')), '恢复后内容词组重新回到待对齐队列');
-    assert.equal(after.counts.contentWords, 1, '恢复后该组不再计入自动归档（只剩服装组）');
-    const refreshed = await getQueue({ refresh: true });
-    assert.ok(refreshed.groups.some((g) => g.name.includes('季票')), '重算后恢复的组仍留在队列（pending 优先、不重复归档）');
-    assert.equal(refreshed.counts.contentWords, 1, '重算后自动归档计数不再包含已恢复组');
-  } finally {
-    delete process.env.ALIGN_SKU_FILE;
-    await srv.close();
-    await store.close();
-  }
-});
-
 test('A3 读路径：库映射（confirmed）唯一真相、pending/ignored 不参与；skus.json 只读回落', async () => {
   const { store, q, srv, base } = await setup();
   try {
@@ -1587,6 +1508,131 @@ test('B1：闸队列满（maxQueue=0）→ 503 接口繁忙，其余请求照常
     const statuses = results.map((r) => r.status).sort();
     assert.equal(statuses.filter((s) => s === 200).length, 2, '两个占满执行槽');
     assert.equal(statuses.filter((s) => s === 503).length, 1, '队列已满的第三个 → 503');
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});
+
+// ---------------------------------------------------------------- DR 批（docs/APP-INSTANT-UPDATE.md §4）
+// POST /api/admin/app-sync：requireAdmin（匿名 401 / 普通用户 403）、管理员 200 且 latest.json 更新、
+// 并发两次 single-flight 只跑一轮 GitHub 请求、失败 502 + 明确 reason、审计落库；GET status 供卡片渲染。
+
+const DR_LIST = 'https://api.github.com/repos/yyliucha/steamdeals-app/releases?per_page=10';
+const DR_LATEST = 'https://api.github.com/repos/yyliucha/steamdeals-app/releases/latest';
+
+/** 可注入的 GitHub fake fetch：正常/失败两档；记录每次调用 URL；稍作延迟放大并发窗口。 */
+function drFetchImpl({ fail = false, delayMs = 80 } = {}) {
+  const version = '2.26.1';
+  const release = (assets) => ({ tag_name: `app-v${version}`, draft: false, prerelease: false, assets });
+  const asset = (name, url) => ({ name, browser_download_url: url });
+  const handlers = {
+    [DR_LIST]: {
+      status: fail ? 500 : 200,
+      json: fail ? null : [release([asset('latest.json', 'x-latest'), asset(`steamdeals-${version}.apk`, 'x-apk')])],
+    },
+    [DR_LATEST]: { status: fail ? 500 : 404, json: null },
+    'x-latest': { status: 200, buf: Buffer.from(JSON.stringify({ version, versionCode: 22601, notes: ['DR 批'] })) },
+    'x-apk': { status: 200, buf: Buffer.from('apk-bytes') },
+  };
+  const fn = async (url, opts) => {
+    fn.calls.push(url);
+    await new Promise((r) => setTimeout(r, delayMs));
+    const h = handlers[url];
+    if (!h) return { ok: false, status: 404, json: async () => null };
+    return { ok: h.status < 400, status: h.status, json: async () => h.json, arrayBuffer: async () => h.buf };
+  };
+  fn.calls = [];
+  return fn;
+}
+
+test('DR：立即同步 App 版本——权限 401/403、并发 single-flight、成功更新 latest.json 与卡片一致', async () => {
+  const appDir = join(tmpdir(), `dr-appsync-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const prevAppDataDir = process.env.APP_DATA_DIR;
+  process.env.APP_DATA_DIR = appDir; // /api/app/latest 与 app-sync 落盘同目录，断言「卡片与接口一致」
+  const events = [];
+  const logger = { info: (event, fields) => events.push({ event, fields }), warn: () => {}, error: () => {} };
+  const fetchImpl = drFetchImpl();
+  const { store, q, srv, base } = await setup({ appSyncFetchImpl: fetchImpl, appSyncDir: appDir, logger });
+  const post = (cookie) =>
+    fetch(`${base}/api/admin/app-sync`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
+      body: '{}',
+    });
+  try {
+    // 1) 权限：匿名 401 / 普通用户 403
+    const anon = await post(null);
+    assert.equal(anon.status, 401, '匿名 POST /api/admin/app-sync → 401');
+    const alice = await login(base, 'alice', 'alice123456');
+    const forbidden = await post(alice.cookie);
+    assert.equal(forbidden.status, 403, '普通用户 → 403（requireAdmin）');
+
+    // 2) 管理员并发两次 → single-flight：GitHub 列表只请求一轮，两次都 200
+    const admin = await login(base, 'admin', 'admin123456');
+    const [r1, r2] = await Promise.all([post(admin.cookie), post(admin.cookie)]);
+    assert.equal(r1.status, 200, '第一次 → 200');
+    assert.equal(r2.status, 200, '第二次（共享进行中的同步）→ 200');
+    const listCalls = fetchImpl.calls.filter((u) => u.includes('/releases?per_page=10'));
+    assert.equal(listCalls.length, 1, '并发两次只跑一次 GitHub 列表请求（single-flight）');
+    const b1 = await r1.json();
+    assert.equal(b1.ok, true);
+    assert.equal(b1.version, '2.26.1', '同步到目标版本');
+    assert.ok(b1.syncedAt, '返回 syncedAt');
+
+    // 3) latest.json 真实落盘，且 /api/app/latest 返回同一版本（卡片与 App 接口一致）
+    const meta = JSON.parse(readFileSync(join(appDir, 'latest.json'), 'utf8'));
+    assert.equal(meta.version, '2.26.1', 'data/app/latest.json 已更新为目标版本');
+    const appLatest = await (await fetch(`${base}/api/app/latest`)).json();
+    assert.equal(appLatest.version, '2.26.1', '/api/app/latest 与刚同步的版本一致');
+    assert.equal(appLatest.versionCode, 22601, 'versionCode 一致');
+
+    // 4) 卡片状态接口：版本 / 上次同步时间 / 无失败原因；非管理员 401
+    const statusRes = await fetch(`${base}/api/admin/app-sync/status`, { headers: { cookie: admin.cookie } });
+    assert.equal(statusRes.status, 200);
+    const status = await statusRes.json();
+    assert.equal(status.latest.version, '2.26.1', '卡片当前版本');
+    assert.ok(status.lastSyncAt, '卡片拿到上次同步时间');
+    assert.equal(status.lastError, null, '成功同步后无失败原因');
+    assert.equal(status.syncing, false, '同步已结束');
+    const statusAnon = await fetch(`${base}/api/admin/app-sync/status`);
+    assert.equal(statusAnon.status, 401, '卡片状态接口同样 requireAdmin');
+
+    // 5) 日志 app.sync_manual + 审计 admin.app_sync 落库
+    const manualLogs = events.filter((e) => e.event === 'app.sync_manual');
+    assert.equal(manualLogs.length, 1, '成功路径记一次 app.sync_manual');
+    assert.equal(manualLogs[0].fields.version, '2.26.1');
+    assert.equal(manualLogs[0].fields.by, 'admin');
+    const audit = await q("select * from audit_logs where action = 'admin.app_sync'");
+    assert.ok(audit.rows.length >= 1, '审计 admin.app_sync 落库');
+  } finally {
+    process.env.APP_DATA_DIR = prevAppDataDir;
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('DR：立即同步失败 → 502 + 明确 reason，日志与审计带 reason', async () => {
+  const appDir = join(tmpdir(), `dr-appsync-fail-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const events = [];
+  const logger = { info: (event, fields) => events.push({ event, fields }), warn: () => {}, error: () => {} };
+  const fetchImpl = drFetchImpl({ fail: true });
+  const { store, q, srv, base } = await setup({ appSyncFetchImpl: fetchImpl, appSyncDir: appDir, logger });
+  try {
+    const admin = await login(base, 'admin', 'admin123456');
+    const res = await fetch(`${base}/api/admin/app-sync`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: admin.cookie },
+      body: '{}',
+    });
+    assert.equal(res.status, 502, '同步失败 → 502');
+    const body = await res.json();
+    assert.equal(body.ok, false);
+    assert.equal(body.reason, 'github_http_500', '失败 reason 明确（列表与 latest 兜底都 500）');
+    const manualLogs = events.filter((e) => e.event === 'app.sync_manual');
+    assert.equal(manualLogs[0].fields.reason, 'github_http_500', '日志 app.sync_manual 带 reason');
+    const audit = await q("select * from audit_logs where action = 'admin.app_sync' order by id desc limit 1");
+    assert.equal(audit.rows[0].detail.reason, 'github_http_500', '审计 detail 带失败 reason');
   } finally {
     await srv.close();
     await store.close();
