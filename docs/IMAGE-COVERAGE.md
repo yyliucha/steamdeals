@@ -95,6 +95,5 @@
   （rename/backfill 路径补 header_image）；限速防 429；日志 images.backfill_*；回填后缺图数下降。
 - **EC-3 前端占位图**：缺图时显示品牌占位（S 标/首字），列表与详情统一，不再空白块。
 - **验收**：① 看板数字与 SQL 统计一致、缺图列表可翻页；② 回填任务跑一轮后缺图数下降（对比截图/日志）；
-  ③ 缺图游戏前端显示占位图；④ 
-pm test（分段）+ rontend:build + scan 全绿。
+  ③ 缺图游戏前端显示占位图；④ npm test（分段）+ frontend:build + scan 全绿。
 - **不做**：全量预取、从 header 推导其它尺寸（AUD 批已定不做）。
