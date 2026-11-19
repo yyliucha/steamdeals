@@ -69,7 +69,7 @@
 | 3 | auth | /api/auth/* + login/logout/password/captcha/device | 已拆 | v2.27.2 | 00a838f |
 | 4 | watchlist / wishlist | /api/watchlist、/api/wishlist | 已拆（QA 通过 10/0/0/2，待构建） | 待 v2.27.3 | 1b087b4 |
 | 5 | announcements | /api/announcements* | 已拆（QA 通过 16/0/0/2，待构建） | 待 v2.27.3 | 3022d6e |
-| 6 | me | /api/me/* | 未拆 | | |
+| 6 | me | /api/me/* | 已拆（QA 通过 17/0/0/2，待构建） | 待 v2.27.3 | 4ed78db |
 | 7 | 杂项（site/steam/ban） | /api/site、/api/steam/*、/api/ban/state | 未拆 | | |
 | 8 | admin 访问安全 | visitors/views/devices/blacklist/whitelist/abuse/reviews | 未拆 | | |
 | 9 | admin 同步任务 | sync/heat/backfill/rename/circuit | 未拆 | | |
@@ -104,3 +104,5 @@
 - 2026-11-20 02:30 工人启动 B4 #5 announcements。
 - 2026-11-20 03:08 工人完成 B4 #5 announcements：提交 3022d6e（server.js −65 / pg.js −22 / 新 routes 168 + repository 80 / 测试 +86）；QA-CO5-B4-2-announcements 第 1 轮 ✅ 放行（16/0/0/2，人工确认同 #4 为沙箱环境限制）；边界判定：#10 行枚举的 announcements 与 /api/announcements* 实为同一批路由，全按 #5 拆；/api/admin/bulk 派发表里 announcements 三条目留 #11。实测单域耗时 38min（02:30→03:08）。
 - 2026-11-20 03:10 §1.5 参数调整：两域实测耗时 37/38min（原估计 P50 1.75h 高估约 2.7 倍）→ 本轮域数上限 2 → **3**；预算 3.2h 内预计可完成 #4/#5/#6 三域 + 1 次构建（v2.27.3）；其余参数不变。工人启动 B4 #6 me。
+- 2026-11-20 03:42 工人完成 B4 #6 me：提交 4ed78db（server.js −201 / pg.js −110 / 新 routes 298 + repository 189 / 测试 +87）；QA-CO5-B4-2-me 第 1 轮 ✅ 放行（17/0/0/2，人工确认同前为沙箱环境限制）；边界判定：/api/me/email/* 与 /api/auth/email* 同属 auth-routes.js 模块（DT-2 排除区）整块留原地；/api/prefs、/api/avatar/:id 与 me 区块同模块随域拆走。实测单域耗时 30min（03:12→03:42）。
+- 2026-11-20 03:45 构建开始 v2.27.3：三域齐（#4 1b087b4 / #5 3022d6e / #6 4ed78db，QA 全部放行）→ 本地快速门禁 → 版本+文档 → 提交 → tag → CI。
