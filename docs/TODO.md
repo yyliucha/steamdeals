@@ -36,7 +36,7 @@
 
 ## CU. 待开发：到价提醒治理（无报价标记 / 站点级迁移 / 史低抽检 / 刷新频率评估）
 
-**状态：CU-1 质检通过（QA docs/QA-CU1.md 第 2 轮 ✅ 3/0/0/1，实现 b5f5663 + 恢复 77c9f8f）；CU-2 质检通过（QA docs/QA-CU2.md 第 1 轮 ✅ 5/0/0/2，实现 b7ab402）；CU-3 开发中（2026-11-19 本会话开工）；CU-4 待开发**
+**状态：CU-1 质检通过（QA docs/QA-CU1.md 第 2 轮 ✅ 3/0/0/1，实现 b5f5663 + 恢复 77c9f8f）；CU-2 质检通过（QA docs/QA-CU2.md 第 1 轮 ✅ 5/0/0/2，实现 b7ab402）；CU-3 质检通过（QA docs/QA-CU3.md 第 1 轮 ✅ 4/0/0/2，规格 §6 附录）；CU-4 开发中（2026-11-19 本会话开工）**
 **依赖：** CL（已发布 v2.23.0，用户级提醒）
 **解锁：** 无
 **规格**：[USER-ALERTS-GOVERNANCE.md](USER-ALERTS-GOVERNANCE.md)
@@ -46,7 +46,7 @@
   多条当前价=史低（靠 last_notified 去重）；**部落幸存者史低 ¥20.25 可疑**（当前 ¥72）。
 - **四项（合并交付）**：CU-1 列表「无报价」徽标+筛选（**已交付**：实现 b5f5663 + 恢复 77c9f8f，QA-CU1 第 2 轮 ✅）；CU-2 站点级提醒按 Steam 愿望单反查用户
   （`steam_wishlist` → `steam_accounts.user_id`，多用户全部列出，可一键迁移给这些用户，审计）（**已交付**：b7ab402，QA-CU2 第 1 轮 ✅）；
-  **CU-3 史低抽检（全部异常样本**，不只部落幸存者，只读 SQL，脏数据才修）；CU-4 Steam 刷新频率评估
+  **CU-3 史低抽检（全部异常样本**，不只部落幸存者，只读 SQL，脏数据才修）（**已交付**：规格 §6 附录 SQL + 结论清单，QA-CU3 第 1 轮 ✅；部落幸存者 ¥20.25 = 真实促销史低，非脏数据）；CU-4 Steam 刷新频率评估
   （默认不改，只出 720/480 配额数字与建议）。
 - **改动落点**：src/store/pg.js（hasPrice + 迁移/批量删）、src/server.js（/api/admin/watchlist 扩展 +
   /migrate + 批量删除 + 审计）frontend/src/pages/AdminModules.vue（徽标/筛选/多选/迁移）、测试。
