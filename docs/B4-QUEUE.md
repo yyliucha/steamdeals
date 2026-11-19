@@ -70,7 +70,7 @@
 | 4 | watchlist / wishlist | /api/watchlist、/api/wishlist | 已拆 | v2.27.3 | 1b087b4 |
 | 5 | announcements | /api/announcements* | 已拆 | v2.27.3 | 3022d6e |
 | 6 | me | /api/me/* | 已拆 | v2.27.3 | 4ed78db |
-| 7 | 杂项（site/steam/ban） | /api/site、/api/steam/*、/api/ban/state | 未拆 | | |
+| 7 | 杂项（site/steam/ban） | /api/site、/api/steam/*、/api/ban/state | 已拆（QA 放行，待发版） | | 552fb40 |
 | 8 | admin 访问安全 | visitors/views/devices/blacklist/whitelist/abuse/reviews | 未拆 | | |
 | 9 | admin 同步任务 | sync/heat/backfill/rename/circuit | 未拆 | | |
 | 10 | admin 系统设置 | smtp/mail/emails/announcements/proxies/version | 未拆 | | |
@@ -109,3 +109,15 @@
 - 2026-11-20 04:25 构建完成 v2.27.3：本地门禁（主链 test:1 仅 commit-own 4 项已知沙箱环境红（基线同）、test:2/3/4 全绿、api.test 37/37、frontend:build ✓、scan 干净）；版本 2.27.2→2.27.3、CHANGELOG/ARCHITECTURE §15.6/PROJECT-OVERVIEW/B4-QUEUE/DELIVERY 已更新 → 提交 + annotated tag + 推送，进入 CI 盯守。
 - 2026-11-20 04:48 CI 结果 v2.27.3：**双绿 + push 门禁全绿**——docker-hub 44608440588 ✅（test/smoke/publish 全 success，20m10s）、docker-tcr 44608440514 ✅（test/publish 全 success，18m20s）、test-main 44608412265 ✅（release 提交 02d62aa，14m13s）。两个镜像源均已推送。
 - 2026-11-20 04:50 收尾：本轮拆 #4/#5/#6 三域（37/38/30min 每域）→ v2.27.3 已发布 CI 双绿；剩余未拆 #7–#21（15 域）；下一轮从 #7 杂项（site/steam/ban）接；ACTIVE-SESSIONS 注销监工登记。
+- 2026-11-20 05:40 §1.5 评估（第 4 轮 05:35 兜底唤醒）：剩余未拆 15 域（#7–#21）；单域实测 30/37/38min（#4/#5/#6），P50≈37min、P90≈38min；构建+CI 实测（v2.27.3）：本地门禁 40min + CI 双绿 23min ≈ 1.05h；夜间窗口 23:00–09:00 已用 6.6h、剩余 3.4h。
+  本轮参数：唤醒间隔 4h 不变（公式 clamp(0.62+1.05)=1.67h≈2h，但 rrule 不改：①定时任务仅剩 09:35 一次交付；②窗口 09:00 关闭，剩 3.4h 不足两个 2h 轮；③若加 07:35 唤醒，新会话见本会话登记（年龄 2h < 接管阈值 4h）不会接管，双监工并行反而放大版本递增事故面；④构建+CI≈1.05h，2h 轮预算 1.6h 装不下「2 域+构建」，必然轮内强制交接；09:35 末次交付即晨间兜底接管点）/
+  每轮预算 2.9h（min(4×0.8, 3.4−0.5)，干活至 ≈08:25）/
+  工人超时 60min（P90 38min ×1.5 缓冲，wait_agent 分两段 30min；兜底 30min 不适用——已有三轮实测）/
+  CI 等待 30min（min(P90≈30,30)，超时写「CI 待确认」不阻塞）/
+  接管阈值 4h（B4-QUEUE 容错硬规则优先于公式，同上轮口径）/
+  域数上限 3（(2.9−1.05)÷0.62≈3；构建不晚于 07:40 开始——预算剩 45 分钟规则）/
+  并行度 1（routes/admin 域共享 src/server.js + src/store/pg.js 文件面，与上轮同）。
+- 2026-11-20 05:41 接管检查：ACTIVE-SESSIONS 无登记（无卡死会话）；最后心跳 04:50 收尾（v2.27.3 CI 双绿已回填 DELIVERY 135fdd9）；tag v2.27.3 存在、HEAD 135fdd9、工作区无发布文档未提交改动 → 无需接管。
+- 2026-11-20 05:42 开工：注册 ACTIVE-SESSIONS（夜班监工 v4 05:35 轮），进入开发循环，启动工人 B4 #7 杂项（site/steam/ban）。
+- 2026-11-20 06:30 工人完成 B4 #7 杂项（site/steam/ban）：提交 552fb40（server.js −243 / pg.js −50 / 新 routes/site.js 380 + store/site-repository.js 149 / 测试 +124）；QA-CO5-B4-2-site 第 1 轮 ✅ 放行（18/0/0/2，2 项人工确认均为本机沙箱环境限制，CI 兜底）；边界判定：/api/steam/* 全 10 条 + /api/site + /api/ban/state 拆走（预检/公开/主三段形态），/api/admin/wishlists 留 #16、/api/admin/steam-logs 留 #12、DT-2 排除区不动、steam-accounts.js 跨域模块原地；实测单域耗时 ≈45min（05:43→06:29）。
+- 2026-11-20 06:31 工人启动 B4 #8 admin 访问安全（visitors/views/devices/blacklist/whitelist/abuse/reviews）。
