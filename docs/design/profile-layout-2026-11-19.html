@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>个人资料页布局 demo（2026-11-19）</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #eef0f6; font-family: 'Noto Sans SC', -apple-system, 'Segoe UI', sans-serif; color: #1f2233; padding: 28px; }
+  .wrap { display: flex; gap: 40px; justify-content: center; align-items: flex-start; }
+  .phone { width: 390px; background: #f5f6fa; border-radius: 26px; box-shadow: 0 18px 50px rgba(40,40,90,.16); overflow: hidden; border: 1px solid #e3e5ee; }
+  .caption { text-align: center; font-size: 13px; color: #667080; margin-top: 12px; }
+  .navbar { display: flex; align-items: center; gap: 12px; padding: 18px 18px 10px; background: #fff; }
+  .back { font-size: 20px; color: #1f2233; }
+  .title { font-size: 18px; font-weight: 800; }
+  .body { padding: 12px 14px 96px; display: flex; flex-direction: column; gap: 14px; }
+  .card { background: #fff; border-radius: 14px; padding: 16px; border: 1px solid #ebedf3; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .switch-row .label { font-size: 15px; font-weight: 700; }
+  .switch-row .desc { font-size: 12px; color: #8791a3; margin-top: 3px; }
+  .switch { width: 52px; height: 30px; border-radius: 16px; background: #635bdf; position: relative; flex: none; }
+  .switch::after { content: ''; position: absolute; right: 3px; top: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+  .section-title { font-size: 13px; color: #6b7486; font-weight: 700; padding: 2px 2px 0; }
+  .acct { display: flex; flex-direction: column; gap: 12px; }
+  .acct-head { display: flex; align-items: center; gap: 12px; }
+  .avatar { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; color: #fff; font-size: 22px; font-weight: 800; flex: none; }
+  .avatar.brand { background: linear-gradient(145deg, #635bdf, #22d3ee); }
+  .avatar.uploaded { background: linear-gradient(135deg, #ffb199, #ff6b6b); font-size: 20px; }
+  .acct-name { font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+  .badge { font-size: 11px; color: #13876f; background: #e6f6f1; border: 1px solid #b9e6d9; border-radius: 6px; padding: 1px 6px; font-weight: 700; }
+  .steamid { font-size: 12px; color: #8791a3; margin-top: 3px; letter-spacing: .2px; }
+  .metrics { display: flex; gap: 28px; }
+  .metric .k { font-size: 12px; color: #8791a3; }
+  .metric .v { font-size: 22px; font-weight: 800; letter-spacing: -.5px; }
+  .btns { display: flex; gap: 10px; }
+  .btn { flex: 1 1 0; text-align: center; padding: 10px 0; border-radius: 10px; border: 1px solid #d9dce7; font-size: 13px; font-weight: 700; color: #635bdf; background: #fff; }
+  .btn.ghost { color: #6b7486; }
+  .btn.danger { color: #d9485f; }
+  .btn.disabled { color: #b6bcc9; border-color: #e6e8ef; background: #fafbfd; }
+  .stats-head { display: flex; align-items: baseline; justify-content: space-between; }
+  .stats-head .sum { font-size: 12px; color: #8791a3; }
+  .stats3 { display: flex; gap: 10px; }
+  .stat3 { flex: 1 1 0; background: #fff; border: 1px solid #ebedf3; border-radius: 12px; padding: 12px; }
+  .stat3 .k { font-size: 12px; color: #8791a3; }
+  .stat3 .v { font-size: 20px; font-weight: 800; margin-top: 4px; }
+  .footer { position: sticky; bottom: 0; padding: 12px 14px 18px; background: linear-gradient(180deg, rgba(245,246,250,0), #f5f6fa 30%); }
+  .save { width: 100%; padding: 14px 0; border-radius: 14px; border: 0; background: #635bdf; color: #fff; font-size: 16px; font-weight: 800; box-shadow: 0 8px 20px rgba(99,91,223,.35); }
+  .hint { font-size: 11px; color: #98a0b0; padding: 0 18px 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 状态 1：默认首字头像（无上传） -->
+  <div>
+    <div class="phone">
+      <div class="navbar"><span class="back">←</span><span class="title">编辑资料</span></div>
+      <div class="body">
+        <div class="card switch-row">
+          <div>
+            <div class="label">到价提醒邮件</div>
+            <div class="desc">降价时发邮件提醒</div>
+          </div>
+          <div class="switch"></div>
+        </div>
+        <div class="section-title">我的游戏库 2</div>
+        <div class="card acct">
+          <div class="acct-head">
+            <div class="avatar brand">F</div>
+            <div>
+              <div class="acct-name">FF <span class="badge">默认</span></div>
+              <div class="steamid">76561198…2591</div>
+            </div>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="k">已拥有</div><div class="v">609</div></div>
+            <div class="metric"><div class="k">愿望单</div><div class="v">4</div></div>
+          </div>
+          <div class="btns"><div class="btn">查看已拥有</div><div class="btn">查看愿望单</div></div>
+          <div class="btns"><div class="btn disabled">已设为默认</div><div class="btn danger">解绑</div></div>
+        </div>
+        <div class="card acct">
+          <div class="acct-head">
+            <div class="avatar brand">H</div>
+            <div>
+              <div class="acct-name">Happy</div>
+              <div class="steamid">76561199…0255</div>
+            </div>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="k">已拥有</div><div class="v">68</div></div>
+            <div class="metric"><div class="k">愿望单</div><div class="v">13</div></div>
+          </div>
+          <div class="btns"><div class="btn">查看已拥有</div><div class="btn">查看愿望单</div></div>
+          <div class="btns"><div class="btn">设为默认</div><div class="btn danger">解绑</div></div>
+        </div>
+        <div class="stats-head"><div class="section-title">我的统计</div><div class="sum">已拥有 677 · 愿望单 17</div></div>
+        <div class="stats3">
+          <div class="stat3"><div class="k">本站愿望单</div><div class="v">0</div></div>
+          <div class="stat3"><div class="k">到价提醒</div><div class="v">0</div></div>
+          <div class="stat3"><div class="k">史低命中</div><div class="v">0</div></div>
+        </div>
+      </div>
+      <div class="footer"><button class="save">保存修改</button></div>
+    </div>
+    <div class="caption">状态 A：未上传头像 → 昵称首字母 + 品牌色</div>
+  </div>
+
+  <!-- 状态 2：已上传头像 -->
+  <div>
+    <div class="phone">
+      <div class="navbar"><span class="back">←</span><span class="title">编辑资料</span></div>
+      <div class="body">
+        <div class="card switch-row">
+          <div>
+            <div class="label">到价提醒邮件</div>
+            <div class="desc">降价时发邮件提醒</div>
+          </div>
+          <div class="switch"></div>
+        </div>
+        <div class="section-title">我的游戏库 2</div>
+        <div class="card acct">
+          <div class="acct-head">
+            <div class="avatar uploaded">F</div>
+            <div>
+              <div class="acct-name">FF <span class="badge">默认</span></div>
+              <div class="steamid">76561198…2591</div>
+            </div>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="k">已拥有</div><div class="v">609</div></div>
+            <div class="metric"><div class="k">愿望单</div><div class="v">4</div></div>
+          </div>
+          <div class="btns"><div class="btn">查看已拥有</div><div class="btn">查看愿望单</div></div>
+          <div class="btns"><div class="btn disabled">已设为默认</div><div class="btn danger">解绑</div></div>
+        </div>
+        <div class="card acct">
+          <div class="acct-head">
+            <div class="avatar brand">H</div>
+            <div>
+              <div class="acct-name">Happy</div>
+              <div class="steamid">76561199…0255</div>
+            </div>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="k">已拥有</div><div class="v">68</div></div>
+            <div class="metric"><div class="k">愿望单</div><div class="v">13</div></div>
+          </div>
+          <div class="btns"><div class="btn">查看已拥有</div><div class="btn">查看愿望单</div></div>
+          <div class="btns"><div class="btn">设为默认</div><div class="btn danger">解绑</div></div>
+        </div>
+        <div class="stats-head"><div class="section-title">我的统计</div><div class="sum">已拥有 677 · 愿望单 17</div></div>
+        <div class="stats3">
+          <div class="stat3"><div class="k">本站愿望单</div><div class="v">0</div></div>
+          <div class="stat3"><div class="k">到价提醒</div><div class="v">0</div></div>
+          <div class="stat3"><div class="k">史低命中</div><div class="v">0</div></div>
+        </div>
+      </div>
+      <div class="footer"><button class="save">保存修改</button></div>
+    </div>
+    <div class="caption">状态 B：已上传头像（自定义）· 账号卡头像仍显示该账号 Steam 头像（另一回事）</div>
+  </div>
+
+</div>
+</body>
+</html>
