@@ -30,6 +30,9 @@ function makeEnv() {
   const work = join(base, 'work');
   mkdirSync(work, { recursive: true });
   git(base, ['init', '--bare', origin, '--quiet']);
+  // 显式把 bare 仓库 HEAD 指向 main：Linux runner 上 bare init 默认是 master，
+  // clone 会因「remote HEAD 指向不存在的分支」而检不出分支（本机 Windows git 默认 main，两平台行为不同）。
+  git(origin, ['symbolic-ref', 'HEAD', 'refs/heads/main']);
   git(work, ['init', '-b', 'main', '--quiet']);
   git(work, ['config', 'user.name', 'tester']);
   git(work, ['config', 'user.email', 'tester@example.com']);
@@ -67,7 +70,7 @@ test('新鲜度门禁：origin 前进 → 中止（退出码 4）；rebase 后�
   try {
     // 他人先推进 origin：work2 克隆 → 提交 x.txt → 推送
     const work2 = join(base, 'work2');
-    git(base, ['clone', origin, work2, '--quiet']);
+    git(base, ['clone', '-b', 'main', origin, work2, '--quiet']);
     git(work2, ['config', 'user.name', 't2']);
     git(work2, ['config', 'user.email', 't2@example.com']);
     git(work2, ['config', 'commit.gpgsign', 'false']);
