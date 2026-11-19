@@ -132,8 +132,8 @@
 | **DU** | 🐞 缺陷：个人资料「个人简介」placeholder 插值未绑定（显示 {{ }} 源码） | 本交接（TODO DU 条目） | 待开发（2026-11-19 截图发现，P3） | ✅ 本轮已给 |
 | **DV** | 游戏管理「ITAD」筛选改为来源筛选（game_source_sync matched） | [ITAD-SOURCE-FILTER.md](ITAD-SOURCE-FILTER.md) | 待开发（2026-11-19 方案 A 确认） | ✅ 本轮已给 |
 | **DW** | 🐞 缺陷：搜索关键词参数位错位风险（精确名匹配失效，中文名搜不到）——候选/主查询两套绑定显式化 + 锁行为测试 | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DW | 已发布 v2.27.1（2026-11-19，修复 fc410af + 锁行为测试 77f8214；QA-DW.md 第 1 轮 6/0/0/1） | ✅ 本轮已给 |
-| **DY** | 🐞 缺陷：安卓页面衔接状态丢失（详情返回后搜索/滚动/表单丢）——ViewModel/rememberSaveable 治理 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §DY | 待开发（2026-11-19） | ✅ 本轮已给 |
-| **DZ** | ⚙️ 调整：安卓公告未读角标无法清除（首页铃铛常驻 1）——弹层加「全部已读」 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §DZ | 待开发（2026-11-19） | ✅ 本轮已给 |
+| **DY** | 🐞 缺陷：安卓页面衔接状态丢失（详情返回后搜索/滚动/表单丢）——ViewModel/rememberSaveable 治理 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §DY | 已实现待发版（2026-11-19，App 3f14b04；app-v2.23.0 随本批） | ✅ 本轮已给 |
+| **DZ** | ⚙️ 调整：安卓公告未读角标无法清除（首页铃铛常驻 1）——弹层加「全部已读」 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §DZ | 已实现待发版（2026-11-19，App 7c5cb58；app-v2.23.0 随本批） | ✅ 本轮已给 |
 | **EA** | ⚙️ 调整：安卓体验包（攒批）——下拉刷新/搜索空态/详情分享/版本号+清缓存/骨架屏/弱网提示 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EA | 待开发（2026-11-19 立项攒批，等所有者说开工） | ✅ 本轮已给 |
 | **EB** | ✨ 功能：安卓 18R 内容选项（筛选 chips「18R」+ adult=badge 显示/角标 + 首次 18+ 确认 + 本地记忆，攒批） | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EB | 待开发（2026-11-19 立项攒批） | ✅ 本轮已给 |
 | **EC** | ⚙️ 调整：图片覆盖治理（后台覆盖看板 + 缺图回填任务 + 前端占位图） | [IMAGE-COVERAGE.md](IMAGE-COVERAGE.md) §8 | 待开发（2026-11-19 立项） | ✅ 本轮已给 |
