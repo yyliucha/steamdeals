@@ -20,10 +20,10 @@
 
 | 类型 | 数量 | 编号 |
 |---|---|---|
-| 🐞 缺陷 | 1 | DU |
+| 🐞 缺陷 | 2 | DU / DW |
 | ✨ 功能 | 1 | DT-2 |
 | ⚙️ 调整 | 5 | DT-1 / DT-3 / DT-4 / DT-5 / DV |
-| 🧹 技术债 | 1 | CO-4 B4 |
+| 🧹 技术债 | 2 | CO-4 B4 / DX |
 | 🧪 测试基建 | 0 | — |
 | 📝 文档流程 | 0 | — |
 | 🔬 调研 | 0 | — |
@@ -108,6 +108,41 @@
   前端下拉 `itad` 标签改「ITAD（来源）」并视觉区分；其余平台筛选不变；不动采集链路。
 - **验收**：见规格 §3（ITAD（来源）筛出有匹配标记的游戏；其它平台不变；采集新匹配后刷新可见；标签区分清楚；
   `npm test`（分段）+ `frontend:build` + `scan` 全绿）。
+
+## DW. 待开发（🐞 缺陷）：搜索关键词参数错位——精确名匹配实际在匹配 region
+
+**类型：** 🐞 缺陷（Bug，P0）
+**状态：** 待开发（2026-11-19 线上实测定位）
+**优先级：** P0 —— 搜索功能正确性（中文精确名搜不到）
+**依赖：** 无
+**解锁：** 无
+**规格**：[SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DW
+
+- **根因**：`src/store/pg.js:1763` `kwNorm = lower($1)`，而 `filterParams = [region, kw]`（`pg.js:1743`）——
+  `$1` 是 region（'cn'）、`$2` 才是关键词；候选查询/计数/排序的「精确名 LIKE」实际在匹配 `'cn'`。
+- **线上表现**：搜「侠盗猎车手」「侠盗猎车手 V」→ 0 条（GTA V 的 name 明明存在）；「侠盗」98 条、
+  「Grand Theft Auto」142 条全靠 token/trgm 兜底；DS 测试 9/9 绿因为用例没覆盖「仅 name 精确匹配」。
+- **修复**：`kwNorm` 改用 `$2`；同步检查候选查询（1786-1790）、`fuzzyCandidateIds` 传参、排序 `kwNorm2`（已是 $2）；
+  推荐直接改 `$2`，不改 `filterParams` 顺序（避免波及 region 条件）。
+- **补测试（反向自检）**：无 `search_tokens` 的游戏搜中文名/英文名必须命中（修前该用例必红）；
+  `gta5/gta6/xdlc6/grand theft auto` 仍命中；`zzz不存在词`、`cn` → 0；搜索不因 region 值命中。
+- **验收**：见规格 §DW（本地用例全绿；线上「侠盗猎车手」返回 GTA 系列；`npm test`（分段）+ `frontend:build` + `scan` 全绿）。
+
+## DX. 待开发（🧹 技术债）：列表/站点接口性能优化
+
+**类型：** 🧹 技术债（性能）
+**状态：** 待开发（2026-11-19 实测基线：列表 582ms/搜索 389–478ms/`/api/site` 257ms）
+**优先级：** P1 —— 首屏与搜索体验
+**依赖：** DW（同 `gameSearch` 区域，先修后优化）
+**解锁：** 无
+**规格**：[SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DX
+
+- **目标**：列表/搜索 P95 ≤150ms（基线 340–580ms）；`/api/site` ≤50ms（基线 257ms）；total 正确性不变。
+- **方案**：① count 与 rows 合并（`count(*) over()` 或 index-only count）；② 列表 30–60s 短 TTL 内存缓存
+  （key=筛选参数+region+userId 摘要；同步完成/后台操作后失效）；③ `/api/site` 60s 缓存；④ 新增
+  `test/search-perf.test.js` 断言 P95 + 线上只读压测记录进 DELIVERY。
+- **验收**：见规格 §DX（P95 达标；total 与 count(*) 一致；缓存失效正确；`npm test`（分段）+ `scan` 全绿；
+  压测结果贴交付说明）。
 
 ## DT. 待开发：后台用户管理与权限隔离（拆 5 个子需求，一次会话一个）
 
