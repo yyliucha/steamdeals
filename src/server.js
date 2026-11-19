@@ -75,6 +75,11 @@ import { handleWatchlistRoutes } from './routes/watchlist.js';
 // 在 requireAdmin 就绪之后（管理段 CRUD）。resolveSession 闭包留在本文件（与 adminBypass /
 // 主 user 三处共享同一请求级 promise），按引用传入公开段（语义共享）。
 import { handleAnnouncementsPublic, handleAnnouncementsRoutes, handleAnnouncementsAdmin } from './routes/announcements.js';
+// CO-5/B4-2 第六轮：me 域路由已抽到 src/routes/me.js——
+// handleMeRoutes 在认证上下文就绪后（主段）。must_change_password 白名单
+// （p === '/api/me'、p.startsWith('/api/avatar/')）仍是中间件、留在本文件；
+// /api/me/email/* 留在 src/auth-routes.js（与 /api/auth/email* 同模块，DT-2 排除区）。
+import { handleMeRoutes } from './routes/me.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -1558,230 +1563,24 @@ export function createApiServer({
         return json(res, 200, { ok: true });
       }
 
-      // ---- 当前用户与偏好 ----
-      if (path === '/api/me' && req.method === 'GET') {        const prefs = user ? await db.getPrefs(q, user.id) : null;
-        // CX 批（docs/USER-PROFILE-EDIT.md §3）：user 带完整本人资料（display_name/bio/avatar 元信息）。
-        // 本批无他人资料入口，email 只回显自己（CL 批口径不变）。
-        const me = user ? await db.getUserPublic(q, user.id) : null;
-        return json(res, 200, {
-          user: me
-            ? {
-                id: me.id,
-                username: me.username,
-                role: me.role,
-                mustChangePassword: Boolean(user.must_change_password),
-                email: me.email ?? null,
-                emailVerified: Boolean(me.email_verified),
-                displayName: me.display_name ?? null,
-                bio: me.bio ?? null,
-                avatarSource: me.avatar_source ?? null,
-                avatarMime: me.avatar_mime ?? null,
-                avatarUpdatedAt: me.avatar_updated_at ?? null,
-                createdAt: me.created_at ?? null,
-              }
-            : null,
-          prefs,
-          // DA 批（docs/APP-FILTER-SERVER-SIDE.md §3）：App「已拥有」chip 仅登录且已绑定 Steam 时显示，
-          // 站点 /api/me 与 App /api/app/me 共用本路由，steamBound 口径一致。
-          steamBound: user
-            ? Number((await q('select count(*)::int as n from steam_accounts where user_id = $1', [user.id])).rows[0]?.n ?? 0) > 0
-            : false,
-          // 站点时区（系统设置里的「时区」）：前端用它格式化时间，而不是浏览器本地时区
-          timezone: process.env.TZ || 'Asia/Shanghai',
-        });
-      }
-
-      if (path === '/api/prefs' && req.method === 'POST') {
-        if (!requireUser()) return;
-        const body = await readBody(req);
-        const prefs = await db.savePrefs(q, user.id, body);
-        logger?.info('api.prefs_saved', { userId: user.id, ...prefs });
-        return json(res, 200, { prefs });
-      }
-
-      // ---- CX 批（docs/USER-PROFILE-EDIT.md §3）：个人资料编辑（只改自己；管理员与用户同一套接口）----
-
-      // 头像公开只读：custom 输出库内字节（ETag/长缓存）；无头像 404（前端回退首字）。
-      // DQ 批（docs/PROFILE-UI-2026-11-19.md 决策 1）：steam: 头像来源已退役（迁移清空），不再 302 到 Steam CDN。
-      const avatarMatch = path.match(/^\/api\/avatar\/(\d+)$/);
-      if (avatarMatch && req.method === 'GET') {
-        const avatarUserId = Number(avatarMatch[1]);
-        const row = await db.avatarOfUser(q, avatarUserId);
-        if (!row) return json(res, 404, { error: '没有该用户' });
-        const source = row.avatar_source ?? null;
-        if (source === 'custom' && row.avatar_bytes) {
-          const etag = `"av-${avatarUserId}-${row.avatar_updated_at ? new Date(row.avatar_updated_at).getTime() : 0}"`;
-          if (req.headers['if-none-match'] === etag) {
-            res.writeHead(304, { etag, 'cache-control': 'public, max-age=31536000, immutable' });
-            res.end();
-            return;
-          }
-          res.writeHead(200, {
-            'content-type': row.avatar_mime ?? 'image/png',
-            'content-length': row.avatar_bytes.length,
-            etag,
-            'cache-control': 'public, max-age=31536000, immutable',
-          });
-          res.end(row.avatar_bytes);
-          return;
-        }
-        return json(res, 404, { error: 'no avatar' });
-      }
-
-      // 昵称 2–20 字 / 简介 ≤200 字（管理员可空；普通用户必填）。校验只认 body 里这三个可编辑字段 + 偏好两项，
-      // 用户名 / 邮箱 / 角色 / userId 一律忽略（只读；越权传 userId 无效——写的是 session 用户自己）。
-      if (path === '/api/me/profile' && req.method === 'PATCH') {
-        if (!requireUser()) return;
-        const body = await readBody(req);
-        const isAdmin = user.role === 'admin';
-        const chars = (s) => [...String(s ?? '')].length;
-        let displayName;
-        if (body.displayName !== undefined && body.displayName !== null) {
-          const raw = String(body.displayName).trim();
-          const n = chars(raw);
-          if (isAdmin) {
-            displayName = raw || null;
-          } else {
-            if (n < 2 || n > 20) return json(res, 400, { error: '昵称需要 2–20 个字符' });
-            displayName = raw;
-          }
-        }
-        let bio;
-        if (body.bio !== undefined && body.bio !== null) {
-          const raw = String(body.bio).trim();
-          const n = chars(raw);
-          if (n > 200) return json(res, 400, { error: '个人简介不能超过 200 字' });
-          if (isAdmin) {
-            bio = raw || null;
-          } else {
-            if (n < 1) return json(res, 400, { error: '个人简介必填（1–200 字）' });
-            bio = raw;
-          }
-        }
-        let theme = undefined;
-        if (body.theme !== undefined) {
-          if (body.theme === null || body.theme === 'light' || body.theme === 'dark') theme = body.theme;
-          else return json(res, 400, { error: '主题只能是 light / dark / null（跟随系统）' });
-        }
-        let emailAlerts = undefined;
-        if (body.emailAlerts !== undefined) emailAlerts = Boolean(body.emailAlerts);
-        const me = await db.updateUserProfile(q, { userId: user.id, displayName, bio });
-        const prefs = await db.savePrefs(q, user.id, { theme, email_alerts: emailAlerts });
-        logger?.info('api.profile_saved', { userId: user.id, displayName: displayName ?? me.display_name, bioSet: bio !== undefined, theme, emailAlerts });
-        return json(res, 200, {
-          user: {
-            id: me.id,
-            username: me.username,
-            role: me.role,
-            email: me.email ?? null,
-            emailVerified: Boolean(me.email_verified),
-            displayName: me.display_name ?? null,
-            bio: me.bio ?? null,
-            avatarSource: me.avatar_source ?? null,
-            avatarMime: me.avatar_mime ?? null,
-            avatarUpdatedAt: me.avatar_updated_at ?? null,
-            createdAt: me.created_at ?? null,
-          },
-          prefs,
-        });
-      }
-
-      // 自定义头像上传：JSON dataUrl（客户端裁剪 256×256，JPG/PNG/WebP/GIF，≤512KB），服务端校验魔数 + 大小后存库
-      if (path === '/api/me/avatar' && req.method === 'POST') {
-        if (!requireUser()) return;
-        // 头像 dataUrl 上限 512KB，请求体放宽到 600KB；超限时暂停读取并回 413（不 destroy 连接，客户端能拿到响应）
-        const readAvatarBody = (r, limit) =>
-          new Promise((done, fail) => {
-            let size = 0;
-            const chunks = [];
-            r.on('data', (c) => {
-              size += c.length;
-              if (size > limit) {
-                fail(new Error('too large'));
-                r.pause();
-                return;
-              }
-              chunks.push(c);
-            });
-            r.on('end', () => {
-              const raw = Buffer.concat(chunks).toString('utf8');
-              if (!raw) return done({});
-              try {
-                done(JSON.parse(raw));
-              } catch {
-                fail(new Error('invalid json'));
-              }
-            });
-            r.on('error', fail);
-          });
-        const body = await readAvatarBody(req, 600 * 1024).catch(() => null);
-        if (!body) return json(res, 413, { error: '请求体过大或不是有效 JSON' }, { connection: 'close' });
-        const dataUrl = String(body?.dataUrl ?? '');
-        if (dataUrl.length > 512 * 1024) return json(res, 413, { error: '头像过大：请裁剪为 256×256 后上传（≤512KB）' });
-        const m = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/i.exec(dataUrl);
-        if (!m) return json(res, 400, { error: '头像格式不支持：只接受 JPG / PNG / WebP / GIF 的 base64 dataUrl' });
-        const mime = m[1].toLowerCase();
-        let bytes;
-        try {
-          bytes = Buffer.from(m[2], 'base64');
-        } catch {
-          return json(res, 400, { error: '头像数据不是有效的 base64' });
-        }
-        if (!bytes.length) return json(res, 400, { error: '头像数据为空' });
-        // 魔数校验（防把任意二进制伪装成图片存库）
-        const sig = (hex) => bytes.subarray(0, hex.length / 2).toString('hex') === hex;
-        const valid =
-          (mime === 'image/png' && sig('89504e470d0a1a0a')) ||
-          (mime === 'image/jpeg' && sig('ffd8ff')) ||
-          (mime === 'image/gif' && (sig('474946383761') || sig('474946383961'))) ||
-          (mime === 'image/webp' && bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP');
-        if (!valid) return json(res, 400, { error: '头像文件内容与格式不符' });
-        const after = await db.setUserAvatar(q, { userId: user.id, bytes, mime });
-        logger?.info('api.avatar_uploaded', { userId: user.id, mime, bytes: bytes.length });
-        return json(res, 200, { avatarSource: after.avatar_source, avatarMime: after.avatar_mime, avatarUpdatedAt: after.avatar_updated_at });
-      }
-
-      if (path === '/api/me/avatar' && req.method === 'DELETE') {
-        if (!requireUser()) return;
-        const after = await db.clearUserAvatar(q, user.id);
-        logger?.info('api.avatar_removed', { userId: user.id });
-        return json(res, 200, { avatarSource: after.avatar_source, avatarMime: after.avatar_mime, avatarUpdatedAt: after.avatar_updated_at });
-      }
-
-      // 我的游戏库与统计（仅本人）：每账号一卡 + 5 项汇总
-      if (path === '/api/me/library' && req.method === 'GET') {
-        if (!requireUser()) return;
-        const steamAccountsMod = await import('./steam-accounts.js');
-        const me = await db.getUserPublic(q, user.id);
-        const accounts = await steamAccountsMod.listUserAccounts(q, user.id);
-        const bindTimes = new Map();
-        for (const a of accounts) {
-          const bt = (
-            await q(
-              "select min(created_at) as bound_at from steam_account_logs where action = 'bind' and steam_id = $1",
-              [a.steam_id],
-            )
-          ).rows[0];
-          bindTimes.set(a.steam_id, bt?.bound_at ?? null);
-        }
-        const list = accounts.map((a) => ({
-          steamId: a.steam_id,
-          name: a.alias || a.persona_name || a.steam_id,
-          personaName: a.persona_name ?? null,
-          avatar: a.avatar ?? null,
-          owned: Number(a.games ?? 0),
-          wishlist: Number(a.wishlist ?? 0),
-          lastSyncedAt:
-            a.library_synced_at && a.wishlist_synced_at
-              ? new Date(Math.max(new Date(a.library_synced_at).getTime(), new Date(a.wishlist_synced_at).getTime())).toISOString()
-              : a.library_synced_at ?? a.wishlist_synced_at ?? null,
-          boundAt: bindTimes.get(a.steam_id),
-          // DQ 批（docs/PROFILE-UI-2026-11-19.md §3）：默认判定读 default_steam_id（与头像解耦）
-          isDefault: me.default_steam_id != null && String(me.default_steam_id) === String(a.steam_id),
-        }));
-        const stats = await db.userLibraryStats(q, user.id);
-        return json(res, 200, { accounts: list, stats });
-      }
+      // ---- CO-5/B4-2 第六轮（docs/DESIGN-AUDIT.md B4）：me 域路由已抽到 src/routes/me.js ----
+      // 调用位置不能动：必须在认证上下文（user/requireUser）就绪后的主段（401/403 语义依赖
+      // 该位置）；must_change_password 白名单（/api/me、/api/avatar/*）是中间件、留在本文件。
+      // 本域无跨模块共享状态，ctx 只需基座字段；/api/me/email/* 留 auth-routes.js（DT-2 排除区）。
+      if (
+        await handleMeRoutes({
+          path,
+          req,
+          res,
+          q,
+          logger,
+          json,
+          readBody,
+          user,
+          requireUser,
+        })
+      )
+        return;
 
       // ---- 游戏数量（匿名可读）：库内总数 + 已有价格数，前台"实时数量"靠它 ----
       // AV 批（docs/READ-MODEL.md §5.2）：priced 改读读模型（distinct game_id，跨区服去重口径不变）

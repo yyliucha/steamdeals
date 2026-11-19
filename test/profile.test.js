@@ -15,6 +15,16 @@ import { ensureSteamSchemaOnce } from '../src/steam-login.js';
 // 测试里默认关掉登录验证码
 process.env.CAPTCHA_ENABLED = '0';
 
+// ===== CO-5/B4-2 第六轮：域拆分静态锁（me 域抽到 src/routes/me.js + src/store/me-repository.js）=====
+// 反向自检口径：删掉 routes/me.js 任一路由分支 → 第 1 组红；删掉 server.js 的接线调用 →
+// 第 2 组红；把分支抄回 server.js → 第 3 组「防双实现」红；删 pg.js re-export → 第 4 组红；
+// 把 /api/me/email/* 误搬进 me 域或从 auth-routes.js 删掉 → 第 5 组「边界」红。
+const ME_ROUTES = readFileSync(new URL('../src/routes/me.js', import.meta.url), 'utf8');
+const ME_REPO = readFileSync(new URL('../src/store/me-repository.js', import.meta.url), 'utf8');
+const ME_PG = readFileSync(new URL('../src/store/pg.js', import.meta.url), 'utf8');
+const ME_SERVER = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
+const ME_EMAIL_AUTH = readFileSync(new URL('../src/auth-routes.js', import.meta.url), 'utf8');
+
 // 1×1 透明 PNG（合法图片，68 字节）
 const PNG_1PX_B64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
@@ -448,4 +458,81 @@ test('DQ 前端静态锁：无 Steam 头像来源入口；两行等宽按钮；�
   // 头像规则统一：UserAvatar 与资料页共用 utils/avatar.js 的 avatarInitial
   assert.ok(avatar.includes("avatarInitial(props.name, '?')"), 'UserAvatar 用统一头像规则');
   assert.ok(page.includes("avatarInitial(me.value?.displayName"), '资料页头像用统一头像规则');
+});
+
+// ===== CO-5/B4-2 第六轮：me 域拆分静态锁 =====
+
+test('CO-5/B4-2 第六轮：me 域路由分支全部在 src/routes/me.js（删任一支即红）', () => {
+  assert.match(ME_ROUTES, /path === '\/api\/me' && req\.method === 'GET'/, 'me GET 分支在新文件');
+  assert.match(ME_ROUTES, /path === '\/api\/prefs' && req\.method === 'POST'/, 'prefs POST 分支在新文件');
+  assert.match(ME_ROUTES, /path\.match\(\/\^\\\/api\\\/avatar\\\/\(\\d\+\)\$\/\)/, 'avatar/:userId GET 分支在新文件');
+  assert.match(ME_ROUTES, /path === '\/api\/me\/profile' && req\.method === 'PATCH'/, 'me/profile PATCH 分支在新文件');
+  assert.match(ME_ROUTES, /path === '\/api\/me\/avatar' && req\.method === 'POST'/, 'me/avatar POST 分支在新文件');
+  assert.match(ME_ROUTES, /path === '\/api\/me\/avatar' && req\.method === 'DELETE'/, 'me/avatar DELETE 分支在新文件');
+  assert.match(ME_ROUTES, /path === '\/api\/me\/library' && req\.method === 'GET'/, 'me/library GET 分支在新文件');
+  // 登录守卫随域（/api/me 匿名 200、其余写操作 requireUser）
+  assert.match(ME_ROUTES, /requireUser\(\)/, '分支内登录守卫存在');
+  // 上传限制 helper 随域移入（413 语义）
+  assert.match(ME_ROUTES, /readAvatarBody/, '头像请求体读取 helper 随域移入');
+  // 路由层不写 SQL 字面量（域内联 SQL 已抽成 repository 函数）
+  assert.ok(!/select |insert |update |delete from /.test(ME_ROUTES), 'routes/me.js 不写 SQL 字面量');
+});
+
+test('CO-5/B4-2 第六轮：server.js 必须真实接线 handleMeRoutes（删掉调用即红，防死模块）', () => {
+  assert.match(ME_SERVER, /import \{ handleMeRoutes \} from '\.\/routes\/me\.js'/, 'server.js 必须导入域路由入口');
+  // 锁「完整调用形态」：必须是 if (await handleMeRoutes({...})) return;——只断言字符串存在
+  // 会被 if (false) 包一层绕过；这个形态锁住"调用且消费返回值结束响应"。
+  assert.match(ME_SERVER, /if \(\s*await handleMeRoutes\(\{/, '主段接线');
+  // ctx 关键字段必须传齐：漏传 user/requireUser 会让登录守卫失效
+  assert.match(ME_SERVER, /await handleMeRoutes\(\{[\s\S]{0,600}?user,/);
+  assert.match(ME_SERVER, /await handleMeRoutes\(\{[\s\S]{0,600}?requireUser,/);
+  // must_change_password 白名单仍是 server.js 中间件（/api/me 与 /api/avatar/* 放行，改密页依赖）
+  assert.match(ME_SERVER, /p === '\/api\/me' \|\|/, 'must_change_password 白名单保留 /api/me');
+  assert.match(ME_SERVER, /p\.startsWith\('\/api\/avatar\/'\)/, 'must_change_password 白名单保留 /api/avatar/*');
+});
+
+test('CO-5/B4-2 第六轮：me 域分支不得双实现（server.js 里保留旧分支即红）', () => {
+  assert.ok(!/path === '\/api\/me' && req\.method/.test(ME_SERVER), 'me GET 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/prefs' && req\.method/.test(ME_SERVER), 'prefs POST 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/me\/profile'/.test(ME_SERVER), 'me/profile 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/me\/avatar'/.test(ME_SERVER), 'me/avatar 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/me\/library'/.test(ME_SERVER), 'me/library 分支不得残留在 server.js');
+  assert.ok(!ME_SERVER.includes('avatarMatch'), 'avatar 公开读取分支不得残留在 server.js');
+  assert.ok(!ME_SERVER.includes('readAvatarBody'), '头像请求体读取 helper 不得残留在 server.js');
+  // 域内联 SQL 已抽 repository，不得残留在 server.js
+  assert.ok(!/steam_accounts where user_id = \$1/.test(ME_SERVER), 'steamBound 内联 SQL 不得残留在 server.js');
+  assert.ok(!/select min\(created_at\) as bound_at/.test(ME_SERVER), 'bindTimes 内联 SQL 不得残留在 server.js');
+});
+
+test('CO-5/B4-2 第六轮：me-repository.js 签名不变 + pg.js re-export（删 re-export 即红）', () => {
+  // 搬家函数签名与拆分前一致（旧 db.* 导入签名不变）
+  assert.match(ME_REPO, /export async function getUserPublic\(q, userId\)/, 'getUserPublic 签名与拆分前一致');
+  assert.match(ME_REPO, /export async function updateUserProfile\(q, \{ userId, displayName = undefined, bio = undefined \}\)/, 'updateUserProfile 签名与拆分前一致');
+  assert.match(ME_REPO, /export async function avatarOfUser\(q, userId\)/, 'avatarOfUser 签名与拆分前一致');
+  assert.match(ME_REPO, /export async function setUserAvatar\(q, \{ userId, bytes, mime \}\)/, 'setUserAvatar 签名与拆分前一致');
+  assert.match(ME_REPO, /export async function clearUserAvatar\(q, userId\)/, 'clearUserAvatar 签名与拆分前一致');
+  assert.match(ME_REPO, /export async function userLibraryStats\(q, userId\)/, 'userLibraryStats 签名与拆分前一致');
+  assert.match(ME_REPO, /export function normalizePrefs\(prefs = \{\}\)/, 'normalizePrefs 签名与拆分前一致');
+  assert.match(ME_REPO, /export async function getPrefs\(q, userId\)/, 'getPrefs 签名与拆分前一致');
+  assert.match(ME_REPO, /export async function savePrefs\(q, userId, prefs = \{\}\)/, 'savePrefs 签名与拆分前一致');
+  // 域内联 SQL 抽出的两个新函数（/api/me steamBound、/api/me/library bindTimes）
+  assert.match(ME_REPO, /export async function countBoundSteamAccounts\(q, userId\)/, 'steamBound 内联 SQL 已抽 countBoundSteamAccounts');
+  assert.match(ME_REPO, /export async function boundAtOfSteamAccount\(q, steamId\)/, 'bindTimes 内联 SQL 已抽 boundAtOfSteamAccount');
+  // 全部搬家函数必须整体 re-export（旧 db.* 导入签名不变；server.js 其它段与测试照旧走聚合壳）
+  assert.match(ME_PG, /export \{[\s\S]{0,400}getUserPublic[\s\S]{0,400}updateUserProfile[\s\S]{0,400}avatarOfUser[\s\S]{0,400}setUserAvatar[\s\S]{0,400}clearUserAvatar[\s\S]{0,400}userLibraryStats[\s\S]{0,400}PREF_TABS[\s\S]{0,400}PREF_SORTS[\s\S]{0,400}normalizePrefs[\s\S]{0,400}getPrefs[\s\S]{0,400}savePrefs[\s\S]{0,400}countBoundSteamAccounts[\s\S]{0,400}boundAtOfSteamAccount[\s\S]{0,400}\} from '\.\/me-repository\.js'/, 'pg.js 必须 re-export 全部搬家函数');
+  // 旧定义不得残留在 pg.js（双实现会漂移）
+  assert.ok(!/export (async )?function (getUserPublic|updateUserProfile|avatarOfUser|setUserAvatar|clearUserAvatar|userLibraryStats|getPrefs|savePrefs)/.test(ME_PG), 'pg.js 不允许保留旧函数定义（只许 re-export）');
+  assert.ok(!/export (async )?function (normalizePrefs)|export const PREF_TABS/.test(ME_PG), 'pg.js 不允许保留 normalizePrefs/PREF_TABS 旧定义');
+  // 跨域 SQL 不得误搬：steam accounts 域（B4 #7）仍在 pg.js 用这三个函数
+  assert.ok(/export async function (setDefaultSteamAccount|clearDefaultSteamIfMatches|userLibraryItems)/.test(ME_PG), '跨域函数 setDefaultSteamAccount/clearDefaultSteamIfMatches/userLibraryItems 留在 pg.js');
+});
+
+test('CO-5/B4-2 第六轮：域边界——/api/me/email/* 留 auth-routes.js，不拆半截', () => {
+  // /api/me/email/request|verify 与 /api/auth/email* 同模块（DT-2 排除区），整块留 auth-routes.js
+  assert.match(ME_EMAIL_AUTH, /path === '\/api\/me\/email\/request'/, 'me/email/request 留 auth-routes.js');
+  assert.match(ME_EMAIL_AUTH, /path === '\/api\/me\/email\/verify'/, 'me/email/verify 留 auth-routes.js');
+  assert.match(ME_EMAIL_AUTH, /path === '\/api\/auth\/email\/request'/, 'auth/email/request 留 auth-routes.js');
+  assert.match(ME_EMAIL_AUTH, /path === '\/api\/auth\/email\/verify'/, 'auth/email/verify 留 auth-routes.js');
+  // me 域路由模块不得出现 me/email 路由分支（防误搬半截；文件头注释说明除外）
+  assert.ok(!/'\/api\/me\/email\//.test(ME_ROUTES), 'routes/me.js 不得含 /api/me/email 路由分支');
 });
