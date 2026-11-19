@@ -73,6 +73,7 @@ const SETTINGS_META = {
   'site.adultDisplay': { section: 'site', tier: 'primary' },
   'site.publicUrl': { section: 'site', tier: 'primary' },
   'app.mobileRedirectEnabled': { section: 'site', tier: 'primary' },
+  'app.syncIntervalMin': { section: 'schedule', tier: 'advanced', sum: 'App 版本同步 {v} 分' },
   'system.timezone': { section: 'site', tier: 'primary' },
   'app.deviceRateMax': { section: 'recommend', tier: 'primary' },
   'app.deviceRateWindowSec': { section: 'recommend', tier: 'primary' },
@@ -191,6 +192,14 @@ export const SETTINGS = [
     max: 3600,
     advanced: true,
     help: '设备限流的滑动窗口长度；配合「App 设备限流（次/窗口）」使用。',
+  }),
+  // DR 批（docs/APP-INSTANT-UPDATE.md §3.1）：App Release 同步间隔 60→15 分钟可配（DB 热加载，
+  // env APP_RELEASE_SYNC_INTERVAL_MIN 兜底；保存后调度器约 15 秒内重建任务表生效）。
+  // 语义上属调度间隔，进「调度与熔断」折叠组（不挤占「站点与内容」常用 4 项，CQ 契约不变）。
+  def('app.syncIntervalMin', 'APP_RELEASE_SYNC_INTERVAL_MIN', 'advanced', 'App 版本同步间隔（分钟）', 'int', 15, {
+    min: 1,
+    max: 10080,
+    help: '站点同步 GitHub Release（App 最新版）的轮询间隔；发版后想立即可更新，可在「游戏管理 → 同步与回填」的 App 版本卡点「立即同步」。',
   }),
   def('steamStatus.rateMs', 'STEAM_STATUS_RATE_MS', 'sources', 'Steam 状态判定限速（毫秒）', 'int', 1500, {
     min: 0,

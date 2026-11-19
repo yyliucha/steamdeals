@@ -10,7 +10,7 @@
 // 折扣数据永远只由调度器写入，这里没有任何改价的接口——这是硬约束。
 import { createServer } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
-import { readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, statSync } from 'node:fs';
 import { join, extname, resolve, sep } from 'node:path';
 import * as db from './store/pg.js';
 import { createConcurrencyGate } from './http-guard.js';
@@ -139,6 +139,9 @@ export function isTimeoutExemptPath(path) {
   if (path.startsWith('/img/') || path.startsWith('/app/dl/') || path.startsWith('/out/')) return true;
   if (/\.csv$/.test(path)) return true;
   if (path === '/api/admin/backup') return true;
+  // DR 批（docs/APP-INSTANT-UPDATE.md §3.1）：手动 App 同步要下载 APK（数十 MB），不套 15s 看门狗；
+  // 并发与排队已由 single-flight + GitHub 超时保护。
+  if (path === '/api/admin/app-sync') return true;
   return false;
 }
 
@@ -479,6 +482,8 @@ export function createApiServer({
   gateMaxQueue = 20, // B1 批测试注入：并发闸队列长度上限（超出立即 503）
   adminCacheTtlMs = 3000, // B2 批测试注入：/api/admin/games 短缓存 TTL
   syncStatusTtlMs = 3000, // B2 批测试注入：/api/admin/sync/status 短缓存 TTL
+  appSyncFetchImpl = null, // DR 批测试注入：POST /api/admin/app-sync 的 GitHub fetch 替身（默认真实 fetch）
+  appSyncDir = null, // DR 批测试注入：app-sync 落盘目录（默认 env APP_DATA_DIR ?? data/app）
 }) {
   const q = query;
   // B1 批（docs/DESIGN-AUDIT.md B1）：重型接口并发闸——按 key 每实例一把闸，
@@ -550,6 +555,9 @@ export function createApiServer({
   let syncOutput = ''; // 子进程输出尾巴，供前端轮询
   let syncSettled = true;
   let syncStopRequested = false; // 后台点了"停止"，子进程退出后记为 cancelled
+  // DR 批（docs/APP-INSTANT-UPDATE.md §3.1）：App 手动同步 single-flight——并发请求共享同一 Promise，
+  // GitHub 只被请求一轮（验收 §4.1「并发两次只跑一次」）。
+  let appSyncInFlight = null;
 
   // Steam 绑定 state 的进程内登记表：随机串 → { userId, expiresAt }，5 分钟过期。
   // 必须放在请求处理器之外：/start 签发、/callback 消费，跨两次请求共享（steam-login.js 实现）。
@@ -3905,6 +3913,107 @@ export function createApiServer({
         }
       }
 
+      // ---- DR 批（docs/APP-INSTANT-UPDATE.md §3.1）：App 版本卡状态（只读）+ 管理员立即同步 ----
+      if (path === '/api/admin/app-sync/status' && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const { readLatestMeta } = await import('./app-release.js');
+        const appDir = appSyncDir ?? process.env.APP_DATA_DIR ?? 'data/app';
+        const file = process.env.APP_LATEST_FILE ?? resolve(frontendDir ?? 'frontend/dist', 'app', 'latest.json');
+        const { data, source } = readLatestMeta(appDir, file);
+        let lastSyncAt = null;
+        try {
+          const p = join(resolve(process.cwd(), appDir), 'latest.json');
+          if (existsSync(p)) lastSyncAt = new Date(statSync(p).mtimeMs).toISOString();
+        } catch { /* 无本地文件 */ }
+        let lastError = null;
+        try {
+          lastError = await db.lastFailedSyncRun(q, 'app-sync');
+        } catch { /* sync_runs 缺失时忽略 */ }
+        return json(res, 200, {
+          latest: data
+            ? {
+                version: data.version ?? null,
+                versionCode: data.versionCode == null ? null : Number(data.versionCode),
+                releasedAt: data.releasedAt ?? null,
+              }
+            : null,
+          source,
+          lastSyncAt,
+          lastError,
+          syncing: Boolean(appSyncInFlight),
+        });
+      }
+
+      if (path === '/api/admin/app-sync' && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const appDir = appSyncDir ?? process.env.APP_DATA_DIR ?? 'data/app';
+        const syncedAt = new Date().toISOString();
+        // single-flight：并发请求共用同一个进行中的 Promise（验收 §4.1「并发两次只跑一次」）
+        const startedHere = !appSyncInFlight;
+        if (!appSyncInFlight) {
+          appSyncInFlight = (async () => {
+            const { syncAppRelease } = await import('./app-release.js');
+            return syncAppRelease({
+              repo: process.env.APP_RELEASE_SYNC_REPO ?? 'yyliucha/steamdeals-app',
+              keep: Number(process.env.APP_RELEASE_SYNC_KEEP ?? 3),
+              dir: appDir,
+              force: true,
+              logger,
+              fetchImpl: appSyncFetchImpl,
+            });
+          })().finally(() => {
+            appSyncInFlight = null;
+          });
+        }
+        let result;
+        try {
+          result = await appSyncInFlight;
+        } catch (err) {
+          const message = String(err?.message ?? err).slice(0, 120);
+          if (startedHere) logger?.warn('app.sync_manual', { by: user.username, reason: 'exception', message });
+          else logger?.info('app.sync_manual_joined', { by: user.username, reason: 'exception' });
+          await db
+            .writeAuditLog(q, {
+              actorId: user.id,
+              actor: user.username,
+              action: 'admin.app_sync',
+              target: 'app-release-sync',
+              detail: { outcome: 'exception', message, joined: !startedHere },
+              ip,
+            })
+            .catch(() => {});
+          return json(res, 502, { ok: false, reason: 'exception', syncedAt });
+        }
+        const reason = result.apkFailed ?? (result.synced ? null : result.reason);
+        if (startedHere) {
+          logger?.info('app.sync_manual', {
+            by: user.username,
+            version: result.version ?? null,
+            reason: reason ?? null,
+            synced: result.synced,
+          });
+        } else {
+          logger?.info('app.sync_manual_joined', { by: user.username, version: result.version ?? null, reason: reason ?? null });
+        }
+        await db
+          .writeAuditLog(q, {
+            actorId: user.id,
+            actor: user.username,
+            action: 'admin.app_sync',
+            target: 'app-release-sync',
+            detail: { version: result.version ?? null, reason: reason ?? null, synced: result.synced, joined: !startedHere },
+            ip,
+          })
+          .catch(() => {});
+        return json(res, result.synced ? 200 : 502, {
+          ok: result.synced,
+          version: result.version ?? null,
+          apk: result.apk ?? null,
+          reason: reason ?? null,
+          syncedAt,
+        });
+      }
+
       if (path === '/api/admin/sync/status' && req.method === 'GET') {
         if (!requireAdmin()) return;
         // B2 批（docs/DESIGN-AUDIT.md B2）：短缓存（TTL 3s）；任务启停/熔断重置后立即失效
@@ -5850,8 +5959,10 @@ export function startApiServer({
   gateMaxQueue = 20,
   adminCacheTtlMs = 3000,
   syncStatusTtlMs = 3000,
+  appSyncFetchImpl = null, // DR 批测试注入：POST /api/admin/app-sync 的 GitHub fetch 替身
+  appSyncDir = null, // DR 批测试注入：app-sync 落盘目录（默认 env APP_DATA_DIR ?? data/app）
 }) {
-  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, imgMissTtl, dlcFetchImpl, dlcReadThrottleMs, requestTimeoutMs, gateWaitMs, gateMaxQueue, adminCacheTtlMs, syncStatusTtlMs });
+  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, imgMissTtl, dlcFetchImpl, dlcReadThrottleMs, requestTimeoutMs, gateWaitMs, gateMaxQueue, adminCacheTtlMs, syncStatusTtlMs, appSyncFetchImpl, appSyncDir });
   // 黑名单定时刷新（管理端增删后也会即时刷新；unref 不阻止进程退出）
   const blockTimer = setInterval(() => {
     visitors.refreshBlocklist(query).catch(() => {});

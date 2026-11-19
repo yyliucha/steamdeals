@@ -89,6 +89,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.equal(interval('logs'), 7 * 1440, '日志每 7 天清理一次');
   assert.equal(interval('alerts'), 360);
   assert.equal(interval('images'), 240, '封面图补缓存默认每 4 小时');
+  assert.equal(interval('app-release-sync'), 15, 'DR 批：App Release 同步默认每 15 分钟（原 60；settings app.syncIntervalMin 热加载可改）');
   const args = (name) => jobs.find((j) => j.name === name).args;
   assert.deepEqual(args('discover'), ['discover', 'sonkwo', '--ahead', '60', '--max-misses', '12']);
   assert.deepEqual(args('backup'), ['backup']);

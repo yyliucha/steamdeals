@@ -21,8 +21,12 @@ async function fresh() {
 }
 
 test('设置定义完整：59 项、7 个密钥、关键分组都在', () => {
-  assert.equal(settings.SETTINGS.length, 91, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项');
+  assert.equal(settings.SETTINGS.length, 92, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项 + DR app.syncIntervalMin 1 项');
   assert.equal(settings.SETTINGS.filter((d) => d.secret).length, 7);
+  const appSync = settings.SETTINGS.find((d) => d.key === 'app.syncIntervalMin');
+  assert.ok(appSync, 'DR 批：app.syncIntervalMin 设置项存在');
+  assert.equal(appSync.default, 15, 'DR 批：App Release 同步间隔默认 15 分钟（原 60）');
+  assert.equal(appSync.env, 'APP_RELEASE_SYNC_INTERVAL_MIN', 'env 兜底保留 APP_RELEASE_SYNC_INTERVAL_MIN');
   const tz = settings.SETTINGS.find((d) => d.key === 'system.timezone');
   assert.ok(tz, '要有 system.timezone（时区设置化）');
   assert.equal(tz.default, 'Asia/Shanghai');
