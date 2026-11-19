@@ -16,7 +16,7 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| DL(开发) | src/align-snapshot.js（新增）、src/align-compute.js（新增）、src/align-query.js、src/server.js(align 区)、src/cli.js(align-snapshot 命令)、src/scheduler.js(align-snapshot 任务)、src/store/pg.js(migrate 加 align_snapshots)、frontend/src/components/AlignAdmin.vue、test/{align-snapshot(新),align,align-perf,api,scheduler}.test.js、docs/{TODO(DL 状态行),REQUIREMENTS-INDEX(DL 行),PROJECT-OVERVIEW,ALIGN-SNAPSHOT}.md；**worktree F:\dsh\wt\dl 隔离**；与 DS 重叠面（scheduler/cli/pg/test/PROJECT-OVERVIEW）经所有者批准**并行**（各自加任务/命令/表，push 前 fetch+rebase） | 无 | 11-19 13:40 | 11-19 20:00 | dev-DL(lead) |
+| 构建 v2.27.0（DP/DQ/DN/DR/DS/DL 六条） | docs/{TODO,DONE,REQUIREMENTS-INDEX,DELIVERY,ACTIVE-SESSIONS,PROJECT-OVERVIEW,SEARCH-ALIASES,ALIGN-SNAPSHOT,PROFILE-UI-2026-11-19,APP-INSTANT-UPDATE}.md、CHANGELOG.md、README.md、package.json/package-lock.json；App 仓库 steamdeals-app（build.gradle.kts/latest.json/tag/Release，DQ/DR 联动） | **打 tag 构建** | 11-19 15:05 | 11-19 21:00 | build-v2.27.0(lead) |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 
