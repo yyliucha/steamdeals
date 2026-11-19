@@ -72,8 +72,8 @@
     <!-- CL 批（docs/USER-ALERTS.md §4.3；CY 批：用户级只读，站点级可清理） -->
     <template v-else-if="section==='watchlist'">
       <div class="module-card"><div class="card-heading"><div><h3>全站到价提醒</h3><p>用户级提醒为私有数据、管理员只读（请用户自行操作）；站点级提醒可清理。新增请走前台详情页。</p></div></div>
-      <div class="inline-form"><el-input v-model="watchQuery" clearable placeholder="搜索用户名" @keyup.enter="loadAdminWatches(1)" @clear="loadAdminWatches(1)"/><el-select v-model="watchStatus" style="width:150px" @change="loadAdminWatches(1)"><el-option label="全部状态" value=""/><el-option label="无报价" value="no_price"/></el-select><el-button type="primary" :loading="loading" @click="loadAdminWatches(1)">搜索</el-button><span class="muted">共 {{ watchTotal }} 条 · 无在售报价时不触发提醒</span><template v-if="watchSel.size"><span class="muted"> · 已选 {{ watchSel.size }} 条</span><el-button size="small" type="primary" :loading="migrateRunning" @click="openWatchMigrate(null)">迁移给用户</el-button><el-button size="small" type="danger" plain :loading="bulkWatchDeleteRunning" @click="batchDeleteWatches">批量删除</el-button></template></div></div>
-      <div v-if="isMobile" class="game-card-list"><div v-for="w in adminWatches" :key="w.id" class="admin-card"><div class="admin-card-main"><strong>{{ w.name||('appid:'+w.steam_appid) }}<el-tag v-if="!w.hasPrice" type="warning" size="small" title="该游戏无任何在售报价，提醒不会触发">无报价</el-tag><el-tag v-if="w.user_id!=null" type="info" size="small" class="tag-gap">只读</el-tag><el-tag v-if="w.user_id==null&&w.claimableUsers.length" type="info" size="small" class="tag-gap" :title="'Steam 愿望单候选：'+w.claimableUsers.map(u=>u.username).join('、')">候选 {{ w.claimableUsers.length }} 人</el-tag></strong><small>{{ w.username||'站点级' }} · 加入 {{ dateTime(w.created_at) }}</small><span class="muted">目标 {{ w.target_cents==null?'史低':price(w.target_cents) }} · 当前 {{ price(w.current_cents) }} · 史低 {{ price(w.hist_low) }}</span></div><div><el-button v-if="w.user_id==null&&w.claimableUsers.length" type="primary" plain size="small" @click="openWatchMigrate([w])">迁移</el-button><el-button v-if="w.user_id==null" type="danger" plain size="small" @click="removeAdminWatch(w)">删除</el-button></div></div><el-empty v-if="!adminWatches.length" description="没有到价提醒"/></div>
+      <div class="inline-form"><el-input v-model="watchQuery" clearable placeholder="搜索用户名" @keyup.enter="loadAdminWatches(1)" @clear="loadAdminWatches(1)"/><el-select v-model="watchStatus" style="width:150px" @change="loadAdminWatches(1)"><el-option label="全部状态" value=""/><el-option label="无报价" value="no_price"/></el-select><el-button type="primary" :loading="loading" @click="loadAdminWatches(1)">搜索</el-button><span class="muted">共 {{ watchTotal }} 条 · 无在售报价时不触发提醒</span><template v-if="watchSel.size"><span class="muted"> · 已选 {{ watchSel.size }} 条</span><el-button size="small" type="primary" plain :disabled="!pushChannels.length" :title="pushChannels.length?'':'先在系统设置配置通知通道'" @click="openWatchPush(null)">推送选中（{{ watchSel.size }}）</el-button><el-button size="small" type="primary" :loading="migrateRunning" @click="openWatchMigrate(null)">迁移给用户</el-button><el-button size="small" type="danger" plain :loading="bulkWatchDeleteRunning" @click="batchDeleteWatches">批量删除</el-button></template></div></div>
+      <div v-if="isMobile" class="game-card-list"><div v-for="w in adminWatches" :key="w.id" class="admin-card"><div class="admin-card-main"><strong>{{ w.name||('appid:'+w.steam_appid) }}<el-tag v-if="!w.hasPrice" type="warning" size="small" title="该游戏无任何在售报价，提醒不会触发">无报价</el-tag><el-tag v-if="w.user_id!=null" type="info" size="small" class="tag-gap">只读</el-tag><el-tag v-if="w.user_id==null&&w.claimableUsers.length" type="info" size="small" class="tag-gap" :title="'Steam 愿望单候选：'+w.claimableUsers.map(u=>u.username).join('、')">候选 {{ w.claimableUsers.length }} 人</el-tag></strong><small>{{ w.username||'站点级' }} · 加入 {{ dateTime(w.created_at) }}</small><span class="muted">目标 {{ w.target_cents==null?'史低':price(w.target_cents) }} · 当前 {{ price(w.current_cents) }} · 史低 {{ price(w.hist_low) }}</span></div><div><el-button v-if="w.user_id==null" type="primary" plain size="small" :disabled="!pushChannels.length" :title="pushChannels.length?'':'先在系统设置配置通知通道'" @click="openWatchPush([w])">推送</el-button><el-button v-if="w.user_id==null&&w.claimableUsers.length" type="primary" plain size="small" @click="openWatchMigrate([w])">迁移</el-button><el-button v-if="w.user_id==null" type="danger" plain size="small" @click="removeAdminWatch(w)">删除</el-button></div></div><el-empty v-if="!adminWatches.length" description="没有到价提醒"/></div>
       <div v-else class="module-card table-card"><el-table :data="adminWatches" v-loading="loading" stripe @selection-change="onWatchSelChange">
         <el-table-column type="selection" width="40" :selectable="(row)=>row.user_id==null"/>
         <el-table-column prop="username" label="用户" min-width="120"><template #default="{row}">{{ row.username||'站点级' }}</template></el-table-column>
@@ -83,9 +83,29 @@
         <el-table-column label="史低" width="110" align="right"><template #default="{row}">{{ price(row.hist_low) }}</template></el-table-column>
         <el-table-column label="加入时间" min-width="150"><template #default="{row}">{{ dateTime(row.created_at) }}</template></el-table-column>
         <el-table-column label="最近提醒" min-width="150"><template #default="{row}">{{ row.last_notified_at?dateTime(row.last_notified_at):'—' }}</template></el-table-column>
-        <el-table-column label="操作" width="150"><template #default="{row}"><el-button v-if="row.user_id==null&&row.claimableUsers.length" link type="primary" @click="openWatchMigrate([row])">迁移</el-button><el-button v-if="row.user_id==null" link type="danger" @click="removeAdminWatch(row)">删除</el-button><el-tag v-else type="info" size="small">只读</el-tag></template></el-table-column>
+        <el-table-column label="操作" width="210"><template #default="{row}"><el-button v-if="row.user_id==null" link type="primary" :disabled="!pushChannels.length" :title="pushChannels.length?'':'先在系统设置配置通知通道'" @click="openWatchPush([row])">推送</el-button><el-button v-if="row.user_id==null&&row.claimableUsers.length" link type="primary" @click="openWatchMigrate([row])">迁移</el-button><el-button v-if="row.user_id==null" link type="danger" @click="removeAdminWatch(row)">删除</el-button><el-tag v-else type="info" size="small">只读</el-tag></template></el-table-column>
       </el-table><PaginationBar v-model:page="watchAdminPage" :page-size="20" :total="watchTotal" @change="loadAdminWatches(watchAdminPage)"/></div>
       <el-dialog v-model="migrateDialog.visible" title="迁移站点级提醒给用户" width="min(460px, 92vw)"><p class="muted">已选 {{ migrateDialog.ids.length }} 条站点级提醒；迁移后归该用户所有，达标提醒邮件将发送到该用户的邮箱。</p><p v-if="migrateDialog.rows.length" class="muted">游戏：{{ migrateDialog.rows.map(r=>r.name||('appid:'+r.steam_appid)).join('、') }}</p><el-select v-model="migrateDialog.targetId" placeholder="选择目标用户（Steam 愿望单反查候选）" style="width:100%"><el-option v-for="u in migrateDialog.users" :key="u.userId" :value="u.userId" :label="u.email?`${u.username}（${u.email}）`:u.username"/></el-select><template #footer><el-button @click="migrateDialog.visible=false">取消</el-button><el-button type="primary" :disabled="!migrateDialog.targetId" :loading="migrateRunning" @click="submitWatchMigrate">确认迁移</el-button></template></el-dialog>
+      <!-- DF 批（docs/ALERT-MANUAL-PUSH.md §2/§3 + design/alert-manual-push-2026-11-18.html）：单条推送确认弹窗（游戏/用户/当前价/史低/上次提醒/渠道）；
+           批量弹窗对齐 design/admin-confirm-no-toggle-2026-11-18.html（收件人/游戏列表/合并 1 封邮件）；强制推送与更新最近提醒时间（默认勾选）。 -->
+      <el-dialog v-model="pushDialog.visible" :title="pushDialog.rows.length>1?`批量推送 ${pushDialog.rows.length} 条提醒`:'推送提醒'" width="min(520px, 92vw)">
+        <template v-if="pushDialog.rows.length===1">
+          <div class="push-line"><b>游戏</b><span>{{ pushDialog.rows[0].name||('appid:'+pushDialog.rows[0].steam_appid) }}<el-tag v-if="pushDialog.rows[0].steam_appid" size="small" class="tag-gap">appid {{ pushDialog.rows[0].steam_appid }}</el-tag></span></div>
+          <div class="push-line"><b>用户</b><span>站点级（发到站点负责人邮箱）</span></div>
+          <div class="push-line"><b>当前 / 史低</b><span>{{ price(pushDialog.rows[0].current_cents) }} / {{ price(pushDialog.rows[0].hist_low) }}</span></div>
+          <div class="push-line"><b>上次提醒</b><span>{{ pushDialog.rows[0].last_notified_at?dateTime(pushDialog.rows[0].last_notified_at):'—（从未提醒）' }}</span></div>
+          <div class="push-line"><b>发送渠道</b><span>{{ channelLabel('email') }} · {{ channelLabel('webhook') }} · {{ channelLabel('wecom') }}</span></div>
+        </template>
+        <template v-else>
+          <div class="push-line"><b>收件人</b><span v-if="pushChannels.includes('email')">站点负责人邮箱 · 已配置</span><span v-else>已配置通道：{{ pushChannels.join(' / ') }}（无邮件收件人）</span></div>
+          <div class="push-list"><div v-for="r in pushDialog.rows" :key="r.id"><span class="push-name">{{ r.name||('appid:'+r.steam_appid) }}</span><span class="muted">当前 {{ price(r.current_cents) }} / 史低 {{ price(r.hist_low) }}</span></div></div>
+          <div class="push-line"><b>发送方式</b><span><b>合并为 1 封邮件</b>（正文列出以上 {{ pushDialog.rows.length }} 款）</span></div>
+        </template>
+        <label class="push-opt"><el-checkbox v-model="pushDialog.force"><span><b>强制推送</b>：即使当前价未达目标价/史低也发送（用于测试或补发）</span></el-checkbox></label>
+        <label class="push-opt"><el-checkbox v-model="pushDialog.mark"><span><b>更新最近提醒时间</b>：写入 last_notified 后，自动任务不会对同价格重复提醒</span></el-checkbox></label>
+        <p class="push-notice">这会立即向收件人发送「到价提醒」邮件，发送后不可撤回；本次操作将记入审计日志。</p>
+        <template #footer><el-button @click="pushDialog.visible=false">取消</el-button><el-button type="primary" :loading="pushRunning" @click="submitWatchPush">确认推送</el-button></template>
+      </el-dialog>
     </template>
     <!-- 公告 -->
     <template v-else-if="section==='announcements'">
@@ -462,7 +482,11 @@ async function loadWishlists(){loading.value=true;try{const qs=new URLSearchPara
 // CL 批（docs/USER-ALERTS.md §4.3）：全站到价提醒清单——分页 + 用户名筛选 + 删除确认（审计在服务端 api.watch_deleted）；
 // CY 批：仅站点级行（user_id 为空）显示删除入口，用户行只读
 const adminWatches=ref([]),watchTotal=ref(0),watchQuery=ref(''),watchAdminPage=ref(1),watchStatus=ref('');
-async function loadAdminWatches(nextPage=1){loading.value=true;try{const qs=new URLSearchParams({page:String(nextPage),pageSize:'20'});if(watchQuery.value.trim())qs.set('username',watchQuery.value.trim());if(watchStatus.value)qs.set('status',watchStatus.value);const d=await api(`/api/admin/watchlist?${qs}`);adminWatches.value=d.items||[];watchTotal.value=Number(d.total)||0;watchAdminPage.value=Number(d.page)||1;}catch(e){notifyError(e);}finally{loading.value=false;}}
+// DF 批（docs/ALERT-MANUAL-PUSH.md §2 #5）：已配置的推送渠道名（来自列表接口 notifyChannels），无通道时「推送」按钮禁用
+const pushChannels=ref([]),pushRunning=ref(false);
+const pushDialog=reactive({visible:false,rows:[],force:false,mark:true});
+function channelLabel(kind){const name={email:'邮件',webhook:'Webhook',wecom:'企业微信'}[kind]||kind;return `${name}（${pushChannels.value.includes(kind)?'已配置':'未配置'}）`;}
+async function loadAdminWatches(nextPage=1){loading.value=true;try{const qs=new URLSearchParams({page:String(nextPage),pageSize:'20'});if(watchQuery.value.trim())qs.set('username',watchQuery.value.trim());if(watchStatus.value)qs.set('status',watchStatus.value);const d=await api(`/api/admin/watchlist?${qs}`);adminWatches.value=d.items||[];watchTotal.value=Number(d.total)||0;watchAdminPage.value=Number(d.page)||1;pushChannels.value=Array.isArray(d.notifyChannels)?d.notifyChannels:[];}catch(e){notifyError(e);}finally{loading.value=false;}}
 async function removeAdminWatch(row){
   try{await ElMessageBox.confirm(`删除「${row.username||'站点级'}」的到价提醒「${row.name||row.steam_appid}」？`,'删除到价提醒',{type:'warning',confirmButtonText:'删除',cancelButtonText:'取消'});}catch{return;}
   try{await api(`/api/admin/watchlist/${row.id}`,{method:'DELETE'});ElMessage.success('已删除');await loadAdminWatches(watchAdminPage.value);}catch(e){notifyError(e);}
@@ -500,6 +524,31 @@ async function batchDeleteWatches(){
     await api(`/api/admin/watchlist/delete`,json('POST',{ids:list.map(w=>w.id)}));
     ElMessage.success(`已删除 ${list.length} 条`);watchSel.value=new Set();await loadAdminWatches(watchAdminPage.value);
   }catch(e){notifyError(e);}finally{bulkWatchDeleteRunning.value=false;}
+}
+// DF 批（docs/ALERT-MANUAL-PUSH.md §2/§3）：手动推送——单条立即发送；批量合并一封邮件；
+// 强制推送（force，默认关）/ 更新最近提醒时间（mark，默认勾选）；无通道按钮已禁用。
+function openWatchPush(rows){
+  const list=(rows||adminWatches.value.filter(w=>w.user_id==null&&watchSel.value.has(w.id))).filter(w=>w.user_id==null);
+  if(!list.length){ElMessage.warning('请选择站点级提醒（用户级只读）');return;}
+  pushDialog.rows=list;pushDialog.force=false;pushDialog.mark=true;pushDialog.visible=true;
+}
+async function submitWatchPush(){
+  const rows=pushDialog.rows;const force=pushDialog.force;const mark=pushDialog.mark;
+  pushRunning.value=true;
+  try{
+    if(rows.length===1){
+      const d=await api(`/api/admin/watchlist/${rows[0].id}/push`,json('POST',{force,mark}));
+      if(d.sent){ElMessage.success(`已推送「${rows[0].name||('appid:'+rows[0].steam_appid)}」`);}
+      else if(d.reason==='no_price'){ElMessage.warning('该游戏无在售报价，无法推送');}
+      else{ElMessage.warning(`当前未达提醒条件（当前 ${price(d.currentCents)} / 目标 ${d.targetCents==null?'史低':price(d.targetCents)}），不勾选强制推送时不发送`);}
+    }else{
+      const d=await api('/api/admin/watchlist/push',json('POST',{ids:rows.map(r=>r.id),force,mark}));
+      const sentN=(d.results||[]).filter(r=>r.sent).length;
+      if(sentN){ElMessage.success(`已推送 ${sentN}/${d.results.length} 条（合并为 1 封邮件）`);}
+      else{ElMessage.warning('未发送：所选提醒均未达条件（可勾选强制推送）');}
+    }
+    pushDialog.visible=false;watchSel.value=new Set();await loadAdminWatches(watchAdminPage.value);
+  }catch(e){notifyError(e);}finally{pushRunning.value=false;}
 }
 // AT 批（docs/ADMIN-CONSOLE-IA.md §7.3）：抽屉状态与 URL 双向同步——
 // ?section=announcements&drawer=new[&id=…] 可直达；关闭去掉 drawer/id，保留其它参数。
@@ -652,6 +701,8 @@ if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('ch
 .ip-detail .log-line span:first-child{min-width:150px;color:var(--muted)}
 .settings-sections{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}.setting-rows{display:flex;flex-direction:column;gap:6px;padding:4px 0 8px}.setting-row{display:flex;align-items:center;gap:9px;font-size:12.5px;border:1px solid var(--border);border-radius:9px;padding:7px 11px;background:var(--panel-2);flex-wrap:wrap}.setting-row .k{min-width:170px;color:var(--fg);font-weight:600;flex:1 1 170px}.setting-row .row-input{width:110px}.setting-row .src{color:var(--fg-muted);font-size:11px;margin-left:auto}.setting-row.hit{background:var(--brand-soft)}.settings-sections .settings-card-head{display:flex;align-items:center;gap:9px;padding:11px 14px;border:1px solid var(--border);border-bottom:0;border-radius:var(--radius-12) var(--radius-12) 0 0;background:var(--panel-2)}.settings-sections .settings-card-head h3{font-size:13px;margin:0;flex:1;font-weight:600}.settings-ico{width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;background:var(--brand-soft);border:1px solid var(--border)}.settings-card-tag{font-size:10.5px;color:var(--fg-muted);border:1px solid var(--border);background:var(--panel);border-radius:999px;padding:1px 8px}.settings-card-tag.ok{color:var(--good);border-color:var(--good);background:var(--good-bg)}.settings-sections .settings-card-body{padding:12px 14px 6px;border:1px solid var(--border);border-radius:0 0 var(--radius-12) var(--radius-12);background:var(--panel);min-width:0}.settings-fold{display:flex;align-items:center;gap:7px;width:100%;border:0;background:var(--panel-2);color:var(--fg);padding:8px 12px;border-radius:9px;margin:8px 0 10px;cursor:pointer;font-size:12.5px;text-align:left}.settings-fold .arrow{color:var(--fg-muted)}.settings-fold b{font-weight:600}.settings-fold .sum{margin-left:auto;color:var(--fg-muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}.settings-fold-body{border-top:1px dashed var(--border);padding-top:4px;margin-bottom:8px}.settings-foot{display:flex;justify-content:flex-end;padding:2px 0 10px}.setting-field.hit{background:var(--brand-soft);border-radius:9px}.setting-restore{font-size:11px}.settings-toolbar .el-checkbox{white-space:nowrap}
 @media(max-width:760px){.settings-sections{grid-template-columns:1fr}.settings-fold .sum{max-width:45%}}
+/* DF 批（docs/ALERT-MANUAL-PUSH.md + design/alert-manual-push-2026-11-18.html）：推送确认弹窗 */
+.push-line{display:flex;gap:10px;padding:5px 0;font-size:12.5px;align-items:baseline}.push-line b{width:82px;color:var(--fg-subtle);font-weight:500;flex:none}.push-list{background:var(--panel-2);border:1px solid var(--border);border-radius:9px;padding:6px 10px;margin:6px 0}.push-list>div{display:flex;justify-content:space-between;gap:8px;padding:2px 0;font-size:12.5px}.push-list .push-name{color:var(--fg)}.push-opt{display:flex;align-items:flex-start;gap:8px;margin-top:9px;font-size:12px;color:var(--fg-muted);cursor:pointer}.push-opt b{color:var(--fg);font-weight:600}.push-notice{background:var(--warn-bg);border:1px solid var(--warn-soft);color:var(--warn);border-radius:9px;padding:7px 10px;font-size:11.5px;margin-top:10px}
 </style>
 
 

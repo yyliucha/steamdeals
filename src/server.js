@@ -35,6 +35,7 @@ import { appealAdminMail, appealResultMail, appealReplyText, appealActionUrl } f
 import { ensureSteamSchemaOnce, baseUrl } from './steam-login.js';
 import * as mailTemplates from './mail-templates.js';
 import * as notify from './notify.js';
+import { buildPushHits, renderDigest, toPayload } from './alerts.js';
 import * as accountNotify from './account-notify.js';
 import * as proxyPool from './proxy-pool.js';
 import * as passwordPolicy from './password-policy.js';
@@ -272,6 +273,29 @@ export function appealBucketLimited(ip, kind, max, windowMs) {
 /** 测试用：清空申诉限流内存桶（与 ratelimit.resetState 同一先例）。 */
 export function resetAppealBuckets() {
   appealBuckets.clear();
+}
+
+// DF 批（docs/ALERT-MANUAL-PUSH.md §3）：手动推送 5 分钟频控——同一条（w:<id>）/同一批（b:<ids 排序连接>）
+// 重复推送 → 429 { retryAfterSec }。内存窗口、重启清零（与申诉限流同款设计，防误触/刷屏）。
+const alertPushBuckets = new Map(); // key -> number[]（首次推送时间戳）
+export const ALERT_PUSH_WINDOW_MS = 5 * 60_000;
+/** 未超限返回 null；超限返回首次推送的时间戳（调用方据此算 retryAfterSec）。 */
+export function alertPushLimited(key) {
+  if (alertPushBuckets.size > 5000) alertPushBuckets.clear();
+  const now = Date.now();
+  const list = (alertPushBuckets.get(key) ?? []).filter((t) => now - t < ALERT_PUSH_WINDOW_MS);
+  if (list.length) {
+    alertPushBuckets.set(key, list);
+    return list[0];
+  }
+  list.push(now);
+  alertPushBuckets.set(key, list);
+  return null;
+}
+
+/** 测试用：清空手动推送频控桶。 */
+export function resetAlertPushBuckets() {
+  alertPushBuckets.clear();
 }
 
 const bannedTplCache = new Map();
@@ -3264,7 +3288,9 @@ export function createApiServer({
           hasPrice: hasPrice === true,
           claimableUsers: Array.isArray(claimableUsers) ? claimableUsers : [],
         }));
-        return json(res, 200, { ...result, items, region });
+        // DF 批（docs/ALERT-MANUAL-PUSH.md §2 #5）：带已配置的推送渠道名，前端据此禁用「推送」按钮（无通道不可推）
+        const notifyChannels = notify.channelsFromEnv().map((c) => c.name);
+        return json(res, 200, { ...result, items, region, notifyChannels });
       }
 
       if (path === '/api/admin/watchlist' && req.method === 'POST') {
@@ -3291,6 +3317,151 @@ export function createApiServer({
         });
         logger?.info('api.watch_saved', { gameId, targetCents, by: user.username });
         return json(res, 200, { id });
+      }
+
+      // ---- DF 批（docs/ALERT-MANUAL-PUSH.md §3）：手动推送（单条 / 批量合并一封）----
+      // 复用 alerts（buildPushHits/renderDigest/toPayload）+ notify.deliver；仅站点级（用户级 403 只读）；
+      // mark 默认勾选；5 分钟频控；审计 admin.alert_pushed。返回 { status, payload } 由路由直接 json。
+      const adminPushWatches = async ({ ids, force, mark }) => {
+        const channels = notify.channelsFromEnv();
+        if (!channels.length) {
+          return { status: 400, payload: { error: '未配置任何通知通道，请先在系统设置配置（邮件 / Webhook / 企业微信）' } };
+        }
+
+        // 频控：先查每个 watch 的独立桶（"同一 watch"），批量再查整批桶（"同一批"）
+        const limitedWatch = ids.map((id) => ({ id, first: alertPushLimited(`w:${id}`) })).find((x) => x.first != null);
+        const batchFirst = ids.length > 1 ? alertPushLimited(`b:${[...ids].sort((a, b) => a - b).join(',')}`) : null;
+        const limitedFirst = limitedWatch?.first ?? batchFirst;
+        if (limitedFirst != null) {
+          const retryAfterSec = Math.max(1, Math.ceil((limitedFirst + ALERT_PUSH_WINDOW_MS - Date.now()) / 1000));
+          await db.writeAuditLog(q, {
+            actorId: user.id,
+            actor: user.username,
+            action: 'admin.alert_pushed',
+            target: `watchlist:${ids.join(',')}`,
+            detail: { ids, force, mark, outcome: 'rate_limited', retryAfterSec },
+            ip,
+          });
+          return { status: 429, payload: { error: '5 分钟内已推送过该提醒，请稍后再试', retryAfterSec } };
+        }
+
+        const candidates = await db.watchCandidates(q);
+        const wanted = new Set(ids);
+        const rows = candidates.filter((r) => wanted.has(Number(r.watch_id)));
+        // 用户级提醒不可推（仅站点级；与 DELETE 只读语义一致 → 403 + 审计）
+        const userRow = rows.find((r) => r.user_id != null);
+        if (userRow != null) {
+          logger?.warn('admin.forbidden_write', { target: `watchlist:${Number(userRow.watch_id)}`, userId: Number(userRow.user_id), by: user.username, ip });
+          await db.writeAuditLog(q, {
+            actorId: user.id,
+            actor: user.username,
+            action: 'admin.forbidden_write',
+            target: `watchlist:${Number(userRow.watch_id)}`,
+            detail: { userId: Number(userRow.user_id), method: 'POST', path: 'push' },
+            ip,
+          });
+          return { status: 403, payload: { error: '用户提醒不可推送，仅站点级支持' } };
+        }
+        if (!rows.length) return { status: 404, payload: { error: '提醒不存在或非站点级' } };
+
+        const now = new Date();
+        const { hits, skipped } = buildPushHits(rows, { force, now });
+        const perRow = [
+          ...hits.map((h) => ({ id: h.watchId, name: h.name, sent: true, reason: h.reason })),
+          ...skipped.map((s) => ({
+            id: s.watchId,
+            name: s.name,
+            sent: false,
+            reason: s.reason,
+            currentCents: s.currentCents ?? null,
+            targetCents: s.targetCents ?? null,
+            histLowCents: s.histLowCents ?? null,
+          })),
+        ];
+
+        if (!hits.length) {
+          const firstSkip = skipped[0];
+          const reason = skipped.every((s) => s.reason === 'no_price') ? 'no_price' : 'not_met';
+          await db.writeAuditLog(q, {
+            actorId: user.id,
+            actor: user.username,
+            action: 'admin.alert_pushed',
+            target: `watchlist:${ids.join(',')}`,
+            detail: { ids, force, mark, outcome: 'not_met', perRow },
+            ip,
+          });
+          return {
+            status: 200,
+            payload: {
+              sent: false,
+              reason,
+              currentCents: firstSkip?.currentCents ?? null,
+              targetCents: firstSkip?.targetCents ?? null,
+              histLowCents: firstSkip?.histLowCents ?? null,
+              results: perRow,
+            },
+          };
+        }
+
+        const { renderAlertsHtml } = await import('./alerts-html.js');
+        const mail = renderAlertsHtml(hits, { now });
+        const delivery = await notify.deliver(channels, {
+          text: renderDigest(hits, { now }),
+          html: mail.html,
+          payload: toPayload(hits, { now }),
+          subject: mail.subject,
+          logger,
+        });
+        if (!delivery.ok) {
+          const firstErr = delivery.results.find((r) => !r.ok);
+          return { status: 502, payload: { error: `发送失败：${firstErr?.error ?? firstErr?.errcode ?? '未知原因'}` } };
+        }
+
+        if (mark) {
+          for (const h of hits) await db.markNotified(q, { watchId: h.watchId, priceCents: h.currentCents });
+        }
+        const channelNames = delivery.results.map((r) => r.channel).join(',');
+        logger?.info('api.alert_pushed', { ids: hits.map((h) => h.watchId), force, mark, channels: channelNames, by: user.username });
+        await db.writeAuditLog(q, {
+          actorId: user.id,
+          actor: user.username,
+          action: 'admin.alert_pushed',
+          target: `watchlist:${ids.join(',')}`,
+          detail: { ids, force, mark, outcome: 'sent', sentCount: hits.length, channels: channelNames, perRow },
+          ip,
+        });
+        return {
+          status: 200,
+          payload: {
+            sent: true,
+            sentCount: hits.length,
+            channel: channelNames,
+            markApplied: mark,
+            results: perRow,
+          },
+        };
+      };
+
+      const watchPushOne = path.match(/^\/api\/admin\/watchlist\/(\d+)\/push$/);
+      if (watchPushOne && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const wid = Number(watchPushOne[1]);
+        const body = await readBody(req);
+        const force = body.force === true;
+        const mark = body.mark !== false; // DF：更新最近提醒时间默认勾选
+        const result = await adminPushWatches({ ids: [wid], force, mark });
+        return json(res, result.status, result.payload);
+      }
+
+      if (path === '/api/admin/watchlist/push' && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const body = await readBody(req);
+        const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+        if (!ids.length) return json(res, 400, { error: '需要选择要推送的提醒' });
+        const force = body.force === true;
+        const mark = body.mark !== false; // 批量同单条：默认勾选
+        const result = await adminPushWatches({ ids, force, mark });
+        return json(res, result.status, result.payload);
       }
 
       // CU-2（docs/USER-ALERTS-GOVERNANCE.md §2/§3）：站点级提醒批量迁移给用户（候选=Steam 愿望单反查，

@@ -13,7 +13,7 @@ const esc = (value) =>
 
 const money = (cents) => (cents == null ? null : `¥${yuanAmount(cents)}`);
 
-const REASON_LABEL = { target: '达到目标价', hist_low: '新史低', wishlist: '愿望单' };
+const REASON_LABEL = { target: '达到目标价', hist_low: '新史低', wishlist: '愿望单', manual: '手动推送' };
 
 export function renderAlertsHtml(hits, { now = new Date(), siteUrl = 'https://sd.yyliucha.cn' } = {}) {
   const dateStr = formatDayUtc(now);

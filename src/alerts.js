@@ -6,11 +6,13 @@ import { yuanAmount } from './format.js';
 export const REASON = {
   TARGET: 'target', // 到设定的目标价
   HIST_LOW: 'hist_low', // 没设目标，跌到史低
+  MANUAL: 'manual', // DF 批：管理员手动推送（强制推送未达条件时）
 };
 
 export const REASON_LABEL = {
   [REASON.TARGET]: '已达目标价',
   [REASON.HIST_LOW]: '跌至史低',
+  [REASON.MANUAL]: '手动推送',
 };
 
 const yuan = (cents) => (cents == null ? '—' : `¥${yuanAmount(cents)}`);
@@ -62,6 +64,62 @@ export function evaluateAlerts(rows, { now = new Date() } = {}) {
 
 const steamUrl = (appid) => (appid ? `https://store.steampowered.com/app/${appid}/` : null);
 
+// ---------------------------------------------------------------- DF 批：手动推送判定
+// 命中口径与 evaluateAlerts 一致（current<=target / current<=hist_low），但：
+//   · force=true 时未达条件的行也进命中（reason=manual）；
+//   · 不做 last_notified 去重（管理员主动发，是否记去重由 mark 显式控制）；
+//   · 无在售报价的行永远不能推送（无价可发）。
+/** 手动推送的行判定。返回 { hits, skipped }，skipped 带 reason（not_met / no_price）与价格信息。 */
+export function buildPushHits(rows, { force = false, now = new Date() } = {}) {
+  const hits = [];
+  const skipped = [];
+  for (const row of rows ?? []) {
+    const current = row.current_cents == null ? null : Number(row.current_cents);
+    if (current == null) {
+      skipped.push({ watchId: Number(row.watch_id), name: row.name, reason: 'no_price' });
+      continue;
+    }
+    const target = row.target_cents == null ? null : Number(row.target_cents);
+    const hist = row.hist_low == null ? null : Number(row.hist_low);
+    let reason = null;
+    if (target != null) {
+      if (current <= target) reason = REASON.TARGET;
+    } else if (hist != null && current <= hist) {
+      reason = REASON.HIST_LOW;
+    }
+    if (!reason && !force) {
+      skipped.push({
+        watchId: Number(row.watch_id),
+        name: row.name,
+        reason: 'not_met',
+        currentCents: current,
+        targetCents: target,
+        histLowCents: hist,
+      });
+      continue;
+    }
+    if (!reason) reason = REASON.MANUAL;
+    hits.push({
+      watchId: Number(row.watch_id),
+      userId: row.user_id == null ? null : Number(row.user_id),
+      userEmail: row.user_email ?? null,
+      userEmailAlerts: row.user_email_alerts !== false,
+      gameId: Number(row.game_id),
+      steamAppid: row.steam_appid ?? null,
+      name: row.name,
+      currentCents: current,
+      targetCents: target,
+      histLowCents: hist,
+      atHistLow: hist != null && current <= hist,
+      reason,
+      manual: true, // DF：手动推送标记（digest/邮件文案标注「手动推送」）
+      note: row.note ?? null,
+      detectedAt: now.toISOString(),
+    });
+  }
+  return { hits, skipped };
+}
+
 /** 人读的简报（也进日志，方便只靠日志复盘"今天提醒了什么"）。 */
 export function renderDigest(hits, { now = new Date() } = {}) {
   if (!hits?.length) return '没有需要提醒的价格。';
@@ -72,6 +130,7 @@ export function renderDigest(hits, { now = new Date() } = {}) {
       h.targetCents != null ? `目标 ${yuan(h.targetCents)}` : null,
       h.histLowCents != null ? `史低 ${yuan(h.histLowCents)}` : null,
       REASON_LABEL[h.reason] ?? h.reason,
+      h.manual === true ? '手动推送' : null, // DF 批：手动推送的文案标注（§4.3）
     ].filter(Boolean);
     const url = steamUrl(h.steamAppid);
     return `· ${bits.join(' · ')}${url ? `\n  ${url}` : ''}`;
