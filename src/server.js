@@ -64,6 +64,11 @@ import { handleAppealPublic, handleAppealAdmin } from './routes/appeal.js';
 // handleAuthRoutes 在认证上下文就绪后（主段）。拦截链豁免（appealExempt）、must_change_password
 // 白名单、loginIpFails/bindStates 共享状态仍是中间件、留在本文件。
 import { handleAuthPublic, handleAuthRoutes, MAX_ACCOUNTS_PER_USER } from './routes/auth.js';
+// CO-5/B4-2 第四轮：watchlist/wishlist 域用户段路由已抽到 src/routes/watchlist.js——
+// handleWatchlistRoutes 在认证上下文就绪后（主段）。用户级写限流计数 Map（watchUserFails）
+// 只被本域使用、随域移入模块（与认证域 passwordCheckHits 同先例）；/api/admin/watchlist*、
+// /api/admin/wishlists 属管理段（B4 队列 #16 后续轮次），留在本文件。
+import { handleWatchlistRoutes } from './routes/watchlist.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -91,20 +96,6 @@ const apiTokenSeenAt = new Map();
 const forYouCache = new Map();
 const behaviorBuckets = new Map();// AK-2（docs/AUTH-REDESIGN.md §4.3）：登录 IP 限速（同 IP 15 分钟失败 ≥20 次 → 429，内存计数、重启清零）
 const loginIpFails = new Map(); // ip -> { count, windowStart }
-
-// CL 批（docs/USER-ALERTS.md §8）：用户级到价提醒写操作每用户 30 次/分
-const watchUserFails = new Map(); // userId -> { count, windowStart }
-const watchUserLimited = (userId) => {
-  const now = Date.now();
-  const entry = watchUserFails.get(userId) ?? { count: 0, windowStart: now };
-  if (now - entry.windowStart >= 60_000) {
-    entry.count = 0;
-    entry.windowStart = now;
-  }
-  entry.count += 1;
-  watchUserFails.set(userId, entry);
-  return entry.count > 30;
-};
 
 /** 测试用：清零登录 IP 限速计数（模块级 Map 跨测试共享）。 */
 export function resetLoginThrottleForTest() {
@@ -2409,72 +2400,23 @@ export function createApiServer({
         return json(res, 200, { ok: true, defaultSteamId: me.default_steam_id ?? null });
       }
 
-      // ---- CL 批（docs/USER-ALERTS.md §3.1）：用户级到价提醒（登录必需；POST/DELETE 每用户 30 次/分）----
-      if (path === '/api/watchlist' && req.method === 'GET') {
-        if (!requireUser()) return;
-        return json(res, 200, { watches: await db.listUserWatches(q, { userId: user.id, region: 'cn' }) });
-      }
-
-      if (path === '/api/watchlist' && req.method === 'POST') {
-        if (!requireUser()) return;
-        if (watchUserLimited(user.id)) return json(res, 429, { error: '请求过于频繁', retryAfterSec: 60 });
-        const body = await readBody(req);
-        let gameId = Number(body.gameId);
-        if (!Number.isFinite(gameId) || gameId <= 0) {
-          const appid = Number(body.appid);
-          const found = Number.isFinite(appid) && appid > 0 ? await db.gameDetail(q, { steamAppid: appid }) : null;
-          if (!found) return json(res, 404, { error: '没有该游戏' });
-          gameId = found.id;
-        } else {
-          const found = await db.gameDetail(q, { gameId });
-          if (!found) return json(res, 404, { error: '没有该游戏' });
-        }
-        let targetCents = null;
-        if (body.targetCents != null && body.targetCents !== '') {
-          const n = Math.round(Number(body.targetCents));
-          if (!Number.isFinite(n) || n < 0) return json(res, 400, { error: '目标价不合法' });
-          targetCents = n;
-        }
-        const note = String(body.note ?? '').trim().slice(0, 200) || null;
-        const id = await db.upsertUserWatch(q, { userId: user.id, gameId, region: 'cn', targetCents, note });
-        logger?.info('api.watch_user_saved', { userId: user.id, gameId, targetCents });
-        return json(res, 200, { ok: true, id });
-      }
-
-      const userWatchDel = path.match(/^\/api\/watchlist\/(\d+)$/);
-      if (userWatchDel && req.method === 'DELETE') {
-        if (!requireUser()) return;
-        if (watchUserLimited(user.id)) return json(res, 429, { error: '请求过于频繁', retryAfterSec: 60 });
-        const removed = await db.deleteUserWatch(q, { userId: user.id, gameId: Number(userWatchDel[1]), region: 'cn' });
-        logger?.info('api.watch_user_deleted', { userId: user.id, gameId: Number(userWatchDel[1]), removed });
-        return json(res, 200, { ok: true, removed });
-      }
-
-      // ---- 手动愿望单（BE 批 docs/WISHLIST-SITE-ONLY.md §4.1）：只写本站 + 建史低提醒，不再推 Steam ----
-      if (path === '/api/wishlist' && req.method === 'POST') {
-        if (!requireUser()) return;
-        const body = await readBody(req);
-        const game = await db.gameDetail(q, { steamAppid: Number(body.appid) || null, gameId: Number(body.gameId) || null, userId: user.id });
-        if (!game) return json(res, 404, { error: '没有该游戏' });
-        // 旧前端可能仍带 steamIds：忽略（不报错、不推送、不写 steam_wishlist）
-        await steamAccountsMod.addUserWishlist(q, { userId: user.id, gameId: game.id });
-        logger?.info('wishlist.added', { userId: user.id, gameId: game.id, appid: game.steam_appid ?? null });
-        // added/alreadyIn/failed 只为兼容旧前端（现在永远是空数组）
-        return json(res, 200, { ok: true, appid: game.steam_appid ?? null, added: [], alreadyIn: [], failed: [], site: true });
-      }
-
-      const wishDel = path.match(/^\/api\/wishlist\/(\d+)$/);
-      const wishDelById = path.match(/^\/api\/wishlist\/id\/(\d+)$/);
-      if ((wishDel || wishDelById) && req.method === 'DELETE') {
-        if (!requireUser()) return;
-        const game = wishDel
-          ? await db.gameDetail(q, { steamAppid: Number(wishDel[1]) })
-          : await db.gameDetail(q, { gameId: Number(wishDelById[1]) });
-        if (!game) return json(res, 404, { error: '没有该游戏' });
-        const removed = await steamAccountsMod.removeUserWishlist(q, { userId: user.id, gameId: game.id });
-        logger?.info('wishlist.removed', { userId: user.id, gameId: game.id, siteRemoved: removed.removed });
-        return json(res, 200, { ok: true, siteRemoved: removed.removed, watchesCleaned: removed.watchesCleaned, removedFromSteam: [], failed: [] });
-      }
+      // ---- CO-5/B4-2 第四轮：watchlist/wishlist 域用户段路由已抽到 src/routes/watchlist.js ----
+      // 调用位置不能动：必须在认证上下文（user/requireUser）就绪后的主段；本域无跨模块共享状态
+      // （用户级写限流 Map 只被本域使用、随域移入模块），ctx 只需基座字段。
+      if (
+        await handleWatchlistRoutes({
+          path,
+          req,
+          res,
+          q,
+          logger,
+          json,
+          readBody,
+          user,
+          requireUser,
+        })
+      )
+        return;
 
       // ---- 管理员：愿望单清单（BE 批 §4.2；CY 批改为只读——用户私有数据，写方法已移除）----
       if (path === '/api/admin/wishlists' && req.method === 'GET') {

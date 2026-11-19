@@ -57,6 +57,15 @@ export {
   countUserSteamAccounts,
   upsertSteamAccount,
 } from './auth-repository.js';
+// CO-5/B4-2 第四轮（docs/DESIGN-AUDIT.md B4）：watchlist/wishlist 域用户段 SQL 落
+// watchlist-repository.js（用户级到价提醒 CRUD；无 DDL 搬家——watchlist 表跨域共用，
+// alerts/CLI/管理段/游戏详情都读写它）。这里 re-export 保持旧 db.* 导入签名不变
+// （routes/watchlist.js、server.js 其它段与现有测试照旧走 pg.js 聚合壳）。
+export {
+  upsertUserWatch,
+  deleteUserWatch,
+  listUserWatches,
+} from './watchlist-repository.js';
 
 export const SCHEMA = `
 create table if not exists platforms (
@@ -1201,7 +1210,8 @@ create index if not exists grs_game on game_region_snapshot (game_id);
 `;
 
 // 官方渠道集合（snapshot 全部 SQL 共用；声明在网关之前，模板串在模块加载期就要取值）
-const OFFICIAL_KINDS = "('official', 'authorized_reseller')";
+// 跨域通用 SQL 片段：watchlist-repository.js 经 import 引用（live binding），不复制防漂移。
+export const OFFICIAL_KINDS = "('official', 'authorized_reseller')";
 
 // <snapshot-write-gateway>
 // B5 批：game_region_snapshot 的唯一写入网关——全部写语句收在这张表里，经 snapshotWrite 执行。
@@ -2208,28 +2218,9 @@ export async function upsertWatch(q, { gameId, region = 'cn', targetCents = null
   return Number(r.rows[0].id);
 }
 
-/** 用户级 upsert：同 (user_id, game_id, region) 重复只更新目标价/备注（§7 去重与幂等）。 */
-export async function upsertUserWatch(q, { userId, gameId, region = 'cn', targetCents = null, note = null, source = 'manual' }) {
-  const r = await q(
-    `insert into watchlist (user_id, game_id, region, target_cents, note, source)
-     values ($1, $2, $3, $4, $5, $6)
-     on conflict (user_id, game_id, region) where user_id is not null do update
-       set target_cents = excluded.target_cents, note = excluded.note, source = excluded.source
-     returning id`,
-    [userId, gameId, region, targetCents, note, source],
-  );
-  return Number(r.rows[0].id);
-}
-
 /** 站点级删除（只删 NULL 行，防误删用户级）。 */
 export async function deleteWatch(q, { gameId, region = 'cn' }) {
   const r = await q('delete from watchlist where game_id = $1 and region = $2 and user_id is null', [gameId, region]);
-  return r.rowCount ?? 0;
-}
-
-/** 用户级删除：只删当前用户该游戏的提醒（幂等，返回 removed 0/1）。 */
-export async function deleteUserWatch(q, { userId, gameId, region = 'cn' }) {
-  const r = await q('delete from watchlist where user_id = $1 and game_id = $2 and region = $3', [userId, gameId, region]);
   return r.rowCount ?? 0;
 }
 
@@ -2261,33 +2252,6 @@ export async function listWatches(q, { region = 'cn' } = {}) {
       where w.region = $1 and w.user_id is null
       order by g.name asc nulls last`,
     [region],
-  );
-  return r.rows;
-}
-
-/** 当前用户的提醒列表（join 游戏 + 当前价/史低/货币），按加入时间倒序。 */
-export async function listUserWatches(q, { userId, region = 'cn' } = {}) {
-  const r = await q(
-    `select w.id, w.game_id, w.target_cents, w.note, w.created_at, w.last_notified_cents, w.last_notified_at,
-            g.steam_appid, coalesce(nullif(g.name, ''), nullif(g.name_en, ''), 'appid:' || g.steam_appid) as name,
-            (select min(o.price_cents) from offers o
-               join platforms p on p.code = o.platform_code
-              where o.game_id = g.id and o.region = $2 and o.in_stock
-                and p.kind in ${OFFICIAL_KINDS}) as current_cents,
-            (select o.currency from offers o
-               join platforms p on p.code = o.platform_code
-              where o.game_id = g.id and o.region = $2 and o.in_stock
-                and p.kind in ${OFFICIAL_KINDS}
-              order by o.price_cents asc limit 1) as currency,
-            (select min(d.min_price_cents) from daily_prices d
-               join platforms p on p.code = d.platform_code
-              where d.game_id = g.id and d.region = $2
-                and p.kind in ${OFFICIAL_KINDS}) as hist_low
-       from watchlist w
-       join games g on g.id = w.game_id
-      where w.user_id = $1 and w.region = $2
-      order by w.created_at desc`,
-    [userId, region],
   );
   return r.rows;
 }

@@ -3,12 +3,22 @@
 // 断言行为而非只看全绿：每条注释写清"守的是什么约束"。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import { startApiServer } from '../src/server.js';
 import { evaluateAlerts, groupAlertsByUser } from '../src/alerts.js';
 import { ingestOffers } from '../src/ingest.js';
 import { ensureSteamSchema } from '../src/steam-login.js';
+
+// ===== CO-5/B4-2 第四轮：域拆分静态锁（watchlist/wishlist 用户段抽到 src/routes/watchlist.js）=====
+// 反向自检口径：删掉 routes/watchlist.js 任一路由分支 → 第 1 组红；删掉 server.js 的接线调用 →
+// 第 2 组红；把分支抄回 server.js → 第 3 组「防双实现」红；删 pg.js re-export → 第 4 组红。
+const WL_ROUTES = readFileSync(fileURLToPath(new URL('../src/routes/watchlist.js', import.meta.url)), 'utf8');
+const WL_REPO = readFileSync(fileURLToPath(new URL('../src/store/watchlist-repository.js', import.meta.url)), 'utf8');
+const WL_PG = readFileSync(fileURLToPath(new URL('../src/store/pg.js', import.meta.url)), 'utf8');
+const WL_SERVER = readFileSync(fileURLToPath(new URL('../src/server.js', import.meta.url)), 'utf8');
 
 // 与 api.test.js 一致：测试默认关登录验证码（HTTP 用例要真实登录）
 process.env.CAPTCHA_ENABLED = '0';
@@ -287,4 +297,46 @@ test('HTTP：管理员全站清单可查；用户行删除 403 + 审计、站点
     await srv.close();
     await store.close();
   }
+});
+
+test('CO-5/B4-2 第四轮：watchlist/wishlist 路由分支全部在 src/routes/watchlist.js（删任一支即红）', () => {
+  assert.match(WL_ROUTES, /path === '\/api\/watchlist' && req\.method === 'GET'/, 'watchlist GET 分支在新文件');
+  assert.match(WL_ROUTES, /path === '\/api\/watchlist' && req\.method === 'POST'/, 'watchlist POST 分支在新文件');
+  assert.match(WL_ROUTES, /path\.match\(\/\^\\\/api\\\/watchlist\\\/\(\\d\+\)\$\/\)/, 'watchlist/:gameId DELETE 分支在新文件');
+  assert.match(WL_ROUTES, /path === '\/api\/wishlist' && req\.method === 'POST'/, 'wishlist POST 分支在新文件');
+  assert.match(WL_ROUTES, /path\.match\(\/\^\\\/api\\\/wishlist\\\/\(\\d\+\)\$\/\)/, 'wishlist/:appid DELETE 分支在新文件');
+  assert.match(WL_ROUTES, /path\.match\(\/\^\\\/api\\\/wishlist\\\/id\\\/\(\\d\+\)\$\/\)/, 'wishlist/id/:gameId DELETE 分支在新文件');
+  // 登录守卫与写限流随域（每用户 30 次/分，与拆分前同语义）
+  assert.match(WL_ROUTES, /requireUser\(\)/, '分支内登录守卫存在');
+  assert.match(WL_ROUTES, /watchUserLimited\(user\.id\)/, '用户级写限流随域移入');
+});
+
+test('CO-5/B4-2 第四轮：server.js 必须真实接线 handleWatchlistRoutes（删掉调用即红，防死模块）', () => {
+  assert.match(WL_SERVER, /import \{ handleWatchlistRoutes \} from '\.\/routes\/watchlist\.js'/, 'server.js 必须导入域路由入口');
+  // 锁「完整调用形态」：必须是 if (await handleWatchlistRoutes({...})) return;——只断言字符串存在
+  // 会被 if (false) 包一层绕过；这个形态锁住"调用且消费返回值结束响应"。
+  assert.match(WL_SERVER, /if \(\s*await handleWatchlistRoutes\(\{/, '主段接线');
+  // ctx 关键字段必须传齐：漏传 user/requireUser 会让登录守卫失效
+  assert.match(WL_SERVER, /await handleWatchlistRoutes\(\{[\s\S]{0,600}?user,/);
+  assert.match(WL_SERVER, /await handleWatchlistRoutes\(\{[\s\S]{0,600}?requireUser,/);
+});
+
+test('CO-5/B4-2 第四轮：watchlist/wishlist 用户段分支不得双实现（server.js 里保留旧分支即红）', () => {
+  assert.ok(!/path === '\/api\/watchlist' && req\.method/.test(WL_SERVER), 'watchlist GET/POST 分支不得残留在 server.js');
+  assert.ok(!WL_SERVER.includes('userWatchDel'), 'watchlist/:gameId 删除分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/wishlist' && req\.method === 'POST'/.test(WL_SERVER), 'wishlist POST 分支不得残留在 server.js');
+  assert.ok(!WL_SERVER.includes('wishDelById'), 'wishlist/id/:gameId 删除分支不得残留在 server.js');
+  assert.ok(!WL_SERVER.includes('wishDel '), 'wishlist/:appid 删除分支不得残留在 server.js');
+  // 限流计数随域移入模块，server.js 不得保留定义（双实现会分家）
+  assert.ok(!WL_SERVER.includes('watchUserLimited'), '用户级写限流定义不得残留在 server.js');
+});
+
+test('CO-5/B4-2 第四轮：watchlist-repository.js 签名不变 + pg.js re-export（删 re-export 即红）', () => {
+  assert.match(WL_REPO, /export async function upsertUserWatch\(q, \{ userId, gameId, region = 'cn', targetCents = null, note = null, source = 'manual' \}\)/, 'upsertUserWatch 签名与拆分前一致');
+  assert.match(WL_REPO, /export async function deleteUserWatch\(q, \{ userId, gameId, region = 'cn' \}\)/, 'deleteUserWatch 签名与拆分前一致');
+  assert.match(WL_REPO, /export async function listUserWatches\(q, \{ userId, region = 'cn' \} = \{\}\)/, 'listUserWatches 签名与拆分前一致');
+  // 三个函数必须整体 re-export（旧 db.* 导入签名不变；server.js 其它段与测试照旧走聚合壳）
+  assert.match(WL_PG, /export \{[\s\S]{0,200}upsertUserWatch[\s\S]{0,200}deleteUserWatch[\s\S]{0,200}listUserWatches[\s\S]{0,200}\} from '\.\/watchlist-repository\.js'/, 'pg.js 必须 re-export 三个函数');
+  // 旧定义不得残留在 pg.js（双实现会漂移）
+  assert.ok(!/export (async )?function (upsertUserWatch|deleteUserWatch|listUserWatches)/.test(WL_PG), 'pg.js 不允许保留旧函数定义（只许 re-export）');
 });
