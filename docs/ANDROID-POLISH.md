@@ -138,5 +138,19 @@
   `selectedId`（弹层内瞬时，非 Screen）；其余 Screen 状态一律 rememberSaveable / ViewModel。
 - **不改**：导航栈结构、Tab 切换逻辑（saveState/restoreState 保持原样）。
 
+### DZ 实现与口径
+
+- **「全部已读」按钮**：公告弹层头部（列表态，未读 > 0 时显示），旁挂「未读 N 条」计数；
+  点击 → `AnnouncementsState.markAllRead()`：当前 active 未读一次批量上报（登录 →
+  `POST /api/app/announcements/read`；游客 → 本地 DataStore `readAnnouncementIds`）→
+  内存 readIds 先更新 → 角标立即消失，并 toast「已全部标记为已读」。
+- **保留单条已读**：点开详情仍 `markRead(id)`；**不在打开列表时自动全标**（避免没看就清空）。
+- **防角标回跳**：`markInFlight` 闩——标记在途期间 `refresh()` 不覆盖内存已读，规避
+  「全部已读后立即下拉刷新」在异步写入落盘/服务端返回前被旧口径覆盖的竞态；写入完成后
+  刷新/重进/重启由持久化口径兜底不复现。
+- **游客 ↔ 登录**：游客本地已读在登录后由既有 `mergeLocalReadsToServer()` 合并（DC 批已有，
+  本轮验证）；批量已读同样双口径（游客本地、登录服务端）。
+- **不改**：公告内容/发布流程/站点接口（批量已读接口复用既有 `/api/app/announcements/read`）。
+
 
 
