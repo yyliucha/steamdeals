@@ -35,7 +35,7 @@
 
 **类型：** 🧹 技术债
 
-**状态：B4 已实现待发版（App 域试点拆分，见 [ARCHITECTURE.md](ARCHITECTURE.md) §15）；E1 文档归档已完成（不进版本）；其余已发布子项（CO-1 A3/A5、CO-2 B1/B2/B3/B5、CO-3 C2/C4/C5、CO-4 D1/D4/D6/E4——其中 D4/D6/E4 已发布 v2.26.0）见 [DONE.md](DONE.md)**
+**状态：B4 质检通过（App 域试点拆分，见 [ARCHITECTURE.md](ARCHITECTURE.md) §15，QA docs/QA-CO4-B4.md）；E1 文档归档已完成（不进版本）；其余已发布子项（CO-1 A3/A5、CO-2 B1/B2/B3/B5、CO-3 C2/C4/C5、CO-4 D1/D4/D6/E4——其中 D4/D6/E4 已发布 v2.26.0）见 [DONE.md](DONE.md)**
 **依赖：** 无（A2/A4/C1/D5 已分别由 CL/CJ/CK 覆盖，本批只做"未开"的 15 项）
 **解锁：** 无
 **推进规则**：每个开发会话**至少认领 1 条**（开工把该行改「开发中」），当天实现+测试+提交，
@@ -44,7 +44,7 @@
 
 | 批次 | 子项 | 内容（对应审计编号） | 状态 |
 |---|---|---|---|
-| **CO-4** | B4 | 巨石拆分（`server.js`/`pg.js`/`cli.js` 渐进拆 routes/repository，先一个域试点） | 已实现待发版 |
+| **CO-4** | B4 | 巨石拆分（`server.js`/`pg.js`/`cli.js` 渐进拆 routes/repository，先一个域试点） | 质检通过 |
 
 > 已被其它条目覆盖、**不重复做**：A1→CN、A2→CL、A4→CJ、C1→CL、D5→CK、D2/D3 已有测试防护、E3 已有规则。
 
