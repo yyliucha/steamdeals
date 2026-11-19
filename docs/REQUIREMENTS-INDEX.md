@@ -121,7 +121,7 @@
 | **DM** | 对齐审核批量操作超时：短期补丁 | 并入 [ALIGN-SNAPSHOT.md](ALIGN-SNAPSHOT.md) | 已过时（2026-11-19 所有者要求彻底解决，并入 DL） | — |
 | **DQ** | 个人资料页打磨：头像与 Steam 账号解耦（default_steam_id）+ 布局调整 | [PROFILE-UI-2026-11-19.md](PROFILE-UI-2026-11-19.md) | 质检通过（2026-11-19 QA docs/QA-DQ.md 第 1 轮 ✅ 9/0/0/3；站点 e62fb4e + App 795c791） | ✅ 本交接已给 |
 | **DN** | 对齐审核内容词 SKU 默认归档（季票/服装/DLC 等无效数据不进待审队列） | 本条目 + [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) | 待开发（2026-11-19 所有者确认） | ✅ 本轮已给 |
-| **DR** | App 发版后即刻可更新（后台立即同步 + App 检查节流 1h + 同步间隔 15 分钟可配） | [APP-INSTANT-UPDATE.md](APP-INSTANT-UPDATE.md) | 开发中（2026-11-19 认领开发） | ✅ 本轮已给 |
+| **DR** | App 发版后即刻可更新（后台立即同步 + App 检查节流 1h + 同步间隔 15 分钟可配） | [APP-INSTANT-UPDATE.md](APP-INSTANT-UPDATE.md) | 已实现待发版（2026-11-19 实现随站点 39aaebb + App 仓库 98dabca 入 main） | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
 
