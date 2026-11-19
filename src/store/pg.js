@@ -439,6 +439,24 @@ create table if not exists game_source_map (
 create index if not exists idx_gsm_game on game_source_map (game_id);
 `;
 
+// DL 批（docs/ALIGN-SNAPSHOT.md §3）：对齐审核快照落库——payload=当前队列全量组、
+// counts=统计卡口径、signature=数据签名（§4）、error=最近一次生成失败原因（成功为 null）；
+// dirty/last_action_at=确认/忽略同事务更新标记（§5）；保留最近 5 条由 prune 扩展删除。
+const ALIGN_SNAPSHOTS_DDL = `
+create table if not exists align_snapshots (
+  id             bigserial primary key,
+  payload        jsonb not null,
+  counts         jsonb not null,
+  signature      text  not null,
+  generated_at   timestamptz not null default now(),
+  generated_ms   int,
+  dirty          boolean not null default false,
+  last_action_at timestamptz,
+  error          text
+);
+create index if not exists idx_align_snapshots_gen on align_snapshots (generated_at desc);
+`;
+
 const ALTERS = [  'alter table games add column if not exists interested boolean not null default true',
   'alter table games add column if not exists owned boolean not null default false',
   'alter table games add column if not exists blocked boolean not null default false',
@@ -576,6 +594,10 @@ export async function migrate(store, { logger = null } = {}) {
   await store.exec(API_TOKENS_DDL);
   // CD 批（docs/SONKWO-STEAM-MATCH.md §4.5）：对齐映射表（幂等）
   await store.exec(GAME_SOURCE_MAP_DDL);
+  // DL 批（docs/ALIGN-SNAPSHOT.md §3）：对齐审核快照表（幂等；created_at 补列供签名 §4 的
+  // max(coalesce(reviewed_at, created_at)) 使用——老行迁移时统一取 now()，首次生成后签名即稳定）
+  await store.exec(ALIGN_SNAPSHOTS_DDL);
+  await store.exec('alter table game_source_map add column if not exists created_at timestamptz not null default now()');
   // CH 批（docs/DISCOVERY-FOR-YOU.md §2）：行为学习两张表 + tags GIN 预过滤索引
   await store.exec(`
 create table if not exists user_behaviors (

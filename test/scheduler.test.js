@@ -69,7 +69,7 @@ test('AC11：状态文件带健康面板字段（耗时/结果/失败原因）�
 test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清理、gog / humble / discover / backup / alerts / images / readmodel），各自间隔', () => {
   const jobs = jobsFromEnv({});
   assert.deepEqual(jobs.map((j) => j.name), [
-    'steam-prices', 'heat', 'steam-status', 'steam-discovery', 'app-release-sync', 'rename', 'backfill', 'prune', 'proxy-probe', 'readmodel', 'search-tokens-rebuild', 'sonkwo', 'itad', 'gog', 'humble',
+    'steam-prices', 'heat', 'steam-status', 'steam-discovery', 'app-release-sync', 'align-snapshot', 'rename', 'backfill', 'prune', 'proxy-probe', 'readmodel', 'search-tokens-rebuild', 'sonkwo', 'itad', 'gog', 'humble',
     'discover', 'backup', 'logs', 'alerts', 'images',
   ]);
   const interval = (name) => jobs.find((j) => j.name === name).intervalMin;
@@ -90,6 +90,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.equal(interval('alerts'), 360);
   assert.equal(interval('images'), 240, '封面图补缓存默认每 4 小时');
   assert.equal(interval('app-release-sync'), 15, 'DR 批：App Release 同步默认每 15 分钟（原 60；settings app.syncIntervalMin 热加载可改）');
+  assert.equal(interval('align-snapshot'), 30, 'DL 批：对齐审核快照后台生成默认每 30 分钟');
   const args = (name) => jobs.find((j) => j.name === name).args;
   assert.deepEqual(args('discover'), ['discover', 'sonkwo', '--ahead', '60', '--max-misses', '12']);
   assert.deepEqual(args('backup'), ['backup']);
@@ -106,6 +107,25 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.ok(!jobsFromEnv({ SEARCH_TOKENS_ENABLED: '0' }).some((j) => j.name === 'search-tokens-rebuild'), 'DS 批：SEARCH_TOKENS_ENABLED=0 可关闭');
   assert.deepEqual(args('proxy-probe'), ['probe', '--proxy'], 'BB 批：探测命令与参数');
   assert.ok(!jobsFromEnv({ PROXY_PROBE_ENABLED: '0' }).some((j) => j.name === 'proxy-probe'), 'BB 批：PROXY_PROBE_ENABLED=0 可关闭');
+});
+
+test('DL align-snapshot：默认开、30 分钟间隔、首轮延迟 30 秒；env 可覆盖；显式可关', () => {
+  const def = jobsFromEnv({}).find((j) => j.name === 'align-snapshot');
+  assert.ok(def, '默认启用（ALIGN_SNAPSHOT_ENABLED !== 0）');
+  assert.deepEqual(def.args, ['align-snapshot'], 'CLI 子命令 args');
+  assert.equal(def.intervalMin, 30, '默认每 30 分钟');
+  assert.equal(def.initialDelaySec, 30, '首轮延迟 30 秒（空表兜底生成）');
+
+  const custom = jobsFromEnv({
+    ALIGN_SNAPSHOT_INTERVAL_MIN: '10',
+    ALIGN_SNAPSHOT_INITIAL_DELAY_SEC: '5',
+  }).find((j) => j.name === 'align-snapshot');
+  assert.equal(custom.intervalMin, 10, '间隔 env 可调');
+  assert.equal(custom.initialDelaySec, 5, '首轮延迟 env 可调');
+
+  assert.ok(!jobsFromEnv({ ALIGN_SNAPSHOT_ENABLED: '0' }).some((j) => j.name === 'align-snapshot'), 'ALIGN_SNAPSHOT_ENABLED=0 可关闭');
+  // 失败原因进健康条：syncRunModeFor 按命令名取 mode
+  assert.equal(syncRunModeFor({ name: 'align-snapshot', args: ['align-snapshot'] }), 'align-snapshot', '任务 → sync_runs mode 映射');
 });
 
 test('目录同步任务：有 STEAM_API_KEY 才出现，参数可覆盖，STEAM_ENABLED=0 一并关闭', () => {
@@ -250,11 +270,11 @@ test('显式禁用或间隔为 0 的任务会被剔除', () => {
     READMODEL_ENABLED: '0',
     PROXY_PROBE_ENABLED: '0',
   });
-  assert.deepEqual(jobs.map((j) => j.name), ['heat', 'steam-discovery', 'app-release-sync', 'rename', 'backfill', 'prune', 'search-tokens-rebuild', 'sonkwo', 'alerts']);
+  assert.deepEqual(jobs.map((j) => j.name), ['heat', 'steam-discovery', 'app-release-sync', 'align-snapshot', 'rename', 'backfill', 'prune', 'search-tokens-rebuild', 'sonkwo', 'alerts']);
 });
 
 test('从未跑过的任务在 initialDelay 之后才算到点', () => {
-  const jobs = jobsFromEnv({ STEAM_INITIAL_DELAY_SEC: '30', SONKWO_INITIAL_DELAY_SEC: '180', PROXY_PROBE_ENABLED: '0' });
+  const jobs = jobsFromEnv({ STEAM_INITIAL_DELAY_SEC: '30', SONKWO_INITIAL_DELAY_SEC: '180', PROXY_PROBE_ENABLED: '0', ALIGN_SNAPSHOT_ENABLED: '0' });
   const startedMs = 1_000_000;
   const lastRunMs = new Map();
 
@@ -281,7 +301,7 @@ test('跑过的任务按间隔再次到点', () => {
 });
 
 test('唯一一个跑过的任务不影响其它任务的首次触发', () => {
-  const jobs = jobsFromEnv({ SONKWO_INITIAL_DELAY_SEC: '60' });
+  const jobs = jobsFromEnv({ SONKWO_INITIAL_DELAY_SEC: '60', ALIGN_SNAPSHOT_ENABLED: '0' });
   const startedMs = 0;
   const lastRunMs = new Map([['steam-prices', 500]]);
   const due = dueJobs(jobs, { nowMs: 60_000, startedMs, lastRunMs });

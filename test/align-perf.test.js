@@ -1,74 +1,17 @@
 // CN 批（docs/ALIGN-QUERY-PERF.md §4）：对齐审核查询性能修复的回归锁。
-// 守的约束：① 缓存 + single-flight（并发只算一次）；② 候选预筛不改匹配口径
-// （CE 13 条误匹配仍不进提案、正确样例仍命中）；③ 20s 预算返回 partial 不 5xx；
-// ④ 匹配循环分片（yield 被调用）。全部纯逻辑/纯函数，无网络、无 pglite。
-// DE 批（docs/ALIGN-REVIEW-UI.md §3/§4）：⑤ 重算期间保留 stale 旧结果、生成中不再命中旧缓存；
-// ⑥ 计算失败上报 failed/error 且自动重试；⑦ 分组完成立即上报总数（进度不出现 0/0）；
-// ⑧ top-N 候选（明细面板）与 counts 统计口径、ignoredGroups 计数。
-// 反向自检：① 删 align-query.js 的「computing 复用」分支 → single-flight 用例红；
-//           ② 删 match.js preselectCandidates 的快路径 → 「快路径只含精确候选」用例红；
-//           ③ 删 proposeAlignGroupsBudgeted 的预算检查 → partial 用例红。
+// 守的约束：① 候选预筛不改匹配口径（CE 13 条误匹配仍不进提案、正确样例仍命中）；
+// ② 20s 预算返回 partial 不 5xx；③ 匹配循环分片（yield 被调用）。
+// DE 批（docs/ALIGN-REVIEW-UI.md §3/§4）：④ 分组完成立即上报总数（进度不出现 0/0）；
+// ⑤ top-N 候选（明细面板）与 counts 统计口径、ignoredGroups 计数。
+// DL 批（docs/ALIGN-SNAPSHOT.md §5）：内存缓存运行器（createAlignRunner 的 TTL/single-flight/
+// staleCache/invalidate）已废弃删除——缓存相关回归锁移入 test/align-snapshot.test.js（签名/落库/24h/prune）。
+// 反向自检：① 删 match.js preselectCandidates 的快路径 → 「快路径只含精确候选」用例红；
+//           ② 删 proposeAlignGroupsBudgeted 的预算检查 → partial 用例红。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAlignRunner, parseAlignPage } from '../src/align-query.js';
+import { parseAlignPage } from '../src/align-query.js';
 import { buildCandidateIndex, preselectCandidates, bestMatch, bestMatchMulti, evaluatePair } from '../src/match.js';
-import { proposeAlignGroupsBudgeted, loadSonkwoItems, alignGroupCounts, applyMapInheritance } from '../src/align.js';
-
-// ── 一、缓存 + single-flight（align-query.js）──────────────────────────
-
-test('CN：runner 首次计算、缓存命中、refresh 强制重算、invalidate 失效', async () => {
-  let computes = 0;
-  const runner = createAlignRunner({
-    compute: async () => {
-      computes += 1;
-      return { n: computes, generatedAt: Date.now() };
-    },
-    ttlMs: 60_000,
-  });
-  const r1 = await runner.run();
-  assert.equal(r1.n, 1);
-  const r2 = await runner.run(); // TTL 内 → 命中缓存
-  assert.equal(r2.n, 1, '第二次读缓存，不重算');
-  assert.equal(computes, 1);
-  assert.equal(runner.getState().fromCache, true);
-
-  const r3 = await runner.run({ refresh: true });
-  assert.equal(r3.n, 2, 'refresh 强制重算');
-  assert.equal(computes, 2);
-  assert.equal(runner.getState().fromCache, false);
-
-  runner.invalidate();
-  const r4 = await runner.run();
-  assert.equal(r4.n, 3, 'invalidate 后重算');
-});
-
-test('CN：single-flight——并发 5 个请求只算 1 次', async () => {
-  let computes = 0;
-  let release;
-  const gate = new Promise((r) => { release = r; });
-  const runner = createAlignRunner({
-    compute: async () => {
-      computes += 1;
-      await gate; // 让计算挂住，逼出并发窗口
-      return { n: computes };
-    },
-    ttlMs: 60_000,
-  });
-  // 同时发起 5 个 run（都挂在 gate 上），放行后统一收结果——并发窗口内只允许一次 compute
-  const pending = [runner.run(), runner.run(), runner.run(), runner.run(), runner.run()];
-  release();
-  const settled = await Promise.all(pending);
-  assert.equal(computes, 1, '并发请求共享同一个计算 Promise');
-  assert.ok(settled.every((r) => r.n === 1));
-});
-
-test('CN：ttlMs=0 时每次都重算（可测性锚点）', async () => {
-  let computes = 0;
-  const runner = createAlignRunner({ compute: async () => ({ n: ++computes }), ttlMs: 0 });
-  await runner.run();
-  await runner.run();
-  assert.equal(computes, 2);
-});
+import { proposeAlignGroupsBudgeted, alignGroupCounts, applyMapInheritance } from '../src/align.js';
 
 test('CN：分页参数解析——非法/越界回落（page≥1；1≤pageSize≤50）', () => {
   const q = (s) => new URL(`http://x/?${s}`).searchParams;
@@ -80,85 +23,7 @@ test('CN：分页参数解析——非法/越界回落（page≥1；1≤pageSize
   assert.deepEqual(parseAlignPage(q('page=2.9&pageSize=2.9')), { page: 2, pageSize: 2 }, '小数截断与 parseInt 同语义');
 });
 
-// ── 四、后台生成（CS 批，docs/ALIGN-DB-SLOW.md §2 #3）──────────────────
-
-test('CS：background 冷缓存触发计算但立即返回 generating，完成后缓存就绪', async () => {
-  let computes = 0;
-  let release;
-  const gate = new Promise((r) => { release = r; });
-  const runner = createAlignRunner({
-    compute: async () => {
-      computes += 1;
-      await gate;
-      return { n: computes, generatedAt: Date.now() };
-    },
-    ttlMs: 60_000,
-  });
-  const s1 = runner.background(); // 冷缓存：触发计算、不等待
-  assert.equal(s1.generating, true);
-  assert.equal(runner.getState().computing, true, '后台计算已启动');
-  assert.equal(computes, 1);
-
-  const s2 = runner.background(); // 计算中：共享，不叠加
-  assert.equal(s2.generating, true);
-  assert.equal(computes, 1, '连续触发只算 1 次（single-flight）');
-
-  release();
-  await runner.run(); // 等待完成后缓存就绪
-  assert.equal(runner.getState().cached, true);
-  const s3 = runner.background();
-  assert.equal(s3.ready, true, '缓存就绪后 background 返回 ready');
-});
-
-test('CS：compute 进度经 onProgress 上报（processed/total）', async () => {
-  let captured = null;
-  const runner = createAlignRunner({
-    compute: async ({ onProgress }) => {
-      onProgress(40, 100);
-      onProgress(100, 100);
-      return { generatedAt: Date.now() };
-    },
-    ttlMs: 60_000,
-  });
-  runner.background();
-  await runner.run();
-  // 计算完成后进度清空；期间通过 getState 观测（此处断言回调链路在测试内被调用过）
-  assert.ok(true, 'onProgress 回调已由 compute 调用（captured 验证见下）');
-  const runner2 = createAlignRunner({
-    compute: async ({ onProgress }) => {
-      onProgress(40, 100);
-      await new Promise((r) => setImmediate(r));
-      onProgress(100, 100);
-      captured = runner2.getState();
-      return { generatedAt: Date.now() };
-    },
-    ttlMs: 60_000,
-  });
-  runner2.background();
-  await runner2.run();
-  assert.equal(captured.computing, true, '计算期间 getState 可见 computing');
-  assert.deepEqual(
-    { processed: captured.processed, total: captured.total },
-    { processed: 100, total: 100 },
-    '进度经 onProgress 上报',
-  );
-});
-
-test('CS：refresh 后台重算（缓存过期强制重算，ready 前 generating）', async () => {
-  let computes = 0;
-  const runner = createAlignRunner({
-    compute: async () => ({ n: ++computes, generatedAt: Date.now() }),
-    ttlMs: 60_000,
-  });
-  await runner.run();
-  assert.equal(computes, 1);
-  const s = runner.background({ refresh: true });
-  assert.equal(s.generating, true, 'refresh 强制重算');
-  await runner.run();
-  assert.equal(computes, 2);
-});
-
-// ── 二、候选预筛不改口径（match.js + CE 回归数据）─────────────────────
+// ── 候选预筛不改口径（match.js + CE 回归数据）─────────────────────
 
 const REGRESSION_CASES = [
   // [杉果名, 事故中错误匹配到的候选, appid]（与 test/match.test.js CE 批同源）
@@ -247,7 +112,7 @@ test('CN：慢路径——token 召回共享数降序且截断 ≤2000', () => {
   assert.equal(best.candidate.steam_appid, 2099, '共享 token 最多的精确候选排在前面、未被截掉');
 });
 
-// ── 三、预算 partial 与分片（align.js budgeted 版本）──────────────────
+// ── 预算 partial 与分片（align.js budgeted 版本）──────────────────
 
 function mkItems(names) {
   return names.map((name, i) => ({
@@ -317,66 +182,7 @@ test('CN：组去重与 skuIds 保持（预筛路径不改变组结构）', asyn
   assert.ok(anno, '愚者不灭/豪华版同组（skuIds=2）');
 });
 
-// ── 五、DE 批（docs/ALIGN-REVIEW-UI.md）：stale 旧结果 / 失败态 / 分组即报总数 / top-N 明细 / counts ──
-
-test('DE：重算期间保留 stale 旧结果，生成中非 refresh 不再命中旧缓存', async () => {
-  let release;
-  const gate = new Promise((r) => { release = r; });
-  let computes = 0;
-  const runner = createAlignRunner({
-    compute: async () => {
-      computes += 1;
-      if (computes > 1) await gate; // 第二次计算挂住，逼出生成窗口
-      return { n: computes, generatedAt: Date.now() };
-    },
-    ttlMs: 60_000,
-  });
-  const r1 = await runner.run();
-  assert.equal(r1.n, 1, '首轮完成、缓存就绪');
-
-  const bg1 = runner.background({ refresh: true });
-  assert.equal(bg1.generating, true, 'refresh 触发后台重算');
-  assert.equal(bg1.stale?.n, 1, '重算期间 background 携带上一轮旧结果');
-
-  const bg2 = runner.background(); // 非 refresh——生成中不得命中旧缓存当 ready（否则前端会误判"已生成"）
-  assert.equal(bg2.generating, true, '生成中非 refresh 也返回 generating（不再是旧缓存的 ready）');
-  assert.equal(bg2.stale?.n, 1, 'stale 旧结果持续可用');
-  assert.equal(runner.getState().fromCache, false);
-
-  release();
-  const r2 = await runner.run();
-  assert.equal(r2.n, 2, '重算完成后返回新结果');
-  assert.equal(runner.getState().stale, null, '完成后 stale 清空');
-  const bg3 = runner.background();
-  assert.equal(bg3.ready, true, '新缓存就绪后 background 返回 ready');
-});
-
-test('DE：计算失败上报 failed/error，background 自动重试，成功后 failed 清除', async () => {
-  let attempts = 0;
-  const runner = createAlignRunner({
-    compute: async () => {
-      attempts += 1;
-      if (attempts === 1) throw new Error('候选表读取失败');
-      return { ok: true, generatedAt: Date.now() };
-    },
-    ttlMs: 60_000,
-  });
-  const s1 = runner.background();
-  assert.equal(s1.generating, true);
-  await assert.rejects(runner.run(), /候选表读取失败/, 'run() 调用方仍能看到失败');
-  assert.equal(attempts, 1, '首次失败不重复计算');
-  assert.equal(runner.getState().failed, true, '失败态进入观测状态');
-  assert.equal(runner.getState().error, '候选表读取失败');
-
-  // 失败后 computing 已清空：下一次 background 自动重启计算（成功路径）
-  const s2 = runner.background();
-  assert.equal(s2.generating, true, '失败后 background 自动重试');
-  const r = await runner.run();
-  assert.equal(r.ok, true, '重试成功');
-  assert.equal(attempts, 2, '只重试一次');
-  assert.equal(runner.getState().failed, false, '成功后 failed 清除');
-  assert.equal(runner.getState().error, null);
-});
+// ── DE 批（docs/ALIGN-REVIEW-UI.md）：分组即报总数 / top-N 明细 / counts ──
 
 test('DE：分组完成立即上报总数——onGrouped 先于匹配循环，进度 total 不出现 0/0', async () => {
   const names = [];

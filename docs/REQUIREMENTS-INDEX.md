@@ -117,7 +117,7 @@
 | **C1** | heat 逐 appid 全 `success:false` | 无独立规格（[TODO.md](TODO.md) C 段定案） | 已发布 v2.2.0（2026-11-09，b01aaf8 修复） | ✅ 已在对话给出 |
 | **DJ** | 发版测试报告独立会话 + e2e 整轮总预算 | [E2E-SUITE.md](E2E-SUITE.md) | 已发布 v2.24.5（2026-11-18，c87dfe0；QA docs/QA-DJ.md 第 1 轮 ✅） | ✅ 本轮已给 |
 | **DK** | App 检查更新失败：apkPath 缺 GitHub 直链兜底 + App 提示区分 | 本条目 + [APP-AUTO-UPDATE-PAGE.md](APP-AUTO-UPDATE-PAGE.md) | 已发布 v2.25.0（2026-11-19，站点 d65542f + App 仓库 8fb6328；QA docs/QA-DK.md 第 1 轮 ✅） | ✅ 本轮已给 |
-| **DL** | 对齐审核快照落库（后台生成 + 数据签名动态失效 + 操作即时更新快照 + 前台只读） | [ALIGN-SNAPSHOT.md](ALIGN-SNAPSHOT.md) | 待开发（2026-11-19 所有者确认；彻底方案，含操作后即时刷新） | ✅ 本轮已给 |
+| **DL** | 对齐审核快照落库（后台生成 + 数据签名动态失效 + 操作即时更新快照 + 前台只读） | [ALIGN-SNAPSHOT.md](ALIGN-SNAPSHOT.md) | 已实现待发版（2026-11-19，实现 <DL_HASH>） | ✅ 本轮已给 |
 | **DM** | 对齐审核批量操作超时：短期补丁 | 并入 [ALIGN-SNAPSHOT.md](ALIGN-SNAPSHOT.md) | 已过时（2026-11-19 所有者要求彻底解决，并入 DL） | — |
 | **DP** | e2e 浏览器从 Edge 换成 Chrome（headless Chrome + Edge 回退） | 本交接 + [E2E-SUITE.md](E2E-SUITE.md) + [TESTING-E2E.md](TESTING-E2E.md) | 质检通过（2026-11-19 QA docs/QA-DP.md 第 1 轮 ✅ 4/0/0/0；实现 24780ef） | ✅ 本轮已给 |
 | **DQ** | 个人资料页打磨：头像与 Steam 账号解耦（default_steam_id）+ 布局调整 | [PROFILE-UI-2026-11-19.md](PROFILE-UI-2026-11-19.md) | 质检通过（2026-11-19 QA docs/QA-DQ.md 第 1 轮 ✅ 9/0/0/3；站点 e62fb4e + App 795c791） | ✅ 本交接已给 |

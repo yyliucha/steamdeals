@@ -85,6 +85,16 @@ export function jobsFromEnv(env = process.env) {
       enabled: env.APP_RELEASE_SYNC_ENABLED !== '0',
     },
     {
+      name: 'align-snapshot',
+      // DL 批（docs/ALIGN-SNAPSHOT.md §5）：对齐审核快照后台生成——每轮算数据签名，与最新快照
+      // 不同（或超 24h）才重算写库；失败写快照 error + sync_runs 原因（任务健康条红标）。
+      // 首轮延迟 30 秒：部署后空表兜底生成，前台首次进入不再长时间「生成中」。
+      args: ['align-snapshot'],
+      intervalMin: num(env.ALIGN_SNAPSHOT_INTERVAL_MIN, 30),
+      initialDelaySec: num(env.ALIGN_SNAPSHOT_INITIAL_DELAY_SEC, 30),
+      enabled: env.ALIGN_SNAPSHOT_ENABLED !== '0',
+    },
+    {
       name: 'rename',
       // 每周重写一次名字：目录导入留下的机器英文名补成中文（英文挪进 name_en），
       // 顺带覆盖"后来才补了简中"的游戏。选择条件自带收敛，没名字可改时秒退。
@@ -371,7 +381,8 @@ export const STEAM_HEAVY = new Set(['steam-prices', 'rename', 'backfill', 'heat'
 
 // 轻任务：目标站与配额都和重任务独立（杉果国内源、GOG/Humble catalog、备份/日志/提醒/图片），
 // 允许在 heat/steam-prices 等长任务运行时并行执行——否则 heat 首轮播种 9 小时会饿死所有其它源。
-const LIGHT_JOBS = new Set(['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'backup', 'logs', 'alerts', 'images']);
+// DL 批：align-snapshot 是本地库计算（不占外部配额），归轻任务受并行上限约束。
+const LIGHT_JOBS = new Set(['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'backup', 'logs', 'alerts', 'images', 'align-snapshot']);
 
 /** 轻任务并行上限（环境变量 SCHEDULER_LIGHT_CONCURRENCY 可调，默认 3，范围 1–8）。 */
 export function lightConcurrency(env = process.env) {

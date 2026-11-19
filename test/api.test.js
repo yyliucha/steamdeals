@@ -48,7 +48,7 @@ async function setup(extraServerOpts = {}) {
   const baseGid = (await q('select id from games where steam_appid = 413150')).rows[0].id;
   await db.refreshGameRegionHist(q, baseGid);
 
-  const srv = await startApiServer({ query: q, port: 0, host: '127.0.0.1', ...extraServerOpts });
+  const srv = await startApiServer({ query: q, store, port: 0, host: '127.0.0.1', ...extraServerOpts });
   return { store, q, srv, base: `http://127.0.0.1:${srv.port}` };
 }
 
@@ -1312,15 +1312,18 @@ test('DH 对齐数据完整性：skus.json 带 appid 自动补写不入队；已
     process.env.ALIGN_SKU_FILE = tmpFile;
     const cookie = (await login(base, 'admin', 'admin123456')).cookie;
     await q("insert into games (steam_appid, name) values (413150, '断箭') on conflict do nothing");
-    const getQueue = async () => {
-      for (let i = 0; i < 40; i += 1) {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    // DL 批：读库快照——无快照首次 202 firstRun；恢复后快照标脏、后台重算，需等「该组重新入队」
+    const getQueue = async (pred = null) => {
+      for (let i = 0; i < 80; i += 1) {
         const res = await fetch(`${base}/api/admin/align`, { headers: { cookie } });
         const body = await res.json();
-        if (res.status === 200) return body.groups;
-        assert.equal(res.status, 202, '冷缓存应返回 202 generating');
-        await new Promise((r) => setTimeout(r, 150));
+        if (res.status === 202) { assert.equal(body.firstRun, true, '无快照应 202 firstRun'); await sleep(150); continue; }
+        assert.equal(res.status, 200);
+        if (!pred || pred(body.groups)) return body.groups;
+        await sleep(150);
       }
-      throw new Error('对齐审核后台生成超时（40 轮未就绪）');
+      throw new Error('对齐审核快照超时（80 轮未就绪）');
     };
 
     // A1：断箭组（skus.json 已带 appid）不再入队，且库无映射被自动补写为 confirmed
@@ -1371,7 +1374,8 @@ test('DH 对齐数据完整性：skus.json 带 appid 自动补写不入队；已
       body: JSON.stringify({ key: fool.key }),
     });
     assert.equal(restore.status, 200, JSON.stringify(await restore.json()));
-    const after = await getQueue();
+    // DL 批：恢复 → 快照标脏 + 后台重算（不阻塞读）——等到重算完成、该组重新入队
+    const after = await getQueue((gs) => gs.some((g) => g.key === fool.key));
     assert.ok(after.some((g) => g.key === fool.key), '恢复后该组重新回到待处理队列');
     const restoredRow = (await q("select decision, game_id, reviewed_by from game_source_map where platform_code = 'sonkwo' and product_id = '6002'")).rows[0];
     assert.equal(restoredRow.decision, 'pending', '恢复后映射行变 pending');
@@ -1411,15 +1415,21 @@ test('DN 内容词 SKU 默认归档：不进队列不占计数；本体同键保
     const cookie = (await login(base, 'admin', 'admin123456')).cookie;
     await q("insert into games (steam_appid, name) values (413150, '断箭') on conflict do nothing");
     const getQueue = async ({ refresh = false } = {}) => {
-      for (let i = 0; i < 40; i += 1) {
-        // refresh 只在第一轮触发重算，后续轮询不带（refresh=1 永远绕缓存，与前端口径一致）
+      // DL 批：读库快照——无快照首次 202 firstRun；refresh=1 立即返回当前快照 + refreshing，
+      // 后台重算完成以 generatedAt 变化为信号（refresh 只在第一轮带，后续轮询不带）。
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      let firstAt = null;
+      for (let i = 0; i < 80; i += 1) {
         const res = await fetch(`${base}/api/admin/align?page=1&pageSize=50${refresh && i === 0 ? '&refresh=1' : ''}`, { headers: { cookie } });
         const body = await res.json();
-        if (res.status === 200) return body;
-        assert.equal(res.status, 202, '冷缓存应返回 202 generating');
-        await new Promise((r) => setTimeout(r, 150));
+        if (res.status === 202) { assert.equal(body.firstRun, true, '无快照应 202 firstRun'); await sleep(150); continue; }
+        assert.equal(res.status, 200);
+        if (!refresh) return body;
+        if (firstAt == null) { firstAt = body.generatedAt; await sleep(150); continue; } // 触发重算的旧快照
+        if (body.generatedAt !== firstAt) return body; // 重算完成
+        await sleep(150);
       }
-      throw new Error('对齐审核后台生成超时（40 轮未就绪）');
+      throw new Error('对齐审核快照超时（80 轮未就绪）');
     };
 
     // 验收①：内容词 SKU 不进队列、不占「待对齐组」计数；验收②：本体（同键）与普通 SKU 不受影响
@@ -1462,12 +1472,112 @@ test('DN 内容词 SKU 默认归档：不进队列不占计数；本体同键保
       body: JSON.stringify({ key: seasonKey }),
     });
     assert.equal(restore.status, 200, JSON.stringify(await restore.json()));
-    const after = await getQueue();
+    // DL 批：恢复 → 快照标脏 + 后台重算（不阻塞读）——等到该组重新入队
+    const after = await (async () => {
+      for (let i = 0; i < 80; i += 1) {
+        const res = await fetch(`${base}/api/admin/align?page=1&pageSize=50`, { headers: { cookie } });
+        const body = await res.json();
+        if (res.status === 200 && body.groups.some((g) => g.name.includes('季票'))) return body;
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      throw new Error('等待恢复组重新入队超时');
+    })();
     assert.ok(after.groups.some((g) => g.name.includes('季票')), '恢复后内容词组重新回到待对齐队列');
     assert.equal(after.counts.contentWords, 1, '恢复后该组不再计入自动归档（只剩服装组）');
     const refreshed = await getQueue({ refresh: true });
     assert.ok(refreshed.groups.some((g) => g.name.includes('季票')), '重算后恢复的组仍留在队列（pending 优先、不重复归档）');
     assert.equal(refreshed.counts.contentWords, 1, '重算后自动归档计数不再包含已恢复组');
+  } finally {
+    delete process.env.ALIGN_SKU_FILE;
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('DL 快照落库：确认 3 组后立即读立刻消失、counts 递减、无生成中；refresh=1 不阻塞；prune 保留 5 条', async () => {
+  const { store, q, srv, base } = await setup();
+  const tmpFile = join(tmpdir(), `align-dl-${Date.now()}.json`);
+  try {
+    writeFileSync(tmpFile, JSON.stringify([
+      { skuId: 8101, appid: null, name: '内核之心' },
+      { skuId: 8102, appid: null, name: '愚者不灭' },
+      { skuId: 8103, appid: null, name: '忙作一团' },
+      { skuId: 8104, appid: null, name: '血色序曲' },
+    ], null, 2));
+    process.env.ALIGN_SKU_FILE = tmpFile;
+    const cookie = (await login(base, 'admin', 'admin123456')).cookie;
+    for (const [name, appid] of [['内核之心', 9101], ['愚者不灭', 9102], ['忙作一团', 9103], ['血色序曲', 9104]]) {
+      await q('insert into games (steam_appid, name) values ($1, $2) on conflict do nothing', [appid, name]);
+    }
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const get = async ({ refresh = false } = {}) => {
+      for (let i = 0; i < 80; i += 1) {
+        const res = await fetch(`${base}/api/admin/align?page=1&pageSize=50${refresh && i === 0 ? '&refresh=1' : ''}`, { headers: { cookie } });
+        const body = await res.json();
+        if (res.status === 202) { assert.equal(body.firstRun, true, '无快照首次 202 firstRun'); await sleep(150); continue; }
+        assert.equal(res.status, 200);
+        return body;
+      }
+      throw new Error('快照超时');
+    };
+    const waitRegen = async (from) => {
+      let at = from;
+      for (let i = 0; i < 80 && at === from; i += 1) {
+        await sleep(150);
+        at = (await get()).generatedAt;
+      }
+      return at;
+    };
+
+    const first = await get();
+    assert.ok(first.generatedAt, '快照带 generatedAt');
+    assert.equal(first.cached, true, '读快照 cached:true（规格 §8.3）');
+    assert.equal(first.groups.length, 4, '4 组入队');
+    assert.equal(first.counts.groups, 4);
+
+    // 签名不变：再读一次 → 同一 generatedAt、无重算（规格 §8.3）
+    const again = await get();
+    assert.equal(again.generatedAt, first.generatedAt, '签名不变 → 直接库快照，无重算');
+
+    // 批量确认 3 组
+    const keys = first.groups.slice(0, 3).map((g) => g.key);
+    const conf = await fetch(`${base}/api/admin/align/confirm`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ keys }),
+    });
+    assert.equal(conf.status, 200, JSON.stringify(await conf.json()));
+
+    // 立即读（第一次 GET 即断言，不轮询）：3 组立刻消失、counts 递减、无 202/生成中（规格 §8.2）
+    // 反向自检：服务端若去掉「同事务更新快照」，此刻后台重算未完成、快照仍含 3 组 → 本条必红
+    const rightAfter = await get();
+    assert.equal(rightAfter.groups.length, 1, '确认 3 组后立即读 → 这 3 组立刻消失（同事务更新快照）');
+    assert.equal(rightAfter.groups[0].name, '血色序曲', '未处理的组保留');
+    assert.equal(rightAfter.counts.groups, 1, 'counts.groups 递减');
+    assert.equal(rightAfter.counts.skus, 1, 'counts.skus 递减');
+    assert.equal(rightAfter.counts.auto, 1, 'counts.auto 随移除组递减');
+
+    // refresh=1：立即 200（不阻塞、不 202）+ refreshing 标记；返回的是当前队列（规格 §5）
+    const refreshRes = await fetch(`${base}/api/admin/align?page=1&pageSize=50&refresh=1`, { headers: { cookie } });
+    assert.equal(refreshRes.status, 200, 'refresh=1 返回当前快照，不阻塞、不 202');
+    const refreshBody = await refreshRes.json();
+    assert.equal(refreshBody.refreshing, true, 'refreshing:true');
+    assert.equal(refreshBody.groups.length, 1, '重算未完成前返回当前队列');
+    const afterAt = await waitRegen(refreshBody.generatedAt);
+    assert.notEqual(afterAt, refreshBody.generatedAt, '后台重算完成（generatedAt 变化）');
+
+    // prune：塞 6 条更旧的快照行（generated_at 倒填，不干扰「最新」判定）→ 触发 refresh 重算 → 完成后 ≤5 条（规格 §8.8）
+    for (let i = 0; i < 6; i += 1) {
+      await q(`insert into align_snapshots (payload, counts, signature, generated_at) values ('{}'::jsonb, '{}'::jsonb, 'junk${i}', now() - interval '10 minutes')`);
+    }
+    const pre = (await q('select count(*)::int as n from align_snapshots')).rows[0].n;
+    assert.ok(pre > 5, `前置：塞旧行后超 5 条（${pre}）`);
+    const refresh2 = await fetch(`${base}/api/admin/align?page=1&pageSize=50&refresh=1`, { headers: { cookie } });
+    assert.equal(refresh2.status, 200);
+    const before2 = (await refresh2.json()).generatedAt;
+    await waitRegen(before2);
+    const n = (await q('select count(*)::int as n from align_snapshots')).rows[0].n;
+    assert.ok(n <= 5, `prune 保留最近 5 条（当前 ${n}）`);
   } finally {
     delete process.env.ALIGN_SKU_FILE;
     await srv.close();

@@ -49,84 +49,79 @@ const REASON_TEXT = {
 };
 function reasonText(reasons) { return (reasons || []).map((r) => REASON_TEXT[r] || r).join('、'); }
 
-// ── 数据状态 ──────────────────────────────────────────────
-const allRows = ref([]);        // 新结果全量行
-const staleRows = ref([]);      // 生成期间的旧结果（可为空）
-const usingStale = ref(false);
-const counts = ref(null);       // 新结果 counts（5 统计卡）
-const staleCounts = ref(null);
-const generatedAt = ref(null);
-const staleGeneratedAt = ref(null);
+// ── 数据状态（DL 批 docs/ALIGN-SNAPSHOT.md §6：只读库快照，无进度条；「生成中」仅首次生成）──
+const allRows = ref([]);        // 快照全量行（本地分页/筛选）
+const counts = ref(null);       // 快照 counts（5 统计卡）
+const generatedAt = ref(null);  // 快照生成时间（「上次生成于 HH:mm」）
 const partial = ref(false);
-const generating = reactive({ active: false, processed: 0, total: 0, failed: false, error: '' });
+const firstRun = ref(false);    // 首次部署无快照：202 firstRun，显示「首次生成中」
+const snapshotError = ref(null); // 最近一次生成失败原因（成功为 null）
 const loading = ref(false);
-const refreshing = ref(false);
-const loadError = ref(false); // 最近一次加载是否失败（失败时空态不得显示「没有待对齐的组」）
+const refreshing = ref(false);  // 「刷新」按钮 loading（触发后台重算）
+const loadError = ref(false);   // 最近一次加载是否失败（失败时空态不得显示「没有待对齐的组」）
 
-const displayedRows = computed(() => (usingStale.value ? staleRows.value : allRows.value));
-const shownCounts = computed(() => (usingStale.value ? staleCounts.value : counts.value));
-const shownGeneratedAt = computed(() => (usingStale.value ? staleGeneratedAt.value : generatedAt.value));
-const progressPct = computed(() => {
-  const t = generating.total || 0;
-  if (!t) return 0;
-  return Math.min(100, Math.max(0, Math.round(((generating.processed || 0) / t) * 100)));
-});
+const displayedRows = computed(() => allRows.value);
 
-let pollTimer = null;
-function schedulePoll() {
-  clearTimeout(pollTimer);
-  pollTimer = setTimeout(() => load(), 3000);
+let firstRunTimer = null;
+let dirtyTimer = null;
+let prevGeneratedAt = null;
+
+/** 首次无快照：每 3s 轮询直到快照生成（规格 §7.1 首次部署兜底）。 */
+function scheduleFirstRunPoll() {
+  clearTimeout(firstRunTimer);
+  firstRunTimer = setTimeout(() => load(), 3000);
+}
+
+/** 快照 dirty（操作后 / 数据变化后台重算中）：静默轮询，重算完成 → 轻提示「数据已更新」→ 刷新。 */
+function scheduleDirtyPoll(from) {
+  clearTimeout(dirtyTimer);
+  prevGeneratedAt = from;
+  dirtyTimer = setTimeout(pollDirty, 3000);
+}
+async function pollDirty() {
+  try {
+    const d = await api('/api/admin/align?page=1&pageSize=50');
+    if (d.generating) return;
+    const newAt = d.generatedAt ?? null;
+    if (!d.dirty || newAt !== prevGeneratedAt) {
+      clearTimeout(dirtyTimer);
+      if (newAt !== prevGeneratedAt) ElMessage.info('数据已更新');
+      await load();
+      return;
+    }
+    dirtyTimer = setTimeout(pollDirty, 3000);
+  } catch {
+    /* 静默：下轮 load 会暴露错误 */
+  }
 }
 
 /**
- * 拉全量行：pageSize=50 逐页取（队列数据量小）。
- * - 200：返回 { fresh: true, rows, counts, generatedAt, partial }；
- * - 202 + stale：逐页收集旧结果，返回 { fresh: false, rows, counts, generatedAt, gen }；
- * - 202 无 stale：返回 { fresh: false, rows: null, gen }（冷生成中，无旧数据）。
- * 中途若 202 转 200（生成完成），丢弃已收集的旧行、从第 1 页重收。
+ * 拉全量行：pageSize=50 逐页取（队列数据量小，前端本地分页）。
+ * - 202（firstRun）：返回 { firstRun: true }（无快照，首次生成中）；
+ * - 200：返回 { rows, counts, generatedAt, partial, dirty, error }。
  */
-async function collectAll(refresh) {
+async function collectAll() {
   const rows = [];
   let pageIdx = 1;
   let meta = null;
-  let staleSeen = false;
   for (let guard = 0; guard < 40; guard += 1) {
-    const d = await api(`/api/admin/align?page=${pageIdx}&pageSize=50${refresh ? '&refresh=1' : ''}`);
-    if (d.generating) {
-      if (d.stale) {
-        staleSeen = true;
-        rows.push(...(d.cachedRows || []));
-        if (rows.length >= d.cachedTotal) {
-          return {
-            fresh: false,
-            rows,
-            counts: d.cachedCounts,
-            generatedAt: d.cachedGeneratedAt ?? null,
-            gen: { active: true, processed: d.processed ?? 0, total: d.total ?? 0, failed: Boolean(d.failed), error: d.error || '' },
-          };
-        }
-        pageIdx += 1;
-        continue;
-      }
-      return {
-        fresh: false,
-        rows: null,
-        gen: { active: true, processed: d.processed ?? 0, total: d.total ?? 0, failed: Boolean(d.failed), error: d.error || '' },
+    const d = await api(`/api/admin/align?page=${pageIdx}&pageSize=50`);
+    if (d.generating) return { firstRun: true };
+    if (meta === null) {
+      meta = {
+        counts: d.counts,
+        generatedAt: d.generatedAt ?? null,
+        partial: Boolean(d.partial),
+        total: d.total ?? 0,
+        dirty: Boolean(d.dirty),
+        error: d.error ?? null,
       };
     }
-    if (staleSeen) {
-      // 生成完成：丢弃旧行，从第 1 页重收新结果
-      staleSeen = false;
-      rows.length = 0;
-      meta = null;
-      pageIdx = 0;
-    }
-    if (meta === null) meta = { counts: d.counts, generatedAt: d.generatedAt ?? null, partial: Boolean(d.partial), total: d.total ?? 0 };
     rows.push(...(d.groups || []));
     if (rows.length >= meta.total) return { fresh: true, rows, ...meta };
     pageIdx += 1;
   }
-  return { fresh: false, rows: null, gen: { active: true, processed: 0, total: 0, failed: false, error: '' } };
+  return { firstRun: true };
 }
 
 async function load(opts = {}) {
@@ -134,37 +129,51 @@ async function load(opts = {}) {
   if (refresh) refreshing.value = true; else loading.value = true;
   try {
     loadError.value = false; // 拿到任何合法响应（200 / 202）都不算失败
-    const collected = await collectAll(refresh);
-    if (collected.fresh) {
-      allRows.value = collected.rows;
-      usingStale.value = false;
-      counts.value = collected.counts;
-      generatedAt.value = collected.generatedAt;
-      partial.value = collected.partial;
-      Object.assign(generating, { active: false, processed: 0, total: 0, failed: false, error: '' });
-      clearTimeout(pollTimer);
-    } else if (collected.rows !== null) {
-      staleRows.value = collected.rows;
-      usingStale.value = true;
-      staleCounts.value = collected.counts;
-      staleGeneratedAt.value = collected.generatedAt;
-      Object.assign(generating, collected.gen);
-      schedulePoll();
-    } else {
-      // 冷生成中、无旧数据：只显示进度横幅，不显示空态
-      staleRows.value = [];
-      usingStale.value = false;
-      staleCounts.value = null;
-      Object.assign(generating, collected.gen);
-      schedulePoll();
+    if (refresh) {
+      // 触发后台重算（不阻塞），立即返回当前快照 + refreshing；按钮短暂 loading（规格 §6）
+      await api('/api/admin/align?page=1&pageSize=50&refresh=1');
     }
+    const collected = await collectAll();
+    if (collected.firstRun) {
+      firstRun.value = true;
+      scheduleFirstRunPoll();
+      return;
+    }
+    firstRun.value = false;
+    clearTimeout(firstRunTimer);
+    allRows.value = collected.rows;
+    counts.value = collected.counts;
+    generatedAt.value = collected.generatedAt;
+    partial.value = collected.partial;
+    snapshotError.value = collected.error;
+    // 操作后 / 数据变化：快照标脏 → 静默轮询到后台重算完成，轻提示后刷新（规格 §6）
+    if (collected.dirty) scheduleDirtyPoll(collected.generatedAt);
+    else clearTimeout(dirtyTimer);
   } catch (e) {
     loadError.value = true;
     notifyError(e);
-    if (generating.active) schedulePoll(); // 生成中轮询失败继续重试
+    if (firstRun.value) scheduleFirstRunPoll(); // 首次生成中轮询失败继续重试
   } finally {
     loading.value = false;
     refreshing.value = false;
+  }
+}
+
+/** 操作成功后本地乐观移除已处理组 + 更新 counts，再读快照（规格 §6：这几行必须立刻消失）。 */
+function optimisticRemove(keys) {
+  const kset = new Set(keys);
+  const removed = allRows.value.filter((r) => kset.has(r.key));
+  if (!removed.length) return;
+  allRows.value = allRows.value.filter((r) => !kset.has(r.key));
+  if (counts.value) {
+    const c = { ...counts.value };
+    const dec = (k, v) => { if (c[k] != null) c[k] = Math.max(0, Number(c[k]) - v); };
+    dec('groups', removed.length);
+    dec('skus', removed.reduce((s, r) => s + (r.skuCount ?? 0), 0));
+    dec('auto', removed.filter((r) => r.score != null && r.score >= 0.94).length);
+    dec('manual', removed.filter((r) => r.score != null && r.score >= 0.86 && r.score < 0.94).length);
+    dec('noCandidate', removed.filter((r) => r.score == null).length);
+    counts.value = c;
   }
 }
 
@@ -195,10 +204,10 @@ const pagedRows = computed(() => {
 watch([query, filter], () => { page.value = 1; });
 
 // DN 批（docs/TODO.md DN）：内容词自动归档组数（counts.contentWords，跨轮稳定）
-const contentWords = computed(() => shownCounts.value?.contentWords ?? 0);
+const contentWords = computed(() => counts.value?.contentWords ?? 0);
 
 const chips = computed(() => {
-  const c = shownCounts.value;
+  const c = counts.value;
   return [
     { key: 'all', label: '全部', n: c?.groups ?? 0 },
     { key: 'high', label: '高置信', n: c?.auto ?? 0 },
@@ -273,6 +282,7 @@ async function submitConfirm() {
     });
     ElMessage.success(`已确认并对齐整组${r.merged ? `（合并孤儿行 ${r.merged} 条）` : ''}`);
     confirmDlg.visible = false;
+    optimisticRemove([row.key]); // 乐观移除（规格 §6）：这行立刻消失 + counts 即时递减
     await load();
   } catch (e) {
     notifyError(e);
@@ -319,6 +329,7 @@ async function submitBatchConfirm() {
     if (errs.length) ElMessage.warning(`部分组失败：${errs.map((x) => `${x.key}：${x.error}`).join('；')}`);
     else ElMessage.success(`已确认 ${r.results?.length ?? rows.length} 组${r.totalMerged ? `（合并孤儿行 ${r.totalMerged} 条）` : ''}`);
     batchConfirmDlg.visible = false;
+    optimisticRemove(rows.map((x) => x.key)); // 乐观移除（规格 §6）
     await load();
   } catch (e) {
     notifyError(e);
@@ -343,6 +354,7 @@ async function submitBatchIgnore() {
     if (errs.length) ElMessage.warning(`部分组失败：${errs.map((x) => `${x.key}：${x.error}`).join('；')}`);
     else ElMessage.success(`已忽略 ${r.results?.length ?? rows.length} 组（${r.ignored ?? ignoreSkuTotal.value} 个 SKU）`);
     batchIgnoreDlg.visible = false;
+    optimisticRemove(rows.map((x) => x.key)); // 乐观移除（规格 §6）
     await load();
     await loadIgnored(); // DH 批：已忽略 chip 计数同步刷新
   } catch (e) {
@@ -362,6 +374,7 @@ async function ignoreGroup(row) {
     );
     await api('/api/admin/align/ignore', { method: 'POST', body: JSON.stringify({ key: row.key }) });
     ElMessage.success('已忽略整组');
+    optimisticRemove([row.key]); // 乐观移除（规格 §6）
     await load();
     await loadIgnored(); // DH 批：已忽略 chip 计数同步刷新
   } catch (e) {
@@ -396,6 +409,7 @@ async function pickGame(game) {
     await api('/api/admin/align/confirm', { method: 'POST', body: JSON.stringify({ key: row.key, appid: game.steam_appid, method: 'manual' }) });
     ElMessage.success('已确认并对齐整组');
     search.value.visible = false;
+    optimisticRemove([row.key]); // 乐观移除（规格 §6）
     await load();
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') notifyError(e);
@@ -464,7 +478,7 @@ async function openHistory(row) {
 }
 
 onMounted(() => { load(); loadIgnored(); });
-onUnmounted(() => clearTimeout(pollTimer));
+onUnmounted(() => { clearTimeout(firstRunTimer); clearTimeout(dirtyTimer); });
 </script>
 
 <template>
@@ -476,33 +490,34 @@ onUnmounted(() => clearTimeout(pollTimer));
         <p>杉果 SKU 按「去重组」排队：同一款游戏的多条 SKU 只出现一行，确认/忽略一次处理整组；已确认/已忽略的决定对同组新 SKU 自动继承。队列计数按组。</p>
       </div>
       <div class="align-head-right">
-        <el-tag v-if="generating.active && generating.failed" type="danger" effect="dark" size="small">生成失败</el-tag>
-        <el-tag v-else-if="generating.active" type="warning" effect="dark" size="small">生成中</el-tag>
+        <el-tag v-if="snapshotError" type="danger" effect="dark" size="small">生成失败</el-tag>
+        <el-tag v-else-if="firstRun" type="warning" effect="dark" size="small">生成中</el-tag>
         <el-tag v-else type="success" effect="dark" size="small">已生成</el-tag>
         <el-tag v-if="partial" type="warning" size="small" effect="plain">部分结果</el-tag>
-        <span class="muted" v-if="shownGeneratedAt">生成于 {{ fmtMin(shownGeneratedAt) }}<template v-if="usingStale">（旧结果）</template></span>
+        <span class="muted" v-if="generatedAt">上次生成于 {{ fmtMin(generatedAt) }}</span>
         <el-button :loading="refreshing" :disabled="loading" @click="load({ refresh: true })">刷新</el-button>
       </div>
     </div>
 
     <!-- 5 统计卡（全局统计，不随筛选变化） -->
     <div class="align-stats">
-      <div class="align-stat"><div class="k">待对齐组</div><div class="v">{{ shownCounts?.groups ?? '—' }}</div></div>
-      <div class="align-stat"><div class="k">涉及 SKU</div><div class="v">{{ shownCounts?.skus ?? '—' }}</div></div>
-      <div class="align-stat"><div class="k">自动匹配（≥0.94）</div><div class="v auto">{{ shownCounts?.auto ?? '—' }}</div></div>
-      <div class="align-stat"><div class="k">需人工（0.86–0.94）</div><div class="v manual">{{ shownCounts?.manual ?? '—' }}</div></div>
-      <div class="align-stat"><div class="k">本次自动继承</div><div class="v">{{ shownCounts?.inherited ?? '—' }}<small v-if="shownCounts">条</small></div></div>
+      <div class="align-stat"><div class="k">待对齐组</div><div class="v">{{ counts?.groups ?? '—' }}</div></div>
+      <div class="align-stat"><div class="k">涉及 SKU</div><div class="v">{{ counts?.skus ?? '—' }}</div></div>
+      <div class="align-stat"><div class="k">自动匹配（≥0.94）</div><div class="v auto">{{ counts?.auto ?? '—' }}</div></div>
+      <div class="align-stat"><div class="k">需人工（0.86–0.94）</div><div class="v manual">{{ counts?.manual ?? '—' }}</div></div>
+      <div class="align-stat"><div class="k">本次自动继承</div><div class="v">{{ counts?.inherited ?? '—' }}<small v-if="counts">条</small></div></div>
     </div>
 
-    <!-- 进度横幅：仅生成中显示（失败为红色错误条，成功前可先用旧结果） -->
-    <div v-if="generating.active" class="align-banner" :class="{ failed: generating.failed }">
-      <span>{{ generating.failed ? '⚠️' : '⏳' }}</span>
-      <div class="align-banner-title">{{ generating.failed ? `生成失败：${generating.error || '未知错误'}` : '后台生成中' }}</div>
-      <template v-if="!generating.failed">
-        <div class="align-bar"><i :style="{ width: `${progressPct}%` }" /></div>
-        <div class="align-banner-num">已完成 {{ generating.processed }} / 共 {{ generating.total }} 组</div>
-      </template>
-      <span class="align-banner-hint">{{ generating.failed ? '将自动重试' : usingStale ? '（完成后自动刷新，可先用旧结果）' : '（完成后自动刷新）' }}</span>
+    <!-- 状态横幅：仅首次生成 / 生成失败显示（日常操作与读请求不再出现「生成中」） -->
+    <div v-if="snapshotError" class="align-banner failed">
+      <span>⚠️</span>
+      <div class="align-banner-title">生成失败：{{ snapshotError }}</div>
+      <span class="align-banner-hint">请点右上角「刷新」重试</span>
+    </div>
+    <div v-else-if="firstRun" class="align-banner">
+      <span>⏳</span>
+      <div class="align-banner-title">首次生成中</div>
+      <span class="align-banner-hint">完成后自动展示队列</span>
     </div>
 
     <!-- 工具栏：搜索 + 5 筛选 chip + 批量确认/忽略（批量只在队列视图显示） -->
@@ -636,13 +651,13 @@ onUnmounted(() => clearTimeout(pollTimer));
       <!-- 空态互斥：仅「已完成且 0 组」显示；生成中/加载中/加载失败不显示；筛选无命中给轻提示 -->
       <el-empty v-if="view === 'ignored' && !ignored.loading && ignored.rows.length === 0"
         description="没有已忽略的组（忽略的组会在这里列出，可恢复为待处理）" />
-      <el-empty v-else-if="view === 'queue' && !generating.active && !loading && !loadError && displayedRows.length === 0"
+      <el-empty v-else-if="view === 'queue' && !firstRun && !snapshotError && !loading && !loadError && displayedRows.length === 0"
         description="没有待对齐的组（新 SKU 会在杉果同步后进入队列）" />
       <p v-else-if="view === 'queue' && displayedRows.length > 0 && filteredRows.length === 0" class="align-filter-empty muted">
         没有符合当前筛选的组（可调整搜索或筛选条件）。
       </p>
-      <p v-else-if="view === 'queue' && generating.active && displayedRows.length === 0" class="align-filter-empty muted">
-        后台生成中，完成后自动展示队列…
+      <p v-else-if="view === 'queue' && firstRun && displayedRows.length === 0" class="align-filter-empty muted">
+        首次生成中，完成后自动展示队列…
       </p>
       <p v-else-if="view === 'queue' && loadError && displayedRows.length === 0" class="align-filter-empty muted">
         队列加载失败，请点「刷新」重试。

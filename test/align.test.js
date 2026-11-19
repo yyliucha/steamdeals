@@ -214,6 +214,10 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   const pg = readFileSync(join(process.cwd(), 'src', 'store', 'pg.js'), 'utf8');
   const admin = readFileSync(join(process.cwd(), 'frontend', 'src', 'pages', 'AdminModules.vue'), 'utf8');
   const alignAdmin = readFileSync(join(process.cwd(), 'frontend', 'src', 'components', 'AlignAdmin.vue'), 'utf8');
+  // DL 批：计算本体已抽到 align-compute.js（server 与 CLI 共用）
+  const alignCompute = readFileSync(join(process.cwd(), 'src', 'align-compute.js'), 'utf8');
+  const snapMod = readFileSync(join(process.cwd(), 'src', 'align-snapshot.js'), 'utf8');
+  const sched = readFileSync(join(process.cwd(), 'src', 'scheduler.js'), 'utf8');
 
   assert.match(pg, /create table if not exists game_source_map/, '映射表');
   assert.match(pg, /primary key \(platform_code, product_id\)/, 'platform+product 唯一');
@@ -232,20 +236,46 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   assert.match(alignAdmin, /api\/admin\/align\/ignore/, '忽略接线');
 
   // ── DE 批（docs/ALIGN-REVIEW-UI.md §3/§4）：接口契约与页面结构 ──
-  // 接口：202 带 stale 旧结果分页；200 带 counts 5 项；批量确认/忽略；预览 keys
-  assert.match(server, /cachedRows/, '202 返回上一轮缓存分页（stale 旧结果）');
-  assert.match(server, /body\.stale = true/, '202 stale 标记');
-  assert.match(server, /alignGroupCounts\(groups, inherit, result\.contentWords\)/, '完成响应带 counts 统计（含内容词计数透传）');
+  // 接口：200 带 counts 统计；批量确认/忽略；预览 keys
+  assert.match(snapMod, /alignGroupCounts/, 'counts 统计口径接入（DL 批移到 align-snapshot.js，含内容词计数透传）');
   assert.match(server, /match\.batch_confirmed/, '批量确认审计');
   assert.match(server, /match\.batch_ignored/, '批量忽略审计');
   assert.match(server, /align\/preview\?keys=|keysParam/, '批量合并预览（批量确认弹窗用）');
-  assert.match(server, /onGrouped/, '分组完成立即上报总数（进度不出现 0/0）');
   assert.match(server, /store\.steampowered\.com\/app/, 'Steam 链接字段');
   assert.match(server, /sonkwo\.hk\/sku/, '杉果链接字段');
-  // 页面：状态徽标 / 5 统计卡 / 进度条 / 筛选 chip / 批量按钮 / 明细 / 空态互斥
-  assert.match(alignAdmin, /生成中/, '头部状态徽标（生成中）');
+
+  // ── DL 批（docs/ALIGN-SNAPSHOT.md §5/§8）：快照落库接线（静态契约）──
+  assert.match(pg, /create table if not exists align_snapshots/, 'align_snapshots 建表（migrate 幂等）');
+  assert.match(pg, /alter table game_source_map add column if not exists created_at/, 'gsm.created_at 补列（签名 §4 依赖）');
+  assert.match(server, /firstRun: true/, '无快照首次 202 firstRun（规格 §8.1）');
+  assert.match(server, /refresh\?|'refresh'\) === '1'|get\('refresh'\)/, '?refresh=1 后台重算（不阻塞）');
+  assert.match(server, /loadLatestAlignSnapshot/, 'GET 只读库快照');
+  assert.match(server, /updateAlignSnapshotAfterAction/, '确认/忽略同事务更新快照（规格 §5）');
+  assert.match(server, /markAlignSnapshotDirty/, '恢复后快照标脏 + 后台重算');
+  assert.match(server, /triggerAlignGeneration/, '后台生成 single-flight 触发');
+  assert.match(server, /cached: true/, '读快照 cached:true（签名不变无重算）');
+  assert.doesNotMatch(server, /alignRunner\.invalidate/, '废弃 invalidate() 内存语义');
+  // 内存缓存运行器本体（TTL/single-flight/staleCache/invalidate）已从 align-query.js 删除（DL 批）
+  const alignQuery = readFileSync(join(process.cwd(), 'src', 'align-query.js'), 'utf8');
+  assert.ok(!alignQuery.includes('export function createAlignRunner'), 'align-query.js 不再导出内存缓存运行器（废弃语义）');
+  assert.match(snapMod, /max\(coalesce\(reviewed_at, created_at\)\)/, '签名含 gsm max(reviewed_at)（规格 §4）');
+  assert.match(snapMod, /mtimeMs/, '签名含 skus.json mtime');
+  assert.match(snapMod, /ALIGN_SNAPSHOT_KEEP = 5/, 'prune 保留最近 5 条');
+  assert.match(snapMod, /ALIGN_SNAPSHOT_MAX_AGE_MS_DEFAULT = 24/, '24h 强制重算兜底');
+  assert.match(snapMod, /align\.snapshot_failed/, '生成失败日志');
+  assert.match(sched, /name: 'align-snapshot'/, '调度任务 align-snapshot 存在（硬规则 9）');
+  assert.match(sched, /ALIGN_SNAPSHOT_INTERVAL_MIN, 30/, '默认每 30 分钟');
+  assert.match(sched, /ALIGN_SNAPSHOT_INITIAL_DELAY_SEC, 30/, '首轮延迟 30 秒（空表兜底生成）');
+  assert.match(cli, /'align-snapshot': cmdAlignSnapshot/, 'CLI 子命令接线（runSyncTracked 健康可见）');
+  assert.match(cli, /ensureAlignSnapshot/, 'CLI 走共享 ensureAlignSnapshot');
+  // 页面：状态徽标 / 5 统计卡 / 筛选 chip / 批量按钮 / 明细 / 空态互斥；生成中仅首次生成
+  assert.match(alignAdmin, /首次生成中/, '首次生成横幅（规格 §6：生成中只在首次生成出现）');
+  assert.match(alignAdmin, /上次生成于/, '头部「上次生成于 HH:mm」');
   assert.match(alignAdmin, /生成失败/, '头部状态徽标（生成失败）');
   assert.match(alignAdmin, /已生成/, '头部状态徽标（已生成）');
+  assert.match(alignAdmin, /optimisticRemove/, '操作后本地乐观移除已处理组（规格 §6）');
+  assert.match(alignAdmin, /数据已更新/, '后台重算完成轻提示（规格 §6）');
+  assert.doesNotMatch(alignAdmin, /已完成 \{\{ generating\.processed/, '不再显示生成进度（X/Y）');
   assert.match(alignAdmin, /自动匹配（≥0\.94）/, '统计卡：自动匹配');
   assert.match(alignAdmin, /需人工（0\.86–0\.94）/, '统计卡：需人工');
   assert.match(alignAdmin, /本次自动继承/, '统计卡：本次自动继承');
@@ -256,21 +286,21 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   assert.match(alignAdmin, /批量忽略/, '批量忽略按钮');
   assert.match(alignAdmin, /明细/, '明细面板入口');
   assert.match(alignAdmin, /没有待对齐的组（新 SKU 会在杉果同步后进入队列）/, '空态文案');
-  // 锁真实代码（不是注释）：空态只在「已完成且 0 组」显示——生成中/加载中/加载失败都不显示
-  assert.match(alignAdmin, /!generating\.active && !loading && !loadError && displayedRows\.length === 0/, '空态互斥条件');
+  // 锁真实代码（不是注释）：空态只在「有快照且 0 组」显示——首次生成/加载中/加载失败/生成失败都不显示
+  assert.match(alignAdmin, /!firstRun && !snapshotError && !loading && !loadError && displayedRows\.length === 0/, '空态互斥条件');
   assert.match(alignAdmin, /队列加载失败，请点「刷新」重试/, '加载失败提示（与空态互斥）');
   assert.match(alignAdmin, /疑似本体/, '候选疑似本体提示');
   assert.match(alignAdmin, /api\/admin\/align\/confirm/, '确认接线');
   assert.match(alignAdmin, /api\/admin\/align\/preview/, '单组合并预览接线');
 
   // ── DH 批（docs/ALIGN-INTEGRITY.md §2/§3）：继承参考 appid、补写映射、已忽略视图/恢复、审阅记录 ──
-  assert.match(server, /align\.writeBackfilledMaps/, '计算时自动补写映射（A1）');
-  assert.match(server, /align\.map_backfilled/, '补写映射日志 align.map_backfilled（A1）');
+  assert.match(alignCompute, /align\.writeBackfilledMaps/, '计算时自动补写映射（A1，DL 批移至 align-compute.js）');
+  assert.match(alignCompute, /align\.map_backfilled/, '补写映射日志 align.map_backfilled（A1）');
   assert.match(server, /\/api\/admin\/align\/ignored' && req\.method === 'GET'/, '已忽略视图接口（B1）');
   assert.match(server, /\/api\/admin\/align\/restore' && req\.method === 'POST'/, '恢复为待处理接口（B1）');
   assert.match(server, /\/api\/admin\/align\/history' && req\.method === 'GET'/, '审阅记录接口（C1）');
   assert.match(server, /align\.restored/, '恢复审计 align.restored（B1）');
-  assert.match(server, /lastReviewed/, '队列行带最近处理（C1）');
+  assert.match(alignCompute, /lastReviewed/, '队列行带最近处理（C1）');
   assert.match(cli, /align\.writeBackfilledMaps/, 'CLI 匹配步同样自动补写（A1）');
   assert.match(alignAdmin, /api\/admin\/align\/ignored/, '前端已忽略视图接线（B1）');
   assert.match(alignAdmin, /api\/admin\/align\/restore/, '前端恢复接线（B1）');
@@ -280,10 +310,9 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   assert.match(alignAdmin, /最近处理/, '队列「最近处理」列（C1）');
 
   // ── DN 批（docs/TODO.md DN）：内容词 SKU 默认归档（不进队列/已忽略可查看恢复/反向自检）──
-  assert.match(server, /align\.archiveContentWordItems/, 'computeAlignGroups 内容词判定接线（DN）');
-  assert.match(server, /align\.writeContentWordArchives/, '内容词归档写 game_source_map（DN）');
-  assert.match(server, /align\.content_word_skipped/, '内容词归档日志（含计数）（DN）');
-  assert.match(server, /stale\.contentWords/, '202 旧结果 counts 同样带内容词计数（DN）');
+  assert.match(alignCompute, /align\.archiveContentWordItems/, 'computeAlignGroups 内容词判定接线（DN）');
+  assert.match(alignCompute, /align\.writeContentWordArchives/, '内容词归档写 game_source_map（DN）');
+  assert.match(alignCompute, /align\.content_word_skipped/, '内容词归档日志（含计数）（DN）');
   assert.match(alignAdmin, /内容词自动归档/, '「已忽略」chip 旁注明内容词自动归档（DN）');
   assert.match(alignAdmin, /row\.method === 'content_word'/, '已忽略视图标注内容词归档组（DN）');
 

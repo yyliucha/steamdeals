@@ -35,6 +35,8 @@ import { passwordPolicyError } from './password-policy.js';
 import { startStaticServer } from './serve.js';
 import * as settings from './settings.js';
 import { yuanAmount, formatDayUtc } from './format.js';
+import { createAlignCompute } from './align-compute.js';
+import { ensureAlignSnapshot, alignSnapshotMaxAgeMs } from './align-snapshot.js';
 
 // 统一成 { code, name, kind, ..., searchOffer } 的形状，供 syncByTitle 复用
 const gog = { ...gogDescriptor, searchOffer: gogSearch, fetchById: gogFetchById };
@@ -3015,6 +3017,24 @@ async function finishFetchRunRecord(id, { status, note = '', stats = null }) {
  * 同步命令的"记录"包装：sync_runs（任务级）+ fetch_runs（采集健康度）各留一条。
  * 注意 sync steam 自己已经写 fetch_runs，传 { fetchRun: false } 避免重复。
  */
+// DL 批（docs/ALIGN-SNAPSHOT.md §5）：对齐审核快照后台生成（调度任务 align-snapshot）——
+// 每轮算数据签名：与最新快照相同且未超 24h 直接用库快照；变化/超龄才重算写库并 prune；
+// 失败写快照 error 字段 + sync_runs 失败原因（CO-1/A5 任务健康条红标可见）。
+async function cmdAlignSnapshot() {
+  await withStore(async (store) => {
+    const q = (sql, p) => store.query(sql, p);
+    const { computeAlignGroups } = createAlignCompute({ q, db, logger });
+    const r = await ensureAlignSnapshot({
+      q,
+      compute: computeAlignGroups,
+      logger,
+      maxAgeMs: alignSnapshotMaxAgeMs(process.env),
+    });
+    syncNote = r.fresh ? '签名未变化，使用库快照' : '已生成新快照';
+    console.log(syncNote);
+  });
+}
+
 async function runSyncTracked(mode, fn, { fetchRun = true } = {}) {
   const run = await beginSyncRunRecord(mode);
   const fetchRunId = fetchRun ? await beginFetchRunRecord(mode) : null;
@@ -3067,6 +3087,8 @@ async function main() {
     // CO-1/A5：App Release 同步与 Steam 发现也写 sync_runs——失败原因才能进健康条/邮件告警
     'app-sync': cmdAppSync,
     'steam-discovery': cmdSteamDiscovery,
+    // DL 批：对齐审核快照后台生成（失败写 sync_runs → 任务健康条红标）
+    'align-snapshot': cmdAlignSnapshot,
   };
   if (TRACKED_COMMANDS[command]) {
     if (command === 'images' && args[1] !== 'pull') return commands.images();
@@ -3121,6 +3143,7 @@ async function main() {
                        --limit 200000 --batch 30 --rate 1500（steam_checked_at 作续跑游标；免费已由迁移置位）
   prune                定期清理：访问记录/采集与任务记录/验证码/Steam 账号日志
                        --visitor-days 180 --run-days 90 --email-days 7 --steam-days 180
+  align-snapshot       对齐审核快照后台生成：签名未变化直接用库快照，变化/超龄才重算（调度器默认每 30 分钟）
   readmodel            首页列表读模型对账/重建：check [--sample 200] [--fix]、rebuild [--region cn]
   steam-accounts       同步所有已绑定 Steam 账号的游戏库与愿望单（差集删除 + 自动提醒）
                        --sleep 1000（账号间间隔，≥1s；调度器默认每日执行）
