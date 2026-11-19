@@ -49,12 +49,19 @@ description: F:\dsh\gameprice（SteamDeals 跨平台游戏比价）的开发规�
 ```powershell
 cd F:\dsh\gameprice
 git status --short; git log --oneline -5; node -p "require('./package.json').version"
+Get-Content docs/ACTIVE-SESSIONS.md -Encoding UTF8   # 2026-11-19 起：先读活跃会话登记表
 ```
 
 1. 读 [docs/DELIVERY.md](../../../docs/DELIVERY.md)：开发环境、规则、发版流程、历次踩坑（第 6 节）。
 2. 读 [docs/PROJECT-OVERVIEW.md](../../../docs/PROJECT-OVERVIEW.md)：架构、功能与代码落点；**改完必须回写它**。
 3. 读 [docs/TODO.md](../../../docs/TODO.md) 与 [docs/UI-FIXES.md](../../../docs/UI-FIXES.md)：确认这个需求是不是已有结论/已知缺陷。
-4. **认领条目**：从 TODO 里挑 `状态：待开发 / 开发中` 的编号，**开工前先说一句"本次做 <编号列表>"**；
+4. **认领前登记（2026-11-19 起，防并发抢占）**：读 [docs/ACTIVE-SESSIONS.md](../../../docs/ACTIVE-SESSIONS.md)，
+   把自己的「条目 / 会改的文件面（目录级）/ 独占资源 / 开始时间」**登记一行**；
+   **文件面与别人重叠 → 排队或换条目**（谁先登记谁先做）；**独占资源（e2e 全量/模拟器/报告/服务栈/打 tag）
+   被占 → 等释放**；收工时删除自己那行。
+   **大改动会话（如巨石拆分、跨 10+ 文件）建议用 worktree 隔离**：`git worktree add F:\dsh\wt\<编号> -b <编号>`，
+   在独立目录开发、完成合并回 main；文档类文件（TODO/INDEX/DONE）仍走串行占用规则。
+5. **认领条目**：从 TODO 里挑 `状态：待开发 / 开发中` 的编号，**开工前先说一句"本次做 <编号列表>"**；
    `待决策`、`待排查`（未出结论）、`已过时`、`依赖阻塞` 的条目不要碰。做完一条就把该条目的状态改成 `已实现待发版`。
    **遇到 `依赖阻塞`**：说明前置条目还没完成，不要绕过它硬做——在汇报里写明"被 X 阻塞"。
    **开工前查重（2026-11-18 所有者新规）**：若该编号已被其他会话认领/正在做——TODO 状态是 `开发中`、
@@ -157,6 +164,13 @@ node --check src/xxx.js         # 新增/大改文件先过语法
 
 硬规则 5：`git tag` + push 会立刻触发 `docker-hub` / `docker-tcr` 构建并推镜像，
 **只有项目所有者明确说「构建」（或「构建 vX.Y.Z」）才能执行**。
+
+**提交前双重门禁（2026-11-19 起，防暂存区串扰——`b9356aa` 事故）**：提交前**必须**先跑
+`git diff --cached --stat`：
+- **非空 → 停手**（暂存区里有别人的 `git add`，直接 commit 会把别人的在途代码一起提交）；
+  先 `git restore --staged <他人文件>` 把它们移出暂存区（**不动内容**），再只 `git add` 自己的路径；
+- `git status --short` 的 M/?? 清单逐项核对**全部属于自己**；有他人改动留在工作区、不提交、不 stash。
+再按上面的「日常开发包含提交」流程执行。
 
 **日常开发本身就包含提交（推 `main` 不触发构建）**：验证全绿后不要留 WIP 等发版，
 立即 `git add <具体路径>`（**不要 `git add -A`**——工作区常有其它会话的改动；技能文件已随仓库提交，

@@ -36,6 +36,9 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
 
 ## 1. 触发与适用
 
+- **开工前登记（2026-11-19 起，防并发抢占）**：读 [docs/ACTIVE-SESSIONS.md](../../../docs/ACTIVE-SESSIONS.md)，
+  登记本会话（条目 / 会写的文件：QA 报告、可能回写的 TODO 状态行）；若需跑 e2e 全量/模拟器/报告，
+  同样受「独占资源」令牌约束（见 `steamdeals-test` §6.0）。收工注销自己那行。
 - `steamdeals-dev` 在「提交推 main」之后**必须**调用本技能；❌ 打回项补齐并复检通过，才算交付。
 - **何时用**：开发完成后初检、打回复检后。
 - **何时不用**：需求讨论阶段（那是 `steamdeals-requirements` 的事，质检不参与方案取舍）。

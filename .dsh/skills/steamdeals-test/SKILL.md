@@ -117,6 +117,23 @@ description: SteamDeals/gameprice 的测试方法库与真实测试门槛：分�
 
 ## 6. e2e 执行规范
 
+### 6.0 独占资源令牌（2026-11-19 起，防并发抢占）
+
+e2e 相关动作是**独占资源**，同一时刻只允许一个会话持有；跑之前必须在
+[docs/ACTIVE-SESSIONS.md](../../../docs/ACTIVE-SESSIONS.md) 登记「独占资源」列，跑完注销：
+
+| 独占资源 | 归属动作 |
+|---|---|
+| **e2e 全量** | `npm run e2e`（含 e2e_ 账号建删、模拟器走查） |
+| **Android 模拟器/真机** | `steamdeals35` / adb 真机（e2e --device、App 安装验证） |
+| **headless 浏览器报告** | Chrome `--print-to-pdf` 出报告 |
+| **真实服务栈** | 本地起完整服务跑 api/e2e 联调 |
+
+- 资源已被登记 → **等待或与持有者协商**，不得并行跑（会抢模拟器/端口/浏览器实例，结果互相污染）；
+- 单元测试/主链分段（`test:N`）、纯 pglite 测试**不需要令牌**（端口随机、库临时，可并行）；
+- 浏览器一律 **Chrome**（`C:\Program Files\Google\Chrome\Application\chrome.exe`；2026-11-19 起，Chrome 缺失才回退 Edge）；
+  **严禁按进程名杀浏览器**（`Get-Process chrome/msedge | Stop-Process` 之类），headless 自带唯一临时配置目录。
+
 ### 6.1 设备前置检查（必须）
 
 - 默认模拟器：启动 `F:\Android\sdk\emulator\emulator.exe -avd steamdeals35`，等 `adb wait-for-device` + `sys.boot_completed=1`。
