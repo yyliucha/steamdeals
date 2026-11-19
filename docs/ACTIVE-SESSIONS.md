@@ -16,7 +16,6 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| 构建 v2.27.0（DP/DQ/DN/DR/DS/DL 六条） | docs/{TODO,DONE,REQUIREMENTS-INDEX,DELIVERY,ACTIVE-SESSIONS,PROJECT-OVERVIEW,SEARCH-ALIASES,ALIGN-SNAPSHOT,PROFILE-UI-2026-11-19,APP-INSTANT-UPDATE}.md、CHANGELOG.md、README.md、package.json/package-lock.json；App 仓库 steamdeals-app（build.gradle.kts/latest.json/tag/Release，DQ/DR 联动） | **打 tag 构建** | 11-19 15:05 | 11-19 21:00 | build-v2.27.0(lead) |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 

@@ -1,6 +1,6 @@
 # e2e 测试套件（功能矩阵 + headless Chrome + Android 模拟器/真机 + 公网只读 + PDF 报告）（已实现并发布 v2.24.0）
 
-> 状态：**已实现并发布 v2.24.0（2026-11-17，test(e2e) 65af42b；QA ✅ docs/QA-E2E-SUITE-CK.md 第 1 轮）**；DJ 追加（§1 #14 整轮总预算 + steamdeals-test §2.3 独立报告流程）**已发布 v2.24.5（2026-11-18，实现 c87dfe0；QA ✅ docs/QA-DJ.md 第 1 轮）**；DP 批（2026-11-19，默认浏览器 Edge → Chrome）**已实现待发版**。使用说明见 [TESTING-E2E.md](TESTING-E2E.md)。
+> 状态：**已实现并发布 v2.24.0（2026-11-17，test(e2e) 65af42b；QA ✅ docs/QA-E2E-SUITE-CK.md 第 1 轮）**；DJ 追加（§1 #14 整轮总预算 + steamdeals-test §2.3 独立报告流程）**已发布 v2.24.5（2026-11-18，实现 c87dfe0；QA ✅ docs/QA-DJ.md 第 1 轮）**；DP 批（2026-11-19，默认浏览器 Edge → Chrome）**已实现并发布 v2.27.0（实现 24780ef；QA ✅ docs/QA-DP.md 第 1 轮 4/0/0/0）**。使用说明见 [TESTING-E2E.md](TESTING-E2E.md)。
 > 关联：[steamdeals-test](../.dsh/skills/steamdeals-test/SKILL.md)（测试方法库与真实测试门槛）、
 > [TODO.md](TODO.md) CK 条目、[HANDOVER.md](HANDOVER.md)（流程与状态词）、[DELIVERY.md](DELIVERY.md)（部署后验证）。
 
