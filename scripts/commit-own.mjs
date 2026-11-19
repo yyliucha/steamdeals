@@ -224,6 +224,16 @@ function main() {
       const stat = git(['diff', '--cached', '--stat'], idxEnv);
       console.log('[commit-own] 将提交以下内容（私有临时索引，不动共享暂存区）：');
       console.log(stat.out || '(二进制/新文件)');
+      // 高频共享文件（package*.json / 清单类文档）经常混着他人的未提交改动：
+      // 整文件提交前打印完整差异，确认只含本批内容（2026-11-19 误带 DS 改动事故）。
+      const hot = a.paths.filter((p) => /^(package(-lock)?\.json|docs\/(TODO|REQUIREMENTS-INDEX|DONE|DELIVERY|ACTIVE-SESSIONS)\.md)$/.test(p));
+      for (const p of hot) {
+        const d = git(['diff', '--cached', '--', p], idxEnv);
+        if (d.out) {
+          console.warn(`[commit-own] ⚠ 高频共享文件「${p}」的完整差异（请确认只含本批内容，混入他人改动请先拆分再提交）：`);
+          console.warn(d.out);
+        }
+      }
 
       // 纯底层管道提交：不用 git commit（实测它会把已提交路径写回真实 index）；
       // update-ref 带旧值 CAS，HEAD 被并发推进时原子失败。

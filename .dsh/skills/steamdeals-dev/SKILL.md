@@ -186,6 +186,8 @@ node scripts/commit-own.mjs <编号> "<type>(<scope>): <摘要>" -- <自己的�
   `git pull --rebase`（必要时 --autostash）再重跑，禁止基于陈旧基线提交；
 - 路径落在 ACTIVE-SESSIONS 他人文件面时警告，人工确认全是自己的 hunk 后加 `--yes-overlap` 重跑；
 - 推送由脚本完成（`COMMIT_OWN_PUSH=0` 只提交不推送）；提交类型规范见 CONTRIBUTING。
+- **核对脚本打印的 diff 概览**：package*.json 与清单类文档等高频共享文件会整文件提交——
+  概览里出现非本批内容（如他人未提交的依赖/测试注册）时，先拆 hunk 再提交，绝不整文件带走。
 - 手工路径仍允许，但必须：双门禁 + pathspec + add 与 commit 同一条命令块内完成。
 （技能文件已随仓库提交，改技能就单独 `git add .dsh/skills/<name>/SKILL.md`）
 
