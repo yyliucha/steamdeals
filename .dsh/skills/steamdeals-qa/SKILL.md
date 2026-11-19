@@ -48,8 +48,10 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
   并在 `docs/REQUIREMENTS-INDEX.md` 同步；**质检不写 `已发布`**（那是发版后的事）。`质检通过` 条目**仍留在
   [TODO.md](TODO.md)**（等构建）；发布后由 `steamdeals-build` 把它移入 [DONE.md](DONE.md)。
   回写即可——README 不再有「开发进度」生成块（2026-11-12 起下线，没有 `todo:progress` 命令与 `docs-progress` 门禁）。
-- **并发写 TODO/INDEX/DONE**：回写状态前按 [HANDOVER.md](HANDOVER.md) §10.1 探测占用；被占用就跳过状态回写，
-  照常完成判定、报告与结论（注明「状态回写待补」），由收尾复盘按 §10.3 补回。
+- **并发写 TODO/INDEX/DONE**：回写状态前按 [HANDOVER.md](HANDOVER.md) §10.1 探测占用（含 `docs/.ledger-lock` 清单锁）；
+  被占用就跳过状态回写，照常完成判定、报告与结论（注明「状态回写待补」），由收尾复盘按 §10.3 补回。
+  回写提交用会话隔离脚本（写前 `node scripts/commit-own.mjs lock <编号>`、写完 `unlock`）：
+  `node scripts/commit-own.mjs <编号> "docs(qa): …" -- docs/TODO.md docs/REQUIREMENTS-INDEX.md`。
 - **开工前查重，不重复质检（2026-11-18 所有者新规）**：动手前先确认该编号**是否已被其他会话质检**——
   命中任一即视为"他人进行中"：① TODO 状态已是 `待质检 / 质检通过 / 质检打回`；② `docs/QA-<编号>.md`
   已存在且最近被修改或已提交；③ 对话里已有别的会话声明在做该编号的质检。

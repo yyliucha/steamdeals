@@ -122,8 +122,8 @@ git status --short                 # 其它会话的未提交改动，记录下�
 
 ### 3.4 提交推 main
 
-`git add <本批具体路径>`（**不要 `git add -A`**；混入他人 hunk 的文件按 §2.4）→
-`git commit -m "release: vX.Y.Z <一句话摘要>"` → `git push origin main`。
+`node scripts/commit-own.mjs vX.Y.Z "release: vX.Y.Z <一句话摘要>" -- <本批具体路径>`（**不要 `git add -A`**；
+混入他人 hunk 的文件按 §2.4 拆分；脚本含 fetch 新鲜度门禁与共享索引同步，推送由脚本完成）。
 
 ### 3.5 打 tag 推 tag（= 触发构建）
 

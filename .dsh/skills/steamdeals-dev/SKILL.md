@@ -73,6 +73,8 @@ Get-Content docs/ACTIVE-SESSIONS.md -Encoding UTF8   # 2026-11-19 起：先读�
 `docs/TODO.md` / `docs/REQUIREMENTS-INDEX.md` / `docs/DONE.md` 可能被别的会话同时改。**完整规则（写前探测 / 被占用跳过 / 收尾复盘）见 [HANDOVER.md](HANDOVER.md) §10，本技能只留要点**：
 被占用就**跳过这三份文件的写入**、照常干活（提交只 `git add` 自己的文件，**绝不 `git add -A`**），
 把「待回写的状态」记进提交信息与汇报；收尾复盘由本批最后提交的会话按 §10.3 用 `edit` 定点补回；不覆盖、不 stash、不回滚。
+写清单前先取锁：`node scripts/commit-own.mjs lock <编号>`，写完立即 `unlock <编号>`；
+`Test-Path docs/.ledger-lock` 为真 = 被占用（HANDOVER §10.1 判定项）。
 
 ## 2. 代码地图
 
@@ -175,9 +177,17 @@ node --check src/xxx.js         # 新增/大改文件先过语法
 再按上面的「日常开发包含提交」流程执行。
 
 **日常开发本身就包含提交（推 `main` 不触发构建）**：验证全绿后不要留 WIP 等发版，
-立即 `git add <具体路径>`（**不要 `git add -A`**——工作区常有其它会话的改动；技能文件已随仓库提交，
-改技能就单独 `git add .dsh/skills/<name>/SKILL.md`）→ `git commit -m "<type>(<scope>): <摘要>"`
-（feat/fix/refactor/test/docs/chore，见 CONTRIBUTING 提交规范）→ `git push origin main`。
+立即用**会话隔离提交脚本**（私有临时索引 + 新鲜度门禁 + 重叠警告 + 共享索引同步；
+`git add` 与 `git commit` 不允许隔开——脚本一次完成，杜绝长命暂存）：
+
+node scripts/commit-own.mjs <编号> "<type>(<scope>): <摘要>" -- <自己的文件路径...>
+
+- 脚本自动 `git fetch` 并检查 origin/main：**有本地没有的提交会中止**（退出码 4），先
+  `git pull --rebase`（必要时 --autostash）再重跑，禁止基于陈旧基线提交；
+- 路径落在 ACTIVE-SESSIONS 他人文件面时警告，人工确认全是自己的 hunk 后加 `--yes-overlap` 重跑；
+- 推送由脚本完成（`COMMIT_OWN_PUSH=0` 只提交不推送）；提交类型规范见 CONTRIBUTING。
+- 手工路径仍允许，但必须：双门禁 + pathspec + add 与 commit 同一条命令块内完成。
+（技能文件已随仓库提交，改技能就单独 `git add .dsh/skills/<name>/SKILL.md`）
 
 **收尾清理自己的临时文件（2026-11-18 起）**：自己产生的 `npmtest-*.log`、探针脚本、临时 patch 等
 不留工作区（删除或移到仓库外），只留下源码/测试/文档改动——避免工作区被日志堆满、也避免误提交。

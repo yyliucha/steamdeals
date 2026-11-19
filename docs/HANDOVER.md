@@ -213,7 +213,13 @@ cd F:\dsh\gameprice
 git status --short docs/TODO.md docs/REQUIREMENTS-INDEX.md docs/DONE.md
 (Get-Item docs/TODO.md).LastWriteTime      # 2 分钟内被改过 = 可能有人正在写（自己刚写过的除外）
 Test-Path .git/index.lock                  # True = 有 git 操作在跑
+Test-Path docs/.ledger-lock                # True = 有会话正持有清单锁（视为被占用）
 ```
+
+**清单锁**（2026-11-19 起）：写 TODO/INDEX/DONE/DELIVERY/ACTIVE-SESSIONS 前先
+`node scripts/commit-own.mjs lock <编号>`，写完立即 `unlock <编号>`（锁文件已被 .gitignore 忽略，不入库；
+写入工具见 `scripts/commit-own.mjs`）。清单改动提交同样走会话隔离脚本：
+`node scripts/commit-own.mjs <编号> "<信息>" -- docs/TODO.md docs/REQUIREMENTS-INDEX.md`。
 
 ### 10.2 发现占用：跳过 TODO/INDEX/DONE，照常干活
 
