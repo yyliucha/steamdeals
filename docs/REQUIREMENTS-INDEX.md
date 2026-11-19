@@ -90,7 +90,7 @@
 | **DB** | ~~个人主页（公开资料页）~~ → **已过时**：合并进 CX（仅本人可见的「我的资料」） | [USER-PROFILE-EDIT.md](USER-PROFILE-EDIT.md) | 已过时（2026-11-18 取消公开页） | — |
 | **DC** | CM-6：App 公告角标与公告列表（铃铛入口/全量未读/游客本地已读） | —（TODO DC 条目） | 已发布 v2.25.0（2026-11-19，App 仓库 ef17e9a；QA docs/QA-DC.md ✅） | ✅ 本轮已给 |
 | **DE** | 对齐审核页改版（统计卡/进度条/搜索筛选/批量/空态互斥） | [ALIGN-REVIEW-UI.md](ALIGN-REVIEW-UI.md) | 已发布 v2.24.4（2026-11-18，318e678 + 修复 729d0e9；QA docs/QA-DE.md——通过 7/偏差 1 已修/需人工确认 1） | ✅ 本轮已给 |
-| **DF** | 到价提醒手动推送（每行「推送」；强制推送/更新去重时间/频控/审计） | [ALERT-MANUAL-PUSH.md](ALERT-MANUAL-PUSH.md) | 待开发（2026-11-18 需求 + demo；4 口径待定） | ✅ 本轮已给 |
+| **DF** | 到价提醒手动推送（每行「推送」；强制推送/更新去重时间/频控/审计） | [ALERT-MANUAL-PUSH.md](ALERT-MANUAL-PUSH.md) | 已实现待发版（2026-11-19，实现 578f063，待质检） | ✅ 本轮已给 |
 | **DG** | 对齐匹配修复（副标题/别名低分 → 无候选；索引补 name_en + 副标题感知） | —（TODO DG 条目） | 已发布 v2.24.5（2026-11-18，afc5a91 + 12a6de7；QA docs/QA-DG.md 第 1 轮 ✅） | ✅ 本轮已给 |
 | **DH** | 对齐审核数据完整性（继承缺口/已忽略撤销/审阅痕迹/孤儿行合并提示） | [ALIGN-INTEGRITY.md](ALIGN-INTEGRITY.md) | 已发布 v2.25.0（2026-11-19，d3c67ec + 修复 cc8e351；QA docs/QA-DH.md 第 2 轮 ✅） | ✅ 本轮已给 |
 | **DI** | 测试环境隔离与主链分段（A 测试隔离 / B 四段主链 / C 环境复位脚本） | [TEST-ENV-ISOLATION.md](TEST-ENV-ISOLATION.md) | 已发布 v2.24.5（2026-11-18，3acd1b8；QA docs/QA-DI.md ✅） | ✅ 本轮已给 |
