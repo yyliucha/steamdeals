@@ -142,6 +142,7 @@
 | **EG** | 🐞 缺陷：通知角标已读后不消失（ABC 三场景） | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EG | 已发布 v2.27.5（2026-11-20；站点 7eb5d4a + App 3458bce；app-v2.24.0 随本批） | ✅ 本轮已给 |
 | **EH** | ⚙️ 调整：同步逻辑去 cn（内容类：steam-status 状态/分级 + discovery 搜索改 cc=us；价格保持 cc=cn） | [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §10 | 待开发（2026-11-20 P1） | ✅ 本轮已给 |
 | **EI** | ⚙️ 调整：同步双区域配置（contentRegion=us 拿全量 / baseRegion=cn 价格本位币可配；国际化预留） | [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §11 | 待开发（2026-11-20 P1） | ✅ 本轮已给 |
+| **EJ** | ⚙️ 调整：昵称显示规则统一（有昵称显示昵称，无昵称显示用户名；Web + App） | [DISPLAY-NAME-RULE.md](DISPLAY-NAME-RULE.md) | 待开发（2026-11-20 P2） | ✅ 本轮已给 |
 | **DX** | 🧹 技术债：列表/站点接口性能优化（count 合并 + 短 TTL 缓存 + /api/site 缓存 + 压测） | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DX | 待开发（依赖 DW） | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容

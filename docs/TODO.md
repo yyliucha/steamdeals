@@ -22,7 +22,7 @@
 |---|---|---|
 | 🐞 缺陷 | 1 | DU |
 | ✨ 功能 | 1 | DT-2 |
-| ⚙️ 调整 | 8 | DT-1 / DT-3 / DT-4 / DT-5 / DV / EC / EH / EI |
+| ⚙️ 调整 | 9 | DT-1 / DT-3 / DT-4 / DT-5 / DV / EC / EH / EI / EJ |
 | 🧹 技术债 | 1 | DX |
 | 🧪 测试基建 | 1 | ED |
 | 📝 文档流程 | 0 | — |
@@ -195,3 +195,20 @@ pm test（分段）+ rontend:build + scan 全绿）。
   读 baseRegion+baseCurrency；③ 前台默认 region 读配置；④ settings 暴露三项配置；⑤ 日志双区域。
 - **验收**：见规格 §11（默认内容 us/价格 cn；切 baseRegion=us+USD 生效；前台跟随；分级覆盖提升；
   `npm test`（分段）+ `scan` 全绿）。
+
+## EJ. 待开发（⚙️ 调整）：昵称显示规则统一——有昵称显示昵称，无昵称显示用户名
+
+**类型：** ⚙️ 调整（展示口径统一，Web + App）
+**状态：** 待开发（2026-11-20 所有者规则）
+**优先级：** P2 —— 显示一致性
+**依赖：** 无
+**解锁：** 无
+**规格**：[DISPLAY-NAME-RULE.md](DISPLAY-NAME-RULE.md)
+
+- **规则**：显示名 = `displayName`（昵称非空）? 昵称 : `username`；前端与手机端所有用户可见位置统一。
+- **现状问题**：① App `MeScreen.kt:154` 只显示用户名（有昵称也不显示）；② Web 后台用户管理列表列 `username`
+  （接口已返回 `display_name`）；③ AdminExtras 用户卡片已合规（推广）；④ 会话/提醒/愿望单/前台用户菜单待核。
+- **范围**：App MeScreen 显示名改 `displayName ?: username`（ProfileEdit 同步）；Web 后台各用户列改
+  `display_name || username`（接口缺字段则服务端补 SELECT）；前台「我的」昵称优先。
+- **验收**：见规格 §4（有昵称显示昵称/空则用户名；两端一致；认证仍用 username；App 构建 + 
+  `npm test`（分段）+ `frontend:build` + `scan` 全绿）。
