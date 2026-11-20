@@ -147,6 +147,12 @@
 | **EK** | 🐞 缺陷：App Release 同步资产下载走专用代理（有代理走代理、无代理直连 GitHub；代理超时 30s） | [APP-RELEASE-SYNC-PROXY.md](APP-RELEASE-SYNC-PROXY.md) | 已发布 v2.27.8（2026-11-20，实现 cc4fcf5；QA docs/QA-EK.md 第 1 轮 ✅ 6/0/0/1） | ✅ 本轮已给 |
 | **EM** | 🐞 缺陷：Steam 同步超时（代理快速切换 + 同步异步化 + 结果反馈） | [STEAM-SYNC-TIMEOUT.md](STEAM-SYNC-TIMEOUT.md) | 已发布 v2.28.0（2026-11-20，实现 ba9b0b0；QA docs/QA-EM.md 第 1 轮 ✅ 5/0/0/1） | ✅ 本轮已给 |
 | **DX** | 🧹 技术债：列表/站点接口性能优化（count 合并 + 短 TTL 缓存 + /api/site 缓存 + 压测） | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DX | 已发布 v2.27.8（2026-11-20，实现 090af4c；QA docs/QA-DX.md 第 1 轮 ✅ 6/0/0/1） | ✅ 本轮已给 |
+| **EN** | CSP 安全加固（Report-Only → 正式；三件套唯一未落地项） | [ROADMAP.md](ROADMAP.md)「安全排查结论」#2 | 待开发 | ✅ 本轮已给 |
+| **EO** | 首页工具栏 1100–1300px 挤成一行（先排查是否仍复现） | [ROADMAP.md](ROADMAP.md)「体验与性能优化」#1 | 待排查 | ✅ 本轮已给 |
+| **EP** | 后台其余列表手机端卡片化（游戏目录/访问记录已做） | [ROADMAP.md](ROADMAP.md)「未排期想法」 | 待开发 | ✅ 本轮已给 |
+| **EQ** | 提醒通道：多收件人分组（范围待确认后补规格） | [ROADMAP.md](ROADMAP.md)「未排期想法」 | 待决策 | ✅ 本轮已给 |
+| **ER** | B4/cli 拆分遗留缺陷修复（backfill q is not a function / prune 42P01 / #18 syncPrices 断引用） | 本条目 + [B4-QUEUE.md](B4-QUEUE.md) 备注 | 待开发 | ✅ 本轮已给 |
+| **ES** | 生产 pg_trgm 索引命中复核（EXPLAIN，部署侧执行） | [ROADMAP.md](ROADMAP.md)「体验与性能优化」段尾注 | 待排查 | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
 
