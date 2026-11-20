@@ -72,7 +72,7 @@
 | 6 | me | /api/me/* | 已拆 | v2.27.3 | 4ed78db |
 | 7 | 杂项（site/steam/ban） | /api/site、/api/steam/*、/api/ban/state | 已拆 | v2.27.4 | 552fb40 |
 | 8 | admin 访问安全 | visitors/views/devices/blacklist/whitelist/abuse/reviews | 已拆 | v2.27.4 | b3ebd8a |
-| 9 | admin 同步任务 | sync/heat/backfill/rename/circuit | 已拆 | 待发（v2.27.6） | 3997083 |
+| 9 | admin 同步任务 | sync/heat/backfill/rename/circuit | 已拆 | v2.27.6 | 3997083 |
 | 10 | admin 系统设置 | smtp/mail/emails/announcements/proxies/version | 未拆 | | |
 | 11 | admin 用户批量 | users/bulk/bulk-ops | 未拆 | | |
 | 12 | admin 报表备份日志 | reports/backup/backups/logs/steam-logs | 未拆 | | |
@@ -140,3 +140,5 @@
 - 2026-11-20 09:53 环境变化：构建会话（所有者指令）已发布 v2.27.5（EF+EG 批，tag 最终指向 8b53782，**不含 #9**；docker-hub 44656117747 / docker-tcr 44656117688 已排队）→ #9 归属下一版 **v2.27.6**（版本连续递增不变）；EF/EG 已由该会话带上，本批构建无需再带。
 - 2026-11-20 09:53 阻塞观察：ACTIVE-SESSIONS 有「EH+EI 开发会话」（所有者指令，09:40–12:30，文件面含 src/server.js、src/cli.js、src/scheduler.js 等）——B4 剩余域 #10–#21 文件面全部与其重叠，按登记表规则后到排队，暂不派工；等所有者协调或该会话完成。
 - 2026-11-20 09:56 所有者确认：B4 排队等 EH+EI 完成（方案 A）；若 11:30（预算剩 45 分钟）前仍无新域完成 → 把 #9 单独构建 v2.27.6 收尾；EH+EI 提前完成则立即派 #10。
+- 2026-11-20 10:52 观察：v2.27.5 CI 双绿（docker-hub 44656117747 / docker-tcr 44656117688 全 success，test-main 最终 HEAD 44656695975 绿，DELIVERY e2c78eb 已回填）→ 上版已发布，v2.27.6 前置满足；EH+EI 代码已提交（897476c feat）但会话登记至 12:30 未注销（QA 进行中）；另新增 EJ 会话（10:35–12:30，文件面含 src/store/pg.js、src/server.js）→ #10 即使 EH+EI 提前注销也仍与 EJ 重叠、且超本轮预算窗口 → **本轮不再派工**，按方案 A 兜底：11:30 起把 #9 单独构建 v2.27.6。
+- 2026-11-20 10:30 构建 v2.27.6 开工（独立构建会话，所有者 10:25 派发）：范围**仅 #9 admin-sync 域**（3997083，QA 14/0/0/1 放行）；EJ / EH / EI 未质检通过 → 不纳入本批（EJ 完成归下一批，EH+EI 待其会话完成）。主树存在 EH+EI 未提交改动（src/*、test/*、PROJECT-OVERVIEW 等）→ 只提交本批发布文档（pathspec 显式列出），src/test 一律不提交、不 stash、不触碰；PROJECT-OVERVIEW 与 package.json 含他人 hunk，按 hunk 隔离提交。
