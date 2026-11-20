@@ -4,10 +4,20 @@ name: test-main
 # 任何 push 到 main 的提交立即跑主链测试 + api.test + 前端构建 + 凭据扫描——
 # 把 main 树改坏/回退的提交（如暂存区陈旧快照入提交）几分钟内自动红灯，不再依赖人工纪律发现。
 # 与 docker-hub/docker-tcr 不同：不构建镜像、不推镜像；tag 推送由那两个 workflow 处理。
+#
+# paths-ignore（2026-11-20，TODO ED）：纯文档/数据提交（docs、任何 .md、CHANGELOG、data）
+# 不触发本 workflow，避免高频文档提交反复排队又被 concurrency 取消（cancelled run 刷屏）。
+# 刻意**不**忽略 src/**、frontend/**、test/**、scripts/**、package.json、package-lock.json、.github/**
+# ——这些路径的任何改动必须进测试。docker-hub/docker-tcr 只在 tag 触发，不受影响。
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'CHANGELOG.md'
+      - 'data/**'
   workflow_dispatch:
 
 concurrency:
