@@ -38,7 +38,7 @@
           <el-table-column label="愿望单" width="90" align="right"><template #default="{row}">{{ row.wishlist }}</template></el-table-column>
           <el-table-column label="API Key" width="100"><template #default="{row}"><el-tag :type="row.api_key_set?'success':'info'" size="small">{{ row.api_key_set?'已配置':'未配置' }}</el-tag></template></el-table-column>
           <el-table-column label="最近同步" min-width="150"><template #default="{row}">{{ dateTime(row.library_synced_at)||'未同步' }}</template></el-table-column>
-          <el-table-column label="操作" min-width="420" fixed="right"><template #default="{row}"><el-button link @click="goOpLogs('steam')">日志</el-button><el-button link type="primary" @click="syncSteam(row,'library')">同步游戏库</el-button><el-button link @click="syncSteam(row,'wishlist')">同步愿望单</el-button><el-button link @click="editAlias(row)">改别名</el-button><el-button link @click="editApiKey(row)">API Key</el-button><el-button link type="danger" @click="unbindSteam(row)">解绑</el-button></template></el-table-column>
+          <el-table-column label="操作" min-width="420" fixed="right"><template #default="{row}"><el-button link @click="goOpLogs('steam')">日志</el-button><el-button link type="primary" :loading="syncing(row,'library')" @click="syncSteam(row,'library')">{{ syncing(row,'library')?'同步中…':'同步游戏库' }}</el-button><el-button link :loading="syncing(row,'wishlist')" @click="syncSteam(row,'wishlist')">{{ syncing(row,'wishlist')?'同步中…':'同步愿望单' }}</el-button><el-button link @click="editAlias(row)">改别名</el-button><el-button link @click="editApiKey(row)">API Key</el-button><el-button link type="danger" @click="unbindSteam(row)">解绑</el-button></template></el-table-column>
         </el-table></div>
         <el-empty v-else-if="!isMobile" description="还没有绑定 Steam 账号，点右上角「绑定新账号」开始"/>
       </div>
@@ -55,7 +55,7 @@
         <el-empty v-if="!steamAccounts.length" description="还没有绑定 Steam 账号，点右上角「绑定新账号」开始"/>
         <div v-if="steamAccounts.length" class="game-card-list"><div v-for="a in steamAccounts" :key="a.steam_id" class="admin-card">
           <div class="admin-card-main"><strong>{{ a.alias||a.persona_name||a.steam_id }}</strong><small class="mono">{{ a.steam_id }}</small><small class="muted">游戏库 {{ a.games }} · 愿望单 {{ a.wishlist }} · {{ a.api_key_set?'API Key 已配置':'API Key 未配置' }} · 最近同步 {{ dateTime(a.library_synced_at)||'未同步' }}</small></div>
-          <div class="admin-card-actions"><el-button link @click="goOpLogs('steam')">日志</el-button><el-button link type="primary" @click="syncSteam(a,'library')">同步游戏库</el-button><el-button link @click="syncSteam(a,'wishlist')">同步愿望单</el-button><el-button link @click="toggleLibrary(a)">{{ activeAccount?.steam_id===a.steam_id?'收起游戏库':'游戏库' }}</el-button><el-button link @click="editAlias(a)">改别名</el-button><el-button link @click="editApiKey(a)">API Key</el-button><el-button link type="danger" @click="unbindSteam(a)">解绑</el-button></div>
+          <div class="admin-card-actions"><el-button link @click="goOpLogs('steam')">日志</el-button><el-button link type="primary" :loading="syncing(a,'library')" @click="syncSteam(a,'library')">{{ syncing(a,'library')?'同步中…':'同步游戏库' }}</el-button><el-button link :loading="syncing(a,'wishlist')" @click="syncSteam(a,'wishlist')">{{ syncing(a,'wishlist')?'同步中…':'同步愿望单' }}</el-button><el-button link @click="toggleLibrary(a)">{{ activeAccount?.steam_id===a.steam_id?'收起游戏库':'游戏库' }}</el-button><el-button link @click="editAlias(a)">改别名</el-button><el-button link @click="editApiKey(a)">API Key</el-button><el-button link type="danger" @click="unbindSteam(a)">解绑</el-button></div>
         </div></div>
         <div v-if="unownedAccounts.length" class="game-card-list"><div v-for="a in unownedAccounts" :key="a.steam_id" class="admin-card"><div class="admin-card-main"><strong>{{ a.persona_name||a.steam_id }}</strong><small class="mono">{{ a.steam_id }} · 已同步游戏 {{ a.games }}</small></div><div class="admin-card-actions"><el-button link type="primary" @click="claimSteam(a)">认领到当前管理员</el-button></div></div></div>
         <template v-if="activeAccount && libraryGames.length">
@@ -220,7 +220,58 @@ const recycleDetail=reactive({visible:false,appid:null,row:null});
 function openGameDetail(row){recycleDetail.visible=true;recycleDetail.appid=row.steam_appid??null;recycleDetail.row=row;}
 async function loadSteam(){loading.value=true;try{const d=await api('/api/steam/accounts');steamAccounts.value=d.accounts||[];unownedAccounts.value=d.unowned||[];steamLimit.value=Number(d.limit)||5;if(activeAccount.value){const cur=steamAccounts.value.find((a)=>a.steam_id===activeAccount.value.steam_id);if(!cur){activeAccount.value=null;libraryGames.value=[];}}}catch(e){notify(e);}finally{loading.value=false;}}
 function bindSteam(){if(steamAccounts.value.length>=steamLimit.value)return;window.location.href='/api/auth/steam/start';}
-async function syncSteam(row,kind){if(!row.api_key_set)return ElMessage.warning('该账号未配置 API Key，请先在「API Key」里填写');await act(async()=>{const d=await api(`/api/steam/accounts/${encodeURIComponent(row.steam_id)}/${kind}/sync`,body('POST',{}));if(kind==='library')ElMessage.success(`已同步 ${d.total||0} 款游戏（差集清理 ${d.deleted||0} 条${d.typeUnknown>0?`，类型未知 ${d.typeUnknown} 款已尝试补全`:''}）`);else ElMessage.success(`已同步 ${d.total||0} 个愿望单（新增提醒 ${d.watches||0}，目录未命中 ${d.skipped||0}）`);await loadSteam();});}
+// ---- EM 批（docs/STEAM-SYNC-TIMEOUT.md EL-3）：同步改「触发后台任务 + 轮询」——
+// 点同步 → 按钮「同步中…」→ 每 2s 轮询 sync-status（最长 60s）→ 完成后刷新列表并提示结果；
+// 失败显示原因（点按钮可重试），不再出现笼统的「请求超时」报错。
+const syncPolling=reactive({}); // steam_id -> { running, kind }
+function syncing(row,kind){const t=syncPolling[row?.steam_id];return Boolean(t?.running&&t?.kind===kind);}
+function applySyncResult(st,kind){
+  const r=st?.lastResult;
+  if(!r)return ElMessage.info('还没有同步记录');
+  if(!r.ok)return ElMessage.error(`同步失败：${r.error||'未知原因'}（可点「同步游戏库 / 同步愿望单」重试）`);
+  const isLib=(kind==='library')||(r.kind==='library');
+  if(isLib)ElMessage.success(`已同步 ${r.total||0} 款游戏（差集清理 ${r.deleted||0} 条${r.typeUnknown>0?`，类型未知 ${r.typeUnknown} 款已尝试补全`:''}）`);
+  else ElMessage.success(`已同步 ${r.total||0} 个愿望单（新增提醒 ${r.watches||0}，目录未命中 ${r.skipped||0}）`);
+}
+async function pollSync(row,kind){
+  const steamId=row.steam_id;
+  const started=Date.now();
+  while(Date.now()-started<60000){
+    await new Promise((r)=>setTimeout(r,2000));
+    try{
+      const st=await api(`/api/steam/accounts/${encodeURIComponent(steamId)}/sync-status`);
+      if(st.status!=='running'){
+        syncPolling[steamId]={running:false,kind};
+        applySyncResult(st,kind);
+        await loadSteam();
+        return;
+      }
+    }catch(e){
+      syncPolling[steamId]={running:false,kind};
+      notify(e);
+      return;
+    }
+  }
+  syncPolling[steamId]={running:false,kind};
+  ElMessage.warning('同步仍在后台进行中，稍后点「刷新」查看结果');
+  await loadSteam();
+}
+async function syncSteam(row,kind){
+  if(!row.api_key_set)return ElMessage.warning('该账号未配置 API Key，请先在「API Key」里填写');
+  if(syncing(row,kind))return;
+  try{
+    const d=await api(`/api/steam/accounts/${encodeURIComponent(row.steam_id)}/${kind}/sync`,body('POST',{}));
+    if(d.accepted){
+      syncPolling[row.steam_id]={running:true,kind};
+      ElMessage.info('已开始后台同步…');
+      await pollSync(row,kind);
+    }else{
+      const st=await api(`/api/steam/accounts/${encodeURIComponent(row.steam_id)}/sync-status`);
+      applySyncResult(st,kind);
+      await loadSteam();
+    }
+  }catch(e){notify(e);}
+}
 async function editAlias(row){try{const {value}=await ElMessageBox.prompt('给这个 Steam 账号起个别名（留空清除）','修改别名',{inputValue:row.alias||''});await api(`/api/steam/accounts/${encodeURIComponent(row.steam_id)}`,body('PATCH',{alias:value.trim()}));ElMessage.success('别名已保存');await loadSteam();}catch(e){if(e!=='cancel'&&e!=='close')notify(e);}}
 function editApiKey(row){apiKeyDialog.value={visible:true,row,value:''};}
 async function saveApiKey(clear){const row=apiKeyDialog.value.row;if(!row)return;await act(async()=>{await api(`/api/steam/accounts/${encodeURIComponent(row.steam_id)}`,body('PATCH',clear?{clearApiKey:true}:{apiKey:apiKeyDialog.value.value.trim()}));apiKeyDialog.value.visible=false;ElMessage.success(clear?'API Key 已清除':'API Key 已保存（密文存储，不回显）');await loadSteam();});}

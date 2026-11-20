@@ -19,6 +19,7 @@ import * as db from '../src/store/pg.js';
 import { startApiServer } from '../src/server.js';
 import { ensureSteamSchema } from '../src/steam-login.js';
 import * as steamAccounts from '../src/steam-accounts.js';
+import { resetSteamSyncTasksForTest } from '../src/routes/site.js';
 
 // CO-5/B4-2 第七轮静态锁素材（与 announcements.test.js / profile.test.js 同口径）
 const SITE_ROUTES = readFileSync(fileURLToPath(new URL('../src/routes/site.js', import.meta.url)), 'utf8');
@@ -670,5 +671,106 @@ test('CO-5/B4-2 第七轮：site-repository.js 签名不变 + pg.js re-export（
   assert.ok(!/export (async )?function (setDefaultSteamAccount|clearDefaultSteamIfMatches|userLibraryItems)/.test(SITE_PG), 'pg.js 不允许保留旧函数定义（只许 re-export）');
   // 边界判据锁：steam 表 DDL 在 steam-login.js（跨模块共用），site-repository 不放 DDL
   assert.ok(!/create table/.test(SITE_REPO), 'site-repository.js 不搬家 DDL（steam 表 DDL 在 steam-login.js）');
+});
+
+// ---------------------------------------------------------------- EM 批（docs/STEAM-SYNC-TIMEOUT.md EL-2）
+
+const emSetup = async () => {
+  const store = await freshStore();
+  const q = (sql, p) => store.query(sql, p);
+  const aliceRow = await db.createUser(q, { username: 'alice', password: 'alice123456' });
+  await db.createUser(q, { username: 'bob', password: 'bob123456' });
+  await insertAccount(store, { steamId: SID_A, userId: aliceRow.id, persona: '爱丽丝' });
+  const savedSecret = process.env.SECRET_KEY;
+  process.env.SECRET_KEY = 'em-test-secret-key-16chars+';
+  const auth = await import('../src/email-auth.js');
+  const enc = auth.encryptSecret('em-test-api-key', process.env.SECRET_KEY);
+  await steamAccounts.setAccountApiKey(q, { steamId: SID_A, apiKeyEnc: enc });
+  const srv = await startApiServer({ query: q, port: 0, host: '127.0.0.1' });
+  return { store, q, srv, base: `http://127.0.0.1:${srv.port}`, savedSecret };
+};
+
+const emTeardown = async ({ srv, store, savedSecret }) => {
+  await srv.close();
+  await store.close();
+  if (savedSecret === undefined) delete process.env.SECRET_KEY;
+  else process.env.SECRET_KEY = savedSecret;
+  resetSteamSyncTasksForTest();
+};
+
+test('EM EL-2：同步触发立即 202；single-flight 重复 409；状态 idle→running→idle 带结果', async () => {
+  const env = await emSetup();
+  const { base } = env;
+  try {
+    resetSteamSyncTasksForTest();
+    const alice = await login(base, 'alice', 'alice123456');
+    assert.equal(alice.status, 200);
+    // 匿名 401
+    assert.equal((await fetch(`${base}/api/steam/accounts/${SID_A}/wishlist/sync`, { method: 'POST' })).status, 401, '匿名 401');
+    // 触发：立即 202（不再同步阻塞被 15s 看门狗砍掉——验收②）
+    const first = await fetch(`${base}/api/steam/accounts/${SID_A}/wishlist/sync`, { method: 'POST', headers: { cookie: alice.cookie } });
+    assert.equal(first.status, 202);
+    const firstBody = await first.json();
+    assert.equal(firstBody.accepted, true);
+    // 进行中重复触发 → 409「进行中」（验收③ single-flight）
+    const second = await fetch(`${base}/api/steam/accounts/${SID_A}/wishlist/sync`, { method: 'POST', headers: { cookie: alice.cookie } });
+    assert.equal(second.status, 409);
+    assert.match((await second.json()).error, /正在同步中/);
+    // 状态查询接口可用：running 或 idle 都是合法瞬时态
+    const st = await (await fetch(`${base}/api/steam/accounts/${SID_A}/sync-status`, { headers: { cookie: alice.cookie } })).json();
+    assert.ok(['running', 'idle'].includes(st.status), `状态合法，实际 ${st.status}`);
+    // 等后台任务结束（本地无 Steam 出口 → 快速失败；8s×2 重试后最长约 16s）；轮询 ≤ 45s
+    const deadline = Date.now() + 45000;
+    let done = null;
+    while (Date.now() < deadline) {
+      const now = await (await fetch(`${base}/api/steam/accounts/${SID_A}/sync-status`, { headers: { cookie: alice.cookie } })).json();
+      if (now.status === 'idle') {
+        done = now;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    assert.ok(done, '后台任务最终结束');
+    assert.equal(typeof done.lastResult.ok, 'boolean', 'lastResult 必须带 ok');
+    if (!done.lastResult.ok) {
+      // 失败必须带原因，且不再是「请求超时，请稍后再试」笼统错误（验收③/EL-3）
+      assert.ok(done.lastResult.error, '失败必须带原因');
+      assert.doesNotMatch(String(done.lastResult.error), /请求超时，请稍后再试/);
+    }
+    assert.equal(done.task, null, '结束后 task 清空');
+    // 权限：bob 不是归属人 → 403；匿名 → 401
+    const bob = await login(base, 'bob', 'bob123456');
+    assert.equal((await fetch(`${base}/api/steam/accounts/${SID_A}/sync-status`, { headers: { cookie: bob.cookie } })).status, 403, '非归属人 403');
+    assert.equal((await fetch(`${base}/api/steam/accounts/${SID_A}/sync-status`)).status, 401, '匿名 401');
+  } finally {
+    await emTeardown(env);
+  }
+});
+
+test('EM EL-2：sync-status 无进程内任务时兜底 steam_account_logs 最近一次结果', async () => {
+  const env = await emSetup();
+  const { q, base } = env;
+  try {
+    resetSteamSyncTasksForTest();
+    // 直接造一条历史同步失败审计（模拟进程重启后进程内 Map 为空）
+    const steamLogMod = await import('../src/steam-log.js');
+    await steamLogMod.recordSteamLog(q, {
+      action: 'sync-wishlist',
+      steamId: SID_A,
+      actor: 'self',
+      result: 'failed',
+      detail: { reason: 'HTTP 429' },
+      error: 'HTTP 429 Too Many Requests',
+    });
+    const alice = await login(base, 'alice', 'alice123456');
+    const st = await (await fetch(`${base}/api/steam/accounts/${SID_A}/sync-status`, { headers: { cookie: alice.cookie } })).json();
+    assert.equal(st.status, 'idle');
+    assert.equal(st.task, null);
+    assert.equal(st.lastResult.ok, false);
+    assert.equal(st.lastResult.kind, 'wishlist');
+    assert.match(String(st.lastResult.error), /429/, '兜底结果带真实失败原因');
+  } finally {
+    await emTeardown(env);
+  }
 });
 

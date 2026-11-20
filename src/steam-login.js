@@ -224,13 +224,15 @@ export async function fetchPersona({ apiKey, steamId, logger = null }) {
 }
 
 /** 拉取账号拥有的游戏（需要 API Key）。 */
+// EM 批（docs/STEAM-SYNC-TIMEOUT.md EL-1）：单次超时 8s——代理慢/不可用时 8s 内失败，
+// 交给代理池换下一条（http.proxy_switch 日志可观测），不再 30s 长等同一代理（原 30s > 15s 看门狗）。
 export async function fetchOwnedGames({ apiKey, steamId, logger = null }) {
   const url =
     'https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/' +
     '?key=' + encodeURIComponent(apiKey) +
     '&steamid=' + encodeURIComponent(steamId) +
     '&include_appinfo=1&include_played_free_games=1&format=json';
-  const res = await fetchJson(url, { logger, timeoutMs: 30000, retries: 1 });
+  const res = await fetchJson(url, { logger, timeoutMs: 8000, retries: 1 });
   const data = res?.json ?? {};
   const games = data?.response?.games ?? [];
   return games
@@ -244,12 +246,13 @@ export async function fetchOwnedGames({ apiKey, steamId, logger = null }) {
 }
 
 /** 拉取账号愿望单（需要 API Key；账号「游戏详情/愿望单」必须公开）。 */
+// EM 批（docs/STEAM-SYNC-TIMEOUT.md EL-1）：单次超时 8s（同上，失败交给代理池切换）。
 export async function fetchWishlist({ apiKey, steamId, logger = null }) {
   const url =
     'https://api.steampowered.com/IWishlistService/GetWishlist/v1/' +
     '?key=' + encodeURIComponent(apiKey) +
     '&steamid=' + encodeURIComponent(steamId) + '&format=json';
-  const res = await fetchJson(url, { logger, timeoutMs: 30000, retries: 1 });
+  const res = await fetchJson(url, { logger, timeoutMs: 8000, retries: 1 });
   const data = res?.json ?? {};
   // 响应形状随接口版本略有差异：兼容 items / wishlist 两种常见键。
   const items = data?.response?.items ?? data?.response?.wishlist ?? data?.items ?? [];

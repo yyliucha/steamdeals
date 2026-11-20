@@ -74,3 +74,18 @@ test('EC-3 封面使用点统一引用 CoverPlaceholder，失败路径不再 dis
   const n = home.split('CoverPlaceholder').length - 1;
   assert.ok(n >= 3, `Home.vue 列表与详情都渲染占位（import + 2 使用点，实际 ${n} 处）`);
 });
+
+// ---------------------------------------------------------------- EM 批（docs/STEAM-SYNC-TIMEOUT.md EL-3）
+
+test('EM EL-3：后台 Steam 同步按钮走「触发 202 + 轮询 sync-status」，失败显示原因不再笼统超时', () => {
+  const src = read('../frontend/src/pages/AdminExtras.vue');
+  // 反向自检：把轮询改回「一次 POST 等结果」→ 这些断言变红（sync-status 引用消失）；
+  // 把按钮文案改回不带「同步中…」→ 第二条变红。
+  assert.match(src, /sync-status/, '轮询 sync-status 状态接口');
+  assert.match(src, /同步中…/, '按钮有「同步中…」状态文案');
+  assert.match(src, /60000/, '轮询最长 60s');
+  assert.match(src, /setTimeout\(r,2000\)/, '轮询间隔 2s');
+  assert.match(src, /accepted/, '处理 202 {accepted} 触发响应');
+  assert.match(src, /同步失败：/, '失败显示明确原因');
+  assert.doesNotMatch(src, /请求超时，请稍后再试/, '不再出现笼统超时错误（验收③）');
+});

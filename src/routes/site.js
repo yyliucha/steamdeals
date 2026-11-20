@@ -139,6 +139,16 @@ export async function handleSitePublic(ctx) {
   return true;
 }
 
+// EM 批（docs/STEAM-SYNC-TIMEOUT.md EL-2）：单账号同步任务进程内状态（single-flight + 结果查询）。
+// key = `${steamId}:${kind}`；进程内 Map 跨请求共享；重启后兜底读 steam_account_logs。
+// 多 worker/多实例部署下同账号可能并发触发一次以上——Steam 侧 upsert 幂等，无数据损坏风险。
+const syncTasks = new Map();
+
+/** 测试用：清空同步任务状态（模块级 Map 跨测试共享）。 */
+export function resetSteamSyncTasksForTest() {
+  syncTasks.clear();
+}
+
 /**
  * 主段：server.js 在认证上下文（user/requireUser/requireAdmin）就绪后调用——
  * /api/steam/* 全部路由（Steam 多账号绑定 / 游戏库 / 愿望单）。
@@ -180,6 +190,50 @@ export async function handleSiteRoutes(ctx) {
     return row;
   };
 
+  // EM 批（docs/STEAM-SYNC-TIMEOUT.md EL-2）：同步状态查询——
+  // 运行态读进程内 Map；lastResult 优先进程内最近完成，进程重启后兜底 steam_account_logs。
+  const emSyncStatus = async (steamId) => {
+    const row = await requireAccountOwner(steamId);
+    if (!row) return true;
+    const keys = [`${steamId}:wishlist`, `${steamId}:library`];
+    const running = keys.map((k) => syncTasks.get(k)).find((t) => t?.running) ?? null;
+    const lastDone =
+      keys
+        .map((k) => syncTasks.get(k))
+        .filter((t) => t && !t.running && t.finishedAt)
+        .sort((a, b) => (String(b.finishedAt) > String(a.finishedAt) ? 1 : -1))[0] ?? null;
+    let lastResult = null;
+    if (lastDone) {
+      lastResult = {
+        ok: !lastDone.error,
+        kind: lastDone.kind,
+        ...(lastDone.result ?? {}),
+        error: lastDone.error ?? null,
+        finishedAt: lastDone.finishedAt,
+      };
+    } else {
+      // 兜底：进程重启后从 steam_account_logs 取最近一次同步结果
+      const { entries } = await steamLogMod.listSteamLogs(q, { steamId, limit: 5, days: 365 });
+      const last = entries.find((e) => e.action === 'sync-library' || e.action === 'sync-wishlist');
+      if (last) {
+        const detail = typeof last.detail === 'string' ? (() => { try { return JSON.parse(last.detail); } catch { return {}; } })() : (last.detail ?? {});
+        lastResult = {
+          ok: last.result === 'ok',
+          kind: last.action === 'sync-library' ? 'library' : 'wishlist',
+          ...detail,
+          error: last.error ?? null,
+          finishedAt: last.created_at,
+        };
+      }
+    }
+    json(res, 200, {
+      status: running ? 'running' : 'idle',
+      task: running ? { kind: running.kind, startedAt: running.startedAt } : null,
+      lastResult,
+    });
+    return true;
+  };
+
   if (path === '/api/steam/accounts' && req.method === 'GET') {
     if (!requireUser()) return true;
     const accounts = await steamAccountsMod.listUserAccounts(q, user.id);
@@ -203,6 +257,12 @@ export async function handleSiteRoutes(ctx) {
 
   const accountMatch = path.match(/^\/api\/steam\/accounts\/([^/]+)$/);
   const accountAction = path.match(/^\/api\/steam\/accounts\/([^/]+)\/(library|wishlist|claim)(?:\/(sync))?$/);
+  // EM 批（docs/STEAM-SYNC-TIMEOUT.md EL-2）：GET /api/steam/accounts/:id/sync-status（独立路径，不在 accountAction 内）
+  const syncStatusMatch = path.match(/^\/api\/steam\/accounts\/([^/]+)\/sync-status$/);
+  if (syncStatusMatch && req.method === 'GET') {
+    if (!requireUser()) return true;
+    return emSyncStatus(decodeURIComponent(syncStatusMatch[1]));
+  }
   if (accountAction) {
     if (!requireUser()) return true;
     const steamId = decodeURIComponent(accountAction[1]);
@@ -235,57 +295,85 @@ export async function handleSiteRoutes(ctx) {
       json(res, 200, { ok: true });
       return true;
     }
+    // EM 批（docs/STEAM-SYNC-TIMEOUT.md EL-2）：库同步改「触发后台任务 + 立即返回 202」——
+    // 拉 Steam + 逐条写库全部移出请求（原同步阻塞会被 15s 看门狗砍掉）；
+    // 同账号 single-flight：进行中重复触发 409「进行中」。
     if (accountAction[2] === 'library' && req.method === 'POST' && accountAction[3] === 'sync') {
       const row = await requireAccountOwner(steamId);
       if (!row) return true;
       const apiKey = await requireAccountApiKey(steamId);
       if (!apiKey) return true;
-      try {
-        const result = await steamAccountsMod.syncAccountLibrary(q, {
-          steamId,
-          apiKey,
-          logger,
-          log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
-        });
-        // 补全目录类型（类型未知数靠 app_type；只挑缺失的，天然收敛）
-        const types = await steamAccountsMod.backfillOwnedAppTypes(q, { steamId, apiKey, logger });
-        const stats = await steamAccountsMod.ownedTypeStats(q, steamId);
-        invalidateListCache?.(); // DX 批：库同步后 owned 维度变化，前台列表缓存立即失效
-        json(res, 200, { ...result, typeUnknown: stats.typeUnknown, typesChecked: types.checked, typesTyped: types.typed });
-        return true;
-      } catch (err) {
-        if (err?.status === 401 || err?.status === 403) {
-          json(res, 400, { error: '该账号 API Key 无效，请检查' });
-          return true;
-        }
-        json(res, 502, { error: '拉取游戏库失败：' + String(err.message).slice(0, 160) });
+      const taskKey = `${steamId}:library`;
+      const existing = syncTasks.get(taskKey);
+      if (existing?.running) {
+        json(res, 409, { error: '该账号正在同步中，请稍候' });
         return true;
       }
+      const task = { kind: 'library', running: true, startedAt: new Date().toISOString(), finishedAt: null, result: null, error: null };
+      syncTasks.set(taskKey, task);
+      void (async () => {
+        try {
+          const result = await steamAccountsMod.syncAccountLibrary(q, {
+            steamId,
+            apiKey,
+            logger,
+            log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
+          });
+          // 补全目录类型（类型未知数靠 app_type；只挑缺失的，天然收敛）
+          const types = await steamAccountsMod.backfillOwnedAppTypes(q, { steamId, apiKey, logger });
+          const stats = await steamAccountsMod.ownedTypeStats(q, steamId);
+          task.result = { ...result, typeUnknown: stats.typeUnknown, typesChecked: types.checked, typesTyped: types.typed };
+          invalidateListCache?.(); // DX 批：库同步后 owned 维度变化，前台列表缓存立即失效
+        } catch (err) {
+          task.error =
+            err?.status === 401 || err?.status === 403
+              ? '该账号 API Key 无效，请检查'
+              : '拉取游戏库失败：' + String(err?.message ?? err).slice(0, 160);
+        } finally {
+          task.running = false;
+          task.finishedAt = new Date().toISOString();
+        }
+      })();
+      json(res, 202, { accepted: true, status: 'running' });
+      return true;
     }
+    // EM 批（docs/STEAM-SYNC-TIMEOUT.md EL-2）：愿望单同步同上——后台任务 + 202 + single-flight。
     if (accountAction[2] === 'wishlist' && req.method === 'POST' && accountAction[3] === 'sync') {
       const row = await requireAccountOwner(steamId);
       if (!row) return true;
       const apiKey = await requireAccountApiKey(steamId);
       if (!apiKey) return true;
-      try {
-        const result = await steamAccountsMod.syncAccountWishlist(q, {
-          steamId,
-          apiKey,
-          userId: user.id,
-          logger,
-          log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
-        });
-        invalidateListCache?.(); // DX 批：愿望单同步后 wishlist 维度变化，前台列表缓存立即失效
-        json(res, 200, result);
-        return true;
-      } catch (err) {
-        if (err?.status === 401 || err?.status === 403) {
-          json(res, 400, { error: '该账号 API Key 无效，请检查' });
-          return true;
-        }
-        json(res, 502, { error: '拉取愿望单失败：' + String(err.message).slice(0, 160) });
+      const taskKey = `${steamId}:wishlist`;
+      const existing = syncTasks.get(taskKey);
+      if (existing?.running) {
+        json(res, 409, { error: '该账号正在同步中，请稍候' });
         return true;
       }
+      const task = { kind: 'wishlist', running: true, startedAt: new Date().toISOString(), finishedAt: null, result: null, error: null };
+      syncTasks.set(taskKey, task);
+      void (async () => {
+        try {
+          const result = await steamAccountsMod.syncAccountWishlist(q, {
+            steamId,
+            apiKey,
+            userId: user.id,
+            logger,
+            log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
+          });
+          task.result = result;
+          invalidateListCache?.(); // DX 批：愿望单同步后 wishlist 维度变化，前台列表缓存立即失效
+        } catch (err) {
+          task.error =
+            err?.status === 401 || err?.status === 403
+              ? '该账号 API Key 无效，请检查'
+              : '拉取愿望单失败：' + String(err?.message ?? err).slice(0, 160);
+        } finally {
+          task.running = false;
+          task.finishedAt = new Date().toISOString();
+        }
+      })();
+      json(res, 202, { accepted: true, status: 'running' });
+      return true;
     }
     // CX 批（docs/USER-PROFILE-EDIT.md §3）：库列表支持搜索/分页（弹窗用）；
     // 不带参数保持旧行为（一次取到 500 条，后台「Steam 账号」页沿用 in_db/current_low 字段）。

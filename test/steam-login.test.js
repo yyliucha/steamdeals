@@ -1,6 +1,7 @@
 // Steam 登录 baseUrl：只有可信反代才采纳 X-Forwarded-*，防 Host/协议伪造。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { baseUrl, verifyCallback, buildLoginUrl, issueBindState, consumeBindState } from '../src/steam-login.js';
 
 const okResponse = (body) => async () => ({
@@ -72,4 +73,18 @@ test('buildLoginUrl：state 写入 return_to 查询参数（回调按它防 CSRF
   assert.equal(returnTo.searchParams.get('state'), 'abc123');
   const bare = new URL(buildLoginUrl('https://sd.example'));
   assert.equal(new URL(bare.searchParams.get('openid.return_to')).searchParams.get('state'), null, '不带 state 也不破坏旧用法');
+});
+
+// ---------------------------------------------------------------- EM 批（docs/STEAM-SYNC-TIMEOUT.md EL-1）
+
+test('EM EL-1：Steam 同步类调用单次超时 8s，不再 30s 长等同一代理', () => {
+  const src = readFileSync(new URL('../src/steam-login.js', import.meta.url), 'utf8');
+  const owned = src.slice(src.indexOf('export async function fetchOwnedGames'), src.indexOf('export async function fetchWishlist'));
+  const wishlist = src.slice(src.indexOf('export async function fetchWishlist'));
+  // 这条断言守的是：30s 单代理超时 > 15s 统一看门狗，代理池切换来不及发生（事故根因）；
+  // 反向自检：把 8000 改回 30000 → 两条断言变红。fetchPersona 的 20s 与看门狗无关，不在本批范围。
+  for (const [label, chunk] of [['fetchOwnedGames', owned], ['fetchWishlist', wishlist]]) {
+    assert.match(chunk, /timeoutMs: 8000/, `${label} 单次超时必须 8s`);
+    assert.doesNotMatch(chunk, /timeoutMs: 30000/, `${label} 不得再 30s`);
+  }
 });
