@@ -53,7 +53,8 @@
         </div>
         <div class="field bio-field">
           <label>个人简介<span class="req" v-if="!isAdmin">*</span></label>
-          <el-input v-model="form.bio" type="textarea" :rows="3" :maxlength="200" show-word-limit placeholder="介绍一下自己（{{ isAdmin ? '可选' : '1–200 字' }}）" />
+          <!-- DU 批：placeholder 必须是动态绑定——静态属性里写 {{ }} 会原样显示源码（2026-11-19 缺陷） -->
+          <el-input v-model="form.bio" type="textarea" :rows="3" :maxlength="200" show-word-limit :placeholder="`介绍一下自己（${isAdmin ? '可选' : '1–200 字'}）`" />
         </div>
       </div>
     </section>

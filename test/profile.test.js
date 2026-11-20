@@ -578,3 +578,37 @@ test('EJ 静态锁：后台用户/会话/提醒/愿望单/日志/审核记录的
   assert.match(front('pages/Console.vue'), /user\.displayName \|\| user\.username/, '后台顶栏昵称优先');
   assert.ok(!/user\.display_name \|\| user\.username/.test(front('pages/Home.vue') + front('pages/Console.vue')), '/api/me 是 displayName，不能再读 display_name（读错会永远回退用户名）');
 });
+
+// ===== DU（docs/TODO.md DU 段）：个人简介 placeholder 动态绑定 =====
+// 缺陷：静态属性 placeholder="介绍一下自己（{{ isAdmin ? … }}）" 会把 {{ }} 当普通文本原样显示。
+// 反向自检：把 ProfilePage 的 :placeholder 改回静态 placeholder="…{{ … }}…" → 编译产物不再出现
+// placeholder 表达式 / _ctx.isAdmin → 本组用例红（2026-11-19 实测坏写法确实红）。
+test('DU：ProfilePage 个人简介 placeholder 是动态绑定（编译级），admin 可选 / 普通用户 1–200 字', async () => {
+  const { compile } = await import('@vue/compiler-dom');
+  const src = readFileSync(new URL('../frontend/src/pages/ProfilePage.vue', import.meta.url), 'utf8');
+  const start = src.indexOf('<template>');
+  const end = src.lastIndexOf('</template>');
+  assert.ok(start >= 0 && end > start, '能取出 SFC 模板');
+  const tpl = src.slice(start + '<template>'.length, end);
+  const code = compile(tpl, { mode: 'module' }).code;
+  // 行为锁：placeholder 由运行时表达式拼接（isAdmin 分支决定「可选」/「1–200 字」），
+  // 而不是静态字符串里的字面 "{{ isAdmin"（旧 bug 形态编译产物绝不带 _ctx.isAdmin 于该属性）
+  assert.match(code, /placeholder:\s*[^"'\s]/, 'placeholder 是动态绑定（编译产物里是表达式而非字符串字面量）');
+  assert.ok(code.includes('介绍一下自己（${_ctx.isAdmin'), '文案按 isAdmin 运行时拼接（编译产物含模板插值 ${_ctx.isAdmin）');
+  // 反向锁：坏写法残留（静态属性内嵌插值）必须不存在
+  assert.ok(!src.includes('placeholder="介绍一下自己（{{'), '旧 bug 静态写法不得回归');
+  // 全项目扫描仅此一处同类缺陷（TODO DU 规格：grep `="[^"]*\{\{` 无其它命中）
+  const { readdirSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const srcRoot = fileURLToPath(new URL('../frontend/src', import.meta.url));
+  const offenders = [];
+  for (const f of readdirSync(srcRoot, { recursive: true }).map((f) => String(f).replace(/\\/g, '/'))) {
+    if (!f.endsWith('.vue')) continue;
+    const text = readFileSync(`${srcRoot}/${f}`, 'utf8');
+    for (const tag of text.match(/<[a-zA-Z][^>]*>/g) ?? []) {
+      if (/="[^"]*\{\{/.test(tag)) offenders.push(`${f}: ${tag.slice(0, 80)}`);
+    }
+  }
+  assert.deepEqual(offenders, [], '全项目不得再出现静态属性值里嵌 {{ }} 插值');
+});
+
