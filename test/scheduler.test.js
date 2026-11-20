@@ -557,7 +557,11 @@ test('B3：writeStatusFile 带 estimate 字段，前端任务卡显示实际/估
 test('AC-9/BL-1：回填候选新游戏优先 + 四态排除 + 默认每天 5000（静态断言）', () => {
   const cli = readFileSync(new URL('../src/cli.js', import.meta.url), 'utf8');
   assert.match(cli, /listBackfillCandidates/, '回填候选走共享谓词 db.listBackfillCandidates');
-  assert.equal((cli.match(/order by g\.created_at desc nulls last, g\.id desc limit/g) || []).length, 1, 'cli.js 只剩 steamall 一处排序');
+  // CO-5/B4-2 第十轮：sync steamall 已随 cli 同步类域拆走——该排序 SQL 在 cli.js 归零、
+  // 只存在于 src/store/cli-sync-repository.js（steamall 一处，防双实现）。
+  assert.equal((cli.match(/order by g\.created_at desc nulls last, g\.id desc limit/g) || []).length, 0, 'cli.js 不再有 steamall 排序（已拆到 cli 同步域）');
+  const cliSyncRepo = readFileSync(new URL('../src/store/cli-sync-repository.js', import.meta.url), 'utf8');
+  assert.equal((cliSyncRepo.match(/order by g\.created_at desc nulls last, g\.id desc limit/g) || []).length, 1, '该排序只在 cli 同步域 repository（steamall 一处）');
   const pg = readFileSync(new URL('../src/store/pg.js', import.meta.url), 'utf8');
   assert.match(pg, /order by g\.created_at desc nulls last, g\.id desc limit/, '回填按收录时间倒序（谓词在 pg.js）');
   assert.match(pg, /coalesce\(g\.steam_status, ''\) not in \('free', 'coming_soon', 'region_locked', 'not_found'\)/, 'BL-1：候选排除四态');

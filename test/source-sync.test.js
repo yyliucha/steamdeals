@@ -124,7 +124,8 @@ test('CC-1：mark upsert——nomatch→matched 保留 external_id、fail_count 
 });
 
 test('CC-2/3：静态契约——四源接入 CLI/后台/设置/日志，不新增定时任务', () => {
-  const cli = readFileSync(ROOT + 'src/cli.js', 'utf8');
+  // CO-5/B4-2 第十轮：四源同步命令已随 cli 同步类域拆到 src/cli/sync.js，断言按新落点指向
+  const cliSync = readFileSync(ROOT + 'src/cli/sync.js', 'utf8');
   const admin = readFileSync(ROOT + 'frontend/src/pages/AdminModules.vue', 'utf8');
   const settings = readFileSync(ROOT + 'src/settings.js', 'utf8');
   const scheduler = readFileSync(ROOT + 'src/scheduler.js', 'utf8');
@@ -132,14 +133,14 @@ test('CC-2/3：静态契约——四源接入 CLI/后台/设置/日志，不新�
   const humble = readFileSync(ROOT + 'src/adapters/humble.js', 'utf8');
 
   // 候选与状态：优先英文名、命中缓存 external_id 后不再 search
-  assert.match(cli, /g\.name_en \|\| g\.name/, 'ITAD 优先英文名搜索');
-  assert.match(cli, /g\.external_id \?\? null/, '命中后复用 external_id（不再重复 search）');
-  assert.match(cli, /sourceSyncCandidates/, '候选游标接入');
-  assert.match(cli, /sync\.source_progress/, '进度日志');
-  assert.match(cli, /sync\.done/, '完成日志');
-  assert.match(cli, /SOURCES_ITAD_LIMIT|SOURCES_GOG_LIMIT|SOURCES_HUMBLE_LIMIT|SOURCES_SONKWO_LIMIT/, '四源每轮条数设置接入');
-  assert.match(cli, /adapter\.fetchById/, 'GOG matched 按 id 刷新');
-  assert.match(cli, /adapter\.fetchBySlug/, 'Humble matched 按 slug 刷新');
+  assert.match(cliSync, /g\.name_en \|\| g\.name/, 'ITAD 优先英文名搜索');
+  assert.match(cliSync, /g\.external_id \?\? null/, '命中后复用 external_id（不再重复 search）');
+  assert.match(cliSync, /sourceSyncCandidates/, '候选游标接入');
+  assert.match(cliSync, /sync\.source_progress/, '进度日志');
+  assert.match(cliSync, /sync\.done/, '完成日志');
+  assert.match(cliSync, /SOURCES_ITAD_LIMIT|SOURCES_GOG_LIMIT|SOURCES_HUMBLE_LIMIT|SOURCES_SONKWO_LIMIT/, '四源每轮条数设置接入');
+  assert.match(cliSync, /adapter\.fetchById/, 'GOG matched 按 id 刷新');
+  assert.match(cliSync, /adapter\.fetchBySlug/, 'Humble matched 按 slug 刷新');
   // 后台：四源可立即运行（运行中 409 复用 startSteamJob 互斥）
   // CO-5/B4-2 第九轮：/api/admin/sync 已随 admin-sync 域抽到 src/routes/admin-sync.js，断言按新落点指向
   const adminSync = readFileSync(ROOT + 'src/routes/admin-sync.js', 'utf8');
@@ -153,7 +154,7 @@ test('CC-2/3：静态契约——四源接入 CLI/后台/设置/日志，不新�
   assert.match(gog, /export async function fetchById/, 'GOG fetchById');
   assert.match(humble, /export async function fetchBySlug/, 'Humble fetchBySlug');
   // 杉果 limit：设置默认 0 = 全部 SKU（水合默认值不得导致空转，QA 第 1 轮打回项回归锁）
-  assert.match(cli, /rawLimit === 0 \? skus\.length : rawLimit/, '杉果 limit 0 换算为全部 SKU');
+  assert.match(cliSync, /rawLimit === 0 \? skus\.length : rawLimit/, '杉果 limit 0 换算为全部 SKU');
   // 不新增定时任务：scheduler 仍只有既有的 itad/gog/humble/sonkwo 4 个源任务
   const jobNames = [...scheduler.matchAll(/name: '([a-z]+)'/g)].map((m) => m[1]);
   for (const n of ['itad', 'gog', 'humble', 'sonkwo']) assert.ok(jobNames.includes(n), `既有任务 ${n} 仍在`);

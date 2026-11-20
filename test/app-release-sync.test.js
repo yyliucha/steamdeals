@@ -70,12 +70,14 @@ test('CJ prune：只保留最近 3 个 APK', async () => {
 test('CJ 接线：cli 命令/调度默认参数/下载路由白名单/GitHub 兜底链接/镜像回落', async () => {
   const root = join(process.cwd());
   const cli = readFileSync(join(root, 'src', 'cli.js'), 'utf8');
+  // CO-5/B4-2 第十轮：cmdAppSync 已随 cli 同步类域拆到 src/cli/sync.js，断言按新落点指向
+  const cliSync = readFileSync(join(root, 'src', 'cli', 'sync.js'), 'utf8');
   const sched = readFileSync(join(root, 'src', 'scheduler.js'), 'utf8');
   const server = readFileSync(join(root, 'src', 'server.js'), 'utf8');
   // CO-4/B4：/api/app/latest 已随 App 域抽到 src/routes/app.js——readLatestMeta 断言指向新文件。
   const appRoutes = readFileSync(join(root, 'src', 'routes', 'app.js'), 'utf8');
   const page = readFileSync(join(root, 'frontend', 'src', 'pages', 'AppDownloadPage.vue'), 'utf8');
-  assert.match(cli, /app-sync/, 'CLI 命令');
+  assert.match(cliSync, /app-sync/, 'CLI 命令');
   assert.match(sched, /name: 'app-release-sync'/, '调度任务');
   assert.match(sched, /APP_RELEASE_SYNC_INTERVAL_MIN, 15/, 'DR 批（docs/APP-INSTANT-UPDATE.md）：默认 15 分钟（原 CJ 60 分钟）');
   assert.ok(!/STEAM_HEAVY = new Set\(\[[\s\S]{0,300}'app-release-sync'/.test(sched), '轻任务不进 STEAM_HEAVY');
@@ -164,13 +166,17 @@ test('DK D：同版本但 APK 缺失重新下载补齐；无 APK 资产仍跳过
 // 真正的失败（网络/接口/资产缺失）抛错让调度任务显红；同版本跳过/无新 Release 属正常不算失败。
 test('CO-1/A5：app-sync 失败可见——写 sync_runs 且真失败抛错，正常跳过不抛', () => {
   const root = join(process.cwd());
+  // CO-5/B4-2 第十轮：app-sync 随 cli 同步类域拆到 src/cli/sync.js——trackedCommands 字面量断言改指新文件，
+  // cli.js 侧改为接线断言（TRACKED_COMMANDS 展开域命令，写 sync_runs 语义保持）。
   const cli = readFileSync(join(root, 'src', 'cli.js'), 'utf8');
+  const cliSync = readFileSync(join(root, 'src', 'cli', 'sync.js'), 'utf8');
   const sched = readFileSync(join(root, 'src', 'scheduler.js'), 'utf8');
-  assert.match(cli, /'app-sync': cmdAppSync/, 'app-sync 进 TRACKED_COMMANDS（失败写 sync_runs 才有原因）');
-  assert.match(cli, /'steam-discovery': cmdSteamDiscovery/, 'steam-discovery 同样入 TRACKED_COMMANDS');
-  assert.match(cli, /App Release 同步失败/, 'cmdAppSync 对真失败抛错');
-  assert.match(cli, /result\.reason !== 'same_version' && result\.reason !== 'no_release'/, '同版本/无新 Release 不算失败');
-  assert.match(cli, /result\.apkFailed/, 'DK：apk_download 失败（apkFailed 标记）同样抛错 → 健康条显红');
+  assert.match(cliSync, /'app-sync': cmdAppSync/, 'app-sync 进域 trackedCommands（失败写 sync_runs 才有原因）');
+  assert.match(cliSync, /'steam-discovery': cmdSteamDiscovery/, 'steam-discovery 同样入域 trackedCommands');
+  assert.match(cli, /\.\.\.syncDomain\.trackedCommands/, 'cli.js 的 TRACKED_COMMANDS 展开域命令（注册表语义保持）');
+  assert.match(cliSync, /App Release 同步失败/, 'cmdAppSync 对真失败抛错');
+  assert.match(cliSync, /result\.reason !== 'same_version' && result\.reason !== 'no_release'/, '同版本/无新 Release 不算失败');
+  assert.match(cliSync, /result\.apkFailed/, 'DK：apk_download 失败（apkFailed 标记）同样抛错 → 健康条显红');
   assert.match(sched, /lastFailedSyncRun/, '调度器从 sync_runs 取失败原因');
   assert.match(sched, /jobFailureEmailChannel/, '调度器按开关构建告警邮件通道');
   assert.match(sched, /scheduler\.failure_alert/, '告警发送留日志');

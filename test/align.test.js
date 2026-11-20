@@ -211,6 +211,8 @@ test('CD ITAD 同游戏多商店 deal 挂同一 appid', () => {
 test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约', () => {
   const server = readFileSync(join(process.cwd(), 'src', 'server.js'), 'utf8');
   const cli = readFileSync(join(process.cwd(), 'src', 'cli.js'), 'utf8');
+  // CO-5/B4-2 第十轮：runSonkwoMatchStep / cmdSyncSonkwo / cmdSyncItad 已随 cli 同步类域拆到 src/cli/sync.js，断言按新落点指向
+  const cliSync = readFileSync(join(process.cwd(), 'src', 'cli', 'sync.js'), 'utf8');
   const pg = readFileSync(join(process.cwd(), 'src', 'store', 'pg.js'), 'utf8');
   const admin = readFileSync(join(process.cwd(), 'frontend', 'src', 'pages', 'AdminModules.vue'), 'utf8');
   const alignAdmin = readFileSync(join(process.cwd(), 'frontend', 'src', 'components', 'AlignAdmin.vue'), 'utf8');
@@ -227,10 +229,10 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   assert.match(server, /match\.confirmed/, '确认审计');
   assert.match(server, /match\.ignored/, '忽略审计');
   assert.ok(/align\\\/preview/.test(server), '合并预览接口');
-  assert.match(cli, /runSonkwoMatchStep/, 'sonkwo 收尾匹配（不新增 cron）');
+  assert.match(cliSync, /runSonkwoMatchStep/, 'sonkwo 收尾匹配（不新增 cron）');
   assert.match(cli, /match\.summary/, 'match.summary 日志');
-  assert.match(cli, /MATCH_ON_SONKWO/, '收尾开关');
-  assert.match(cli, /resolveDealSteamAppid/, 'ITAD 跳转反解接入');
+  assert.match(cliSync, /MATCH_ON_SONKWO/, '收尾开关');
+  assert.match(cliSync, /resolveDealSteamAppid/, 'ITAD 跳转反解接入');
   assert.match(admin, /对齐审核/, '游戏管理新 tab');
   assert.match(alignAdmin, /不可自动撤销/, '确认不可撤销提示');
   assert.match(alignAdmin, /api\/admin\/align\/ignore/, '忽略接线');
@@ -319,8 +321,8 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   // ── A3 批（docs/DESIGN-AUDIT.md A3）：库为唯一真相、skus.json 只读兼容 ──
   assert.doesNotMatch(server, /writeFileSync\(alignSkuFile\(\)/, 'server 确认流程不再写 skus.json');
   assert.match(server, /不再写回 skus\.json|只写 game_source_map/, 'server 确认注释锁（A3）');
-  assert.match(cli, /loadConfirmedAppids/, 'sync sonkwo 读库映射接线');
-  assert.match(cli, /resolveSkuAppid/, 'appid 解析统一走库优先+文件回落');
+  assert.match(cliSync, /loadConfirmedAppids/, 'sync sonkwo 读库映射接线（cli 同步域）');
+  assert.match(cliSync, /resolveSkuAppid/, 'appid 解析统一走库优先+文件回落');
   assert.doesNotMatch(cli, /entry\.appid = appid/, 'match 全路径不再写 skus.json 的 appid');
   assert.match(cli, /映射已写 game_source_map/, '--confirm 落库文案');
   assert.match(alignAdmin, /写 game_source_map（confirmed）/, '确认弹窗「落地」文案与 A3 一致');

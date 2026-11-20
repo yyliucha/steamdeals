@@ -166,7 +166,10 @@ test('§4.4 接入（静态）：账号同步用该账号自己的 key（不回�
   // CO-5/B4-2 第七轮：/api/steam/* 账号同步路由已随 site 域抽到 src/routes/site.js，断言改指新文件
   const server = read('../src/server.js');
   const siteRoutes = read('../src/routes/site.js');
-  const cli = read('../src/cli.js');
+  // CO-5/B4-2 第十轮：cmdSteamAccounts 已随 cli 同步类域拆到 src/cli/sync.js，
+  // 账号 API Key 查询抽到 src/store/cli-sync-repository.js，断言按新落点指向
+  const cliSync = read('../src/cli/sync.js');
+  const cliSyncRepo = read('../src/store/cli-sync-repository.js');
   const extras = read('../frontend/src/pages/AdminExtras.vue');
   // 账号同步入口：用 requireAccountApiKey（两条路由），且不再出现 requireSteamApiKey() 调用
   assert.match(siteRoutes, /const requireAccountApiKey = async \(steamId\)/, '有账号级 key 解析');
@@ -179,8 +182,8 @@ test('§4.4 接入（静态）：账号同步用该账号自己的 key（不回�
   assert.match(authRoutes, /steamNeedKey=1/, '绑定成功提示先配 key');
   assert.doesNotMatch(server, /自动同步库 \+ 愿望单/, '绑定流程不再自动同步');
   // 调度任务：逐账号取 key，缺 key 跳过并记日志
-  assert.match(cli, /steam\.account_sync_skipped/, '缺 key 的账号跳过并记日志');
-  assert.match(cli, /select api_key_enc from steam_accounts where steam_id = \$1/, '调度按账号取 key');
+  assert.match(cliSync, /steam\.account_sync_skipped/, '缺 key 的账号跳过并记日志');
+  assert.match(cliSyncRepo, /select api_key_enc from steam_accounts where steam_id = \$1/, '调度按账号取 key');
   // 后台文案：推送 Key → API Key；说明改为账号同步用
   assert.match(extras, /label="API Key"/, '列名改 API Key');
   assert.doesNotMatch(extras, /推送 Key/, '不再出现「推送 Key」');
