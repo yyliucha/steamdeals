@@ -1,5 +1,26 @@
 # 变更日志
 
+## [2.28.1] - 2026-11-21
+
+CO-5/B4-2 巨石拆分第十四~十七轮交付（8 域：admin align / admin 用户批量 / admin 报表备份日志 / admin 图片 / admin 游戏目录 / admin 提醒愿望单 / cli 运维类 / 公开 games，契约零变化）（🧹 技术债重构，无新功能面 → 小版本，2.28.0 → 2.28.1 连续递增）。本批不涉及 App 仓库。**B4 队列 21 域全部拆完。**
+
+### 技术债
+
+- **第十四轮 admin align 域（队列 #17，4817d49）**：`src/routes/admin-align.js` 415 + `src/store/admin-align-repository.js` 78；管理段单入口对齐审核路由组（候选/确认/忽略/撤销/审阅记录/快照/批量操作）；`triggerAlignGeneration`（single-flight）/`runGated`（并发闸）/store（事务）按引用传 ctx，`computeAlignGroups`/`ensureAlignSnapshot`/`alignSnapshotMaxAgeMs` 留宿主（CLI align-snapshot 共享）；`src/server.js` 净 −325、`pg.js` +4；QA 12/0/0/2。
+- **第十五轮 admin 报表备份日志域（队列 #12，4a93c01）**：`src/routes/admin-reports.js` 195 + `src/store/admin-reports-repository.js` 20 + `test/admin-reports.test.js` 139；管理段单入口 6 条路由（backups/backup/logs/reports/price×2/steam-logs）；跨域共用函数留原处（priceChanges 族/steam-log/backup.js）；`src/server.js` 净 −118，本域零 SQL 搬家；QA 16/0/0/2。
+- **第十六轮 admin 图片域（队列 #13，652e6f7）**：`src/routes/admin-images.js` 135 + `src/store/admin-images-repository.js` 39 + `test/admin-images.test.js` 147；管理段单入口 4 条路由（images GET/reset-miss/coverage/backfill）；`imageCoverageRows` 搬家 + 域内联 SQL 抽 `imageCoverageMissingRows`；`src/server.js` 净 −57；QA 16/0/0/2。
+- **第十七轮 admin 用户批量域（队列 #11，9905946）**：`src/routes/admin-users.js` 859 + `src/store/admin-users-repository.js` 407；`/api/admin/users*` 全 12 组路由拆走（kickAll/email code+verify/DELETE+PATCH/steam-accounts/reset-code/password/unlock/email/users/deletions/POST users 410）；`src/server.js` 净 −830、`src/store/pg.js` 净 −302（13 files +1796/−1272）；QA 17/0/2/0。
+- **第十八轮 admin 游戏目录域（队列 #15，42ee800）**：`src/routes/admin-games.js` 173 + `src/store/admin-games-repository.js` 206 + `test/admin-games-split.test.js` 161；管理段单入口 5 条路由（stats/games/:id/links/deleted/merge）；`adminGameStats`/`adminGameLinks`/`listDeletedGames` 搬家；`src/server.js` 净 −103、`src/store/pg.js` 净 −70；QA 17/0/0/2。
+- **第十九轮 admin 提醒愿望单域（队列 #16，beb25e4）**：`src/routes/admin-watchlist.js` + `src/store/admin-watchlist-repository.js`；admin 视角 8 组路由（wishlists GET/watchlist GET+POST/单条+批量 push/migrate/delete/DELETE :id）拆走，手动推送频控三件套随域移入模块级；`src/server.js` 净 −278、`src/store/pg.js` 净 −100；QA 16/0/2/0。
+- **cli 运维类域（队列 #20，8249e56）**：`src/cli/ops.js` 1139 + `src/store/cli-ops-repository.js` 47；`src/cli.js` 净减 1164 行；拆走 serve/all/backfill/images/prune/logs/report 等运维命令入口（含 EC `images backfill` 随域合并）；命令名/参数/输出/退出码零变化；QA 14/0/0/2。
+- **公开 games 域（队列 #21，d46b51a）**：`src/routes/games.js` 436 + `src/store/games-repository.js` 600 + 测试 +188；`/api/games/*` 全 16 组路由拆走（含 POST requireAdmin 管理员写操作，路径在 `/api/games/*` 前缀下归 #21）；`/api/admin/games*` 留 #15、isLoggablePath 豁免中间件留 server.js；`src/server.js` 净 −370、`src/store/pg.js` 净 −537；QA 17/0/2/0。
+- 拆分模式见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §15；**B4 队列 21/21 域全部「已拆」**（docs/B4-QUEUE.md）；本轮 6 域净减 server.js ≈1676 / pg.js ≈1009。
+
+### 测试
+
+- QA 八域全部第 1 轮 ✅ 放行（0 打回）：#17 12/0/0/2、#12 16/0/0/2、#13 16/0/0/2、#11 17/0/2/0、#15 17/0/0/2、#16 16/0/2/0、#20 14/0/0/2、#21 17/0/2/0（需人工确认项为沙箱 commit-own EPERM / frontend:build 环境限制，CI 兜底；报告 docs/QA-CO5-B4-2-*.md）。
+- 站点：`node test/api.test.js` 38/38、`npm run frontend:build` ✓、`npm run scan` 干净、主链 test:1–4 全绿（test:1 仅 commit-own 4 项本机沙箱基线红，与改动无关）。部署提示：纯技术债重构，无 schema/接口/配置变化，升级即可。
+
 ## [2.28.0] - 2026-11-20
 
 DU + DV + EC + EM + DT-1~5 八条合并发版（✨ 功能 1 条 + ⚙️ 调整 5 条 + 🐞 缺陷 2 条，含新功能面 → 大版本，2.27.9 → 2.28.0 连续递增）。本批不涉及 App 仓库。
