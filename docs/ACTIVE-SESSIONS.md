@@ -16,9 +16,6 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| 2.28.0 专项监工（DU/DV/EC/EM/DT-1~5 开发+质检+构建，所有者 16:12 授权） | 开发已完成（8/8 推 main，QA 全放行）；**构建 v2.28.0 进行中**：主树发布文档+package.json（pathspec，19:10 起） | **打 tag 构建（持有中：v2.28.0，19:10 起；v2.27.8/v2.27.9 会话已注销）** | 16:17 | ≈20:40 | lead（2.28.0 监工） |
-| 工人 1（DU/DT-1/DT-2/DT-4/DT-5）✅ 已完成注销 | worktree gp-wt-228a | 无 | 16:25 | 18:40 | 工人 1（subagent）——五条全推 main，QA 全放行 |
-| 工人 2（EC/EM/DV/DT-3）✅ 已完成注销 | worktree gp-wt-228b | 无 | 16:25 | 18:45 | 工人 2（subagent）——四条全推 main，QA 全放行 |
 | B4 夜班监工（18:25 轮接管，schedule-960679da；所有者 16:20 指示：恢复拆域、只拆域不构建；16:25 轮 18:55 让位收工交接） | docs/B4-QUEUE.md、docs/ACTIVE-SESSIONS.md（发布文档/package.json 不碰——构建会话独占）；调度工人改 src/（域拆分） | 无（不构建、不打 tag） | 18:25 | ≈21:00 | 监工会话（定时唤醒，schedule-960679da） |
 | B4 #17 admin align（18:25 轮监工派工） | worktree F:\dsh\gp-wt-17（src/server.js、src/store/pg.js、新 src/routes/admin-align.js + src/store/admin-align-repository.js、test/（align 相关）、docs/QA-CO5-B4-2-admin-align.md）——不碰 admin users 区（DT-3 4a40737 刚改）、不碰发布文档 | 无 | 19:05 | ≈20:30 | 工人（subagent） |
 | 2.28.0 监工 18:27 备注 | 主树 pull（a1d2dfc→4c49f7c，B4 v2.27.9 已发 tag）：本地 3 个与远端 blob 一致的未跟踪文件（QA-CO5-B4-2-admin-sessions.md / routes/admin-sessions.js / store/admin-sessions-repository.js）已备份至 F:\dsh\pull-backup-20261120 后移除；autostash 恢复时仅 test/sessions.test.js 冲突，已解决为「远端版 + #20 第十二轮 prune 断言指向 cli/ops.js」并暂存；autostash 保留在 stash@{0} 未 drop；其余主树在途改动原样保留（B4 工人 B #20 的域，本会话不再动主树） | — | — | — | — |
