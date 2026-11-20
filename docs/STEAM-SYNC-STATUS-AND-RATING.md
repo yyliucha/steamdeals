@@ -354,7 +354,7 @@ export async function applySteamDetails(q, { appid, cnEntry, hkEntry = null, met
 - 想要**定期推送**：在 `steam-status.done` 里附带 `adult/mature` 计数，复用现有 `notify.js`
   通道发一条周报即可（属于可选增强，不改变采集链路）。
 
-## 9. EF 18R 数据同步与筛选修复（2026-11-20 立项，已实现待发版）
+## 9. EF 18R 数据同步与筛选修复（2026-11-20 立项，质检通过）
 
 **根因（代码证据）**：`src/adapters/steam-meta.js:209` 的 appdetails 请求带 **`&cc=cn`**——
 蒸汽国区商店**隐藏成人内容**，`content_descriptors` 采不到 → `classifyContentRating` 判定不到

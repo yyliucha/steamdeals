@@ -18,7 +18,6 @@
 |---|---|---|---|---|---|
 | CO-4/B4 #7–#8 域拆分 + v2.27.4 批量构建（夜班监工轮） | src/server.js、src/store/pg.js、src/routes/、src/store/、test/、docs/（发布文档+B4-QUEUE） | 打 tag 构建 | 2026-11-20 05:40 | 2026-11-20 08:25 | 夜班监工 v4（05:35 轮） |
 | EG（🐞 P1 通知角标已读不消失） | App 仓库 ui/notifications/、ui/home/、app/src/test/；站点 docs/{TODO,REQUIREMENTS-INDEX,PROJECT-OVERVIEW,ANDROID-POLISH}.md（EG 回写） | Android 模拟器 steamdeals35 | 2026-11-20 06:55 | 2026-11-20 11:30 | EG 开发会话（本会话） |
-| EF 18R 数据同步与筛选修复 | src/adapters/steam-meta.js、src/cli.js、frontend/、App 仓库 steamdeals-app（app/src/main/kotlin、app/src/test）；与监工重叠面（src/server.js 的 /api/games 段、src/store/pg.js、test/、docs/ 清单类）**排队到监工轮收工后处理**，具体文件错开 + 提交 --yes-overlap 前人工确认 hunk | 无 | 2026-11-20 07:00 | 2026-11-20 09:30 | EF 开发会话（07:00 起） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 

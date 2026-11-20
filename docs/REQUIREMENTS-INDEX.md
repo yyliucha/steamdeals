@@ -138,7 +138,7 @@
 | **EB** | ✨ 功能：安卓 18R 内容选项（筛选 chips「18R」+ adult=badge 显示/角标 + 首次 18+ 确认 + 本地记忆，攒批） | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EB | 已发布 app-v2.23.0（2026-11-20，App d803612/tag app-v2.23.0；QA docs/QA-EB.md 第 1 轮 ✅） | ✅ 本轮已给 |
 | **EC** | ⚙️ 调整：图片覆盖治理（后台覆盖看板 + 缺图回填任务 + 前端占位图） | [IMAGE-COVERAGE.md](IMAGE-COVERAGE.md) §8 | 待开发（2026-11-19 立项） | ✅ 本轮已给 |
 | **ED** | 🧪 测试基建：test-main 加文档路径忽略（纯 docs 提交不跑测试，避免夜班文档提交反复取消 CI） | 本条目正文 | 待开发（2026-11-19 夜班观察） | ✅ 本轮已给 |
-| **EF** | 🐞 缺陷：18R 数据同步与筛选修复（元数据 cc=cn 锁国区 → 改 cc=us + 回填 + 前台 rating + Web/App 筛选） | [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §9 | 已实现待发版（2026-11-20 P1；站点见提交 + App 358ebc5） | ✅ 本轮已给 |
+| **EF** | 🐞 缺陷：18R 数据同步与筛选修复（元数据 cc=cn 锁国区 → 改 cc=us + 回填 + 前台 rating + Web/App 筛选） | [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §9 | 质检通过（2026-11-20；站点 7a3ac2b + App 358ebc5） | ✅ 本轮已给 |
 | **EG** | 🐞 缺陷：通知角标已读后不消失（ABC 三场景） | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EG | 待开发（2026-11-20 P1） | ✅ 本轮已给 |
 | **DX** | 🧹 技术债：列表/站点接口性能优化（count 合并 + 短 TTL 缓存 + /api/site 缓存 + 压测） | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DX | 待开发（依赖 DW） | ✅ 本轮已给 |
 
