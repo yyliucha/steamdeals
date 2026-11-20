@@ -649,7 +649,7 @@ test('CO-5/B4-2 第七轮：site 域路由分支不得双实现（server.js 里�
   assert.ok(!/function banStateLimited/.test(SITE_SERVER), 'banStateLimited 定义不得残留在 server.js');
   // 边界锁：admin 段仍留宿主（/api/admin/wishlists 属 B4 #16；steam-logs 已随 B4 #12
   // 拆到 routes/admin-reports.js，见 test/admin-reports.test.js）
-  assert.match(SITE_SERVER, /path === '\/api\/admin\/wishlists' && req\.method === 'GET'/, 'admin wishlists 段留 server.js（B4 #16）');
+  assert.match(SITE_SERVER, /await handleAdminWatchlistAdmin\(\{/, 'admin wishlists 段已随 admin-watchlist 域拆到 routes/admin-watchlist.js（B4 #16）');
 });
 
 test('CO-5/B4-2 第七轮：site-repository.js 签名不变 + pg.js re-export（删 re-export 即红）', () => {

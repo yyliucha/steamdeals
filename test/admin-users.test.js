@@ -209,7 +209,7 @@ test('CO-5/B4-2 第十六轮：server.js 必须真实接线管理段入口（删
   assert.match(AU_SERVER, /await handleAdminSessionsAdmin\(\{[\s\S]*?await handleAdminUsersAdmin\(\{/s, '接线在 admin-sessions 接线之后（本域原位置）');
   assert.match(AU_SERVER, /await handleAdminUsersAdmin\(\{[\s\S]*?path === '\/api\/user\/sessions\/revoke-others' && req\.method === 'POST'/s, '接线在 revoke-others 之前（本域原位置）');
   // 边界锁：其它域路由与跨域 helper 留宿主
-  assert.match(AU_SERVER, /path === '\/api\/admin\/games' && req\.method === 'GET'/, 'admin games 段留 server.js（B4 #15）');
+  assert.match(AU_SERVER, /await handleAdminGamesAdmin\(\{/, 'admin games 段已拆到 routes/admin-games.js（B4 #15，随 main 合并带入）');
   assert.match(AU_SERVER, /await handleAdminImagesAdmin\(\{/, 'admin images 段已拆到 routes/admin-images.js（B4 #13，随 main 合并带入）');
   assert.match(AU_SERVER, /await handleAdminReportsAdmin\(\{/, 'admin reports/backup/logs 段已拆到 routes/admin-reports.js（B4 #12，随 main 合并带入）');
   assert.match(AU_SERVER, /path === '\/api\/user\/sessions\/revoke-others' && req\.method === 'POST'/, 'revoke-others 留 server.js（前台主段）');

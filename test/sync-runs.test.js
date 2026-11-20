@@ -273,7 +273,7 @@ test('CO-5/B4-2 第九轮：admin-sync 路由分支不得双实现（server.js �
   // 边界锁：其它 admin 域路由留宿主（#10 smtp/emails 与 #11 bulk 已拆到 routes/admin-settings.js / routes/admin-users.js、#12 steam-logs 已拆到 routes/admin-reports.js、#16 wishlists）
   assert.match(AS_SERVER, /await handleAdminUsersAdmin\(\{/, 'admin bulk 段已随 admin-users 域拆到 routes/admin-users.js（B4 #11）');
   assert.match(AS_SERVER, /await handleAdminReportsAdmin\(\{/, 'admin steam-logs 段已随 admin-reports 域拆到 routes/admin-reports.js（B4 #12）');
-  assert.match(AS_SERVER, /path === '\/api\/admin\/wishlists' && req\.method === 'GET'/, 'admin wishlists 段留 server.js（B4 #16）');
+  assert.match(AS_SERVER, /await handleAdminWatchlistAdmin\(\{/, 'admin wishlists 段已随 admin-watchlist 域拆到 routes/admin-watchlist.js（B4 #16）');
   // 中间件判据锁：sync/status|runs 访问日志豁免留 server.js（isLoggablePath 是中间件，§15.4）
   assert.match(AS_SERVER, /path === '\/api\/admin\/sync\/status' \|\| path === '\/api\/admin\/sync\/runs'/, 'sync/status|runs 访问日志豁免留 server.js（中间件）');
 });

@@ -22,7 +22,6 @@ import * as autoBan from './auto-ban.js';
 import * as devices from './devices.js';
 import * as captcha from './captcha.js';
 import * as settings from './settings.js';
-import { baseRegion } from './sync-regions.js';
 import { handleSetupRoutes } from './setup-routes.js';
 import { sessionCookie } from './session-cookie.js';
 import { createAlignCompute } from './align-compute.js';
@@ -30,8 +29,6 @@ import { ensureAlignSnapshot, alignSnapshotMaxAgeMs } from './align-snapshot.js'
 import { handleSettingsRoutes } from './settings-routes.js';
 import { appealEmailFrom } from './appeal.js';
 import { ensureSteamSchemaOnce } from './steam-login.js';
-import * as notify from './notify.js';
-import { buildPushHits, renderDigest, toPayload } from './alerts.js';
 import { ipSessionKey, uaSessionKey } from './session-fingerprint.js';
 import { yuanAmount } from './format.js';
 import * as appRateLimit from './app-ratelimit.js';
@@ -124,6 +121,14 @@ import { handleAdminAlignAdmin } from './routes/admin-align.js';
 // /api/user/sessions/revoke-others（前台主段）留本文件；banIpExclusiveSql 跨域共用（admin-access
 // 域单条封禁/信任）留本文件。
 import { handleAdminUsersAdmin } from './routes/admin-users.js';
+// CO-5/B4-2 第十七轮（docs/DESIGN-AUDIT.md B4）：admin-watchlist 域（B4 #16：后台提醒愿望单
+// /api/admin/watchlist*、/api/admin/wishlists）路由已抽到 src/routes/admin-watchlist.js——
+// handleAdminWatchlistAdmin 在 requireAdmin 就绪之后的管理段（wishlists 原位置）。手动推送
+// 频控桶（alertPushBuckets/alertPushLimited/ALERT_PUSH_WINDOW_MS/resetAlertPushBuckets）只被
+// 本域使用、随域移入模块级（进程级 Map 语义不变），这里 re-export 保持旧导入签名
+// （alert-push.test.js 照旧 import { resetAlertPushBuckets } from server.js）。
+import { handleAdminWatchlistAdmin } from './routes/admin-watchlist.js';
+export { ALERT_PUSH_WINDOW_MS, alertPushLimited, resetAlertPushBuckets } from './routes/admin-watchlist.js';
 // CO-5/B4-2 第十五轮（docs/DESIGN-AUDIT.md B4）：games 域（B4 #21：公开 /api/games/*）路由已抽到
 // src/routes/games.js——handleGamesRoutes 在认证上下文（user/requireUser/requireAdmin）就绪后的
 // 主段（调用位置不能动：取本域最早路由 /api/games/for-you 的原位置，handleAuthRoutes 之后、
@@ -307,29 +312,6 @@ export function appealBucketLimited(ip, kind, max, windowMs) {
 /** 测试用：清空申诉限流内存桶（与 ratelimit.resetState 同一先例）。 */
 export function resetAppealBuckets() {
   appealBuckets.clear();
-}
-
-// DF 批（docs/ALERT-MANUAL-PUSH.md §3）：手动推送 5 分钟频控——同一条（w:<id>）/同一批（b:<ids 排序连接>）
-// 重复推送 → 429 { retryAfterSec }。内存窗口、重启清零（与申诉限流同款设计，防误触/刷屏）。
-const alertPushBuckets = new Map(); // key -> number[]（首次推送时间戳）
-export const ALERT_PUSH_WINDOW_MS = 5 * 60_000;
-/** 未超限返回 null；超限返回首次推送的时间戳（调用方据此算 retryAfterSec）。 */
-export function alertPushLimited(key) {
-  if (alertPushBuckets.size > 5000) alertPushBuckets.clear();
-  const now = Date.now();
-  const list = (alertPushBuckets.get(key) ?? []).filter((t) => now - t < ALERT_PUSH_WINDOW_MS);
-  if (list.length) {
-    alertPushBuckets.set(key, list);
-    return list[0];
-  }
-  list.push(now);
-  alertPushBuckets.set(key, list);
-  return null;
-}
-
-/** 测试用：清空手动推送频控桶。 */
-export function resetAlertPushBuckets() {
-  alertPushBuckets.clear();
 }
 
 const bannedTplCache = new Map();
@@ -1655,8 +1637,6 @@ export function createApiServer({
       // 调用位置不能动：必须在认证上下文（user/requireUser/requireAdmin）就绪后的主段
       // （401/403 语义依赖该位置，原位置语义，移动 = 改契约）；本域无跨模块共享状态
       // （banState 限流桶随域移入模块），ctx 只需基座字段。
-      // steamAccountsMod 动态 import 保留——本文件 admin 段仍用
-      // （/api/admin/wishlists 属 B4 #16）；steamLogMod 已随 B4 #12 拆走。
       if (
         await handleSiteRoutes({
           path,
@@ -1674,8 +1654,6 @@ export function createApiServer({
         })
       )
         return;
-
-      const steamAccountsMod = await import('./steam-accounts.js');
 
       // ---- CO-5/B4-2 第四轮：watchlist/wishlist 域用户段路由已抽到 src/routes/watchlist.js ----
       // 调用位置不能动：必须在认证上下文（user/requireUser）就绪后的主段；本域无跨模块共享状态
@@ -1695,15 +1673,27 @@ export function createApiServer({
       )
         return;
 
-      // ---- 管理员：愿望单清单（BE 批 §4.2；CY 批改为只读——用户私有数据，写方法已移除）----
-      if (path === '/api/admin/wishlists' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 200) || 200, 1), 500);
-        const keyword = String(url.searchParams.get('q') ?? '').trim();
-        const filterUserId = url.searchParams.get('userId') ? Number(url.searchParams.get('userId')) : null;
-        return json(res, 200, await steamAccountsMod.listWishlists(q, { limit, keyword, userId: filterUserId }));
-      }
-      // CY 批：/api/admin/wishlists/:id 的 DELETE 已移除——愿望单属用户私有数据，管理员只读（越权写走 404/白名单拦截）
+      // ---- CO-5/B4-2 第十七轮（docs/DESIGN-AUDIT.md B4）：admin-watchlist 域路由已抽到
+      // src/routes/admin-watchlist.js——handleAdminWatchlistAdmin 在 requireAdmin 就绪之后的
+      // 管理段（调用位置不能动：取本域最早路由 /api/admin/wishlists 的原位置，
+      // handleWatchlistRoutes 之后、admin games/stats 之前）。本域无跨模块共享的可变状态
+      // （alertPushBuckets 频控桶只被本域使用、随域移入模块级），ctx 只需基座字段。
+      if (
+        await handleAdminWatchlistAdmin({
+          path,
+          req,
+          res,
+          url,
+          q,
+          logger,
+          json,
+          readBody,
+          user,
+          requireAdmin,
+          ip,
+        })
+      )
+        return;
 
       // ---- CO-5/B4-2 第十七轮（docs/DESIGN-AUDIT.md B4）：admin-games 域管理段路由已抽到
       // src/routes/admin-games.js。调用位置不能动：必须在 requireAdmin 就绪之后的管理段
@@ -1732,274 +1722,6 @@ export function createApiServer({
         })
       )
         return;
-
-      // ---- 管理员：到价提醒（CL 批 docs/USER-ALERTS.md §3.2：全站清单只读+清理；旧加/删兼容保留）----
-      if (path === '/api/admin/watchlist' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：默认 region 读本位币区域
-        const region = String(url.searchParams.get('region') ?? baseRegion());
-        const page = Math.max(1, Number(url.searchParams.get('page') ?? 1) || 1);
-        const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize') ?? 20) || 20, 1), 200);
-        const username = String(url.searchParams.get('username') ?? '').trim() || null;
-        // CU-1（docs/USER-ALERTS-GOVERNANCE.md §2）：status=no_price 只出「无报价」行
-        const status = String(url.searchParams.get('status') ?? '');
-        const result = await db.listAllWatchesAdmin(q, { region, page, pageSize, username, noPriceOnly: status === 'no_price' });
-        // 契约：hasPrice / claimableUsers 用驼峰（规格 §3）；其余字段沿用既有蛇形命名，前端消费不动
-        const items = result.items.map(({ has_price: hasPrice, claimable_users: claimableUsers, ...rest }) => ({
-          ...rest,
-          hasPrice: hasPrice === true,
-          claimableUsers: Array.isArray(claimableUsers) ? claimableUsers : [],
-        }));
-        // DF 批（docs/ALERT-MANUAL-PUSH.md §2 #5）：带已配置的推送渠道名，前端据此禁用「推送」按钮（无通道不可推）
-        const notifyChannels = notify.channelsFromEnv().map((c) => c.name);
-        return json(res, 200, { ...result, items, region, notifyChannels });
-      }
-
-      if (path === '/api/admin/watchlist' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const body = await readBody(req);
-        let gameId = Number(body.gameId);
-        if (!Number.isFinite(gameId) || gameId <= 0) {
-          const appid = Number(body.appid);
-          const found = Number.isFinite(appid) && appid > 0 ? await db.gameDetail(q, { steamAppid: appid }) : null;
-          if (!found) return json(res, 400, { error: '需要有效的 gameId 或 appid' });
-          gameId = found.id;
-        }
-        let targetCents = null;
-        if (body.targetCents != null && body.targetCents !== '') {
-          const n = Math.round(Number(body.targetCents));
-          if (!Number.isFinite(n) || n < 0) return json(res, 400, { error: '目标价不合法' });
-          targetCents = n;
-        }
-        const id = await db.upsertWatch(q, {
-          gameId,
-          region: 'cn',
-          targetCents,
-          note: String(body.note ?? '').trim().slice(0, 200) || null,
-        });
-        logger?.info('api.watch_saved', { gameId, targetCents, by: user.username });
-        return json(res, 200, { id });
-      }
-
-      // ---- DF 批（docs/ALERT-MANUAL-PUSH.md §3）：手动推送（单条 / 批量合并一封）----
-      // 复用 alerts（buildPushHits/renderDigest/toPayload）+ notify.deliver；仅站点级（用户级 403 只读）；
-      // mark 默认勾选；5 分钟频控；审计 admin.alert_pushed。返回 { status, payload } 由路由直接 json。
-      const adminPushWatches = async ({ ids, force, mark }) => {
-        const channels = notify.channelsFromEnv();
-        if (!channels.length) {
-          return { status: 400, payload: { error: '未配置任何通知通道，请先在系统设置配置（邮件 / Webhook / 企业微信）' } };
-        }
-
-        // 频控：先查每个 watch 的独立桶（"同一 watch"），批量再查整批桶（"同一批"）
-        const limitedWatch = ids.map((id) => ({ id, first: alertPushLimited(`w:${id}`) })).find((x) => x.first != null);
-        const batchFirst = ids.length > 1 ? alertPushLimited(`b:${[...ids].sort((a, b) => a - b).join(',')}`) : null;
-        const limitedFirst = limitedWatch?.first ?? batchFirst;
-        if (limitedFirst != null) {
-          const retryAfterSec = Math.max(1, Math.ceil((limitedFirst + ALERT_PUSH_WINDOW_MS - Date.now()) / 1000));
-          await db.writeAuditLog(q, {
-            actorId: user.id,
-            actor: user.username,
-            action: 'admin.alert_pushed',
-            target: `watchlist:${ids.join(',')}`,
-            detail: { ids, force, mark, outcome: 'rate_limited', retryAfterSec },
-            ip,
-          });
-          return { status: 429, payload: { error: '5 分钟内已推送过该提醒，请稍后再试', retryAfterSec } };
-        }
-
-        const candidates = await db.watchCandidates(q);
-        const wanted = new Set(ids);
-        const rows = candidates.filter((r) => wanted.has(Number(r.watch_id)));
-        // 用户级提醒不可推（仅站点级；与 DELETE 只读语义一致 → 403 + 审计）
-        const userRow = rows.find((r) => r.user_id != null);
-        if (userRow != null) {
-          logger?.warn('admin.forbidden_write', { target: `watchlist:${Number(userRow.watch_id)}`, userId: Number(userRow.user_id), by: user.username, ip });
-          await db.writeAuditLog(q, {
-            actorId: user.id,
-            actor: user.username,
-            action: 'admin.forbidden_write',
-            target: `watchlist:${Number(userRow.watch_id)}`,
-            detail: { userId: Number(userRow.user_id), method: 'POST', path: 'push' },
-            ip,
-          });
-          return { status: 403, payload: { error: '用户提醒不可推送，仅站点级支持' } };
-        }
-        if (!rows.length) return { status: 404, payload: { error: '提醒不存在或非站点级' } };
-
-        const now = new Date();
-        const { hits, skipped } = buildPushHits(rows, { force, now });
-        const perRow = [
-          ...hits.map((h) => ({ id: h.watchId, name: h.name, sent: true, reason: h.reason })),
-          ...skipped.map((s) => ({
-            id: s.watchId,
-            name: s.name,
-            sent: false,
-            reason: s.reason,
-            currentCents: s.currentCents ?? null,
-            targetCents: s.targetCents ?? null,
-            histLowCents: s.histLowCents ?? null,
-          })),
-        ];
-
-        if (!hits.length) {
-          const firstSkip = skipped[0];
-          const reason = skipped.every((s) => s.reason === 'no_price') ? 'no_price' : 'not_met';
-          await db.writeAuditLog(q, {
-            actorId: user.id,
-            actor: user.username,
-            action: 'admin.alert_pushed',
-            target: `watchlist:${ids.join(',')}`,
-            detail: { ids, force, mark, outcome: 'not_met', perRow },
-            ip,
-          });
-          return {
-            status: 200,
-            payload: {
-              sent: false,
-              reason,
-              currentCents: firstSkip?.currentCents ?? null,
-              targetCents: firstSkip?.targetCents ?? null,
-              histLowCents: firstSkip?.histLowCents ?? null,
-              results: perRow,
-            },
-          };
-        }
-
-        const { renderAlertsHtml } = await import('./alerts-html.js');
-        const mail = renderAlertsHtml(hits, { now });
-        const delivery = await notify.deliver(channels, {
-          text: renderDigest(hits, { now }),
-          html: mail.html,
-          payload: toPayload(hits, { now }),
-          subject: mail.subject,
-          logger,
-        });
-        if (!delivery.ok) {
-          const firstErr = delivery.results.find((r) => !r.ok);
-          return { status: 502, payload: { error: `发送失败：${firstErr?.error ?? firstErr?.errcode ?? '未知原因'}` } };
-        }
-
-        if (mark) {
-          for (const h of hits) await db.markNotified(q, { watchId: h.watchId, priceCents: h.currentCents });
-        }
-        const channelNames = delivery.results.map((r) => r.channel).join(',');
-        logger?.info('api.alert_pushed', { ids: hits.map((h) => h.watchId), force, mark, channels: channelNames, by: user.username });
-        await db.writeAuditLog(q, {
-          actorId: user.id,
-          actor: user.username,
-          action: 'admin.alert_pushed',
-          target: `watchlist:${ids.join(',')}`,
-          detail: { ids, force, mark, outcome: 'sent', sentCount: hits.length, channels: channelNames, perRow },
-          ip,
-        });
-        return {
-          status: 200,
-          payload: {
-            sent: true,
-            sentCount: hits.length,
-            channel: channelNames,
-            markApplied: mark,
-            results: perRow,
-          },
-        };
-      };
-
-      const watchPushOne = path.match(/^\/api\/admin\/watchlist\/(\d+)\/push$/);
-      if (watchPushOne && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const wid = Number(watchPushOne[1]);
-        const body = await readBody(req);
-        const force = body.force === true;
-        const mark = body.mark !== false; // DF：更新最近提醒时间默认勾选
-        const result = await adminPushWatches({ ids: [wid], force, mark });
-        return json(res, result.status, result.payload);
-      }
-
-      if (path === '/api/admin/watchlist/push' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const body = await readBody(req);
-        const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
-        if (!ids.length) return json(res, 400, { error: '需要选择要推送的提醒' });
-        const force = body.force === true;
-        const mark = body.mark !== false; // 批量同单条：默认勾选
-        const result = await adminPushWatches({ ids, force, mark });
-        return json(res, result.status, result.payload);
-      }
-
-      // CU-2（docs/USER-ALERTS-GOVERNANCE.md §2/§3）：站点级提醒批量迁移给用户（候选=Steam 愿望单反查，
-      // 前端已按 claimableUsers 列出；服务端校验目标用户存在）+ 批量删除；均记审计。
-      if (path === '/api/admin/watchlist/migrate' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const body = await readBody(req);
-        const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter((n) => Number.isInteger(n) && n > 0) : [];
-        const userId = Number(body.userId);
-        if (!ids.length) return json(res, 400, { error: '需要选择要迁移的提醒' });
-        if (!Number.isInteger(userId) || userId <= 0) return json(res, 400, { error: '需要选择目标用户' });
-        const target = await q('select id, username from users where id = $1', [userId]);
-        const targetUser = target.rows[0];
-        if (!targetUser) return json(res, 404, { error: '目标用户不存在' });
-        const result = await db.migrateSiteWatches(q, { ids, userId, region: 'cn' });
-        if (result.migrated + result.merged === 0) return json(res, 404, { error: '所选提醒不存在或非站点级' });
-        logger?.info('api.watch_migrated', { ids, toUserId: userId, toUsername: targetUser.username, by: user.username, ...result });
-        await db.writeAuditLog(q, {
-          actorId: user.id,
-          actor: user.username,
-          action: 'admin.watch_migrated',
-          target: `watchlist:${ids.join(',')}`,
-          detail: { ids, toUserId: userId, toUsername: targetUser.username, migrated: result.migrated, merged: result.merged },
-          ip,
-        });
-        return json(res, 200, { ok: true, ...result, target: { id: userId, username: targetUser.username } });
-      }
-
-      if (path === '/api/admin/watchlist/delete' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const body = await readBody(req);
-        const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter((n) => Number.isInteger(n) && n > 0) : [];
-        if (!ids.length) return json(res, 400, { error: '需要选择要删除的提醒' });
-        const removed = await db.deleteSiteWatches(q, { ids, region: 'cn' });
-        if (!removed.length) return json(res, 404, { error: '所选提醒不存在或为用户级（只读）' });
-        for (const row of removed) {
-          logger?.info('api.watch_deleted', { watchId: Number(row.id), userId: null, gameId: Number(row.game_id), by: user.username });
-        }
-        await db.writeAuditLog(q, {
-          actorId: user.id,
-          actor: user.username,
-          action: 'admin.watch_deleted',
-          target: `watchlist:${removed.map((x) => x.id).join(',')}`,
-          detail: { ids: removed.map((x) => Number(x.id)), gameIds: removed.map((x) => Number(x.game_id)), requested: ids },
-          ip,
-        });
-        return json(res, 200, { ok: true, removed: removed.length });
-      }
-
-      // CL 批：按提醒 id 清理任意一条（含用户级），记审计 api.watch_deleted
-      // CY 批（docs/DATA-ISOLATION.md §3）：用户私有提醒管理员只读——用户行写 → 403 + 审计，
-      // 站点级行（user_id IS NULL）保留清理能力。
-      const watchDel = path.match(/^\/api\/admin\/watchlist\/(\d+)$/);
-      if (watchDel && req.method === 'DELETE') {
-        if (!requireAdmin()) return;
-        const wid = Number(watchDel[1]);
-        const found = await q('select id, user_id, game_id from watchlist where id = $1 and region = \'cn\'', [wid]);
-        const row = found.rows[0];
-        if (!row) return json(res, 404, { error: '提醒不存在' });
-        if (row.user_id != null) {
-          logger?.warn('admin.forbidden_write', { target: `watchlist:${wid}`, userId: Number(row.user_id), by: user.username, ip });
-          await db.writeAuditLog(q, {
-            actorId: user.id,
-            actor: user.username,
-            action: 'admin.forbidden_write',
-            target: `watchlist:${wid}`,
-            detail: { userId: Number(row.user_id), method: 'DELETE', path },
-            ip,
-          });
-          return json(res, 403, { error: '用户提醒只读，请让用户自行操作' });
-        }
-        const deleted = await db.deleteWatchById(q, { id: wid, region: 'cn' });
-        if (!deleted) return json(res, 404, { error: '提醒不存在' });
-        logger?.info('api.watch_deleted', { watchId: wid, userId: null, gameId: Number(deleted.game_id), by: user.username });
-        return json(res, 200, { ok: true, removed: 1 });
-      }
 
       // ---- CO-5/B4-2 第十轮（docs/DESIGN-AUDIT.md B4）：admin-settings 域管理段路由已抽到
       // src/routes/admin-settings.js。调用位置不能动：必须在 requireAdmin 就绪之后的管理段
