@@ -137,7 +137,7 @@
 | **EA** | ⚙️ 调整：安卓体验包（攒批）——下拉刷新/搜索空态/详情分享/版本号+清缓存/骨架屏/弱网提示 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EA | 已发布 app-v2.23.0（2026-11-20，App d803612/tag app-v2.23.0；QA docs/QA-EA-1-3.md、QA-EA-4-6.md 第 1 轮 ✅） | ✅ 本轮已给 |
 | **EB** | ✨ 功能：安卓 18R 内容选项（筛选 chips「18R」+ adult=badge 显示/角标 + 首次 18+ 确认 + 本地记忆，攒批） | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EB | 已发布 app-v2.23.0（2026-11-20，App d803612/tag app-v2.23.0；QA docs/QA-EB.md 第 1 轮 ✅） | ✅ 本轮已给 |
 | **EC** | ⚙️ 调整：图片覆盖治理（后台覆盖看板 + 缺图回填任务 + 前端占位图） | [IMAGE-COVERAGE.md](IMAGE-COVERAGE.md) §8 | 待开发（2026-11-19 立项） | ✅ 本轮已给 |
-| **ED** | 🧪 测试基建：test-main 加文档路径忽略（纯 docs 提交不跑测试，避免夜班文档提交反复取消 CI） | 本条目正文 | 已实现待发版（2026-11-20，143d97e） | ✅ 本轮已给 |
+| **ED** | 🧪 测试基建：test-main 加文档路径忽略（纯 docs 提交不跑测试，避免夜班文档提交反复取消 CI） | 本条目正文 | 质检通过（2026-11-20，QA docs/QA-ED.md 第 1 轮 ✅） | ✅ 本轮已给 |
 | **EF** | 🐞 缺陷：18R 数据同步与筛选修复（元数据 cc=cn 锁国区 → 改 cc=us + 回填 + 前台 rating + Web/App 筛选） | [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §9 | 已发布 v2.27.5（2026-11-20；站点 7a3ac2b + App 358ebc5；app-v2.24.0 随本批） | ✅ 本轮已给 |
 | **EG** | 🐞 缺陷：通知角标已读后不消失（ABC 三场景） | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EG | 已发布 v2.27.5（2026-11-20；站点 7eb5d4a + App 3458bce；app-v2.24.0 随本批） | ✅ 本轮已给 |
 | **EH** | ⚙️ 调整：同步逻辑去 cn（内容类：steam-status 状态/分级 + discovery 搜索改 cc=us；价格保持 cc=cn） | [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §10 | 待开发（2026-11-20 P1） | ✅ 本轮已给 |
