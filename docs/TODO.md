@@ -20,11 +20,11 @@
 
 | 类型 | 数量 | 编号 |
 |---|---|---|
-| 🐞 缺陷 | 3 | DU / EK / EM |
+| 🐞 缺陷 | 2 | DU / EM |
 | ✨ 功能 | 1 | DT-2 |
-| ⚙️ 调整 | 10 | DT-1 / DT-3 / DT-4 / DT-5 / DV / EC / EH / EI / EJ / EL |
-| 🧹 技术债 | 1 | DX |
-| 🧪 测试基建 | 1 | ED |
+| ⚙️ 调整 | 6 | DT-1 / DT-3 / DT-4 / DT-5 / DV / EC |
+| 🧹 技术债 | 0 | — |
+| 🧪 测试基建 | 0 | — |
 | 📝 文档流程 | 0 | — |
 | 🔬 调研 | 0 | — |
 | 已过时 | 1 | DM |
@@ -91,22 +91,6 @@
 - **验收**：见规格 §3（ITAD（来源）筛出有匹配标记的游戏；其它平台不变；采集新匹配后刷新可见；标签区分清楚；
   `npm test`（分段）+ `frontend:build` + `scan` 全绿）。
 
-## DX. 质检通过（🧹 技术债）：列表/站点接口性能优化
-
-**类型：** 🧹 技术债（性能）
-**状态：** 质检通过（2026-11-20，QA docs/QA-DX.md 第 1 轮 ✅ 6/0/0/1；实现 090af4c：count 合并 + 列表 45s 缓存 + /api/site 60s 缓存 + test/search-perf.test.js；部署后按 DELIVERY 复测 P95）
-**优先级：** P1 —— 首屏与搜索体验
-**依赖：** DW（同 `gameSearch` 区域，先修后优化）
-**解锁：** 无
-**规格**：[SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DX
-
-- **目标**：列表/搜索 P95 ≤150ms（基线 340–580ms）；`/api/site` ≤50ms（基线 257ms）；total 正确性不变。
-- **方案**：① count 与 rows 合并（`count(*) over()` 或 index-only count）；② 列表 30–60s 短 TTL 内存缓存
-  （key=筛选参数+region+userId 摘要；同步完成/后台操作后失效）；③ `/api/site` 60s 缓存；④ 新增
-  `test/search-perf.test.js` 断言 P95 + 线上只读压测记录进 DELIVERY。
-- **验收**：见规格 §DX（P95 达标；total 与 count(*) 一致；缓存失效正确；`npm test`（分段）+ `scan` 全绿；
-  压测结果贴交付说明）。
-
 ## DT. 待开发：后台用户管理与权限隔离（拆 5 个子需求，一次会话一个）
 
 **状态：待开发（2026-11-19 所有者 93–97 轮沟通确认；拆 DT-1~DT-5）**
@@ -148,95 +132,6 @@
   EC-3 前端缺图占位（品牌占位图，列表/详情统一）。
 - **验收**：见规格 §8（看板数据一致；回填后缺图数下降；占位图显示；
 pm test（分段）+ rontend:build + scan 全绿）。
-
-## ED. 质检通过（🧪 测试基建）：test-main 加文档路径忽略（纯文档提交不跑测试）
-
-**类型：** 🧪 测试基建（CI 效率）
-**状态：** 质检通过（2026-11-20，实现 143d97e；QA docs/QA-ED.md 第 1 轮 ✅ 4/0/0/0）
-**优先级：** P3 —— 省 CI 时间，不影响功能
-**依赖：** 无
-**解锁：** 无
-**规格**：本条目正文（workflow 配置小改，无独立规格）
-
-- **背景**：2026-11-19 夜班期间多次文档提交（B4-QUEUE/ANDROID-POLISH/DELIVERY 等），test-main 每次 push
-  都触发并被 concurrency 取消重跑（当晚 十几次 cancelled），浪费 CI 时间。
-- **方案**：.github/workflows/test-main.yml 的 on.push 加 paths-ignore：
-  docs/**、**/*.md、CHANGELOG.md、data/**（**不能忽略**：src/**、rontend/**、	est/**、
-  scripts/**、package.json、package-lock.json、.github/**）。docker-hub/docker-tcr 只在 tag 触发，不动。
-- **验收**：① 只改 docs 的提交不触发 test-main（gh run list 确认）；② 改 src/package.json 仍触发；
-  ③ workflow 语法有效（push 后 Actions 正常解析）；④ 连续文档提交不再产生 cancelled run。
-
-## EH. 质检通过（⚙️ 调整）：同步逻辑去 cn（内容类链路：steam-status + discovery）
-
-**类型：** ⚙️ 调整（同步区域口径）
-**状态：** 质检通过（2026-11-20，实现 897476c；QA docs/QA-EH-EI.md 第 1 轮 ✅ 放行 9/0/0/2）
-**优先级：** P1 —— 内容数据完整性（成人/锁区内容被国区过滤）
-**依赖：** EF（元数据已去 cn，本条目补状态/发现链路）
-**解锁：** 无
-**规格**：[STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §10
-
-- **范围**：① `src/steam-status.js:173` 状态/分级 appdetails `cc=cn`→`cc=us`（失败兜底 cc=hk 判锁区保留）；
-  ② `src/discovery.js:38/86` 搜索 `cc=cn`→`cc=us`；③ 注释/文档同步；
-  **价格链路（steam.js/backfill/sync steam-prices）保持 cc=cn 不动**（国区报价是业务核心）。
-- **验收**：见规格 §10（分级覆盖提升；候选集含国区不显示游戏；价格仍国区口径不变；`npm test`（分段）+ `scan` 全绿）。
-
-## EI. 质检通过（⚙️ 调整）：同步双区域配置（内容统一美国 + 本位币可配置默认中国）
-
-**类型：** ⚙️ 调整（同步区域/货币配置化）
-**状态：** 质检通过（2026-11-20，实现 897476c；QA docs/QA-EH-EI.md 第 1 轮 ✅ 放行 9/0/0/2）
-**优先级：** P1 —— 数据完整性 + 未来国际化
-**依赖：** EF（元数据 cc=us）、EH（状态/发现去 cn）——本条目把区域统一配置化
-**解锁：** 无
-**规格**：[STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §11
-
-- **设计**：两套区域——`sync.contentRegion`（默认 **us**，内容采集/绕过锁区）+ `site.baseRegion`（默认 **cn**，
-  价格/比价口径）+ `site.baseCurrency`（默认 **CNY**）；内容拿全量、价格拿本位币区域金额。
-- **范围**：① 内容链路（steam-meta/steam-status/discovery）读 contentRegion；② 价格链路（steam.js/sync/backfill）
-  读 baseRegion+baseCurrency；③ 前台默认 region 读配置；④ settings 暴露三项配置；⑤ 日志双区域。
-- **验收**：见规格 §11（默认内容 us/价格 cn；切 baseRegion=us+USD 生效；前台跟随；分级覆盖提升；
-  `npm test`（分段）+ `scan` 全绿）。
-
-## EL. 已实现待发版（⚙️ 调整）：后台「添加/编辑」统一弹窗
-
-**类型：** ⚙️ 调整（后台交互规范）
-**状态：** 质检通过（2026-11-20，QA docs/QA-EL.md 第 1 轮 ✅ 通过 5/缺失 0/偏差 0/需人工确认 2；实现 e0821f9；待发版）
-**优先级：** P2 —— 交互一致性
-**依赖：** 无（用户角色编辑并入 DT-3，不重复）
-**解锁：** 无
-**规格**：[ADMIN-EDIT-DIALOG.md](ADMIN-EDIT-DIALOG.md)
-
-- **交付（2026-11-20，e0821f9）**：EL-1/EL-2 IP 黑/白名单添加改「添加黑名单/添加白名单」按钮 + 弹窗（IP/备注/确认）；
-  EL-3 站点通知新建/编辑 AnnouncementDrawer 抽屉→el-dialog（表单一致、before-close 脏确认、URL 直达保留）；
-  EL-4 Steam 专用代理内联 proxy-editor→弹窗编辑（列表增删/上移下移/清空/健康状态表/立即检测/保存回写，脏草稿并入未保存守卫）；
-  EL-5 通用出网代理/App 同步专用代理内联输入→「编辑」按钮 + 弹窗（掩码显示已设置/尚未设置、http/https 校验、留空保持、清除直连、查看当前值）；
-  EL-6 申诉处理抽屉→弹窗（处理表单在弹窗内、动作放 footer）。移动端 ≤768px `.m-shell` 全宽；
-  交互真机级验证（headless Chrome CDP 20/20：弹窗打开/保存 API 回读/非法值拦截不关弹窗/移动端 390px 全宽）+ 截图对照
-  `F:\dsh\el-shots\{before,after}`。
-- **范围（排查依据：frontend/src grep el-dialog/el-drawer/inline-form）**：
-  EL-1 IP 黑名单添加（内联→弹窗）、EL-2 IP 白名单添加（内联→弹窗）、EL-3 站点通知新建/编辑（抽屉→弹窗）、
-  EL-4 设置 Steam 专用代理编辑（内联→弹窗）、EL-5 通用/App 同步代理编辑（内联→弹窗）、
-  EL-6（可选）申诉处理抽屉→弹窗。
-- **保留**：搜索栏 inline-form、只读查看抽屉（审阅记录/游戏链接）、前台弹窗。
-- **验收**：见规格 §5（全部为弹窗、功能一致、移动端全宽、`npm test`（分段）+ `frontend:build` + `scan` 全绿）。
-
-## EK. 🐞 缺陷：App Release 同步资产下载支持专用代理（有代理走代理，无代理直连 GitHub）
-
-**类型：** 🐞 缺陷（线上同步失败：大陆直连 GitHub 资产域名超时）
-**状态：** 质检通过（2026-11-20，QA docs/QA-EK.md 第 1 轮 ✅ 通过 6/缺失 0/偏差 0/需人工确认 1；实现 cc4fcf5；待发版）
-**优先级：** P1 —— 线上 `app-release-sync` 每 15 分钟连续失败，App 发版信息无法更新
-**依赖：** 无
-**解锁：** 无
-**规格**：[APP-RELEASE-SYNC-PROXY.md](APP-RELEASE-SYNC-PROXY.md)
-
-- **现象（2026-11-20 线上）**：`app-release-sync` 连续失败 `reason=apk_download / latest_download`、
-  `message="The operation was aborted due to timeout"`——大陆服务器直连
-  `release-assets.githubusercontent.com` 超时（实测宿主机 756B 需 3.3s，波动撞 10s 下载超时线）。
-- **方案**：`src/settings.js` 新增 `network.appSyncProxy`（secret，env `APP_RELEASE_SYNC_PROXY`）；
-  `src/app-release.js` 三件套下载（latest.json / APK / sha256）配置非空时走 `undici.ProxyAgent`
-  （复用 http.js `proxyAgentOptions`，零新依赖）且该次超时 30s；留空保持现状（全局 fetch、10s 直连）。
-- **不做**：调度频率、githubApkUrl 兜底、前端。
-- **验收**：见规格 §6（6 条；含代理/直连/反向自检/代理不可用场景 +
-  `test/app-release.test.js` / `test/app-release-sync.test.js` / `test/settings.test.js` + `frontend:build` + `scan`）。
 
 ## EM. 待开发（🐞 缺陷）：Steam 同步超时（愿望单/库同步被 15s 看门狗砍掉）
 

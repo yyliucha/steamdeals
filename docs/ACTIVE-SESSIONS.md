@@ -16,6 +16,16 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
+| 2.28.0 专项监工（DU/DV/EC/EM/DT-1~5 开发+质检+构建，所有者 16:12 授权） | 主树零改动（开发全程在 worktree gp-wt-228a/b 隔离，主树只读）；构建阶段改发布文档+package.json（pathspec） | 打 tag 构建（排队：v2.27.8 会话与 B4 监工之后；版本 2.28.0 大版本） | 16:17 | ≈21:30 | lead（2.28.0 监工） |
+| 工人 1：DU/DT-1/DT-2/DT-4/DT-5 | worktree F:\dsh\gp-wt-228a（frontend/**、src/routes/auth.js、src/routes/me.js、src/routes/watchlist.js、store 相关——与主树完全隔离） | 无 | 16:25 | ≈19:00 | 工人 1（subagent） |
+| 工人 2：EC/EM/DV/DT-3 | worktree F:\dsh\gp-wt-228b（src/server.js、src/steam-login.js、src/routes/site.js、src/steam-accounts.js、frontend 图片/同步区、test/相关——与主树完全隔离） | 无 | 16:25 | ≈19:30 | 工人 2（subagent） |
+| v2.27.8 构建（ED+EH+EI+EL+EK+DX 六条） | 发布文档（CHANGELOG/DONE/DELIVERY/TODO/REQUIREMENTS-INDEX/B4-QUEUE/PROJECT-OVERVIEW/ACTIVE-SESSIONS）+ package.json/package-lock.json（仅版本号）；src/test/frontend 一律不碰 | 打 tag 构建（所有者 15:48 直接派发；监工轮构建顺延至其域 QA 完成后，版本号自动 +1） | 15:57 | ≈17:00 | lead（构建会话） |
+| B4 夜班监工（14:43 轮） | docs/B4-QUEUE.md、docs/ACTIVE-SESSIONS.md、发布文档（CHANGELOG/DONE/DELIVERY/TODO/INDEX/PROJECT-OVERVIEW/ARCHITECTURE）、package.json（仅构建时）、nightshift worktree | 打 tag 构建（每批 2–3 域） | 14:47 | 18:20 | 监工会话（定时唤醒） |
+| B4 夜班监工（16:25 轮，所有者 16:20 指示：恢复拆域、只拆域不构建） | docs/B4-QUEUE.md、docs/ACTIVE-SESSIONS.md（发布文档/package.json 不碰——构建会话独占）；调度工人改 src/（域拆分） | 无（不构建、不打 tag） | 16:25 | 19:55 | 监工会话（定时唤醒，schedule-960679da） |
+| B4 #14 admin 会话（#10 已完成 5ce2e50，工人 A 接续） | src/server.js、src/store/pg.js、src/routes/、src/store/、test/ | 无 | 16:15 | 17:20 | 工人 A（subagent） |
+| B4 #19 cli 报表类（工人 B，#18 已完成 9bc710a） | src/cli.js、src/cli/、src/store/cli-*-repository.js、test/cli-dispatch.test.js（不动 server.js/pg.js/routes） | 无 | 16:06 | 17:36 | 工人 B（subagent） |
+| DV（代码已备好，改动备份 F:\dsh\dv-wip\edits.md；重放+提交+QA 移交 2.28.0 工人 2） | worktree gp-wt-228b（src/server.js 游戏管理列表筛选区 / frontend AdminModules.vue 游戏管理区 / admin-ui.js EP 组件注册 / test） | 无 | 2026-11-20 14:55 | 移交工人 2 完成 | lead → 工人 2 |
+| DV 备注 | 代码与测试已完成并验证（admin-games 4/4、frontend-registration 4/4、api 38/38）；16:13 已从主树撤出，改动备份于 F:\dsh\dv-wip\edits.md（基线 7bce0b6），由 2.28.0 工人 2 在 worktree 重放提交 + QA | — | — | — | — |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 

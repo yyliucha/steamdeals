@@ -1,5 +1,33 @@
 # 变更日志
 
+## [2.27.8] - 2026-11-20
+
+ED + EH + EI + EL + EK + DX 合并发版（🧪 测试基建 1 条 + ⚙️ 调整 3 条 + 🐞 缺陷 1 条 + 🧹 技术债 1 条，均无新功能面 → 小版本，2.27.7 → 2.27.8 连续递增）。本批不涉及 App 仓库（六条均为站点侧）。
+
+### 技术债
+
+- **DX 列表/站点接口性能优化（站点 090af4c）**：gameSearch count 合并（四分支 rows 查询带 `count(*) over()`，无关键词列表 count+rows 从 2 条 SQL 合并为 1 条，空页回落独立 count、total 口径不变）；列表 45s 短 TTL 内存缓存（`src/search-cache.js`；key=归一化筛选参数+region+userId 摘要+游客哈希；命中日志 `search.cache_hit`；gen=sync_runs max(id) 感知调度器跨进程同步；同步/后台操作主动失效）；`/api/site` 60s 缓存（设置保存/SMTP 保存失效、重启清空）；`test/search-perf.test.js` 5 项进主链 test:3。本机线上只读压测（部署前 v2.27.7，N=30）：列表 P50 327ms/P95 349ms、搜索 P50 535–586/P95 599–644ms、/api/site P50 60/P95 68ms；**部署后同条件复测目标：列表/搜索 P95 ≤150ms、/api/site ≤50ms**。规格见 [docs/SEARCH-FIX-PERF.md](docs/SEARCH-FIX-PERF.md) §DX。
+
+### 修复
+
+- **EK App Release 同步资产下载支持专用代理（站点 cc4fcf5）**：线上 `app-release-sync` 每 15 分钟连续失败（大陆服务器直连 `release-assets.githubusercontent.com` 超时，`reason=apk_download/latest_download`）。`src/settings.js` 新增 `network.appSyncProxy`（secret，env `APP_RELEASE_SYNC_PROXY`）；`src/app-release.js` 三件套资产下载（latest.json / APK / sha256）配置非空时走 `undici.ProxyAgent`（复用 http.js `proxyAgentOptions`，零新依赖）且该次超时 30s，留空保持现状（直连、10s）；下载前记 `app.release_proxy` 日志（`via=proxy/direct`，代理地址打码）。专用代理只作用于资产下载，不复用 `network.httpsProxy`（避免波及 itad/gog/humble/images 出站）。规格见 [docs/APP-RELEASE-SYNC-PROXY.md](docs/APP-RELEASE-SYNC-PROXY.md)。
+
+### 调整
+
+- **EH 同步逻辑去 cn（内容类链路：steam-status + discovery，站点 897476c）**：`src/steam-status.js` 状态/分级 appdetails `cc=cn`→`cc=us`（失败兜底 cc=hk 判锁区保留）；`src/discovery.js` 搜索 `cc=cn`→`cc=us`；价格链路（steam.js/backfill/sync steam-prices）保持 `cc=cn` 不动（国区报价是业务核心）。规格见 [docs/STEAM-SYNC-STATUS-AND-RATING.md](docs/STEAM-SYNC-STATUS-AND-RATING.md) §10。
+- **EI 同步双区域配置（contentRegion=us 内容拿全量 + baseRegion=cn/CNY 价格本位币可配）**：新增 `src/sync-regions.js`（`contentRegion`/`baseRegion`/`baseCurrency`/`regionContext` 单点读取，默认 us / cn / CNY）；后台「系统设置 → 同步区域」三项配置（`sync.contentRegion` / `site.baseRegion` / `site.baseCurrency`，区域两字母/货币三字母校验归一化，保存后调度器约 15 秒内生效、下一轮同步生效）；内容链路（steam-meta/steam-status/discovery/rating-backfill）读 contentRegion，价格链路（steam.js/sync/backfill）读 baseRegion+baseCurrency；前台默认 region 跟随 baseRegion；steam-status 仅 content=base 时顺带写本位币 offer。规格见 [docs/STEAM-SYNC-STATUS-AND-RATING.md](docs/STEAM-SYNC-STATUS-AND-RATING.md) §11。
+  > 说明：EH+EI 的实现 897476c 此前已随 v2.27.6 镜像一并成像（当时 QA 尚未走完）；本批为两者 QA 通过后的**补发版记录**（QA-EH-EI 9/0/0/2），镜像内容无新增代码。
+- **EL 后台「添加/编辑」统一弹窗（站点 e0821f9）**：IP 黑/白名单添加改「添加黑名单/添加白名单」按钮 + 弹窗（IP/备注/确认）；站点通知新建/编辑抽屉→el-dialog（before-close 脏确认、URL 直达保留）；Steam 专用代理内联编辑→弹窗（列表增删/上移下移/清空/健康状态表/立即检测/保存回写，脏草稿并入未保存守卫）；通用出网/App 同步专用代理内联输入→「编辑」按钮 + 弹窗（掩码显示、http/https 校验、留空保持、清除直连）；申诉处理抽屉→弹窗（处理表单在弹窗内、动作放 footer）；移动端 ≤768px 弹窗全宽。保留搜索栏 inline-form、只读查看抽屉与前台弹窗。交互 headless Chrome CDP 20/20 + 前后截图 `F:\dsh\el-shots\{before,after}`。规格见 [docs/ADMIN-EDIT-DIALOG.md](docs/ADMIN-EDIT-DIALOG.md)。
+
+### 测试基建
+
+- **ED test-main 加文档路径忽略（站点 143d97e）**：`.github/workflows/test-main.yml` 的 on.push 加 `paths-ignore`（`docs/**`、`**/*.md`、`CHANGELOG.md`、`data/**`）——纯文档提交不再触发/取消重跑 test-main，省 CI 时间；代码路径（`src/**`、`frontend/**`、`test/**`、`scripts/**`、`package.json`、`package-lock.json`、`.github/**`）一律不忽略；docker-hub/docker-tcr 只在 tag 触发，不动。
+
+### 测试
+
+- QA（本批 6 条全部放行）：ED ✅ docs/QA-ED.md 第 1 轮（4/0/0/0）/ EH+EI ✅ docs/QA-EH-EI.md 第 1 轮（9/0/0/2，2 项为上线后覆盖率观察）/ EL ✅ docs/QA-EL.md 第 1 轮（5/0/0/2）/ EK ✅ docs/QA-EK.md 第 1 轮（6/0/0/1）/ DX ✅ docs/QA-DX.md 第 1 轮（6/0/0/1）。
+- 本机发版门禁：相关测试（sync-regions / steam-status / steam-meta / adapters / settings / app-release-sync / app-release / admin-edit-dialog / discovery）+ 主链分段 test:1~4 兜底 + `node test/api.test.js` + `npm run frontend:build` + `npm run scan`（输出见 release 提交与 docs/DELIVERY.md）。
+
 ## [2.27.7] - 2026-11-20
 
 EJ 昵称显示规则统一（Web + App）（显示口径调整，无新功能面 → 小版本，2.27.6 → 2.27.7 连续递增）。App 仓库同步发布 **app-v2.24.2（22402）**。
