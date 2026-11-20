@@ -26,9 +26,10 @@ test('CI-1 渲染：品牌头/卡片字段/Steam 链接/转义/无外部资源',
 });
 
 test('CI-1 接线：cli 提醒路径传 html；alerts.js 纯文本口径不变', () => {
-  const cli = readFileSync(join(process.cwd(), 'src', 'cli.js'), 'utf8');
-  assert.match(cli, /renderAlertsHtml/, 'cli 引入渲染');
-  assert.match(cli, /html: mail\.html/, 'deliver 多传 html');
+  // CO-5/B4-2 第十一轮：cmdAlerts 已随 cli 报表类域拆到 src/cli/report.js，断言按新落点指向
+  const cliReport = readFileSync(join(process.cwd(), 'src', 'cli', 'report.js'), 'utf8');
+  assert.match(cliReport, /renderAlertsHtml/, 'cli 引入渲染');
+  assert.match(cliReport, /html: mail\.html/, 'deliver 多传 html');
   const alerts = readFileSync(join(process.cwd(), 'src', 'alerts.js'), 'utf8');
   assert.match(alerts, /export function renderDigest/, '纯文本兜底保留');
 });

@@ -160,12 +160,13 @@ test('CB-2：deliver 透传 html——假 SMTP 收到 multipart/alternative 且 
 });
 
 test('CB-3：CLI 接入与设置项——cmdReport 用 renderPriceReport、site.publicUrl 存在', () => {
-  const cli = readFileSync(ROOT + 'src/cli.js', 'utf8');
+  // CO-5/B4-2 第十一轮：cmdReport 已随 cli 报表类域拆到 src/cli/report.js，断言按新落点指向
+  const cliReport = readFileSync(ROOT + 'src/cli/report.js', 'utf8');
   const settings = readFileSync(ROOT + 'src/settings.js', 'utf8');
-  assert.match(cli, /import \{ renderPriceReport \} from '\.\/price-report-html\.js'/, 'CLI 引入渲染模块');
-  assert.match(cli, /renderPriceReport\(\{\s*report: rep/, 'cmdReport 生成 {subject, html, text}');
-  assert.match(cli, /SITE_PUBLIC_URL/, 'CLI 读站点公开地址设置');
-  assert.match(cli, /html,\s*\n?\s*payload: \{ type: 'steamdeals\.price_report'/, 'deliver 传 html + payload');
+  assert.match(cliReport, /import \{ renderPriceReport \} from '\.\.\/price-report-html\.js'/, 'CLI 引入渲染模块');
+  assert.match(cliReport, /renderPriceReport\(\{\s*report: rep/, 'cmdReport 生成 {subject, html, text}');
+  assert.match(cliReport, /SITE_PUBLIC_URL/, 'CLI 读站点公开地址设置');
+  assert.match(cliReport, /html,\s*\n?\s*payload: \{ type: 'steamdeals\.price_report'/, 'deliver 传 html + payload');
   assert.match(settings, /site\.publicUrl/, '新增 site.publicUrl 设置');
   assert.match(settings, /SITE_PUBLIC_URL/, 'env SITE_PUBLIC_URL');
   assert.match(settings, /https:\/\/sd\.yyliucha\.cn/, '默认值');

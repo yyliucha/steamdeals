@@ -11,8 +11,11 @@ import { readFileSync } from 'node:fs';
 //   ③ 旧分支不残留在 cli.js（防双实现）。
 // 反向自检（跑过并恢复）：删 sync.js 任一 `target === 'xxx'` 分支 → 测试 1/2 红；删 cli.js 的
 // dispatchSync 接线 → 测试 4 红；把 cmdSyncSteamAll 抄回 cli.js → 测试 3/5 红。
+// B4 #19（第十一轮）：cli 报表类域拆到 src/cli/report.js，同样三条锁 + 反向自检
+// （删 cli.js 的 reportDomain.trackedCommands 展开 → 测试 9 红；删 report.js 的 cmdHistory → 测试 6 红）。
 const cli = readFileSync(new URL('../src/cli.js', import.meta.url), 'utf8');
 const syncMod = readFileSync(new URL('../src/cli/sync.js', import.meta.url), 'utf8');
+const reportMod = readFileSync(new URL('../src/cli/report.js', import.meta.url), 'utf8');
 const scheduler = readFileSync(new URL('../src/scheduler.js', import.meta.url), 'utf8');
 
 function schedulerSyncTargets() {
@@ -85,4 +88,35 @@ test('同步类命令实现全部在新文件，cli.js 不残留实现（防双�
     assert.ok(syncMod.includes(`async function ${name}`), `src/cli/sync.js 缺少实现 ${name}`);
     assert.ok(!cli.includes(`async function ${name}`), `cli.js 残留实现 ${name}（防双实现）`);
   }
+});
+
+// ── B4 #19（CO-5/B4-2 第十一轮）：cli 报表类域三条锁 ──
+
+const REPORT_IMPLS = ['cmdReport', 'cmdAlerts', 'cmdStats', 'cmdHistory', 'cmdList', 'cmdChart', 'cmdCompare'];
+const REPORT_COMMAND_KEYS = ['report', 'alerts', 'stats', 'history', 'list', 'chart', 'compare'];
+
+test('报表类命令实现全部在 src/cli/report.js，cli.js 不残留实现（防双实现）', () => {
+  for (const name of REPORT_IMPLS) {
+    assert.ok(reportMod.includes(`async function ${name}`), `src/cli/report.js 缺少实现 ${name}`);
+    assert.ok(!cli.includes(`async function ${name}`), `cli.js 残留实现 ${name}（防双实现）`);
+  }
+});
+
+test('报表类命令注册表条目指域模块（注册表语义保持，防死模块）', () => {
+  for (const key of REPORT_COMMAND_KEYS) {
+    assert.ok(reportMod.includes(`${key}: cmd`), `src/cli/report.js 缺少注册条目 ${key}`);
+    assert.match(cli, new RegExp(`${key}: reportDomain\\.commands\\.${key}`), `cli.js 的 commands.${key} 未指向域模块（防死模块）`);
+  }
+});
+
+test('cli.js 真实接线：import 报表域模块 + TRACKED_COMMANDS 展开 alerts/report（写 sync_runs 语义保持）', () => {
+  assert.match(cli, /import \{ createCliReport \} from '\.\/cli\/report\.js'/, 'cli.js import 报表域模块');
+  assert.match(cli, /const reportDomain = createCliReport\(\{ args, flag, logger, withStore, yuan, pad \}\)/, 'cli.js 组装报表域 ctx（yuan/pad 跨域工具传引用）');
+  assert.match(cli, /\.\.\.reportDomain\.trackedCommands/, 'TRACKED_COMMANDS 展开报表域 trackedCommands（alerts/report 写 sync_runs 语义保持）');
+  assert.doesNotMatch(cli, /alerts: cmdAlerts|report: cmdReport/, 'cli.js 不再直接引用报表命令实现（防双实现）');
+});
+
+test('sparkline/BLOCKS 仅随报表域移出，cli.js 不再残留', () => {
+  assert.ok(reportMod.includes('const sparkline'), 'sparkline 在报表域（history 使用）');
+  assert.ok(!cli.includes('const sparkline') && !cli.includes("const BLOCKS"), 'cli.js 不再残留 sparkline/BLOCKS（history 唯一使用者已拆走）');
 });
