@@ -3,6 +3,7 @@
 //
 // 域边界（外部契约零变化，路径/参数/响应/错误码与拆分前完全一致）：
 //   · GET    /api/announcements               公开列表：只回生效窗口内；登录用户附带服务端 readIds
+//                                            （EG 修复：Cookie 会话 + App Bearer 双口径，游客空数组）
 //   · POST   /api/announcements/read          登录用户标记已读（幂等；只写真实存在的公告 id）
 //   · GET    /api/admin/announcements         管理员列表（limit 收敛 1–200）
 //   · POST   /api/admin/announcements         管理员创建（标题/内容必填；level 白名单）
@@ -46,9 +47,16 @@ export async function handleAnnouncementsPublic(ctx) {
 
   if (path === '/api/announcements' && req.method === 'GET') {
     const rows = await db.listAnnouncements(q, { activeOnly: true, limit: 200 });
-    // 登录用户附带服务端已读 id（跨设备跟随账号）；游客本地记录，接口只给空数组
-    const sessUser = await resolveSession();
-    const readIds = sessUser ? await db.listAnnouncementReads(q, sessUser.id) : [];
+    // EG（docs/ANDROID-POLISH.md §EG）：登录用户附带服务端已读 id（跨设备跟随账号）。
+    // App 走 Bearer、无 Cookie——resolveSession 只认 Cookie 会话，此前 App 登录用户恒拿到空 readIds，
+    // 已读标记虽已落库，App 每次刷新/重进/重启都回跳角标。这里补 Bearer 解析（只读查询、无 touch
+    // 节流写；同一请求在后续主段还会为认证上下文查一次 userByApiToken，/api/announcements 是低频
+    // 列表接口，接受这一次冗余索引查询）。游客（无 Bearer 无 Cookie）仍空数组，契约不变。
+    const bearerMatch = /^Bearer\s+([A-Za-z0-9_-]{16,})$/i.exec(String(req.headers.authorization ?? ''));
+    const readerId = bearerMatch
+      ? (await db.userByApiToken(q, bearerMatch[1]).catch(() => null))?.id ?? null
+      : (await resolveSession())?.id ?? null;
+    const readIds = readerId ? await db.listAnnouncementReads(q, readerId) : [];
     json(
       res,
       200,

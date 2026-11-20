@@ -178,6 +178,57 @@ test('公告已读：登录用户读状态存服务端并随账号（换设备�
   }
 });
 
+test('EG：App（Bearer）公告列表必须携带该用户服务端 readIds（角标持久化回归）', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  await db.createUser(q, { username: 'egalice', password: 'egalice123456', role: 'user' });
+  const ann = await db.createAnnouncement(q, { title: 'EG 回归公告', body: '正文', active: true });
+  const srv = await startApiServer({
+    query: q,
+    outDir: WEB,
+    port: 0,
+    host: '127.0.0.1',
+    getSetupState: async () => ({ completed: true }),
+  });
+  const base = `http://127.0.0.1:${srv.port}`;
+  try {
+    // App 登录拿 Bearer（验证码已关）
+    const login = await fetch(base + '/api/app/auth/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-device-id': 'eg-test-1' },
+      body: JSON.stringify({ username: 'egalice', password: 'egalice123456' }),
+    });
+    assert.equal(login.status, 200);
+    const bearer = (await login.json()).token;
+
+    // 标记已读落库（POST 主段既有测试覆盖，这里只确认前置成立）
+    const mark = await fetch(base + '/api/app/announcements/read', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${bearer}` },
+      body: JSON.stringify({ ids: [Number(ann.id)] }),
+    });
+    assert.equal(mark.status, 200);
+
+    // 回归点（EG 根因）：GET /api/app/announcements 必须回该用户的 readIds——
+    // 此前公开段只认 Cookie 会话，App 登录用户恒拿到空数组 → 角标每次刷新都回跳。
+    // 反向自检：删掉公开段的 Bearer 解析 → 本断言红（修复前实测红，见提交记录）。
+    const list = await fetch(base + '/api/app/announcements', {
+      headers: { authorization: `Bearer ${bearer}` },
+    });
+    assert.equal(list.status, 200);
+    const body = await list.json();
+    assert.deepEqual(body.readIds, [Number(ann.id)], 'Bearer 用户应拿到服务端已读 id');
+
+    // 匿名仍空数组（游客本地口径，契约不变）
+    const anon = await (await fetch(base + '/api/app/announcements')).json();
+    assert.deepEqual(anon.readIds, [], '匿名仍空数组');
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});
+
 // ============================================================ CO-5/B4-2 第五轮静态锁
 
 test('CO-5/B4-2 第五轮：公告路由分支全部在 src/routes/announcements.js（公开/主/管理三入口，删任一支即红）', () => {
@@ -191,8 +242,10 @@ test('CO-5/B4-2 第五轮：公告路由分支全部在 src/routes/announcements
   assert.match(ANN_ROUTES, /export async function handleAnnouncementsPublic\(ctx\)/, '公开段入口');
   assert.match(ANN_ROUTES, /export async function handleAnnouncementsRoutes\(ctx\)/, '主段入口');
   assert.match(ANN_ROUTES, /export async function handleAnnouncementsAdmin\(ctx\)/, '管理段入口');
-  // 守卫与校验随路由：公开段走 resolveSession（游客可读）、主段 requireUser、管理段 requireAdmin + 标题/内容必填 + level 白名单
-  assert.match(ANN_ROUTES, /const sessUser = await resolveSession\(\)/, '公开段仍解析会话附带 readIds');
+  // 守卫与校验随路由：公开段走 resolveSession（游客可读），EG 起补 Bearer 解析（App 登录用户 readIds）；
+  // 主段 requireUser、管理段 requireAdmin + 标题/内容必填 + level 白名单
+  assert.match(ANN_ROUTES, /await resolveSession\(\)/, '公开段仍解析 Cookie 会话附带 readIds');
+  assert.match(ANN_ROUTES, /userByApiToken\(q, bearerMatch\[1\]\)/, 'EG：公开段补 Bearer 解析（App 登录用户 readIds）');
   assert.match(ANN_ROUTES, /if \(!requireUser\(\)\) return true/, '主段登录守卫');
   assert.match(ANN_ROUTES, /if \(!requireAdmin\(\)\) return true/, '管理段守卫');
   assert.match(ANN_ROUTES, /error: '标题和内容不能为空'/, '标题/内容必填校验随路由');

@@ -188,16 +188,21 @@ pm test（分段）+ rontend:build + scan 全绿）。
 - **验收**：见规格 §9（回填后 adult 数显著增加且有计数日志；Web/App 筛选只显示 18R + 角标；价格国区口径不变；
   `npm test`（分段）+ `frontend:build` + `scan` 全绿）。
 
-## EG. 待开发（🐞 缺陷）：通知角标已读后不消失（ABC 三场景）
+## EG. 已实现待发版（🐞 缺陷）：通知角标已读后不消失（ABC 三场景）
 
 **类型：** 🐞 缺陷（App 公告角标）
-**状态：** 待开发（2026-11-20 所有者确认 ABC 都有问题）
+**状态：** 已实现待发版（2026-11-20；App 仓库 3458bce + 站点 <待提交哈希>）
 **优先级：** P1 —— 角标常驻误导
 **依赖：** 无
 **解锁：** 无
+**涉及 App 仓库**：是（app-vX.Y.Z 随本批）
 **规格**：[ANDROID-POLISH.md](ANDROID-POLISH.md) §EG
 
 - **现象**：A 打开公告列表 / B 点开公告详情 / C 点「全部已读」——三种操作后首页铃铛角标仍显示 1。
 - **排查**：服务端 `/api/announcements/read` 是否保存；`refresh()` 覆盖竞态（markInFlight 闩）；
   角标与弹层未读是否同源；游客本地 DataStore 写入；ABC 分别复现定位。
-- **验收**：ABC 三场景角标正确（B 递减 / C 立即归零 / A 按口径）；刷新/重启不复现；App 构建通过。
+- **修复**：① 站点 `GET /api/announcements` 公开段补 Bearer 解析（此前只认 Cookie 会话，App 登录用户
+  恒拿空 readIds → 刷新即回跳的根因）；② App `AnnouncementsState` 标记纪元守卫（陈旧快照只并集不覆盖、
+  会话切换快照作废，取代 markInFlight 闩）+ 网关缝解耦 + `AnnouncementsStateTest` 5 项锁竞态。
+- **验收**：ABC 三场景角标正确（B 递减 / C 立即归零 / A 按口径）；下拉刷新/重进首页/重启 App 不复现；
+  App 构建通过——模拟器（10s 延迟代理放大竞态）+ 单测 83 项 + 站点测试全绿。

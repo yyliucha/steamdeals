@@ -228,3 +228,36 @@
 
 **验收**：A/B/C 三场景角标都正确（A 按口径·B 递减·C 立即归零）；下拉刷新/重进首页/重启 App 不复现；
 App 构建通过。
+
+## EG 实现说明（2026-11-20 开发会话，App 仓库 3458bce + 站点仓库 <待提交哈希>，随 app-v2.24.0 发布）
+
+### 根因（代码证据 + 现场复现）
+
+- **站点侧（主根因）**：`GET /api/announcements` 的 readIds 只经 `resolveSession()`（Cookie 会话）解析——
+  App 走 Bearer、无 Cookie，`resolveSession()` 恒为 null → App 登录用户**每次刷新都拿到空 readIds**。
+  实测：POST /api/app/announcements/read 返回 `{ok:true,readIds:[1]}`（已落库），同一 Bearer 的
+  GET 却返回 `readIds:[]` → App 下一次刷新/重进/重启就把内存已读覆盖成空 → 角标回跳。
+- **App 侧（次根因）**：`AnnouncementsState.refresh()` 把返回的 readIds **无条件直落**——即使站点修好，
+  慢网下「打开弹层触发的列表请求在标记已读之后才返回」仍会用陈旧快照覆盖内存已读（`markInFlight` 闩
+  只护标记在途窗口，护不住「POST 已完成、更早的陈旧 GET 才返回」的窗口）。
+  模拟器 + 10 秒延迟代理放大窗口复现：B 点详情角标 2→1→回跳 2；C 全部已读角标 2→0→回跳 2。
+- ③ 角标与弹层「未读 N 条」同源（同一 `unreadCount` StateFlow，无需改）；④ 游客 DataStore 写入正常
+  （模拟器验证：游客 C 归零 + 重启保留）。
+
+### 修复
+
+- 站点：公开段补 Bearer 解析（`userByApiToken`）——登录用户（Bearer 或 Cookie）都能拿到服务端 readIds；
+  匿名仍空数组（契约不变）。回归测试：`test/announcements.test.js` EG 组（Bearer 标记 → GET 回读 + 匿名仍空，
+  修复前实测红）。
+- App：`AnnouncementsState` 标记纪元守卫——refresh() 起点拍 `(会话, markEpoch)`，返回时会话变了 → 快照作废
+  （旧账号已读不串新账号）；会话没变但期间有标记 → 只与内存**并集**（标记只增不减，并集永不复活角标）；
+  否则快照权威直落（跨设备已读正常同步）。状态与网络经 `AnnouncementsGateway` 缝解耦，
+  `AnnouncementsStateTest` 5 项（kotlinx-coroutines-test 可控假网关精确复现陈旧快照晚到；
+  反向自检：并集改直落 → 2 项竞态用例红）。
+
+### 验收核对（本批实测）
+
+- A 打开列表：不自动全标（沿用 DZ 口径），角标与弹层「未读 N 条」同源一致；
+- B 点详情：角标立即递减且不回跳（含 10s 延迟代理放大竞态）；
+- C 全部已读：角标立即归零且不回跳；下拉刷新/重进首页/重启 App 不复现（登录=服务端 readIds、游客=本地 DataStore）；
+- App 构建通过、App 单测 83 项全绿、站点 announcements/app-contract/api 测试全绿。
