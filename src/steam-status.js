@@ -6,7 +6,7 @@
 import * as db from './store/pg.js';
 import { ingestOffers } from './ingest.js';
 import { classifySteamStatus } from './adapters/steam.js';
-import { classifyContentRating, normalizeOfficial } from './adapters/steam-meta.js';
+import { classifyContentRating, normalizeOfficial, fetchMetadata } from './adapters/steam-meta.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -29,8 +29,9 @@ export function entryFromMeta(item) {
  * - 分级字段本次没拿到（null/空）→ 不覆盖已有值（db.setSteamStatus 用 coalesce 处理；
  *   空数组/空对象与 null 同等对待——coalesce 只挡 null，空数组会把已有分级清空，AB 批 §2.5-5）。
  *
- * 返回 { status, rating, wroteStatus }：status 为 null 表示本次判定不了；
- * wroteStatus 只有「状态真写进库且 UPDATE 命中行」才为 true（AB 批 §3-B：写入不可静默）。
+ * 返回 { status, rating, wroteStatus, ratingWritten }：status 为 null 表示本次判定不了；
+ * wroteStatus 只有「状态真写进库且 UPDATE 命中行」才为 true（AB 批 §3-B：写入不可静默）；
+ * ratingWritten（EF 批 §9）：分级 UPDATE 命中行（与状态无关——rating-backfill 只写分级靠它计数）。
  */
 export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = null, meta = null, logger = null }) {
   // BP 批（docs/GAME-DLC.md §3.2）：同一次 appdetails 响应里顺带写 dlc_appids + game_dlc 占位（零额外请求）。
@@ -66,7 +67,7 @@ export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = nu
   }
   if (status == null && !hasRating) {
     // 什么都没拿到：不写库（GetItems 且无分级字段的路径）
-    return { status, rating, wroteStatus: false, offerWritten: false, headerImageFilled, dlcWritten };
+    return { status, rating, wroteStatus: false, offerWritten: false, headerImageFilled, dlcWritten, ratingWritten: false };
   }
   const row = await db.setSteamStatus(q, {
     steamAppid: appid,
@@ -79,6 +80,9 @@ export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = nu
   });
   // setSteamStatus 未命中（appid 不在库）返回 null：不得算写成功（AB 批 §3-B）
   const wroteStatus = status != null && row != null;
+  // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：分级字段的 UPDATE 命中行——与状态无关，
+  // rating-backfill（只写分级）靠它统计真实写入数。
+  const ratingWritten = row != null;
   // AC-2（docs/SYNC-FAILURE-MODES.md AC8，2026-11-09 确认）：判定 ok（国区有价）时顺带写首次 offer——
   // 与状态共用同一次 appdetails 响应，不额外消耗配额；免费/锁区/未发售不写价。
   let offerWritten = false;
@@ -110,7 +114,7 @@ export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = nu
       logger?.warn?.('steam-status.offer_failed', { appid, message: String(err?.message ?? err).slice(0, 160) });
     }
   }
-  return { status, rating, wroteStatus, offerWritten, headerImageFilled, dlcWritten };
+  return { status, rating, wroteStatus, ratingWritten, offerWritten, headerImageFilled, dlcWritten };
 }
 
 /**
@@ -243,4 +247,131 @@ export async function runSteamStatusRound(
     }
   }
   return { wrote, skipped, failed, requests, counts, offers, headerFilled, dlcWritten, dlcFill, aborted429, attempted };
+}
+
+// ---------------------------------------------------------------- EF：内容分级回填（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）
+
+/**
+ * EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：内容分级回填候选。
+ * - 候选 = required_age 为 null 的行：cc=cn 时代国区商店隐藏成人内容 → appdetails 无数据 →
+ *   三字段（required_age/content_descriptors/age_ratings）全空；required_age 已采到（含 0）
+ *   说明国区可正常采集（描述符缺失只是本来就空）→ 不需要 us 回填，自带收敛；
+ * - backfill_at 1 天冷却：断点续跑（中断后重跑跳过当天已处理行），次日重采幂等；
+ * - 高嫌疑优先：genres/tags 含 色情/Nudity/Sexual 的排前面（先确认最重要的成人游戏）。
+ */
+export async function listRatingBackfillCandidates(q, { limit = 30 } = {}) {
+  const size = Math.min(Math.max(Number(limit) || 30, 1), 100);
+  const r = await q(
+    'select g.steam_appid from games g ' +
+      'where g.steam_appid is not null and not g.deleted ' +
+      'and g.required_age is null ' +
+      "and (g.backfill_at is null or g.backfill_at < now() - interval '1 day') " +
+      "order by (case when (coalesce(array_to_string(g.genres, '|'), '') || '|' || coalesce(array_to_string(g.tags, '|'), '')) ~* '(色情|nudity|sexual)' then 0 else 1 end), g.id " +
+      'limit $1',
+    [size],
+  );
+  return r.rows.map((row) => Number(row.steam_appid)).filter((n) => Number.isFinite(n) && n > 0);
+}
+
+/**
+ * EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：内容分级回填一轮。
+ * 根因：cc=cn 的 appdetails 国区商店隐藏成人内容 → content_descriptors 采不到 → 全库
+ * adult_flag 仅约 20 个。本函数逐 appid 用 cc=us 重采 content_descriptors / required_age /
+ * age_ratings，只写分级（applySteamDetails 传 cnEntry/hkEntry=null：不写 steam_status、
+ * 不写价格 offer——国区价格口径不受影响）。限速按「每个请求」计（rateMs ≥ 1s）；
+ * 撞 429 立即收轮（aborted429=true，调用方 exit 75 由调度器 1 小时后重排）；
+ * 开工前 / 收工后各记一次 adult/mature 计数（验收① steam.meta.backfill_before/done）。
+ * fetchMetadataImpl 可注入（测试离线验证）；返回 { done, wrote, adultWrote, matureWrote, failed, batches, aborted429, before, after, elapsedMs }。
+ */
+export async function runRatingBackfillRound(
+  q,
+  { limit = 200000, batch = 30, rateMs = 1500, fetchMetadataImpl = null, logger = null } = {},
+) {
+  const fetchMeta = fetchMetadataImpl ?? fetchMetadata;
+  const size = Math.min(Math.max(Number(limit) || 200000, 1), 200000);
+  const step = Math.min(Math.max(Number(batch) || 30, 1), 100);
+  const sleepMs = Math.max(1000, Math.min(Number(rateMs) || 1500, 60000));
+  const startedMs = Date.now();
+  let done = 0;
+  let wrote = 0;
+  let adultWrote = 0;
+  let matureWrote = 0;
+  let failed = 0;
+  let batches = 0;
+  let aborted429 = false;
+
+  const countRating = async () =>
+    (
+      await q(
+        "select count(*) filter (where not deleted)::int as total, " +
+          'count(*) filter (where not deleted and adult_flag)::int as adult, ' +
+          'count(*) filter (where not deleted and mature_flag)::int as mature from games',
+      )
+    ).rows[0];
+
+  const before = await countRating();
+  logger?.info?.('steam.meta.backfill_before', { total: before.total, adult: before.adult, mature: before.mature });
+
+  while (done < size && !aborted429) {
+    const stepSize = Math.min(step, size - done);
+    const appids = await listRatingBackfillCandidates(q, { limit: stepSize });
+    if (!appids.length) break;
+    batches += 1;
+
+    const metas = new Map();
+    for (const appid of appids) {
+      try {
+        const one = await fetchMeta([appid], { backend: 'official', logger, cc: 'us' });
+        if (one?.items?.length) metas.set(appid, one.items[0]);
+      } catch (err) {
+        const status = Number(err?.status) || 0;
+        if (status === 429) {
+          aborted429 = true;
+          logger?.warn?.('steam.meta.backfill_429', { appid, done });
+          break;
+        }
+        failed += 1;
+        logger?.warn?.('steam.meta.backfill_failed', { appid, message: String(err?.message ?? err).slice(0, 160) });
+      }
+      if (sleepMs) await sleep(sleepMs);
+    }
+
+    let batchWrote = 0;
+    let batchAdult = 0;
+    let batchMature = 0;
+    for (const appid of metas.keys()) {
+      const outcome = await applySteamDetails(q, { appid, cnEntry: null, hkEntry: null, meta: metas.get(appid), logger });
+      if (outcome.ratingWritten) {
+        batchWrote += 1;
+        if (outcome.rating?.adultFlag) batchAdult += 1;
+        if (outcome.rating?.matureFlag) batchMature += 1;
+      }
+    }
+    // 冷却记账：正常时无论拿没拿到数据都记一笔（当天不再重复请求，防下架行空转）；
+    // 429 收轮时只记已成功采集的行——未处理行保持候选，下轮断点续跑
+    await db.markBackfilled(q, aborted429 ? [...metas.keys()] : appids);
+    wrote += batchWrote;
+    adultWrote += batchAdult;
+    matureWrote += batchMature;
+    done += appids.length;
+    logger?.info?.('steam.meta.backfill_batch', { batch: batches, done, wrote: batchWrote, adult: batchAdult, mature: batchMature, failed });
+  }
+
+  const after = await countRating();
+  logger?.info?.('steam.meta.backfill_done', {
+    done,
+    wrote,
+    adultWrote,
+    matureWrote,
+    failed,
+    batches,
+    total: after.total,
+    adultBefore: before.adult,
+    adultAfter: after.adult,
+    matureBefore: before.mature,
+    matureAfter: after.mature,
+    aborted429,
+    elapsedMs: Date.now() - startedMs,
+  });
+  return { done, wrote, adultWrote, matureWrote, failed, batches, aborted429, before, after, elapsedMs: Date.now() - startedMs };
 }

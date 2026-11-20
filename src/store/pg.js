@@ -1820,7 +1820,7 @@ async function fuzzyCandidateIds(q, kw, kwNormExpr, norm, cap, nameThreshold) {
  */
 export async function gameSearch(
   q,
-  { region = 'cn', page = 1, pageSize = 20, keyword = '', sort = 'discount', interest = 'all', owned = 'exclude', blocked = 'exclude', userId = null, typeFilter = 'all', released = 'all', marks = 'any', compact = false, guestFlags = null, wishlist = false, adult = 'hide', reviewMin = null, deck = 'all', discountOnly = false, histLowOnly = false, freeOnly = false, unreleased = false } = {},
+  { region = 'cn', page = 1, pageSize = 20, keyword = '', sort = 'discount', interest = 'all', owned = 'exclude', blocked = 'exclude', userId = null, typeFilter = 'all', released = 'all', marks = 'any', compact = false, guestFlags = null, wishlist = false, adult = 'hide', rating = '', reviewMin = null, deck = 'all', discountOnly = false, histLowOnly = false, freeOnly = false, unreleased = false } = {},
   logger = null,
 ) {
   // DA 批（docs/APP-FILTER-SERVER-SIDE.md §2）：四个筛选开关互斥（App 单选 chip），
@@ -1948,6 +1948,11 @@ export async function gameSearch(
   // 成人内容展示策略（docs/STEAM-SYNC-STATUS-AND-RATING.md §5.2）：
   // hide=前台不展示（默认），badge/show 不过滤（展示方式由前端角标决定）。只做平台标签映射，不做法律定性。
   if (adult === 'hide') conds.push('not g.adult_flag');
+  // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：前台 rating 筛选——与后台 /api/admin/games 同一口径
+  // （adult=只看 18R；mature=只看成熟；none=只看未标注（双 false）；空=不过滤）。
+  if (rating === 'adult') conds.push('g.adult_flag');
+  else if (rating === 'mature') conds.push('g.mature_flag');
+  else if (rating === 'none') conds.push('not g.adult_flag and not g.mature_flag');
   if (guestFlags && !userId) {    // 游客：感兴趣/不感兴趣沿用浏览器本地标记；已拥有与愿望单是登录用户专属维度，
     // owned=only/exclude 与 wishlist=true 对游客一律无效（规格 §6：未登录返回全量）。
     const interestIds = interest === 'on' ? guestFlags.interestedIds : interest === 'off' ? guestFlags.uninterestedIds : null;

@@ -166,10 +166,10 @@ pm test（分段）+ rontend:build + scan 全绿）。
 - **验收**：① 只改 docs 的提交不触发 test-main（gh run list 确认）；② 改 src/package.json 仍触发；
   ③ workflow 语法有效（push 后 Actions 正常解析）；④ 连续文档提交不再产生 cancelled run。
 
-## EF. 待开发（🐞 缺陷）：18R 数据同步与筛选修复（元数据 cc=cn 锁国区 → 成人内容采不到）
+## EF. 已实现待发版（🐞 缺陷）：18R 数据同步与筛选修复（元数据 cc=cn 锁国区 → 成人内容采不到）
 
 **类型：** 🐞 缺陷（数据同步 + 筛选）
-**状态：** 待开发（2026-11-20 所有者指出版权：服务器在美国但代码锁国区）
+**状态：** 已实现待发版（2026-11-20 开发会话；站点 <code>见提交</code> + App 仓库 358ebc5；**涉及 App 仓库**：是（app-vX.Y.Z 随本批））
 **优先级：** P1 —— 18R 数据缺失 + App 筛选语义错误
 **依赖：** 无
 **解锁：** 无
@@ -180,6 +180,11 @@ pm test（分段）+ rontend:build + scan 全绿）。
 - **修复**：① 元数据采集 `cc=cn` → `cc=us`（保留 l=schinese；价格接口仍 cc=cn 不动）；
   ② 全量回填 content_descriptors（新回填命令/复用 rename，限速防 429）；③ 前台 `/api/games` 支持
   `rating=adult|mature|none`；④ Web 前台加 18R 筛选；⑤ App 18R chip 改筛选（adult=badge&rating=adult）。
+- **实现**：① `fetchMetadata` cc 参数化（默认 us，价格口径调用点显式 cn）；② 新增 `rating-backfill`
+  命令（cc=us 重采三字段、只写分级不写价、限速 ≥1s、429 收轮 exit 75、前后 adult 计数日志、断点续跑）
+  + 并入调度器（STEAM_HEAVY/预算）；③ `gameSearch` 加 `rating`（与后台 admin 同口径）；④ Home.vue
+  18R 开关（桌面+移动抽屉，选中 adult=badge&rating=adult，取消恢复全部，角标 18+）；⑤ App
+  HomeScreen/SearchScreen 开=badge&rating=adult / 关=hide（App 358ebc5）。
 - **验收**：见规格 §9（回填后 adult 数显著增加且有计数日志；Web/App 筛选只显示 18R + 角标；价格国区口径不变；
   `npm test`（分段）+ `frontend:build` + `scan` 全绿）。
 

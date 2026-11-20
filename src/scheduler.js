@@ -104,6 +104,17 @@ export function jobsFromEnv(env = process.env) {
       enabled: env.STEAM_ENABLED !== '0',
     },
     {
+      name: 'rating-backfill',
+      // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：每天回填一批内容分级（cc=us 逐 appid，
+      // 国区商店隐藏成人内容 → adult_flag 全库仅约 20 个）。与价格/热度/回填共用 200 次/5 分钟
+      // 配额 → STEAM_HEAVY 互斥串行；候选自带收敛（required_age 已采到即不再选），全量播完
+      // 后日常增量由 steam-status 维护。429 收轮 exit 75，1 小时后自动重排续跑。
+      args: ['rating-backfill', '--limit', String(num(env.STEAM_RATING_BACKFILL_LIMIT, 5000)), '--batch', '30', '--rate', String(num(env.STEAM_RATING_BACKFILL_RATE_MS, 1500))],
+      intervalMin: num(env.STEAM_RATING_BACKFILL_INTERVAL_MIN, 1440),
+      initialDelaySec: num(env.STEAM_RATING_BACKFILL_INITIAL_DELAY_SEC, 14400),
+      enabled: env.STEAM_ENABLED !== '0',
+    },
+    {
       name: 'backfill',
       // 每天增量回填（BL-1，docs/BACKFILL-THROUGHPUT.md §3.1）：给目录里新进的游戏补元数据/说明/价格
       // （GetItems + appdetails 回退）。选择条件自带收敛（有说明+报价的跳过），没活时秒退；
@@ -377,7 +388,7 @@ const SYNC_LIKE = new Set(['steam', 'sonkwo', 'itad', 'gog', 'humble', 'discover
 // Steam 重任务：与后台手动同步/回填/热度共用配额与槽位，有手动任务在跑时让路。
 // 它们都打 store.steampowered.com/appdetails（200 次/5 分钟配额），必须串行互斥。
 // steam-status 也在其中（X 批）：逐 appid 全量请求，与价格/热度/回填并列重任务槽。
-export const STEAM_HEAVY = new Set(['steam-prices', 'rename', 'backfill', 'heat', 'steam-status', 'steam-discovery', 'catalog']);
+export const STEAM_HEAVY = new Set(['steam-prices', 'rename', 'backfill', 'rating-backfill', 'heat', 'steam-status', 'steam-discovery', 'catalog']);
 
 // 轻任务：目标站与配额都和重任务独立（杉果国内源、GOG/Humble catalog、备份/日志/提醒/图片），
 // 允许在 heat/steam-prices 等长任务运行时并行执行——否则 heat 首轮播种 9 小时会饿死所有其它源。
@@ -462,15 +473,16 @@ export function describeSchedule(jobs) {
 
 // ---------------------------------------------------------------- AC-4：每日 Steam 配额预算
 
-/** AC-4 的四个 Steam 重任务 mode 列表（B3 批共用：预算/任务卡估算只覆盖这四个）。 */
-export const STEAM_BUDGET_MODES = ['steam-prices', 'heat', 'steam-status', 'backfill'];
+/** AC-4 的五个 Steam 重任务 mode 列表（B3 批共用：预算/任务卡估算只覆盖这五个；EF 批加 rating-backfill）。 */
+export const STEAM_BUDGET_MODES = ['steam-prices', 'heat', 'steam-status', 'backfill', 'rating-backfill'];
 
 /**
  * AC-4 单轮理论耗时（秒）——口径与任务实现一致：
  *  - steam-prices：每 30 款一批约 1.1s（batchSize=30/rateLimitMs=1100，cmd 内固定）；
  *  - heat：每款约 1.7s（scheduler 里 --sleep 1700 固定）；
  *  - steam-status：每款平均 2 次请求 × rate；
- *  - backfill：每 100 款一批 GetItems 间隔 3s + 每批最多 10 个单条回退（各 0.4s）。
+ *  - backfill：每 100 款一批 GetItems 间隔 3s + 每批最多 10 个单条回退（各 0.4s）；
+ *  - rating-backfill（EF 批）：每款 1 次请求 × rate（默认 1.5s）。
  */
 export function theoreticalRunSeconds(env = process.env) {
   const backfillLimit = num(env.STEAM_BACKFILL_LIMIT, 5000);
@@ -479,6 +491,7 @@ export function theoreticalRunSeconds(env = process.env) {
     heat: num(env.STEAM_HEAT_LIMIT, 20000) * 1.7,
     'steam-status': num(env.STEAM_STATUS_LIMIT, 6000) * 2 * (num(env.STEAM_STATUS_RATE_MS, 1500) / 1000),
     backfill: (backfillLimit / 100) * 3 + (backfillLimit / 100) * 10 * 0.4,
+    'rating-backfill': num(env.STEAM_RATING_BACKFILL_LIMIT, 5000) * (num(env.STEAM_RATING_BACKFILL_RATE_MS, 1500) / 1000),
   };
 }
 
@@ -496,6 +509,7 @@ export function steamDailyBudgetMinutes(env = process.env, observed = null) {
     heat: perDay(num(env.STEAM_HEAT_INTERVAL_MIN, 1440)),
     'steam-status': perDay(num(env.STEAM_STATUS_INTERVAL_MIN, 1440)),
     backfill: perDay(num(env.STEAM_BACKFILL_INTERVAL_MIN, 1440)),
+    'rating-backfill': perDay(num(env.STEAM_RATING_BACKFILL_INTERVAL_MIN, 1440)),
   };
   const secOf = (mode) => {
     const obs = observed?.get?.(mode);
@@ -506,13 +520,15 @@ export function steamDailyBudgetMinutes(env = process.env, observed = null) {
   const statusMin = (secOf('steam-status') * runsPerDay['steam-status']) / 60;
   const backfillRoundMin = secOf('backfill') / 60;
   const backfillDailyMin = (secOf('backfill') * runsPerDay.backfill) / 60;
+  const ratingBackfillDailyMin = (secOf('rating-backfill') * runsPerDay['rating-backfill']) / 60;
   return {
     priceMin,
     heatMin,
     statusMin,
     backfillRoundMin,
     backfillDailyMin,
-    total: priceMin + heatMin + statusMin + backfillDailyMin,
+    ratingBackfillDailyMin,
+    total: priceMin + heatMin + statusMin + backfillDailyMin + ratingBackfillDailyMin,
   };
 }
 
@@ -542,7 +558,7 @@ export function jobRuntimeEstimates(jobs, env = process.env, observed = null) {
 export function applySteamBudget(jobs, env = process.env, logger = null, observed = null) {
   const budget = steamDailyBudgetMinutes(env, observed);
   if (budget.total <= 1440) return { jobs, budget, adjusted: false };
-  const others = budget.priceMin + budget.heatMin + budget.backfillDailyMin;
+  const others = budget.priceMin + budget.heatMin + budget.backfillDailyMin + budget.ratingBackfillDailyMin;
   const statusTargetMin = Math.max(120, 1440 - others); // 至少给 status 留 2 小时
   // B3 批：每款速率优先用实测（observed 平均秒 ÷ 当前限额），没有实测才用理论 2×rate
   const statusLimit = num(env.STEAM_STATUS_LIMIT, 6000);
@@ -586,6 +602,7 @@ export function auditJobs(env = process.env) {
     ['heat', 'STEAM_ENABLED'],
     ['steam-status', 'STEAM_ENABLED'],
     ['rename', 'STEAM_ENABLED'],
+    ['rating-backfill', 'STEAM_ENABLED'],
     ['backfill', 'STEAM_ENABLED'],
     ['sonkwo', 'SONKWO_ENABLED'],
     ['itad', 'ITAD_ENABLED'],

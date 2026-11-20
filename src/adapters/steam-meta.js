@@ -202,11 +202,15 @@ export async function probeOfficial({ fetchImpl = globalThis.fetch, logger = nul
   }
 }
 
-async function fetchOfficial(appids, { logger, fetchImpl }) {
+async function fetchOfficial(appids, { logger, fetchImpl, cc = 'us' }) {
   const items = [];
+  // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：默认 cc=us——国区商店隐藏成人内容，
+  // cc=cn 会采不到 content_descriptors；元数据（名字/分级）以美区为准，l=schinese 保留中文名。
+  // 价格口径不在这里决定：需要国区 price_overview 的调用方（backfill/sync steamall）
+  // 显式传 cc='cn'，否则会把美元价写进国区 offer。
   // 注意：appdetails 一次只能查一个 appid，传逗号列表会返回 400（实测）
   for (const appid of appids) {
-    const url = `${OFFICIAL_DETAILS}?appids=${appid}&cc=cn&l=schinese`;
+    const url = `${OFFICIAL_DETAILS}?appids=${appid}&cc=${cc}&l=schinese`;
     try {
       const { json } = await fetchJson(url, { logger, label: 'steam.meta.official', fetchImpl, retries: 1, timeoutMs: 20000 });
       const entry = json?.[String(appid)];
@@ -243,8 +247,9 @@ async function fetchSteamcmd(appids, { logger, fetchImpl }) {
 /**
  * 取元数据。backend: 'auto' | 'official' | 'steamcmd'
  * auto 会先探官方，不通则回落镜像（并记录实际后端，便于排障）。
+ * cc 只对 official 生效（EF 批默认 'us'；价格口径调用方显式传 'cn'）。
  */
-export async function fetchMetadata(appids, { backend = 'auto', logger = null, fetchImpl = null } = {}) {
+export async function fetchMetadata(appids, { backend = 'auto', logger = null, fetchImpl = null, cc = 'us' } = {}) {
   const unique = [...new Set((appids ?? []).map(Number).filter((n) => Number.isFinite(n) && n > 0))];
   if (!unique.length) return { backend: null, items: [] };
 
@@ -256,7 +261,7 @@ export async function fetchMetadata(appids, { backend = 'auto', logger = null, f
 
   const items =
     chosen === 'official'
-      ? await fetchOfficial(unique, { logger, fetchImpl: fetchImpl ?? undefined })
+      ? await fetchOfficial(unique, { logger, fetchImpl: fetchImpl ?? undefined, cc })
       : await fetchSteamcmd(unique, { logger, fetchImpl: fetchImpl ?? undefined });
 
   logger?.info('steam.meta.done', { backend: chosen, requested: unique.length, got: items.length });

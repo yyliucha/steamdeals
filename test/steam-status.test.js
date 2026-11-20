@@ -177,6 +177,49 @@ test('前台成人过滤：adult=hide 时 adult_flag 的游戏不出现在列表
   }
 });
 
+test('EF 批：前台 rating 筛选与后台 /api/admin/games 同一口径（adult/mature/none）', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    // 三款：未标注（双 false）/ 18R（adult）/ 成熟（mature，adult 为 false）
+    await q(
+      "insert into games (steam_appid, name, adult_flag, mature_flag, is_free) values " +
+        "(3101, '未标注', false, false, false), (3102, '十八禁', true, false, false), (3103, '成熟作', false, true, false)",
+    );
+    await q("insert into platforms (code, name, kind) values ('steam','Steam 国区','official') on conflict do nothing");
+    for (const appid of [3101, 3102, 3103]) {
+      await q("insert into offers (game_id, platform_code, product_type, region, currency, price_cents) select id, 'steam', 'official_direct', 'cn', 'CNY', 1000 from games where steam_appid = $1", [appid]);
+      await q("insert into daily_prices (game_id, platform_code, region, day, min_price_cents, currency) select id, 'steam', 'cn', current_date, 1000, 'CNY' from games where steam_appid = $1", [appid]);
+      const gid = (await q('select id from games where steam_appid = $1', [appid])).rows[0].id;
+      await db.refreshGameRegionPrices(q, gid);
+      await db.refreshGameRegionHist(q, gid);
+    }
+    const appidsOf = (r) => r.rows.map((row) => row.steam_appid).sort();
+
+    const adultOnly = await db.gameSearch(q, { region: 'cn', adult: 'badge', rating: 'adult' });
+    assert.deepEqual(appidsOf(adultOnly), [3102], 'rating=adult 只看 18R（adult=badge 组合：不过滤 hide + 只留 adult）');
+    assert.equal(adultOnly.total, 1, 'total 与列表同条件');
+
+    const matureOnly = await db.gameSearch(q, { region: 'cn', adult: 'badge', rating: 'mature' });
+    assert.deepEqual(appidsOf(matureOnly), [3103], 'rating=mature 只看成熟内容');
+
+    const noneOnly = await db.gameSearch(q, { region: 'cn', adult: 'badge', rating: 'none' });
+    assert.deepEqual(appidsOf(noneOnly), [3101], 'rating=none 只看未标注（adult/mature 双 false）');
+
+    const noRating = await db.gameSearch(q, { region: 'cn', adult: 'badge' });
+    assert.equal(noRating.total, 3, '不带 rating = 不过滤（全部可见，供「取消恢复全部」）');
+
+    // 与后台同一口径的反向自检：把 none 条件改成「双 true」→ none 结果应为空（这条守的是口径，不是巧合）
+    const noneWrong = await q(
+      'select g.steam_appid from games g where not g.deleted and g.adult_flag and g.mature_flag order by g.steam_appid',
+    );
+    assert.deepEqual(noneWrong.rows.map((r) => r.steam_appid), [], '库中无 adult+mature 同时为 true 的行（classifyContentRating 派生口径）');
+  } finally {
+    await store.close();
+  }
+});
+
 // ---------------------------------------------------------------- V 批：applySteamDetails 共用函数
 // docs/STEAM-SYNC-STATUS-AND-RATING.md §14.3/§14.3.1：backfill 与 steam-status 同口径的写/不写分支。
 

@@ -112,6 +112,11 @@
 5. 模拟器截图对照（隐藏态/显示态/确认弹窗）；
 6. App 构建通过。
 
+> **EF 批语义修订（2026-11-20，站点 TODO EF / [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §9）**：
+> 18R chip 从「解锁显示」改「筛选」——开启 = `adult=badge&rating=adult`（列表/搜索**只显示 18R 游戏**），
+> 取消 = 恢复全部（`adult=hide`）；年龄确认弹窗与 DataStore 记忆沿用 EB。站点侧同步支持前台
+> `/api/games` 的 `rating=adult|mature|none`（与后台 admin 同口径），Web 前台加同款 18R 筛选开关。
+
 ## DY/DZ 实现说明（2026-11-19 开发会话，随 app-v2.23.0 发布）
 
 ### DY 实现与安全例外

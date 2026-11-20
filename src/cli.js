@@ -10,7 +10,7 @@ import { startApiServer } from './server.js';
 import * as db from './store/pg.js';
 import { ingestOffers } from './ingest.js';
 import { missingPriceAppids, mergePriceOffers, writeBackfillProgress } from './backfill.js';
-import { applySteamDetails, entryFromMeta, runSteamStatusRound } from './steam-status.js';
+import { applySteamDetails, entryFromMeta, runSteamStatusRound, runRatingBackfillRound } from './steam-status.js';
 import { buildSite } from './report.js';
 import { evaluateAlerts, renderDigest, toPayload, groupAlertsByUser } from './alerts.js';
 import { channelsFromEnv, deliver, hasNotifier } from './notify.js';
@@ -477,7 +477,9 @@ async function cmdSyncSteamAll() {
     concurrency,
     async (appid) => {
       try {
-        const one = await fetchMetadata([appid], { backend, logger });
+        // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：本路径用 priceOverview 写国区报价，
+        // 必须保持 cc=cn（美区请求会把美元价写进国区 offer）
+        const one = await fetchMetadata([appid], { backend, logger, cc: 'cn' });
         if (one.items?.length) items.push(...one.items);
       } catch (err) {
         const status = Number(err.status) || 0;
@@ -2227,7 +2229,10 @@ async function cmdBackfill() {
       for (const appid of missed.slice(0, fallbackMax)) {
         if (partial) break;
         try {
-          const one = await fetchMetadata([appid], { backend: 'official', logger });
+          // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：回填的价格以国区口径为准
+          // （mergePriceOffers/applySteamDetails 会把 priceOverview 写进国区 offer），
+          // 这里保持 cc=cn；成人描述符回填由 rating-backfill 命令负责（cc=us）。
+          const one = await fetchMetadata([appid], { backend: 'official', logger, cc: 'cn' });
           if (one.items?.length) items.push(...one.items);
           fallback += 1;
         } catch (err) {
@@ -2402,6 +2407,8 @@ async function cmdRename() {
     if (fallbackMax > 0) {
       for (const appid of missed.slice(0, fallbackMax)) {
         try {
+          // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：重写名字只写元数据、不写价格，
+          // 保持默认 cc=us——国区商店隐藏成人游戏，us 才能拿到成人游戏的中文名。
           const one = await fetchMetadata([appid], { backend: 'official', logger });
           if (one.items?.length) items.push(...one.items);
           fallback += 1;
@@ -2436,6 +2443,34 @@ async function cmdRename() {
 
   logger.info('rename.done', { done, stored, renamed, fallback, failed, batches, elapsedMs: Date.now() - startedMs });
   console.log(`完成：处理 ${done} 款，写入元数据 ${stored} 条（其中带回中文名 ${renamed} 款），单条回退 ${fallback}，失败 ${failed}`);
+}
+
+/**
+ * EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：内容分级回填。
+ * 根因：cc=cn 的 appdetails 国区商店隐藏成人内容 → content_descriptors 采不到 → 全库
+ * adult_flag 仅约 20 个。本命令逐 appid 用 cc=us 重采 content_descriptors / required_age /
+ * age_ratings，只写分级、不写 steam_status、不写价格（国区价格口径不受影响）。
+ * 限速 ≥1s/请求；撞 429 立即收轮（exit 75，调度器 1 小时后重排）；高嫌疑优先；
+ * backfill_at 1 天冷却 + required_age 已采到即收敛 → 可断点续跑。
+ * 开工前 / 收工后各记一次 adult/mature 计数（验收①：steam.meta.backfill_before/done）。
+ * 一轮逻辑在 src/steam-status.js 的 runRatingBackfillRound（可单测），本命令只负责参数与输出。
+ */
+async function cmdRatingBackfill() {
+  const limit = Math.max(1, Math.min(Number(flag('limit', '200000')) || 200000, 200000));
+  const batch = Math.max(1, Math.min(Number(flag('batch', '30')) || 30, 100));
+  // 硬约束 6：采集限速 ≥1 秒/请求；默认 1.5s（在 Steam 200 次/5 分钟配额内）
+  const rateMs = Math.max(1000, Math.min(Number(flag('rate', '1500')) || 1500, 60000));
+
+  const result = await withStore((store) =>
+    runRatingBackfillRound((sql, p) => store.query(sql, p), { limit, batch, rateMs, logger }),
+  );
+
+  if (result.aborted429) {
+    console.log(`撞 HTTP 429：本轮提前收尾（已处理 ${result.done} 款），1 小时后自动重试`);
+    process.exitCode = 75;
+  }
+  console.log(`完成：处理 ${result.done} 款，写分级 ${result.wrote} 条（本轮新判 adult ${result.adultWrote} / mature ${result.matureWrote}），失败 ${result.failed}${result.aborted429 ? '（HTTP 429 提前收轮）' : ''}`);
+  console.log(`adult 计数：${result.before.adult} → ${result.after.adult}（+${result.after.adult - result.before.adult}）；mature：${result.before.mature} → ${result.after.mature}（+${result.after.mature - result.before.mature}）`);
 }
 
 /**
@@ -2792,6 +2827,7 @@ const commands = {
   diagnose: cmdDiagnose,
   backfill: cmdBackfill,
   rename: cmdRename,
+  'rating-backfill': cmdRatingBackfill,
   'search-tokens': cmdSearchTokens,
   heat: cmdHeat,
   'steam-status': cmdSteamStatus,
@@ -3075,6 +3111,7 @@ async function main() {
     'steam-status': cmdSteamStatus,
     heat: cmdHeat,
     rename: cmdRename,
+    'rating-backfill': cmdRatingBackfill,
     'search-tokens': cmdSearchTokens,
     backfill: cmdBackfill,
     discover: cmdDiscover,
@@ -3135,6 +3172,9 @@ async function main() {
                        --limit 200000 --batch 100 --sleep 3000 --fallback 10（回退数设 0 关闭单条回退）
   rename               存量修复：把目录导入留下的英文名换成中文名（GetItems schinese）
                        --limit 200000 --batch 100 --sleep 1500 --fallback 10（无简中的行保持英文）
+  rating-backfill      内容分级回填：逐 appid 用 cc=us 重采 content_descriptors/required_age/age_ratings
+                       （EF 批 §9：国区商店隐藏成人内容，cc=cn 采不到 → adult_flag 全库仅约 20 个）
+                       --limit 200000 --batch 30 --rate 1500（限速 ≥1s；429 收轮 exit 75；断点续跑）
   search-tokens        派生搜索 token 重建：增量（token 空/未生成/名字已变更，--limit 50000 每轮）
                        --full 全量重建（19.8 万行预算内完成；纯本地计算，无 Steam 请求）
   heat                 热度回填：评测数 + 发行日期（逐 appid 请求，约 1.7s/款）

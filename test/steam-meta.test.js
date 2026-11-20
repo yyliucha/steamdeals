@@ -146,6 +146,27 @@ test('官方接口可用时逐个 appid 请求（批量会 400）', async () => 
   assert.ok(dataCalls.every((u) => /appids=\d+&/.test(u)), 'URL 只能带单个 appid');
 });
 
+test('EF 批：official 请求默认 cc=us（成人内容国区采不到），显式 cc 可覆盖（价格口径用 cn）', async () => {
+  const seen = [];
+  const fetchImpl = routes({
+    'api/appdetails': (url) => {
+      seen.push(url);
+      const appid = (url.match(/appids=(\d+)/) ?? [])[1] ?? '1';
+      return { [appid]: { success: true, data: { type: 'game', name: 'X' } } };
+    },
+    'api.steamcmd.net': steamcmd,
+  });
+
+  await fetchMetadata([7001], { backend: 'official', fetchImpl });
+  assert.match(seen[0], /cc=us/, '默认 cc=us：美区商店不隐藏成人内容，才能采到描述符');
+  assert.match(seen[0], /l=schinese/, 'l=schinese 保留：中文名仍按简中返回');
+
+  seen.length = 0;
+  await fetchMetadata([7001], { backend: 'official', fetchImpl, cc: 'cn' });
+  assert.match(seen[0], /cc=cn/, '显式 cc=cn：backfill/sync steamall 的价格口径调用点保持国区价');
+  assert.match(seen[0], /l=schinese/, 'l=schinese 在 cc 覆盖时同样保留');
+});
+
 test('backend 可强制指定，且会去重', async () => {
   const fetchImpl = routes({ 'api.steamcmd.net': steamcmd });
   const { backend, items } = await fetchMetadata([1091500, 1091500, 0, NaN], { backend: 'steamcmd', fetchImpl });

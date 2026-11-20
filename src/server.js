@@ -1614,6 +1614,9 @@ export function createApiServer({
         // 成人内容展示策略（docs/STEAM-SYNC-STATUS-AND-RATING.md §5.2）：
         // hide=前台不展示（默认，由系统设置 site.adultDisplay 决定）；badge/show 不过滤
         const adult = oneOf('adult', ['hide', 'badge', 'show'], String(process.env.SITE_ADULT_DISPLAY ?? 'hide'));
+        // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：前台 rating 筛选——与后台 /api/admin/games
+        // 同一口径（adult=只看 18R；mature=只看成熟；none=只看未标注；空=不过滤）。
+        const rating = oneOf('rating', ['adult', 'mature', 'none'], '');
         // marks=unmarked：「全部」页签——排除用户已标 感兴趣/不感兴趣 的游戏（已拥有由 owned 参数排除）
         const marks = oneOf('marks', ['any', 'unmarked'], 'any');
         const compact = guestSearchPost || url.searchParams.get('compact') === '1';
@@ -1649,6 +1652,7 @@ export function createApiServer({
           compact,
           guestFlags,
           adult,
+          rating,
           reviewMin: Number.isFinite(reviewMin) && reviewMin >= 1 && reviewMin <= 9 ? reviewMin : null,
           deck,
           // DA 批（docs/APP-FILTER-SERVER-SIDE.md §2）：App/Web 共用筛选开关（count 与列表同条件在 gameSearch 内保证）

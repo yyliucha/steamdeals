@@ -369,6 +369,44 @@ test('游戏同步统计与筛选：待同步数量、pending/done 过滤（新�
   }
 });
 
+test('EF 批：前台 /api/games 支持 rating=adult|mature|none（与后台同一口径），非法值回落不过滤', async () => {
+  const { store, q, srv, base } = await setup();
+  try {
+    const seed = async (appid, name, adult, mature) => {
+      await q('insert into games (steam_appid, name, adult_flag, mature_flag) values ($1, $2, $3, $4)', [appid, name, adult, mature]);
+      const gid = (await q('select id from games where steam_appid = $1', [appid])).rows[0].id;
+      await q(
+        "insert into offers (game_id, platform_code, product_type, region, currency, price_cents) values ($1,'steam','official_direct','cn','CNY',1000)",
+        [gid],
+      );
+      await q(
+        "insert into daily_prices (game_id, platform_code, region, day, min_price_cents, currency) values ($1,'steam','cn', current_date, 1000, 'CNY')",
+        [gid],
+      );
+      await db.refreshGameRegionPrices(q, gid);
+      await db.refreshGameRegionHist(q, gid);
+    };
+    await seed(413160, '未标注A', false, false);
+    await seed(413161, '十八禁B', true, false);
+    await seed(413162, '成熟C', false, true);
+
+    const namesOf = (d) => (d.games ?? []).map((g) => g.name).sort();
+    const adult = await (await fetch(`${base}/api/games?adult=badge&rating=adult`)).json();
+    assert.deepEqual(namesOf(adult), ['十八禁B'], 'rating=adult 只看 18R（adult=badge 组合）');
+    assert.equal(adult.total, 1);
+    const mature = await (await fetch(`${base}/api/games?adult=badge&rating=mature`)).json();
+    assert.deepEqual(namesOf(mature), ['成熟C'], 'rating=mature 只看成熟内容');
+    const noneRating = await (await fetch(`${base}/api/games?adult=badge&rating=none`)).json();
+    assert.deepEqual(namesOf(noneRating), ['星露谷物语', '未标注A'].sort(), 'rating=none 只看未标注（含 setup 初始游戏）');
+    assert.equal(noneRating.total, 2);
+    const invalid = await (await fetch(`${base}/api/games?adult=badge&rating=weird`)).json();
+    assert.equal(invalid.total, 4, '非法 rating 回落为不过滤（白名单外一律不过滤）');
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});
+
 test('服务端搜索与分页：分页元数据、关键词全库搜索、折扣排序', async () => {
   const { store, q, srv, base } = await setup();
   try {

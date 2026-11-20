@@ -278,6 +278,54 @@ test('count 与列表同条件：分页 total = 全库匹配数，第二页正�
   }
 });
 
+test('EF 批：rating=adult|mature|none 读模型与 legacy 双口径一致（与后台 admin 同一条件）', async () => {
+  const { store, q } = await fresh();
+  try {
+    // 独立数据集：三款全部带报价 + 日价（legacy 前置条件 = exists daily_prices），双口径集合一致
+    const seed = async (appid, name, adult, mature) => {
+      const r = await q(
+        'insert into games (steam_appid, name, adult_flag, mature_flag) values ($1,$2,$3,$4) returning id',
+        [appid, name, adult, mature],
+      );
+      const id = Number(r.rows[0].id);
+      await q("insert into platforms (code, name, kind) values ('steam','Steam','official') on conflict (code) do nothing");
+      await q(
+        "insert into offers (game_id, platform_code, product_type, region, currency, price_cents) values ($1,'steam','official_direct','cn','CNY',1000)",
+        [id],
+      );
+      await q(
+        "insert into daily_prices (game_id, platform_code, region, day, min_price_cents, currency) values ($1,'steam','cn', current_date, 1000, 'CNY')",
+        [id],
+      );
+      await db.refreshGameRegionPrices(q, id);
+      await db.refreshGameRegionHist(q, id);
+      return id;
+    };
+    const noneId = await seed(8101, '未标注', false, false);
+    const adultId = await seed(8102, '十八禁', true, false);
+    const matureId = await seed(8103, '成熟作', false, true);
+
+    for (const [rating, expected] of [
+      ['adult', [adultId]],
+      ['mature', [matureId]],
+      ['none', [noneId]],
+    ]) {
+      const rm = await searchRm(q, { region: 'cn', compact: true, adult: 'badge', rating });
+      const legacy = await searchLegacy(q, { region: 'cn', compact: true, adult: 'badge', rating });
+      const expectIds = expected.map(String).sort();
+      assert.deepEqual(rm.rows.map((r) => String(r.id)).sort(), expectIds, `rating=${rating}：读模型命中`);
+      assert.deepEqual(legacy.rows.map((r) => String(r.id)).sort(), expectIds, `rating=${rating}：legacy 口径一致`);
+      assert.equal(legacy.total, rm.total, `rating=${rating}：total 双口径一致`);
+    }
+    // 空 rating = 不过滤（「取消恢复全部」）
+    const all = await searchRm(q, { region: 'cn', compact: true, adult: 'badge' });
+    assert.equal(all.total, 3, '不带 rating 时三款全量可见');
+  } finally {
+    delete process.env.READ_MODEL;
+    await store.close();
+  }
+});
+
 test('user_prefs.only_discount 死字段删除：迁移 drop 列 + prefs 读写不再含该键', async () => {
   const { store, q } = await fresh();
   try {

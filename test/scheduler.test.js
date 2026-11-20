@@ -69,7 +69,7 @@ test('AC11：状态文件带健康面板字段（耗时/结果/失败原因）�
 test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清理、gog / humble / discover / backup / alerts / images / readmodel），各自间隔', () => {
   const jobs = jobsFromEnv({});
   assert.deepEqual(jobs.map((j) => j.name), [
-    'steam-prices', 'heat', 'steam-status', 'steam-discovery', 'app-release-sync', 'align-snapshot', 'rename', 'backfill', 'prune', 'proxy-probe', 'readmodel', 'search-tokens-rebuild', 'sonkwo', 'itad', 'gog', 'humble',
+    'steam-prices', 'heat', 'steam-status', 'steam-discovery', 'app-release-sync', 'align-snapshot', 'rename', 'rating-backfill', 'backfill', 'prune', 'proxy-probe', 'readmodel', 'search-tokens-rebuild', 'sonkwo', 'itad', 'gog', 'humble',
     'discover', 'backup', 'logs', 'alerts', 'images',
   ]);
   const interval = (name) => jobs.find((j) => j.name === name).intervalMin;
@@ -77,6 +77,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.equal(interval('heat'), 1440, '热度默认每天刷新（首轮自动播种，之后刷过期条目）');
   assert.equal(interval('steam-status'), 1440, 'Steam 状态判定默认每天一次（X 批）');
   assert.equal(interval('rename'), 10080, '重写名字默认每周一次');
+  assert.equal(interval('rating-backfill'), 1440, 'EF 批：内容分级回填默认每天一轮（cc=us 重采描述符）');
   assert.equal(interval('backfill'), 1440, 'BL 批：增量回填默认每天一轮');
   assert.equal(interval('prune'), 10080, '清理默认每周一次');
   assert.equal(interval('readmodel'), 1440, 'AV 批：读模型对账默认每天一次');
@@ -99,6 +100,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.deepEqual(args('heat'), ['heat', '--limit', '20000', '--sleep', '1700']);
   assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '6000', '--rate', '1500']);
   assert.deepEqual(args('rename'), ['rename', '--limit', '200000', '--batch', '100', '--sleep', '1500']);
+  assert.deepEqual(args('rating-backfill'), ['rating-backfill', '--limit', '5000', '--batch', '30', '--rate', '1500'], 'EF 批：分级回填默认每天上限 5000、限速 1.5s/款');
   assert.deepEqual(args('backfill'), ['backfill', '--limit', '5000', '--batch', '100', '--sleep', '3000'], 'BL 批：回填默认每天上限 5000');
   assert.deepEqual(args('prune'), ['prune']);
   assert.deepEqual(args('readmodel'), ['readmodel', 'check', '--sample', '200', '--fix'], 'B5 批：每日抽样 200 对账 + 自动修复（手动 check 默认仍只报告）');
@@ -270,7 +272,7 @@ test('显式禁用或间隔为 0 的任务会被剔除', () => {
     READMODEL_ENABLED: '0',
     PROXY_PROBE_ENABLED: '0',
   });
-  assert.deepEqual(jobs.map((j) => j.name), ['heat', 'steam-discovery', 'app-release-sync', 'align-snapshot', 'rename', 'backfill', 'prune', 'search-tokens-rebuild', 'sonkwo', 'alerts']);
+  assert.deepEqual(jobs.map((j) => j.name), ['heat', 'steam-discovery', 'app-release-sync', 'align-snapshot', 'rename', 'rating-backfill', 'backfill', 'prune', 'search-tokens-rebuild', 'sonkwo', 'alerts']);
 });
 
 test('从未跑过的任务在 initialDelay 之后才算到点', () => {
@@ -455,9 +457,9 @@ test('X 批：重启后 lastRunMs 从 sync_runs 恢复，坏行跳过', () => {
 test('AC-4：默认配置的每日预算 <24h（不降频）；超预算时自动缩 steam-status 并告警', () => {
   const b = steamDailyBudgetMinutes({});
   assert.ok(b.total > 0);
-  assert.ok(b.total <= 1440, '默认四任务总量在预算内（' + Math.round(b.total) + ' 分钟）');
-  // 超预算：把 heat 拉到 4 万（约 18.9h，加价格/回填/状态后超过 24h），自动缩 steam-status 回到预算内
-  const env = { STEAM_HEAT_LIMIT: '40000', STEAM_STATUS_LIMIT: '6000', STEAM_STATUS_RATE_MS: '1500' };
+  assert.ok(b.total <= 1440, '默认五任务总量在预算内（' + Math.round(b.total) + ' 分钟）');
+  // 超预算：把 heat 拉到 3.6 万（加价格/回填/分级回填/状态后超过 24h），自动缩 steam-status 回到预算内
+  const env = { STEAM_HEAT_LIMIT: '36000', STEAM_STATUS_LIMIT: '6000', STEAM_STATUS_RATE_MS: '1500' };
   const events = [];
   const logger = { warn: (e, f) => events.push([e, f]) };
   const { jobs, budget, adjusted } = applySteamBudget(jobsFromEnv(env), env, logger);
@@ -475,19 +477,21 @@ test('B3：实测耗时优先——steamDailyBudgetMinutes 用 sync_runs 平均�
   const env = {};
   const theo = steamDailyBudgetMinutes(env);
   assert.ok(theo.total > 0, '无实测时理论预算可用');
-  // 实测：四个 mode 各给平均秒（steam-status 实测 300s/轮 vs 理论 5h，证明预算跟着实测走）
+  // 实测：五个 mode 各给平均秒（steam-status 实测 300s/轮 vs 理论 5h，证明预算跟着实测走）
   const observed = new Map([
     ['steam-prices', 60],
     ['heat', 120],
     ['steam-status', 300],
     ['backfill', 600],
+    ['rating-backfill', 30],
   ]);
   const obs = steamDailyBudgetMinutes(env, observed);
   assert.equal(obs.priceMin, 1, '价格：60s × 1 轮/天 = 1 分钟');
   assert.equal(obs.heatMin, 2, '热度：120s × 1 轮/天 = 2 分钟');
   assert.equal(obs.statusMin, 5, '状态：300s × 1 轮/天 = 5 分钟');
   assert.equal(obs.backfillDailyMin, 10, '回填：600s × 1 轮/天 = 10 分钟');
-  assert.equal(obs.total, 18, '总预算 = 实测之和（不再按理论常数）');
+  assert.equal(obs.ratingBackfillDailyMin, 0.5, 'EF 分级回填：30s × 1 轮/天 = 0.5 分钟');
+  assert.equal(obs.total, 18.5, '总预算 = 实测之和（不再按理论常数）');
   // 缺样本回落理论：只有 heat 有实测，其余回落
   const partial = steamDailyBudgetMinutes(env, new Map([['heat', 0.1]]));
   assert.equal(partial.heatMin, 0.1 / 60, 'heat 用实测（0.1s × 1 轮/天）');
@@ -520,11 +524,11 @@ test('B3：applySteamBudget 预算来源实测——实测超预算同样触发�
   assert.equal(ok.adjusted, false, '理论预算内不调整');
 });
 
-test('B3：jobRuntimeEstimates 只覆盖四个 Steam 重任务，obsSec 来自实测、无实测为 null', () => {
+test('B3：jobRuntimeEstimates 只覆盖五个 Steam 重任务，obsSec 来自实测、无实测为 null', () => {
   const jobs = jobsFromEnv({});
   const observed = new Map([['heat', 42]]);
   const est = jobRuntimeEstimates(jobs, {}, observed);
-  assert.deepEqual([...est.keys()].sort(), ['backfill', 'heat', 'steam-prices', 'steam-status'].sort(), '只给四个 Steam 重任务');
+  assert.deepEqual([...est.keys()].sort(), ['backfill', 'heat', 'rating-backfill', 'steam-prices', 'steam-status'].sort(), '只给五个 Steam 重任务');
   const heat = est.get('heat');
   assert.equal(heat.obsSec, 42, '实测秒透传');
   assert.equal(heat.estSec, theoreticalRunSeconds({}).heat, '理论估算保留');

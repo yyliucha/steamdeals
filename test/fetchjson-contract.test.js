@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 const read = (p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), 'utf8');
 const cli = read('../src/cli.js');
 const catalog = read('../src/adapters/steam-catalog.js');
+const steamMeta = read('../src/adapters/steam-meta.js');
+const steamPrices = read('../src/adapters/steam.js');
 
 test('heat：appdetails 必须经 .json 再按 appid 解包（旧写法取不到 → 全量无效跳过）', () => {
   assert.match(cli, /const entry = data\?\.json\?\.\[String\(appid\)\];/, 'heat 必须 data.json[appid]');
@@ -20,4 +22,11 @@ test('catalog：apps 数组必须经 .json 解包（旧写法 findAppArray(data)
   assert.match(catalog, /findAppArray\(body\)/, 'findAppArray 吃 .json 解包后的 body');
   assert.ok(!catalog.includes('findAppArray(data)'), '旧契约写法不得残留');
   assert.match(catalog, /const body = data\?\.json \?\? \{\};/, 'catalog 先取 .json');
+});
+
+test('EF：元数据 appdetails cc 参数化（默认 us 采成人描述符）；价格接口仍 cc=cn 国区口径', () => {
+  assert.match(steamMeta, /const url = `\$\{OFFICIAL_DETAILS\}\?appids=\$\{appid\}&cc=\$\{cc\}&l=schinese`;/, '元数据请求 cc 走参数（fetchMetadata 默认 us）');
+  assert.ok(steamMeta.includes("cc = 'us'"), 'fetchMetadata 默认 cc=us——国区商店隐藏成人内容，cc=cn 采不到描述符');
+  assert.match(steamPrices, /url\.searchParams\.set\('cc', region\)/, '价格接口 cc 仍由 region 决定（与元数据解耦）');
+  assert.match(steamPrices, /defaultRegion: 'cn'/, '价格适配器默认区域仍是 cn——国区价格口径不动（验收③）');
 });
