@@ -195,7 +195,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-20 更新，App app-v2.23.0 已发布：DY + DZ + EA-1~6 + EB（站点零改动）；v2.27.4 已发布：CO-5/B4-2 两域拆分（site/steam/ban 杂项 + admin 访问安全）；v2.27.3 已发布：CO-5/B4-2 三域拆分（watchlist/announcements/me）；v2.27.2 已发布：CO-5/B4-2 认证域拆分；v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
+### 当前状态（2026-11-20 更新，v2.27.5 已发布：EF 18R 数据同步与筛选修复 + EG 公告角标已读修复，App 同步发布 app-v2.24.0；app-v2.23.0 已发布：DY + DZ + EA-1~6 + EB（站点零改动）；v2.27.4 已发布：CO-5/B4-2 两域拆分（site/steam/ban 杂项 + admin 访问安全）；v2.27.3 已发布：CO-5/B4-2 三域拆分（watchlist/announcements/me）；v2.27.2 已发布：CO-5/B4-2 认证域拆分；v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 - **app-v2.23.0 已发布**（tag `app-v2.23.0`，App 仓库 d803612；Release 三资产：`steamdeals-2.23.0.apk` + `.apk.sha256` + `latest.json`）：
@@ -222,6 +222,14 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   验证（本机发版门禁）：主链 test:2/3/4 全绿（test:1 仅 commit-own 4 项已知沙箱环境红、与拆分前基线一致）+ `node test/api.test.js` 37/37 + `frontend:build` ✓（native loader 变体）+ `scan` 干净；两域工人各自全链测试与反向自检记录见各 QA 报告。注：本轮因主树被 EG/EF 会话占用，构建在独立 worktree（nightshift-v2274，基 b3ebd8a）执行，主树未动。
   CI：docker-hub run 44643406573 ✅（test/smoke/publish 全 success）；docker-tcr run 44643406627 ✅（test/publish 全 success）；test-main（push）release 提交的 run 44643381231 被 EF/EG 会话并发 push 取消（concurrency 组，ED 已知问题），兜底绿 = run 44644311190 ✅（HEAD 938c4f6 含 release 提交 3b8e93e，test success）。两个镜像源均已推送；镜像不含 tag 之后 EF/EG 的三提交（7a3ac2b/938c4f6/7eb5d4a），归下个版本。
   **服务器部署待执行**（升级到 `2.27.4`；本批无 schema 变更、无新增依赖——升级后直接可用）。
+- **v2.27.5 已发布**（tag `v2.27.5`，release 提交见 git log）：EF 18R 数据同步与筛选修复 + EG 公告角标已读修复（均为 🐞 缺陷修复 → 小版本，2.27.4 → 2.27.5 连续递增）。App 仓库同步发布 **app-v2.24.0（22400）**。
+  EF（7a3ac2b）：元数据 `appdetails` 请求 `cc=cn` → `cc=us`（价格口径调用点保持 cc=cn）；新增 `rating-backfill` 命令（cc=us 重采分级、只写分级不写价、限速 ≥1s、429 收轮 exit 75、前后 adult/mature 计数日志、断点续跑）+ 并入调度器；前台 `/api/games` 支持 `rating=adult|mature|none`；Web 首页 18R 筛选开关（badge+rating=adult，取消恢复全部，18+ 角标）；App 仓库 358ebc5 同步改筛选语义。
+  EG（7eb5d4a）：`GET /api/announcements` 公开段补 Bearer 解析——此前 readIds 只认 Cookie 会话，App 登录用户恒拿空数组 → 已读标记虽落库但每次刷新/重进/重启角标回跳；App 仓库 3458bce 标记纪元守卫（陈旧快照只并集不覆盖、会话切换快照作废）。
+  QA：EF ✅ [QA-EF.md](QA-EF.md) 第 1 轮（13/0/0/3）/ EG ✅ [QA-EG.md](QA-EG.md) 第 1 轮（3/0/0/0）。
+  验证（本机发版门禁）：announcements 8/8 + app-contract 2/2 + api.test 38/38 + 主链分段 + `frontend:build` + `scan`（输出随 release 提交记录）；App 单测 83/83 + `assembleRelease` + 模拟器覆盖安装自测（18R 筛选只看 18R / 角标已读归零）。
+  CI：docker-hub run <待记录> / docker-tcr run <待记录> / test-main run <待记录>（CI 待确认）。
+  **部署提示（重要）**：服务器升级到 `2.27.5` 后**执行一次 `node src/cli.js rating-backfill`**（cc=us 重采分级，限速 ≥1s、429 收轮 exit 75、可断点续跑）——回填后 adult 游戏数应显著增加（>20，前后计数日志可核对）；EF 已并入调度器，日常增量由 `steam-meta` 任务维持。**EG 无迁移**（无需数据命令）。
+  **服务器部署待执行**（升级到 `2.27.5` 并执行 rating-backfill 一次；App 版本卡点「立即同步」后手机即可更新 app-v2.24.0）。
 - **v2.27.1 已发布**（tag `v2.27.1`，release 提交见 git log）：CO-4/B4 巨石拆分两域（试点 App 域 + 第二轮申诉域）+ DW 搜索关键词参数位错位修复合并发版（技术债重构 + 缺陷修复，无新功能面 → 小版本，2.27.0 → 2.27.1 连续递增）。
   CO-4/B4：试点 App 域（0c8f5ff）`src/routes/app.js`（App 域 6 条路由）+ `src/store/app-repository.js`（`api_tokens` DDL + 4 个 token 函数）；第二轮申诉域（34a7bcc）`src/routes/appeal.js`（申诉域 5 条路由：公开段 + 管理段）+ `src/store/appeal-repository.js`（`appeals` DDL + 12 个申诉 SQL 函数）；`src/store/pg.js` 两域 re-export 兼容壳；`src/server.js` 试点 -216 行、第二轮再 -267 行（域路由换为入口接线，appealExempt 豁免与限流桶等中间件留原地）；**外部契约零变化**（路径/参数/响应/错误码不变）；已交付 app/appeal 两域，剩余 ~18 个域拆分另行立项（B4-2/CO-5）。
   DW：`gameSearch` 关键词归一化拆两个显式变量（`kwNormCandidate` 供候选探测/fuzzy、`kwNorm` 供主查询），注释约束两者不可互换（互换 = 精确名 LIKE 匹配 cap/42P18，新测试必红）；`filterParams` 顺序不变、候选查询绑定不变；新增 `test/game-search-exact.test.js` 进主链 test:3（精确名命中/region 值不命中/回归/零命中 + 注入错位反向自检）。

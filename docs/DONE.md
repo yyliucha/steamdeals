@@ -2668,3 +2668,45 @@ main.js zoom 兜底、text-size-adjust 基线、字号/触摸校准、?debug=1 �
   站点零改动（服务端 adult 参数已支持）。
 - **交付**：模拟器实测（chip/首次弹窗/确认落盘/重启记忆）；HomeFilterParamsTest +2 项（hide/badge 映射）；
   详情接口无 adult 过滤（18R 详情可打开）。线上当前无 18R 数据，「显示 18R 游戏」目视待真实数据出现后补验。
+
+## EF. ~~质检通过（🐞 缺陷）：18R 数据同步与筛选修复（元数据 cc=cn 锁国区 → 成人内容采不到）~~ → **已发布 v2.27.5（2026-11-20，站点 7a3ac2b + App 仓库 358ebc5；app-v2.24.0 随本批）**
+
+**类型：** 🐞 缺陷（数据同步 + 筛选）
+**状态：已发布 v2.27.5（2026-11-20，站点 7a3ac2b + App 仓库 358ebc5；QA docs/QA-EF.md 第 1 轮 ✅ 放行 13/0/0/3；**涉及 App 仓库**：是（app-v2.24.0 随本批））
+**优先级：** P1 —— 18R 数据缺失 + App 筛选语义错误
+**依赖：** 无
+**解锁：** 无
+**规格**：[STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §9
+
+- **根因**：src/adapters/steam-meta.js:209 appdetails 请求带 &cc=cn——国区商店隐藏成人内容 →
+  content_descriptors 采不到 → 全库 adult_flag 仅约 20 个（hide 109352 vs badge 109372）。
+- **修复**：① 元数据采集 cc=cn → cc=us（保留 l=schinese；价格接口仍 cc=cn 不动）；
+  ② 全量回填 content_descriptors（新回填命令/复用 rename，限速防 429）；③ 前台 /api/games 支持
+  ating=adult|mature|none；④ Web 前台加 18R 筛选；⑤ App 18R chip 改筛选（adult=badge&rating=adult）。
+- **实现**：① etchMetadata cc 参数化（默认 us，价格口径调用点显式 cn）；② 新增 ating-backfill
+  命令（cc=us 重采三字段、只写分级不写价、限速 ≥1s、429 收轮 exit 75、前后 adult 计数日志、断点续跑）
+  + 并入调度器（STEAM_HEAVY/预算）；③ gameSearch 加 ating（与后台 admin 同口径）；④ Home.vue
+  18R 开关（桌面+移动抽屉，选中 adult=badge&rating=adult，取消恢复全部，角标 18+）；⑤ App
+  HomeScreen/SearchScreen 开=badge&rating=adult / 关=hide（App 358ebc5）。
+- **验收**：见规格 §9（回填后 adult 数显著增加且有计数日志；Web/App 筛选只显示 18R + 角标；价格国区口径不变；
+  
+pm test（分段）+ rontend:build + scan 全绿）。
+
+## EG. ~~质检通过（🐞 缺陷）：通知角标已读后不消失（ABC 三场景）~~ → **已发布 v2.27.5（2026-11-20，站点 7eb5d4a + App 仓库 3458bce；app-v2.24.0 随本批）**
+
+**类型：** 🐞 缺陷（App 公告角标）
+**状态：已发布 v2.27.5（2026-11-20，站点 7eb5d4a + App 仓库 3458bce；QA docs/QA-EG.md 第 1 轮 ✅ 放行 3/0/0/0；**涉及 App 仓库**：是（app-v2.24.0 随本批））
+**优先级：** P1 —— 角标常驻误导
+**依赖：** 无
+**解锁：** 无
+**涉及 App 仓库**：是（app-v2.24.0 随本批）
+**规格**：[ANDROID-POLISH.md](ANDROID-POLISH.md) §EG
+
+- **现象**：A 打开公告列表 / B 点开公告详情 / C 点「全部已读」——三种操作后首页铃铛角标仍显示 1。
+- **排查**：服务端 /api/announcements/read 是否保存；efresh() 覆盖竞态（markInFlight 闩）；
+  角标与弹层未读是否同源；游客本地 DataStore 写入；ABC 分别复现定位。
+- **修复**：① 站点 GET /api/announcements 公开段补 Bearer 解析（此前只认 Cookie 会话，App 登录用户
+  恒拿空 readIds → 刷新即回跳的根因）；② App AnnouncementsState 标记纪元守卫（陈旧快照只并集不覆盖、
+  会话切换快照作废，取代 markInFlight 闩）+ 网关缝解耦 + AnnouncementsStateTest 5 项锁竞态。
+- **验收**：ABC 三场景角标正确（B 递减 / C 立即归零 / A 按口径）；下拉刷新/重进首页/重启 App 不复现；
+  App 构建通过——模拟器（10s 延迟代理放大竞态）+ 单测 83 项 + 站点测试全绿。

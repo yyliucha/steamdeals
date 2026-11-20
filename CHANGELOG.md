@@ -1,5 +1,19 @@
 # 变更日志
 
+## [2.27.5] - 2026-11-20
+
+EF 18R 数据同步与筛选修复 + EG 公告角标已读修复（均为 🐞 缺陷修复 → 小版本，2.27.4 → 2.27.5 连续递增）。App 仓库同步发布 app-v2.24.0（22400）。
+
+### 修复
+
+- **EF（18R 数据同步与筛选，站点 7a3ac2b + App 358ebc5）**：元数据 `appdetails` 请求 `cc=cn` → `cc=us`（国区商店隐藏成人内容导致 `content_descriptors` 采不到、全库 adult_flag 仅约 20 个）；价格口径调用点保持 `cc=cn` 不变；新增 `rating-backfill` 命令（cc=us 重采分级、只写分级不写价、限速 ≥1s、429 收轮 exit 75、前后 adult/mature 计数日志、断点续跑）+ 并入调度器；前台 `/api/games` 支持 `rating=adult|mature|none`（与后台同口径）；Web 首页 18R 筛选开关（选中 `adult=badge&rating=adult` 只看 18R + 角标、取消恢复全部）；App 18R chip 同步改「筛选」语义。
+- **EG（公告角标已读后不消失，站点 7eb5d4a + App 3458bce）**：站点 `GET /api/announcements` 公开段补 Bearer 解析——此前 readIds 只认 Cookie 会话，App 登录用户恒拿空数组，已读标记虽落库但每次刷新/重进/重启角标回跳；匿名仍空数组契约不变。App `AnnouncementsState` 标记纪元守卫——标记已读后晚到的陈旧快照只与内存并集不覆盖、请求期间登录态切换旧快照作废（取代 DZ 的 markInFlight 闩）；经 `AnnouncementsGateway` 缝与网络解耦。
+
+### 测试
+
+- QA（本批 2 条全部放行）：EF ✅ docs/QA-EF.md 第 1 轮（13/0/0/3）/ EG ✅ docs/QA-EG.md 第 1 轮（3/0/0/0）。
+- 站点：`test/announcements.test.js` EG 回归（Bearer 标记→GET 回读，修复前实测红→绿）+ 18R/rating 相关（steam-meta/scheduler/api）+ 主链分段 + `api.test.js` + `frontend:build` + `scan`；App：JVM 单测 83/83（`AnnouncementsStateTest` 5 项用可控假网关复现陈旧快照晚到，反向自检并集改直落 → 2 项竞态用例红）+ `assembleRelease` + 模拟器覆盖安装自测（18R 筛选只看 18R / 角标已读归零）。
+
 ## [2.27.4] - 2026-11-20
 
 CO-5/B4-2 巨石拆分第七/八轮交付（site 杂项域 + admin 访问安全域，契约零变化）（技术债重构，无新功能面 → 小版本，2.27.3 → 2.27.4 连续递增）。
