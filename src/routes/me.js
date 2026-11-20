@@ -30,6 +30,27 @@
 //   · 本域无跨模块共享状态（无计数 Map/单飞对象/闭包），ctx 只需基座字段。
 import * as db from '../store/pg.js';
 import * as steamAccountsMod from '../steam-accounts.js';
+import * as visitors from '../visitors.js';
+import { SESSION_COOKIE_NAME } from '../session-cookie.js';
+
+/** 与 auth-routes.js 的 parseCookiesLocal 同语义：me 域 ctx 无 token/cookies 字段（基座不动），
+ *  current 会话判定需要当前会话 token——从原始请求头解析（与 server.js 主链同一 cookie 名）。 */
+function cookieToken(req) {
+  for (const part of String(req.headers.cookie ?? '').split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0 && part.slice(0, i).trim() === SESSION_COOKIE_NAME) return decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return null;
+}
+
+/** me 域 ctx 无 url 字段（基座不动）：查询参数从原始 req.url 解析（path 前缀重写不影响 query）。 */
+function searchParamsOf(req) {
+  try {
+    return new URL(String(req.url ?? ''), 'http://local').searchParams;
+  } catch {
+    return new URLSearchParams();
+  }
+}
 
 /**
  * 主段：server.js 在认证上下文（user/requireUser）就绪后调用。
@@ -291,6 +312,57 @@ export async function handleMeRoutes(ctx) {
     }));
     const stats = await db.userLibraryStats(q, user.id);
     json(res, 200, { accounts: list, stats });
+    return true;
+  }
+
+  // ---- DT-2（docs/ADMIN-PERMISSIONS.md）：用户级会话数据（只返回当前用户）----
+
+  if (path === '/api/me/sessions' && req.method === 'GET') {
+    if (!requireUser()) return true;
+    const params = searchParamsOf(req);
+    // 防御：userId 强制 = session.user.id（repository 内部 where user_id = user.id），
+    // 忽略请求里任何传入的 userId/username；越权数据在此不可达。
+    const list = await db.listMySessions(q, {
+      userId: user.id,
+      includeExpired: params.get('includeExpired') === '1',
+      limit: Number(params.get('limit') ?? 20),
+      offset: Number(params.get('offset') ?? 0),
+    });
+    // 绝不把 token 下发前端；region 只读缓存，不触发外部归属地查询（与 /api/admin/sessions 同口径）
+    const token = cookieToken(req);
+    json(res, 200, {
+      sessions: list.rows.map((r) => ({
+        id: Number(r.id),
+        username: r.username,
+        displayName: r.display_name ?? null,
+        role: r.role,
+        disabled: Boolean(r.disabled),
+        ip: r.ip ?? null,
+        region: r.ip ? visitors.cachedRegion(r.ip) : null,
+        userAgent: r.user_agent ?? null,
+        deviceId: r.device_id ?? null,
+        createdAt: r.created_at,
+        lastSeenAt: r.last_seen_at,
+        expiresAt: r.expires_at,
+        current: Boolean(token && user && Number(r.id) === Number(user.sess_id)),
+      })),
+      total: list.total,
+    });
+    return true;
+  }
+
+  const mySessRevoke = path.match(/^\/api\/me\/sessions\/(\d+)\/revoke$/);
+  if (mySessRevoke && req.method === 'POST') {
+    if (!requireUser()) return true;
+    // DT-2：只能踢自己的会话——删除条件同时限定 sessions.id 与 user_id，
+    // 非自己的会话恒 null → 404（与「踢别人」同为 404，不泄露他人会话存在性）。
+    const row = await db.revokeMySession(q, { sessId: Number(mySessRevoke[1]), userId: user.id });
+    if (!row) {
+      json(res, 404, { error: '会话不存在或已过期' });
+      return true;
+    }
+    logger?.info('session.revoke_self', { id: row.id, username: row.username, userId: user.id, current: cookieToken(req) === row.token });
+    json(res, 200, { removed: 1 });
     return true;
   }
 

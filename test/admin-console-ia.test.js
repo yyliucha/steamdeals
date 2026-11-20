@@ -426,3 +426,30 @@ test('DT-1 验收 6：普通用户 4 个数据页渲染 UserSections（admin 渲
     assert.ok(u.includes(label), `UserSections 含「${label}」页壳`);
   }
 });
+
+// ===== DT-2（docs/ADMIN-PERMISSIONS.md）：普通用户 5 页全部切用户级接口 =====
+// 四方一致：后端端点（me.js/watchlist.js）↔ 前端消费（UserSections）↔ 测试断言（本组 + sessions/wishlist HTTP 组）。
+// 反向自检：把 UserSections 的 /api/me/sessions 改回 /api/admin/sessions → 用例 1 红；
+// 把 /api/me/wishlist 改回 /api/admin/wishlists → 用例 3 红（管理员接口不可越权调用的前端接线即失效）。
+test('DT-2 前端接线：会话页 /api/me/sessions*、到价提醒 /api/watchlist、愿望单 /api/me/wishlist、公告 /api/announcements；个人资料不变', () => {
+  const u = read('../frontend/src/pages/UserSections.vue');
+  const c = read('../frontend/src/pages/Console.vue');
+  // 会话：列表 + 撤销走 /api/me/sessions*（绝不调 admin 接口）
+  assert.match(u, /api\('\/api\/me\/sessions\?limit=200'\)/, '会话列表 GET /api/me/sessions');
+  assert.match(u, /api\(`\/api\/me\/sessions\/\$\{row\.id\}\/revoke`/, '撤销会话 POST /api/me/sessions/:id/revoke');
+  assert.ok(!u.includes('/api/admin/sessions'), '普通用户会话页不得调 admin 接口');
+  // 到价提醒：/api/watchlist（用户级）
+  assert.match(u, /api\('\/api\/watchlist'\)/, '到价提醒 GET /api/watchlist');
+  assert.match(u, /api\(`\/api\/watchlist\/\$\{row\.game_id\}`/, '取消提醒 DELETE /api/watchlist/:gameId');
+  assert.ok(!u.includes('/api/admin/watchlist'), '普通用户到价提醒页不得调 admin 接口');
+  // 愿望单：/api/me/wishlist + 移除走用户级 DELETE /api/wishlist/id/:gameId
+  assert.match(u, /api\(`\/api\/me\/wishlist\?\$\{p\}`\)/, '愿望单 GET /api/me/wishlist（分页/搜索）');
+  assert.match(u, /api\(`\/api\/wishlist\/id\/\$\{row\.game_id\}`/, '移除愿望单 DELETE /api/wishlist/id/:gameId');
+  assert.ok(!u.includes('/api/admin/wishlists'), '普通用户愿望单页不得调 admin 接口');
+  // 公告：/api/announcements + 已读 POST /api/announcements/read
+  assert.match(u, /api\('\/api\/announcements'\)/, '公告 GET /api/announcements');
+  assert.match(u, /api\('\/api\/announcements\/read'/, '已读 POST /api/announcements/read');
+  assert.ok(!u.includes('/api/admin/announcements'), '普通用户公告页不得调 admin 接口');
+  // 个人资料不变：Console 里 profile 仍渲染 ProfilePage（/api/me*，CX 批口径）
+  assert.match(c, /<ProfilePage v-else-if="selected === 'profile'"/, '个人资料仍渲染 ProfilePage（接口不变）');
+});

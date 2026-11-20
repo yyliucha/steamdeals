@@ -121,6 +121,8 @@ export {
   savePrefs,
   countBoundSteamAccounts,
   boundAtOfSteamAccount,
+  listMySessions,
+  revokeMySession,
 } from './me-repository.js';
 // CO-5/B4-2 第七轮（docs/DESIGN-AUDIT.md B4）：site 域 SQL 落 site-repository.js——站点信息
 // （/api/site）与 Steam 账号管理（/api/steam/*）专属 SQL。setDefaultSteamAccount /

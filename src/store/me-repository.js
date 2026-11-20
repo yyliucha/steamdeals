@@ -187,3 +187,45 @@ export async function boundAtOfSteamAccount(q, steamId) {
   );
   return r.rows[0]?.bound_at ?? null;
 }
+
+// ---------------------------------------------------------------- DT-2（docs/ADMIN-PERMISSIONS.md）：用户级会话数据
+
+/**
+ * 本人会话列表（用户级）：只查当前用户（userId 强制 = session.user.id，无任何外部输入），
+ * 默认只列未过期；绝不返回 token（接口一律用对外 id sessions.id）。
+ * 口径与后台 listSessions 一致（last_seen_at desc, created_at desc 排序、字段同名）。
+ */
+export async function listMySessions(q, { userId, includeExpired = false, limit = 20, offset = 0 } = {}) {
+  const where = ['s.user_id = $1'];
+  const params = [Number(userId)];
+  if (!includeExpired) where.push('s.expires_at > now()');
+  params.push(Math.min(Math.max(Number(limit) || 20, 1), 200));
+  const limitIdx = params.length;
+  params.push(Math.max(Number(offset) || 0, 0));
+  const r = await q(
+    `select s.id, s.user_id, u.username, nullif(btrim(u.display_name), '') as display_name, u.role, u.disabled,
+            s.ip, s.user_agent, s.device_id, s.created_at, s.last_seen_at, s.expires_at
+       from sessions s join users u on u.id = s.user_id
+      where ${where.join(' and ')}
+      order by s.last_seen_at desc nulls last, s.created_at desc
+      limit $${limitIdx} offset $${limitIdx + 1}`,
+    params,
+  );
+  const c = await q(
+    `select count(*)::int as n from sessions s join users u on u.id = s.user_id where ${where.join(' and ')}`,
+    params.slice(0, limitIdx - 1),
+  );
+  return { rows: r.rows, total: c.rows[0]?.n ?? 0 };
+}
+
+/**
+ * 撤销本人的一个会话：删除条件同时限定 sessions.id 与 user_id（只能踢自己；
+ * 非自己的会话恒 null → 路由层 404，不泄露他人会话存在性）。返回 { id, user_id, username, token } 或 null。
+ */
+export async function revokeMySession(q, { sessId, userId }) {
+  const r = await q(
+    'delete from sessions s using users u where s.id = $1 and u.id = s.user_id and s.user_id = $2 returning s.id, s.user_id, u.username, s.token',
+    [Number(sessId), Number(userId)],
+  );
+  return r.rows[0] ?? null;
+}

@@ -458,10 +458,12 @@ export async function setAccountApiKey(q, { steamId, apiKeyEnc, log = null }) {
   }
 }
 
-/** 后台愿望单清单（BE 批 §4.2）：用户 / 游戏 / 当前价 / 史低 / 加入时间。 */
+/** 愿望单清单（BE 批 §4.2）：用户 / 游戏 / 当前价 / 史低 / 加入时间。
+ *  DT-2（docs/ADMIN-PERMISSIONS.md）：加 offset 与真实 total 支持分页（/api/me/wishlist 用）；
+ *  后台 /api/admin/wishlists 不传 offset/total 行为与拆分前一致（limit 内全量）。 */
 // EJ（docs/DISPLAY-NAME-RULE.md）：多带 display_name——后台「用户」列按「昵称 → 用户名」显示；
 // 关键字筛选仍按 username（账号标识，登录用）。
-export async function listWishlists(q, { limit = 200, keyword = '', userId = null } = {}) {
+export async function listWishlists(q, { limit = 200, offset = 0, keyword = '', userId = null } = {}) {
   const kw = String(keyword ?? '').trim().slice(0, 80);
   const params = [];
   const where = [];
@@ -478,6 +480,9 @@ export async function listWishlists(q, { limit = 200, keyword = '', userId = nul
   }
   const size = Math.min(Math.max(Number(limit) || 200, 1), 500);
   params.push(size);
+  const off = Math.max(Number(offset) || 0, 0);
+  params.push(off);
+  const whereSql = where.length ? 'where ' + where.join(' and ') : '';
   const rows = (await q(
     `select uw.id, uw.user_id, uw.game_id, uw.created_at,
             u.username, nullif(btrim(u.display_name), '') as display_name, g.name, g.name_en, g.steam_appid,
@@ -486,12 +491,20 @@ export async function listWishlists(q, { limit = 200, keyword = '', userId = nul
        join users u on u.id = uw.user_id
        join games g on g.id = uw.game_id
        left join game_region_snapshot rs on rs.game_id = uw.game_id and rs.region = 'cn'
-      ${where.length ? 'where ' + where.join(' and ') : ''}
+      ${whereSql}
       order by uw.created_at desc
-      limit $${params.length}`,
+      limit $${params.length - 1} offset $${params.length}`,
     params,
   )).rows;
-  return { items: rows, total: rows.length };
+  const total =
+    (await q(
+      `select count(*)::int as n from user_wishlist uw
+        join users u on u.id = uw.user_id
+        join games g on g.id = uw.game_id
+       ${whereSql}`,
+      params.slice(0, params.length - 2),
+    )).rows[0]?.n ?? 0;
+  return { items: rows, total };
 }
 
 // CY 批（docs/DATA-ISOLATION.md §3）：原 deleteWishlistsByIds（后台删愿望单）已删除——

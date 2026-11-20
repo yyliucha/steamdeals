@@ -342,6 +342,10 @@ test('CO-5/B4-2 第四轮：watchlist/wishlist 路由分支全部在 src/routes/
   // 登录守卫与写限流随域（每用户 30 次/分，与拆分前同语义）
   assert.match(WL_ROUTES, /requireUser\(\)/, '分支内登录守卫存在');
   assert.match(WL_ROUTES, /watchUserLimited\(user\.id\)/, '用户级写限流随域移入');
+  // DT-2（docs/ADMIN-PERMISSIONS.md）：/api/me/wishlist 也落本域（复用 wishlist 服务层），
+  // 反向自检：删掉该分支 → 下面两行红；把 userId: user.id 改成读请求参数 → wishlist-site-only 越权用例红。
+  assert.match(WL_ROUTES, /path === '\/api\/me\/wishlist' && req\.method === 'GET'/, 'DT-2 me/wishlist GET 分支在新文件');
+  assert.match(WL_ROUTES, /listWishlists\(q, \{ limit, offset, keyword, userId: user\.id \}\)/, 'DT-2 userId 强制 = session.user.id（忽略传入参数）');
 });
 
 test('CO-5/B4-2 第四轮：server.js 必须真实接线 handleWatchlistRoutes（删掉调用即红，防死模块）', () => {

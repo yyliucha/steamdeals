@@ -470,6 +470,11 @@ test('CO-5/B4-2 第六轮：me 域路由分支全部在 src/routes/me.js（删�
   assert.match(ME_ROUTES, /path === '\/api\/me\/avatar' && req\.method === 'POST'/, 'me/avatar POST 分支在新文件');
   assert.match(ME_ROUTES, /path === '\/api\/me\/avatar' && req\.method === 'DELETE'/, 'me/avatar DELETE 分支在新文件');
   assert.match(ME_ROUTES, /path === '\/api\/me\/library' && req\.method === 'GET'/, 'me/library GET 分支在新文件');
+  // DT-2（docs/ADMIN-PERMISSIONS.md）：用户级会话端点落 me 域（server.js 不动）
+  assert.match(ME_ROUTES, /path === '\/api\/me\/sessions' && req\.method === 'GET'/, 'DT-2 me/sessions GET 分支在新文件');
+  assert.match(ME_ROUTES, /path\.match\(\/\^\\\/api\\\/me\\\/sessions\\\/\(\\d\+\)\\\/revoke\$\//, 'DT-2 me/sessions/:id/revoke POST 分支在新文件');
+  assert.match(ME_ROUTES, /listMySessions\(q, \{[\s\S]{0,200}userId: user\.id/, 'DT-2 强制 session.user.id');
+  assert.match(ME_ROUTES, /revokeMySession\(q, \{ sessId: Number\(mySessRevoke\[1\]\), userId: user\.id \}\)/, 'DT-2 撤销限定本人');
   // 登录守卫随域（/api/me 匿名 200、其余写操作 requireUser）
   assert.match(ME_ROUTES, /requireUser\(\)/, '分支内登录守卫存在');
   // 上传限制 helper 随域移入（413 语义）
@@ -518,10 +523,13 @@ test('CO-5/B4-2 第六轮：me-repository.js 签名不变 + pg.js re-export（�
   // 域内联 SQL 抽出的两个新函数（/api/me steamBound、/api/me/library bindTimes）
   assert.match(ME_REPO, /export async function countBoundSteamAccounts\(q, userId\)/, 'steamBound 内联 SQL 已抽 countBoundSteamAccounts');
   assert.match(ME_REPO, /export async function boundAtOfSteamAccount\(q, steamId\)/, 'bindTimes 内联 SQL 已抽 boundAtOfSteamAccount');
+  // DT-2（docs/ADMIN-PERMISSIONS.md）：用户级会话 SQL 落 me-repository（路由层不写 SQL）
+  assert.match(ME_REPO, /export async function listMySessions\(q, \{ userId, includeExpired = false, limit = 20, offset = 0 \} = \{\}\)/, 'DT-2 listMySessions 落 me-repository');
+  assert.match(ME_REPO, /export async function revokeMySession\(q, \{ sessId, userId \}\)/, 'DT-2 revokeMySession 落 me-repository');
   // 全部搬家函数必须整体 re-export（旧 db.* 导入签名不变；server.js 其它段与测试照旧走聚合壳）
-  assert.match(ME_PG, /export \{[\s\S]{0,400}getUserPublic[\s\S]{0,400}updateUserProfile[\s\S]{0,400}avatarOfUser[\s\S]{0,400}setUserAvatar[\s\S]{0,400}clearUserAvatar[\s\S]{0,400}userLibraryStats[\s\S]{0,400}PREF_TABS[\s\S]{0,400}PREF_SORTS[\s\S]{0,400}normalizePrefs[\s\S]{0,400}getPrefs[\s\S]{0,400}savePrefs[\s\S]{0,400}countBoundSteamAccounts[\s\S]{0,400}boundAtOfSteamAccount[\s\S]{0,400}\} from '\.\/me-repository\.js'/, 'pg.js 必须 re-export 全部搬家函数');
+  assert.match(ME_PG, /export \{[\s\S]{0,400}getUserPublic[\s\S]{0,400}updateUserProfile[\s\S]{0,400}avatarOfUser[\s\S]{0,400}setUserAvatar[\s\S]{0,400}clearUserAvatar[\s\S]{0,400}userLibraryStats[\s\S]{0,400}PREF_TABS[\s\S]{0,400}PREF_SORTS[\s\S]{0,400}normalizePrefs[\s\S]{0,400}getPrefs[\s\S]{0,400}savePrefs[\s\S]{0,400}countBoundSteamAccounts[\s\S]{0,400}boundAtOfSteamAccount[\s\S]{0,400}listMySessions[\s\S]{0,400}revokeMySession[\s\S]{0,400}\} from '\.\/me-repository\.js'/, 'pg.js 必须 re-export 全部搬家函数');
   // 旧定义不得残留在 pg.js（双实现会漂移）
-  assert.ok(!/export (async )?function (getUserPublic|updateUserProfile|avatarOfUser|setUserAvatar|clearUserAvatar|userLibraryStats|getPrefs|savePrefs)/.test(ME_PG), 'pg.js 不允许保留旧函数定义（只许 re-export）');
+  assert.ok(!/export (async )?function (getUserPublic|updateUserProfile|avatarOfUser|setUserAvatar|clearUserAvatar|userLibraryStats|getPrefs|savePrefs|listMySessions|revokeMySession)/.test(ME_PG), 'pg.js 不允许保留旧函数定义（只许 re-export）');
   assert.ok(!/export (async )?function (normalizePrefs)|export const PREF_TABS/.test(ME_PG), 'pg.js 不允许保留 normalizePrefs/PREF_TABS 旧定义');
   // 第七轮边界（B4 #7）：setDefaultSteamAccount/clearDefaultSteamIfMatches/userLibraryItems
   // 已随 site 域搬入 site-repository.js，pg.js 只许 re-export（旧 db.* 导入签名不变），

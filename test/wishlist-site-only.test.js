@@ -190,3 +190,63 @@ test('§4.4 接入（静态）：账号同步用该账号自己的 key（不回�
   assert.match(extras, /用于该账号同步游戏库\/愿望单/, '弹窗说明');
   assert.match(extras, /该账号未配置 API Key，请先在「API Key」里填写/, '未配置时点同步给出提示');
 });
+
+// ===== DT-2（docs/ADMIN-PERMISSIONS.md）：GET /api/me/wishlist 用户级愿望单 =====
+// 防御性验收：只返回本人；忽略传入 userId（强制 session.user.id）；匿名 401；分页/搜索生效。
+// 反向自检：把 routes/watchlist.js 里 listWishlists 的 userId: user.id 换成读请求参数 → 越权用例红；
+// 把 repository 的 uw.user_id = $1 条件删掉 → A/B 双用户用例红。
+
+test('DT-2 愿望单：匿名 401；A/B 双用户只看到自己的；响应无越权字段', async () => {
+  const ctx = await setup();
+  try {
+    assert.equal((await getJson(`${ctx.base}/api/me/wishlist`)).status, 401, '匿名 401');
+    const bobCookie = await (async () => {
+      const res = await fetch(`${ctx.base}/api/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: 'bob', password: 'bob123456' }),
+      });
+      return res.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+    })();
+    const alice = await getJson(`${ctx.base}/api/me/wishlist?limit=200`, ctx.aliceCookie);
+    assert.equal(alice.status, 200);
+    assert.equal(alice.body.total, 2, 'alice 恰好自己的 2 条');
+    assert.ok(alice.body.items.every((x) => x.username === 'alice'), '全部是 alice 自己的条目');
+    assert.equal(alice.body.items.find((x) => x.id === ctx.w1.id)?.current_low, 12345, '当前价来自快照');
+    const bob = await getJson(`${ctx.base}/api/me/wishlist?limit=200`, bobCookie);
+    assert.equal(bob.body.total, 1, 'bob 只有自己的 1 条');
+    assert.equal(bob.body.items[0].username, 'bob');
+    assert.ok(!JSON.stringify(alice.body).includes('bob'), 'alice 的响应不出现 bob 的任何条目');
+    assert.ok(!JSON.stringify(bob.body).includes('alice'), 'bob 的响应不出现 alice 的任何条目');
+  } finally {
+    await ctx.store.close();
+    await ctx.srv.close();
+  }
+});
+
+test('DT-2 愿望单：忽略传入 userId（越权传他人 id 仍只回本人）；分页 offset/limit；搜索 q', async () => {
+  const ctx = await setup();
+  try {
+    // 越权防御：传入 ?userId=<bob.id> 与 ?username=bob 一律无效（强制 session.user.id）
+    const hijack = await getJson(`${ctx.base}/api/me/wishlist?limit=200&userId=${ctx.bob.id}`, ctx.aliceCookie);
+    assert.equal(hijack.status, 200);
+    assert.equal(hijack.body.total, 2, '传入 userId 无效：仍是 alice 自己的 2 条');
+    assert.ok(hijack.body.items.every((x) => x.username === 'alice'), '传入 userId 不改变归属');
+    // 分页：limit=1&offset=0 → 1 条 + total 2；offset=1 → 第二条
+    const page1 = await getJson(`${ctx.base}/api/me/wishlist?limit=1&offset=0`, ctx.aliceCookie);
+    assert.equal(page1.body.items.length, 1, 'limit=1 只回 1 条');
+    assert.equal(page1.body.total, 2, 'total 是本人全量 2（真实分页总数）');
+    const page2 = await getJson(`${ctx.base}/api/me/wishlist?limit=1&offset=1`, ctx.aliceCookie);
+    assert.equal(page2.body.items.length, 1);
+    assert.notEqual(page1.body.items[0].id, page2.body.items[0].id, 'offset 翻页不重复');
+    // 搜索：按游戏名
+    const hit = await getJson(`${ctx.base}/api/me/wishlist?q=${encodeURIComponent('绝地')}`, ctx.aliceCookie);
+    assert.equal(hit.body.total, 1, '关键词命中 1 条');
+    assert.equal(hit.body.items[0].name, '星球大战 绝地');
+    const miss = await getJson(`${ctx.base}/api/me/wishlist?q=${encodeURIComponent('不存在')}`, ctx.aliceCookie);
+    assert.equal(miss.body.total, 0, '无命中 0 条');
+  } finally {
+    await ctx.store.close();
+    await ctx.srv.close();
+  }
+});

@@ -29,6 +29,15 @@
 import * as db from '../store/pg.js';
 import * as steamAccountsMod from '../steam-accounts.js';
 
+/** watchlist 域 ctx 无 url 字段（基座不动）：查询参数从原始 req.url 解析。 */
+function searchParamsOf(req) {
+  try {
+    return new URL(String(req.url ?? ''), 'http://local').searchParams;
+  } catch {
+    return new URLSearchParams();
+  }
+}
+
 // CL 批（docs/USER-ALERTS.md §8）：用户级到价提醒写操作每用户 30 次/分
 const watchUserFails = new Map(); // userId -> { count, windowStart }
 const watchUserLimited = (userId) => {
@@ -141,6 +150,19 @@ export async function handleWatchlistRoutes(ctx) {
     const removed = await steamAccountsMod.removeUserWishlist(q, { userId: user.id, gameId: game.id });
     logger?.info('wishlist.removed', { userId: user.id, gameId: game.id, siteRemoved: removed.removed });
     json(res, 200, { ok: true, siteRemoved: removed.removed, watchesCleaned: removed.watchesCleaned, removedFromSteam: [], failed: [] });
+    return true;
+  }
+
+  // ---- DT-2（docs/ADMIN-PERMISSIONS.md）：我的愿望单（分页/搜索，复用 wishlist 服务层）----
+  if (path === '/api/me/wishlist' && req.method === 'GET') {
+    if (!requireUser()) return true;
+    const params = searchParamsOf(req);
+    const limit = Math.min(Math.max(Number(params.get('limit') ?? 20) || 20, 1), 200);
+    const offset = Math.max(Number(params.get('offset') ?? 0) || 0, 0);
+    const keyword = String(params.get('q') ?? '').trim();
+    // 防御：userId 强制 = session.user.id（写死本人，忽略请求里任何传入 userId/username）；
+    // 越权数据不可达（listWishlists 的 where uw.user_id = user.id）。
+    json(res, 200, await steamAccountsMod.listWishlists(q, { limit, offset, keyword, userId: user.id }));
     return true;
   }
 

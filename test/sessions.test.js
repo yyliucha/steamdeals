@@ -346,3 +346,68 @@ test('EJ 验收 1/2：会话列表带 displayName——有昵称给昵称、清�
     await t.close();
   }
 });
+
+// ===== DT-2（docs/ADMIN-PERMISSIONS.md）：用户级会话数据 =====
+// GET /api/me/sessions 只返回当前用户会话；POST /api/me/sessions/:id/revoke 只能踢自己（非自己 404）；
+// 传入 userId/username 一律忽略；绝不返回 token。反向自检：把 repository 的 s.user_id = $1 条件删掉 →
+// 「A/B 双用户」与「踢别人 404」用例红；把 revoke 条件放宽成只按 id 删 → 「踢别人 404」用例红。
+
+test('DT-2 会话：GET /api/me/sessions 匿名 401；A/B 双用户各自只见自己的会话；字段齐全且无 token', async () => {
+  const t = await boot();
+  try {
+    await db.createUser(t.q, { username: 'bob', password: 'password12345', role: 'user' });
+    // 注意：boot 打开 IP/UA 绑定——请求必须带登录时的 IP，否则绑定校验先 401（与 BK 测试同口径）
+    const aliceA = await login(t.base, 'admin', 'admin123456', { ip: '203.0.113.9' });
+    const aliceB = await login(t.base, 'admin', 'admin123456', { ip: '203.0.113.10' });
+    const bobCookie = await login(t.base, 'bob', 'password12345', { ip: '203.0.113.20' });
+    assert.equal((await get(t.base, '', '/api/me/sessions')).status, 401, '匿名 401');
+    const mine = await (await get(t.base, aliceA, '/api/me/sessions?limit=50', '203.0.113.9')).json();
+    assert.equal(mine.total, 2, 'admin（本人）恰有 2 条会话');
+    assert.ok(mine.sessions.every((s) => s.username === 'admin'), '全部是本人的会话');
+    assert.ok(!JSON.stringify(mine).includes('token'), '响应绝不包含 token');
+    assert.ok(mine.sessions.every((s) => typeof s.id === 'number' && s.userAgent && s.createdAt && s.lastSeenAt && s.expiresAt), '字段齐全（设备/IP/UA/最近活动/到期）');
+    assert.equal(mine.sessions.filter((s) => s.current).length, 1, 'current 只在当前请求那一行');
+    assert.ok(mine.sessions.every((s) => s.ip), '带 IP（归属地由前端展示 region）');
+    const bobView = await (await get(t.base, bobCookie, '/api/me/sessions?limit=50', '203.0.113.20')).json();
+    assert.equal(bobView.total, 1, 'bob 只见自己的 1 条');
+    assert.equal(bobView.sessions[0].username, 'bob');
+    assert.ok(!JSON.stringify(bobView).includes('admin'), 'bob 的响应不出现 admin 的会话');
+    // 忽略传入参数：userId/username/user 一律无效
+    const hijack = await (await get(t.base, bobCookie, '/api/me/sessions?limit=50&userId=1&username=admin&user=admin', '203.0.113.20')).json();
+    assert.equal(hijack.total, 1, '传入 userId/username 无效：仍是 bob 自己的 1 条');
+    assert.equal(hijack.sessions[0].username, 'bob');
+  } finally {
+    await t.close();
+  }
+});
+
+test('DT-2 会话：踢自己生效（被踢会话 401、其它会话不受影响）；踢别人的会话 404 无副作用', async () => {
+  const t = await boot();
+  try {
+    await db.createUser(t.q, { username: 'bob', password: 'password12345', role: 'user' });
+    const aliceA = await login(t.base, 'admin', 'admin123456', { ip: '203.0.113.9' });
+    const aliceB = await login(t.base, 'admin', 'admin123456', { ip: '203.0.113.10' });
+    const bobCookie = await login(t.base, 'bob', 'password12345', { ip: '203.0.113.20' });
+    const mine = await (await get(t.base, aliceA, '/api/me/sessions?limit=50', '203.0.113.9')).json();
+    // 找到 aliceB（非当前）会话并踢掉
+    const target = mine.sessions.find((s) => s.ip === '203.0.113.10');
+    assert.ok(target, '能找到 aliceB 的会话');
+    assert.equal(target.current, false, '目标是另一个设备的会话');
+    const kick = await fetch(t.base + `/api/me/sessions/${target.id}/revoke`, { method: 'POST', headers: { 'x-forwarded-for': '203.0.113.9', cookie: aliceA } });
+    assert.equal(kick.status, 200, '踢自己另一个会话成功');
+    assert.equal(await meUser(t.base, aliceB, '203.0.113.10'), null, '被踢会话失效');
+    assert.equal((await meUser(t.base, aliceA, '203.0.113.9')).username, 'admin', '当前会话不受影响');
+    // 踢别人的会话：bob 的会话对 admin 也是「非自己」→ 404 且无副作用
+    const bobSess = await (await get(t.base, bobCookie, '/api/me/sessions?limit=50', '203.0.113.20')).json();
+    const foreign = await fetch(t.base + `/api/me/sessions/${bobSess.sessions[0].id}/revoke`, { method: 'POST', headers: { 'x-forwarded-for': '203.0.113.9', cookie: aliceA } });
+    assert.equal(foreign.status, 404, '踢别人的会话 404');
+    assert.equal((await meUser(t.base, bobCookie, '203.0.113.20')).username, 'bob', '被 404 拒绝的会话仍在（无副作用）');
+    // 不存在的会话 id → 404
+    const ghost = await fetch(t.base + '/api/me/sessions/99999999/revoke', { method: 'POST', headers: { 'x-forwarded-for': '203.0.113.9', cookie: aliceA } });
+    assert.equal(ghost.status, 404, '不存在的会话 404');
+    // 未登录 401
+    assert.equal((await fetch(t.base + `/api/me/sessions/${target.id}/revoke`, { method: 'POST' })).status, 401, '匿名 revoke 401');
+  } finally {
+    await t.close();
+  }
+});
