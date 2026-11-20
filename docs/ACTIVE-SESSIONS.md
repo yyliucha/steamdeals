@@ -16,6 +16,8 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
+| CO-4 B4 监工调度+批量构建（#9 起） | docs/B4-QUEUE、docs/ACTIVE-SESSIONS、docs/TODO、docs/DONE、docs/DELIVERY、docs/REQUIREMENTS-INDEX、docs/PROJECT-OVERVIEW、docs/CHANGELOG、docs/ARCHITECTURE、package.json、package-lock.json | 打 tag 构建（批末 1 次） | 08:50 | 12:15 | 夜班监工 08:48 轮 |
+| B4 #9 admin 同步任务（工人，监工代登） | src/server.js、src/store/pg.js、src/routes/admin-sync.js（新）、src/store/admin-sync-repository.js（新）、test/ | 无 | 08:55 | 09:50 | 工人 worker-9（监工代登，完成后监工删行） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 

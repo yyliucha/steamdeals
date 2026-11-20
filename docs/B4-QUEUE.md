@@ -126,3 +126,13 @@
 - 2026-11-20 08:10 构建完成 v2.27.4：本地门禁（test:1 仅 commit-own 4 项已知基线红 / test:2/3/4 全绿 / api.test 37/37 / frontend:build native 变体 ✓ / scan 干净；docs/version 测试复跑绿）→ 版本 2.27.3→2.27.4、CHANGELOG/ARCHITECTURE §15.6/DELIVERY/PROJECT-OVERVIEW/B4-QUEUE 已更新 → 提交 + annotated tag + 推送，进入 CI 盯守。
 - 2026-11-20 08:36 CI 结果 v2.27.4：**镜像双绿**——docker-hub 44643406573 ✅（test/smoke/publish 全 success）、docker-tcr 44643406627 ✅（test/publish 全 success），两个镜像源均已推送；test-main：release 提交 run 44643381231 被 EF/EG 并发 push 取消（concurrency，ED 已知问题），兜底绿 = run 44644311190 ✅（HEAD 938c4f6 含 release 3b8e93e）；镜像不含 tag 之后 EF/EG 三提交（7a3ac2b/938c4f6/7eb5d4a），归下个版本。
 - 2026-11-20 08:40 收尾：本轮拆 #7/#8 两域（实测 45/50min 每域）→ v2.27.4 已发布 CI 双绿；剩余未拆 #9–#21（13 域）；下一轮从 #9 admin 同步任务接；ACTIVE-SESSIONS 注销监工登记（EG 行保留——其会话仍在 11:30 前工作）；本轮构建在独立 worktree nightshift-v2274 执行，主树及其上 EF/EG 未提交改动全程未动。
+- 2026-11-20 08:50 §1.5 评估（第 5 轮，所有者 08:45 指示「不等待、立即开始」，白天轮）：剩余未拆 13 域（#9–#21）；单域实测 45/50min（#7/#8），P50≈45min、P90≈50min；构建+CI 实测（v2.27.4）构建 44min（07:26→08:10）+ CI 双绿 26min（08:10→08:36）≈70min；白天可用窗口（08:48 起）无历史数据、无明确结束点。
+  本轮参数：唤醒间隔 n/a（本会话即本轮唤醒，替代 09:35 兜底交付；定时任务 72e09241 的末次交付已删除，防 09:35 双监工并行——B4-QUEUE 容错口径与技能 §4 一致）/
+  每轮预算 3.5h（白天窗口无上限 → 兜底值；干活至 ≈12:15）/
+  工人超时 75min（P90 50min ×1.5 缓冲，wait_agent 分两段 60+15min）/
+  CI 等待 30min（min(P90≈26,30)，超时写「CI 待确认」不阻塞）/
+  接管阈值 4h（B4-QUEUE 容错硬规则优先于公式，同前轮口径）/
+  域数上限 3（3×45min+构建 70min≈3.4h≤3.5h；构建不晚于预算剩 45 分钟）/
+  并行度 1（#9–#17 admin 域共享 src/server.js + src/store/pg.js 文件面，无互不重叠配对；到 cli 域（#18–#20）时再评估与 admin 域的并行配对）。
+- 2026-11-20 08:50 接管检查：ACTIVE-SESSIONS 无登记（EG 遗留登记已清理，无卡死会话）；最后心跳 08:40 收尾（v2.27.4 CI 双绿已回填 DELIVERY 4682107）；tag v2.27.4 存在、HEAD 4a1b2e8、工作区无发布文档未提交改动 → 无需接管。EF（7a3ac2b/938c4f6）+ EG（7eb5d4a/c6ac3c5/b9e111e）代码已在 main、QA 通过待发 → 本批构建随版本带上（版本连续递增）。
+- 2026-11-20 08:51 开工：注册 ACTIVE-SESSIONS（夜班监工 08:48 轮 + 工人 #9 行由监工代登，共用文档单一写者），进入开发循环，启动工人 B4 #9 admin 同步任务（sync/heat/backfill/rename/circuit）。
