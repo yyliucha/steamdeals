@@ -20,7 +20,7 @@
 
 | 类型 | 数量 | 编号 |
 |---|---|---|
-| 🐞 缺陷 | 2 | DU / EK |
+| 🐞 缺陷 | 3 | DU / EK / EM |
 | ✨ 功能 | 1 | DT-2 |
 | ⚙️ 调整 | 10 | DT-1 / DT-3 / DT-4 / DT-5 / DV / EC / EH / EI / EJ / EL |
 | 🧹 技术债 | 1 | DX |
@@ -231,7 +231,7 @@ pm test（分段）+ rontend:build + scan 全绿）。
 - **验收**：见规格 §6（6 条；含代理/直连/反向自检/代理不可用场景 +
   `test/app-release.test.js` / `test/app-release-sync.test.js` / `test/settings.test.js` + `frontend:build` + `scan`）。
 
-## EL. 待开发（🐞 缺陷）：Steam 同步超时（愿望单/库同步被 15s 看门狗砍掉）
+## EM. 待开发（🐞 缺陷）：Steam 同步超时（愿望单/库同步被 15s 看门狗砍掉）
 
 **类型：** 🐞 缺陷（同步功能超时不可用）
 **状态：** 待开发（2026-11-20 所有者实测确认）
