@@ -1,7 +1,7 @@
 # QA：B4 #12 admin 报表备份日志域拆分（第 1 轮）
 
-> 基线 94671b4（worktree gp-wt-12 基 main@94671b4）→ 工作区 HEAD 94671b4 + 未提交改动
-> （server.js / 4 个测试文件 M + routes/admin-reports.js / store/admin-reports-repository.js /
+> 基线 94671b4（worktree gp-wt-12 基 main@94671b4）→ HEAD 4a93c01（本域拆分提交，
+> 交付文件：server.js / 4 个测试文件改 + routes/admin-reports.js / store/admin-reports-repository.js /
 > test/admin-reports.test.js 新增）；判据 docs/ARCHITECTURE.md §15 + docs/B4-QUEUE.md #12 行；
 > 开发描述来源：监工派发的 B4 #12 工人 prompt（自包含）。
 > 结论：✅ 放行 —— 通过 16 / 缺失 0 / 偏差 0 / 需人工确认 2
@@ -57,4 +57,5 @@
 
 ## 复检记录
 
-- 第 1 轮（2026-11-20）：16 条核对全过、反向自检红证、门禁全绿 → ✅ 放行（待提交后确认提交哈希）。
+- 第 1 轮（2026-11-20）：16 条核对全过、反向自检红证、门禁全绿 → ✅ 放行；提交 4a93c01
+  已推 main（rebase 后冲突仅 server.js import 区块与 #21 games 域重叠，两侧保留、契约零变化）。
