@@ -26,16 +26,8 @@ import * as settings from './settings.js';
 import { baseRegion } from './sync-regions.js';
 import { handleSetupRoutes } from './setup-routes.js';
 import { sessionCookie } from './session-cookie.js';
-import { parseAlignPage } from './align-query.js';
-import { createAlignCompute, readAlignSkus } from './align-compute.js';
-import {
-  loadLatestAlignSnapshot,
-  loadLatestAlignSnapshotForUpdate,
-  updateAlignSnapshotAfterAction,
-  markAlignSnapshotDirty,
-  ensureAlignSnapshot,
-  alignSnapshotMaxAgeMs,
-} from './align-snapshot.js';
+import { createAlignCompute } from './align-compute.js';
+import { ensureAlignSnapshot, alignSnapshotMaxAgeMs } from './align-snapshot.js';
 import { handleSettingsRoutes } from './settings-routes.js';
 import { appealEmailFrom } from './appeal.js';
 import { ensureSteamSchemaOnce, baseUrl } from './steam-login.js';
@@ -118,6 +110,15 @@ import { handleAdminSettingsAdmin } from './routes/admin-settings.js';
 // 与 /api/user/sessions/revoke-others（前台主段）留本文件；bulk 派发表 sessions/kick
 // 条目（B4 #11）留本文件。
 import { handleAdminSessionsAdmin } from './routes/admin-sessions.js';
+// CO-5/B4-2 第十四轮：admin-align 域（B4 #17 后台对齐审核：/api/admin/align*）路由已抽到
+// src/routes/admin-align.js——handleAdminAlignAdmin 在 requireAdmin 就绪之后的管理段
+// （本域全部 8 组路由，管理段形态先例=admin-settings 域）。调用位置不能动：取本域最早路由
+// /api/admin/align 的原位置（公告管理段接线之后、bulk 之前）。triggerAlignGeneration 宿主
+// 闭包（后台生成 single-flight 链式排队）与 runGated 宿主闭包（并发闸 Map）经 ctx 按引用
+// 传入（语义共享，勿改成拷贝）；store（createApiServer 参数，本域事务走 store.tx）经 ctx
+// 传入；computeAlignGroups/ensureAlignSnapshot/alignSnapshotMaxAgeMs 供 triggerAlignGeneration
+// 使用留本文件；/api/admin/bulk 派发表无 align 条目（本域不涉 bulk）。
+import { handleAdminAlignAdmin } from './routes/admin-align.js';
 // DX 批（docs/SEARCH-FIX-PERF.md §DX）：前台列表/搜索短 TTL 内存缓存（纯逻辑，测试锁语义）。
 import { createListCache, stableHash } from './search-cache.js';
 
@@ -712,6 +713,8 @@ export function createApiServer({
   // 已有生成在跑时**链式排队**（在途轮结束后补跑）——动作后的重算必须覆盖「动作之后」的状态，
   // 否则在途旧重算可能覆盖同事务更新过的快照（ensureAlignSnapshot 内部另有动作竞态防护）。
   // 失败已写快照 error + 日志 align.snapshot_failed，不向上抛（请求不阻塞）。
+  // CO-5/B4-2 第十四轮：本闭包经 ctx 按引用传入 routes/admin-align.js（语义共享：确认/忽略/
+  // 恢复动作后与 GET 首次/refresh 共用同一在途 Promise 链），勿改成拷贝。
   let alignGeneration = null;
   const triggerAlignGeneration = ({ force = false } = {}) => {
     const run = () =>
@@ -726,66 +729,6 @@ export function createApiServer({
       if (alignGeneration === head) alignGeneration = null;
     });
     return head;
-  };
-
-  // DE 批（docs/ALIGN-REVIEW-UI.md §2/§3）：对齐组 → 接口行映射（链接字段 + top-N 候选明细 + 英文名）。
-  const alignSteamUrl = (appid) => (appid != null ? `https://store.steampowered.com/app/${appid}/` : null);
-  const mapAlignRows = (groups) => groups.map((g) => {
-    const best = g.best;
-    const candidate = best?.candidate ?? null;
-    return {
-      key: g.key,
-      name: g.name,
-      nameEn: (g.items ?? []).flatMap((i) => (i.titles ?? []).slice(1)).find(Boolean) ?? null,
-      skuCount: g.skuIds.length,
-      skuIds: g.skuIds,
-      skuUrls: g.skuIds.map((id) => `https://www.sonkwo.hk/sku/${id}`),
-      auto: g.auto,
-      score: best?.score ?? null,
-      lastReviewed: g.lastReviewed ?? null, // DH 批：最近处理（操作人/时间/动作；恢复为待处理的组可见）
-      method: best?.method ?? null,
-      matchedField: best?.matchedField ?? null,
-      contentWord: Boolean(best?.contentWord),
-      reasons: best?.reasons ?? [],
-      candidate: candidate
-        ? { name: candidate.name ?? best.matchedField, steamAppid: candidate.steam_appid, steamUrl: alignSteamUrl(candidate.steam_appid) }
-        : null,
-      candidates: (g.topCandidates ?? []).map((t) => ({
-        name: t.candidate.name ?? t.matchedField,
-        steamAppid: t.candidate.steam_appid,
-        steamUrl: alignSteamUrl(t.candidate.steam_appid),
-        score: t.score,
-        method: t.method,
-        matchedField: t.matchedField,
-        reasons: t.reasons,
-        auto: t.auto,
-      })),
-    };
-  });
-
-  // DE 批（docs/ALIGN-REVIEW-UI.md §5）：单组确认的内部步骤——合并孤立行 + 映射落库；
-  // 单条与批量确认共用，返回 { mapped, merged }。
-  const confirmAlignKey = async ({ q, align, group, appid, games, user, method = 'manual' }) => {
-    const target = games.find((g) => Number(g.steam_appid) === appid);
-    if (!target) throw new Error(`库里没有 appid ${appid}`);
-    const merged = [];
-    for (const skuId of group.skuIds) {
-      const alias = (await q('select game_id from game_aliases where platform_code = $1 and platform_product_id = $2', ['sonkwo', String(skuId)])).rows[0];
-      if (alias) {
-        const fromId = Number(alias.game_id);
-        if (fromId !== Number(target.id)) {
-          const source = (await q('select steam_appid from games where id = $1', [fromId])).rows[0];
-          if (source && source.steam_appid == null) {
-            const res = await db.mergeGames(q, { fromGameId: fromId, toGameId: Number(target.id), logger });
-            merged.push({ fromId, moved: res.moved ?? 0, dropped: res.dropped ?? 0, merged: Boolean(res.merged) });
-          } else {
-            logger?.warn('match.skip_merge', { skuId, fromId, reason: 'source_has_appid' });
-          }
-        }
-      }
-    }
-    const outcome = await align.confirmGroup({ store, q, group, appid, steamGames: games, reviewedBy: user.id, method, confidence: group.best?.score ?? 1, mergeGame: () => ({ merged: false }) });
-    return { mapped: outcome.skus, merged };
   };
 
   const server = createServer(async (req, res) => {
@@ -3286,300 +3229,32 @@ export function createApiServer({
       )
         return;
 
-      // ---- DL 批（docs/ALIGN-SNAPSHOT.md §5）：对齐审核——只读库快照 + 操作同事务更新快照 ----
-      // 队列真相 = align_snapshots 最新行；不再有内存 TTL/invalidate/staleCache。
-      // 读：无快照（首次部署）→ 202 firstRun 并触发后台生成；有快照 → 200（分页在内存切片）。
-      // ?refresh=1：请求后台立即重算（不阻塞），返回当前快照 + refreshing。
-      // 操作（confirm/ignore/restore）：与映射写入同事务更新快照——读请求立刻拿到新队列。
-
-      if (path === '/api/admin/align' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        // B1 批（docs/DESIGN-AUDIT.md B1）：读接口并发闸（≤1；重算本体在后台 single-flight）
-        return await runGated('GET /api/admin/align', 1, async () => {
-        const refresh = url.searchParams.get('refresh') === '1';
-        const { page, pageSize } = parseAlignPage(url.searchParams);
-        const latest = await loadLatestAlignSnapshot(q);
-        if (!latest) {
-          // 首次部署（表空）：触发后台生成（single-flight），前端只此一次显示「首次生成中」（规格 §5/§7.1）
-          triggerAlignGeneration();
-          logger?.info('align.snapshot_read', { firstRun: true });
-          return json(res, 202, { generating: true, firstRun: true, page, pageSize });
-        }
-        if (refresh) {
-          // ?refresh=1：后台立即重算，不阻塞本次响应（规格 §5）
-          triggerAlignGeneration({ force: true });
-        }
-        const payload = latest.payload ?? {};
-        const rows = mapAlignRows(payload.items ?? []);
-        const counts = latest.counts ?? {};
-        logger?.info('align.snapshot_read', { stale: Boolean(latest.dirty), refreshing: refresh, total: rows.length });
-        return json(res, 200, {
-          groups: rows.slice((page - 1) * pageSize, page * pageSize),
-          total: rows.length,
-          page,
-          pageSize,
-          counts, // { groups, skus, auto, manual, noCandidate, inherited, ignored, contentWords, contentWordSkus }
-          inherited: counts.inherited ?? 0, // 兼容旧前端字段
-          generatedAt: latest.generated_at ?? null,
-          cached: true, // 库快照即缓存（签名不变时无重算，规格 §8.3）
-          dirty: Boolean(latest.dirty),
-          refreshing: refresh,
-          partial: Boolean(payload.partial),
-          error: latest.error ?? null, // 最近一次生成失败原因（成功为 null，规格 §7.2）
-        });
-        }, (msg) => json(res, 503, { error: msg }));
-      }
-
-      // 合并预览：该组同归一化名的孤立游戏行（报价/快照数 + 不可撤销提示）
-      // DE 批：支持 ?keys=a,b 批量预览（批量确认弹窗显示「将合并 M 条孤儿行」）。
-      // DL 批：组来源改为库快照 payload.items（不再同步全量计算）。
-      const alignPreviewMatch = path.match(/^\/api\/admin\/align\/preview$/);
-      if (alignPreviewMatch && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const key = String(url.searchParams.get('key') ?? '').trim();
-        const keysParam = String(url.searchParams.get('keys') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-        const latest = await loadLatestAlignSnapshot(q);
-        const groups = latest?.payload?.items ?? [];
-        const orphanRowsFor = async (group) => {
-          const orphans = [];
-          for (const name of [...new Set(group.items.map((i) => i.name))]) {
-            const rows = (await q(
-              `select g.id, g.name, (select count(*)::int from offers o where o.game_id = g.id) as offers,
-                      (select count(*)::int from price_snapshots s join offers o2 on o2.id = s.offer_id where o2.game_id = g.id) as snapshots
-                 from games g
-                where g.steam_appid is null and g.name = $1 and not g.deleted`,
-              [name],
-            )).rows;
-            orphans.push(...rows.map((r) => ({ id: Number(r.id), name: r.name, offers: Number(r.offers), snapshots: Number(r.snapshots) })));
-          }
-          return orphans;
-        };
-        if (key) {
-          const group = groups.find((g) => g.key === key);
-          if (!group) return json(res, 404, { error: '队列里没有该组' });
-          const target = group.best?.candidate?.steam_appid;
-          if (!target) return json(res, 400, { error: '该组没有候选，请手动搜索指定目标' });
-          return json(res, 200, {
-            key,
-            target: { name: group.best.candidate.name ?? group.best.matchedField, steamAppid: target },
-            skuIds: group.skuIds,
-            orphans: await orphanRowsFor(group),
-            irreversible: true,
-          });
-        }
-        if (keysParam.length) {
-          if (keysParam.length > 200) return json(res, 400, { error: '单次批量预览最多 200 组' });
-          const found = new Map(groups.map((g) => [g.key, g]));
-          const missing = keysParam.filter((k) => !found.has(k));
-          if (missing.length) return json(res, 404, { error: `队列里没有该组：${missing.join('、')}` });
-          const previews = [];
-          for (const k of keysParam) {
-            const group = found.get(k);
-            const target = group.best?.candidate?.steam_appid;
-            if (!target) {
-              previews.push({ key: k, error: '该组没有候选，请手动搜索指定目标' });
-              continue;
-            }
-            previews.push({
-              key: k,
-              name: group.name,
-              skuCount: group.skuIds.length,
-              target: { name: group.best.candidate.name ?? group.best.matchedField, steamAppid: target },
-              skuIds: group.skuIds,
-              orphans: await orphanRowsFor(group),
-              irreversible: true,
-            });
-          }
-          return json(res, 200, { keys: keysParam, previews });
-        }
-        return json(res, 400, { error: '缺少 key / keys' });
-      }
-
-      if (path === '/api/admin/align/confirm' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const body = await readBody(req);
-        const singleKey = String(body?.key ?? '').trim();
-        const keys = Array.isArray(body?.keys) ? body.keys.map((k) => String(k ?? '')).filter(Boolean) : [];
-        const method = body?.method || 'manual';
-        // DE 批：批量确认——body.keys 用各组当前候选，每组独立回执。
-        // A3 批：确认只写 game_source_map（库为唯一真相），不再写回 skus.json。
-        // DL 批（docs/ALIGN-SNAPSHOT.md §5）：映射写入与快照更新同一事务——成功后从 payload 移除
-        // 已处理组、counts 递减、dirty=true；读请求立即拿到不含这些组的新队列（不再 invalidate 全量）。
-        if (keys.length) {
-          if (keys.length > 200) return json(res, 400, { error: '单次批量确认最多 200 组' });
-          const align = await import('./align.js');
-          const out = await store.tx(async (tx) => {
-            const snap = await loadLatestAlignSnapshotForUpdate(tx);
-            const groups = snap?.payload?.items ?? [];
-            const results = [];
-            let totalMapped = 0;
-            let totalMerged = 0;
-            const removed = [];
-            for (const k of keys) {
-              const group = groups.find((g) => g.key === k);
-              if (!group) { results.push({ key: k, error: '队列里没有该组（可能已被处理）' }); continue; }
-              const appid = group.best?.candidate?.steam_appid;
-              if (appid == null) { results.push({ key: k, error: '该组没有候选' }); continue; }
-              try {
-                const target = (await tx('select id, steam_appid from games where steam_appid = $1 limit 1', [appid])).rows[0];
-                if (!target) throw new Error(`库里没有 appid ${appid}`);
-                const r = await confirmAlignKey({ q: tx, align, group, appid, games: [target], user, method });
-                totalMapped += r.mapped;
-                totalMerged += r.merged.length;
-                results.push({ key: k, appid, mapped: r.mapped, merged: r.merged.length });
-                removed.push(group);
-              } catch (err) {
-                results.push({ key: k, error: String(err?.message ?? err) });
-              }
-            }
-            // 同事务更新快照：移除已处理组 + counts 递减 + dirty（规格 §5）
-            if (snap && removed.length) await updateAlignSnapshotAfterAction(tx, snap, { removedGroups: removed });
-            return { results, totalMapped, totalMerged };
-          });
-          triggerAlignGeneration(); // 签名已变（映射写入）→ 后台重算一致性，快照本身已是新队列
-          logger?.info('match.batch_confirmed', { by: user.username, keys, results: out.results });
-          return json(res, 200, { ok: true, results: out.results, totalMapped: out.totalMapped, totalMerged: out.totalMerged });
-        }
-        if (singleKey) {
-          const appid = Number(body?.appid);
-          if (!Number.isFinite(appid)) return json(res, 400, { error: '参数不合法（key + appid）' });
-          const align = await import('./align.js');
-          // 守卫（只读，不占锁）：组在队列、目标在库
-          const latest = await loadLatestAlignSnapshot(q);
-          const guardGroup = latest?.payload?.items?.find((g) => g.key === singleKey);
-          if (!guardGroup) return json(res, 404, { error: '队列里没有该组（可能已被处理）' });
-          const target = (await q('select id, steam_appid from games where steam_appid = $1 limit 1', [appid])).rows[0];
-          if (!target) return json(res, 404, { error: `库里没有 appid ${appid}` });
-          // 合并孤立行（只合并无 appid 的源行；有 appid 冲突跳过）——不可自动撤销
-          let mapped = 0;
-          let merged = [];
-          try {
-            await store.tx(async (tx) => {
-              const snap = await loadLatestAlignSnapshotForUpdate(tx);
-              const group = snap?.payload?.items?.find((g) => g.key === singleKey) ?? guardGroup;
-              const r = await confirmAlignKey({ q: tx, align, group, appid, games: [target], user, method });
-              mapped = r.mapped;
-              merged = r.merged;
-              // 同事务更新快照（组已被并发处理时不重复移除——apply 用 key 过滤，安全）
-              if (snap) await updateAlignSnapshotAfterAction(tx, snap, { removedGroups: [group] });
-            });
-          } catch (err) {
-            if (err?.httpStatus) return json(res, err.httpStatus, { error: err.message });
-            throw err;
-          }
-          triggerAlignGeneration(); // 签名已变 → 后台重算一致性
-          logger?.info('match.confirmed', { by: user.username, key: singleKey, appid, skus: guardGroup.skuIds, merged });
-          return json(res, 200, { ok: true, mapped, merged: merged.length, appid });
-        }
-        return json(res, 400, { error: '参数不合法（key + appid 或 keys）' });
-      }
-
-      if (path === '/api/admin/align/ignore' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const body = await readBody(req);
-        const singleKey = String(body?.key ?? '').trim();
-        const keys = Array.isArray(body?.keys) ? body.keys.map((k) => String(k ?? '')).filter(Boolean) : [];
-        // DE 批：批量忽略——每组独立回执。DL 批：与快照更新同事务（规格 §5）。
-        if (keys.length) {
-          if (keys.length > 200) return json(res, 400, { error: '单次批量忽略最多 200 组' });
-          const align = await import('./align.js');
-          const out = await store.tx(async (tx) => {
-            const snap = await loadLatestAlignSnapshotForUpdate(tx);
-            const groups = snap?.payload?.items ?? [];
-            const results = [];
-            let totalIgnored = 0;
-            const removed = [];
-            for (const k of keys) {
-              const group = groups.find((g) => g.key === k);
-              if (!group) { results.push({ key: k, error: '队列里没有该组（可能已被处理）' }); continue; }
-              const ignored = await align.ignoreGroup({ q: tx, group, reviewedBy: user.id });
-              totalIgnored += ignored.ignored;
-              results.push({ key: k, ignored: ignored.ignored });
-              removed.push(group);
-            }
-            if (snap && removed.length) await updateAlignSnapshotAfterAction(tx, snap, { removedGroups: removed });
-            return { results, totalIgnored };
-          });
-          triggerAlignGeneration(); // 签名已变 → 后台重算一致性
-          logger?.info('match.batch_ignored', { by: user.username, keys, results: out.results });
-          return json(res, 200, { ok: true, results: out.results, ignored: out.totalIgnored });
-        }
-        if (singleKey) {
-          const align = await import('./align.js');
-          const latest = await loadLatestAlignSnapshot(q);
-          const guardGroup = latest?.payload?.items?.find((g) => g.key === singleKey);
-          if (!guardGroup) return json(res, 404, { error: '队列里没有该组（可能已被处理）' });
-          let ignored = 0;
-          await store.tx(async (tx) => {
-            const snap = await loadLatestAlignSnapshotForUpdate(tx);
-            const group = snap?.payload?.items?.find((g) => g.key === singleKey) ?? guardGroup;
-            const r = await align.ignoreGroup({ q: tx, group, reviewedBy: user.id });
-            ignored = r.ignored;
-            if (snap) await updateAlignSnapshotAfterAction(tx, snap, { removedGroups: [group] });
-          });
-          triggerAlignGeneration(); // 签名已变 → 后台重算一致性
-          logger?.info('match.ignored', { by: user.username, key: singleKey, skus: guardGroup.skuIds });
-          return json(res, 200, { ok: true, ignored });
-        }
-        return json(res, 400, { error: '缺少 key 或 keys' });
-      }
-
-      // ---- DH 批（docs/ALIGN-INTEGRITY.md §2 B1/C1、§3）：已忽略视图 / 恢复为待处理 / 审阅记录 ----
-      if (path === '/api/admin/align/ignored' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const align = await import('./align.js');
-        const entries = readAlignSkus();
-        const qFilter = String(url.searchParams.get('q') ?? '').trim().slice(0, 60);
-        const groups = await align.loadIgnoredGroups({ q, entries, qFilter });
-        return json(res, 200, { groups, total: groups.length });
-      }
-
-      if (path === '/api/admin/align/restore' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const align = await import('./align.js');
-        const body = await readBody(req);
-        const key = String(body?.key ?? '').trim();
-        if (!key) return json(res, 400, { error: '缺少 key' });
-        const entries = readAlignSkus();
-        const skuIds = align.skuIdsForGroupKey(entries, key);
-        if (!skuIds.length) return json(res, 404, { error: '没有该组（可能已不在 skus.json）' });
-        // DL 批：恢复与快照标脏同事务（该组将在后台重算后重新入队；读请求不被重算阻塞）
-        const restored = await store.tx(async (tx) => {
-          const snap = await loadLatestAlignSnapshotForUpdate(tx);
-          const r = await align.restoreIgnoredGroup({ q: tx, skuIds, reviewedBy: user.id });
-          if (snap) await markAlignSnapshotDirty(tx, snap);
-          return r;
-        });
-        if (!restored) return json(res, 404, { error: '该组没有已忽略的映射' });
-        triggerAlignGeneration(); // 签名已变（pending 映射）→ 后台重算，恢复组重新入队
-        logger?.info('align.restored', { by: user.username, key, skus: restored });
-        return json(res, 200, { ok: true, restored });
-      }
-
-      if (path === '/api/admin/align/history' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const align = await import('./align.js');
-        const key = String(url.searchParams.get('key') ?? '').trim();
-        if (!key) return json(res, 400, { error: '缺少 key' });
-        const entries = readAlignSkus();
-        const records = await align.loadGroupHistory({ q, entries, key });
-        return json(res, 200, { records });
-      }
-
-      if (path === '/api/admin/align/search' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const kw = String(url.searchParams.get('q') ?? '').trim().slice(0, 60);
-        if (!kw) return json(res, 200, { games: [] });
-        const like = `%${kw}%`;
-        const rows = (await q(
-          `select id, steam_appid, name, name_en from games
-            where steam_appid is not null and not deleted
-              and (name ilike $1 or name_en ilike $1 or steam_appid::text = $2)
-            order by id limit 20`,
-          [like, kw],
-        )).rows;
-        return json(res, 200, { games: rows });
-      }
+      // ---- CO-5/B4-2 第十四轮（docs/DESIGN-AUDIT.md B4）：admin-align 域管理段路由已抽到
+      // src/routes/admin-align.js。调用位置不能动：必须在 requireAdmin 就绪之后的管理段
+      // （401/403 语义依赖该位置；调用点取本域最早路由 /api/admin/align 的原位置，
+      // 即公告管理段接线之后、bulk 之前）。域内 8 组路由 path+method 互不重叠、
+      // 与相邻其它 admin 域路由无同 path 双匹配，在管理段内集中到一处不改变匹配语义；
+      // triggerAlignGeneration 宿主闭包（后台生成 single-flight 链式排队）、runGated 宿主
+      // 闭包（并发闸 Map）与 store（本域事务 store.tx，测试注入）必须按引用传入
+      // （语义共享：动作后重算与 GET 首次/refresh 共用同一在途 Promise 链），勿改成拷贝。
+      if (
+        await handleAdminAlignAdmin({
+          path,
+          req,
+          res,
+          url,
+          q,
+          logger,
+          json,
+          readBody,
+          user,
+          requireAdmin,
+          store,
+          runGated,
+          triggerAlignGeneration,
+        })
+      )
+        return;
 
       // ---- 管理员：批量操作（统一入口 + 白名单派发表，见 docs/ADMIN-BULK-ACTIONS.md）----
       if (path === '/api/admin/bulk' && req.method === 'POST') {

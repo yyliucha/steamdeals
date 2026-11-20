@@ -220,15 +220,19 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   const alignCompute = readFileSync(join(process.cwd(), 'src', 'align-compute.js'), 'utf8');
   const snapMod = readFileSync(join(process.cwd(), 'src', 'align-snapshot.js'), 'utf8');
   const sched = readFileSync(join(process.cwd(), 'src', 'scheduler.js'), 'utf8');
+  // CO-5/B4-2 第十四轮：/api/admin/align* 路由已随 admin-align 域抽到 src/routes/admin-align.js，断言按新落点指向
+  const alignRoutes = readFileSync(join(process.cwd(), 'src', 'routes', 'admin-align.js'), 'utf8');
+  // CO-5/B4-2 第十四轮：align_snapshots 表 DDL 随域抽到 admin-align-repository.js（pg.js migrate 继续消费）
+  const alignRepo = readFileSync(join(process.cwd(), 'src', 'store', 'admin-align-repository.js'), 'utf8');
 
   assert.match(pg, /create table if not exists game_source_map/, '映射表');
   assert.match(pg, /primary key \(platform_code, product_id\)/, 'platform+product 唯一');
-  assert.match(server, /\/api\/admin\/align' && req\.method === 'GET'/, '队列接口');
-  assert.match(server, /\/api\/admin\/align\/confirm' && req\.method === 'POST'/, '确认接口');
-  assert.match(server, /\/api\/admin\/align\/ignore' && req\.method === 'POST'/, '忽略接口');
-  assert.match(server, /match\.confirmed/, '确认审计');
-  assert.match(server, /match\.ignored/, '忽略审计');
-  assert.ok(/align\\\/preview/.test(server), '合并预览接口');
+  assert.match(alignRoutes, /\/api\/admin\/align' && req\.method === 'GET'/, '队列接口');
+  assert.match(alignRoutes, /\/api\/admin\/align\/confirm' && req\.method === 'POST'/, '确认接口');
+  assert.match(alignRoutes, /\/api\/admin\/align\/ignore' && req\.method === 'POST'/, '忽略接口');
+  assert.match(alignRoutes, /match\.confirmed/, '确认审计');
+  assert.match(alignRoutes, /match\.ignored/, '忽略审计');
+  assert.ok(/align\\\/preview/.test(alignRoutes), '合并预览接口');
   assert.match(cliSync, /runSonkwoMatchStep/, 'sonkwo 收尾匹配（不新增 cron）');
   assert.match(cli, /match\.summary/, 'match.summary 日志');
   assert.match(cliSync, /MATCH_ON_SONKWO/, '收尾开关');
@@ -240,22 +244,22 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   // ── DE 批（docs/ALIGN-REVIEW-UI.md §3/§4）：接口契约与页面结构 ──
   // 接口：200 带 counts 统计；批量确认/忽略；预览 keys
   assert.match(snapMod, /alignGroupCounts/, 'counts 统计口径接入（DL 批移到 align-snapshot.js，含内容词计数透传）');
-  assert.match(server, /match\.batch_confirmed/, '批量确认审计');
-  assert.match(server, /match\.batch_ignored/, '批量忽略审计');
-  assert.match(server, /align\/preview\?keys=|keysParam/, '批量合并预览（批量确认弹窗用）');
-  assert.match(server, /store\.steampowered\.com\/app/, 'Steam 链接字段');
-  assert.match(server, /sonkwo\.hk\/sku/, '杉果链接字段');
+  assert.match(alignRoutes, /match\.batch_confirmed/, '批量确认审计');
+  assert.match(alignRoutes, /match\.batch_ignored/, '批量忽略审计');
+  assert.match(alignRoutes, /align\/preview\?keys=|keysParam/, '批量合并预览（批量确认弹窗用）');
+  assert.match(alignRoutes, /store\.steampowered\.com\/app/, 'Steam 链接字段');
+  assert.match(alignRoutes, /sonkwo\.hk\/sku/, '杉果链接字段');
 
   // ── DL 批（docs/ALIGN-SNAPSHOT.md §5/§8）：快照落库接线（静态契约）──
-  assert.match(pg, /create table if not exists align_snapshots/, 'align_snapshots 建表（migrate 幂等）');
+  assert.match(alignRepo, /create table if not exists align_snapshots/, 'align_snapshots 建表（migrate 幂等，DDL 随域抽到 repository）');
   assert.match(pg, /alter table game_source_map add column if not exists created_at/, 'gsm.created_at 补列（签名 §4 依赖）');
-  assert.match(server, /firstRun: true/, '无快照首次 202 firstRun（规格 §8.1）');
-  assert.match(server, /refresh\?|'refresh'\) === '1'|get\('refresh'\)/, '?refresh=1 后台重算（不阻塞）');
-  assert.match(server, /loadLatestAlignSnapshot/, 'GET 只读库快照');
-  assert.match(server, /updateAlignSnapshotAfterAction/, '确认/忽略同事务更新快照（规格 §5）');
-  assert.match(server, /markAlignSnapshotDirty/, '恢复后快照标脏 + 后台重算');
-  assert.match(server, /triggerAlignGeneration/, '后台生成 single-flight 触发');
-  assert.match(server, /cached: true/, '读快照 cached:true（签名不变无重算）');
+  assert.match(alignRoutes, /firstRun: true/, '无快照首次 202 firstRun（规格 §8.1）');
+  assert.match(alignRoutes, /refresh\?|'refresh'\) === '1'|get\('refresh'\)/, '?refresh=1 后台重算（不阻塞）');
+  assert.match(alignRoutes, /loadLatestAlignSnapshot/, 'GET 只读库快照');
+  assert.match(alignRoutes, /updateAlignSnapshotAfterAction/, '确认/忽略同事务更新快照（规格 §5）');
+  assert.match(alignRoutes, /markAlignSnapshotDirty/, '恢复后快照标脏 + 后台重算');
+  assert.match(server, /triggerAlignGeneration/, '后台生成 single-flight 触发（闭包留宿主，经 ctx 传入）');
+  assert.match(alignRoutes, /cached: true/, '读快照 cached:true（签名不变无重算）');
   assert.doesNotMatch(server, /alignRunner\.invalidate/, '废弃 invalidate() 内存语义');
   // 内存缓存运行器本体（TTL/single-flight/staleCache/invalidate）已从 align-query.js 删除（DL 批）
   const alignQuery = readFileSync(join(process.cwd(), 'src', 'align-query.js'), 'utf8');
@@ -298,10 +302,10 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   // ── DH 批（docs/ALIGN-INTEGRITY.md §2/§3）：继承参考 appid、补写映射、已忽略视图/恢复、审阅记录 ──
   assert.match(alignCompute, /align\.writeBackfilledMaps/, '计算时自动补写映射（A1，DL 批移至 align-compute.js）');
   assert.match(alignCompute, /align\.map_backfilled/, '补写映射日志 align.map_backfilled（A1）');
-  assert.match(server, /\/api\/admin\/align\/ignored' && req\.method === 'GET'/, '已忽略视图接口（B1）');
-  assert.match(server, /\/api\/admin\/align\/restore' && req\.method === 'POST'/, '恢复为待处理接口（B1）');
-  assert.match(server, /\/api\/admin\/align\/history' && req\.method === 'GET'/, '审阅记录接口（C1）');
-  assert.match(server, /align\.restored/, '恢复审计 align.restored（B1）');
+  assert.match(alignRoutes, /\/api\/admin\/align\/ignored' && req\.method === 'GET'/, '已忽略视图接口（B1）');
+  assert.match(alignRoutes, /\/api\/admin\/align\/restore' && req\.method === 'POST'/, '恢复为待处理接口（B1）');
+  assert.match(alignRoutes, /\/api\/admin\/align\/history' && req\.method === 'GET'/, '审阅记录接口（C1）');
+  assert.match(alignRoutes, /align\.restored/, '恢复审计 align.restored（B1）');
   assert.match(alignCompute, /lastReviewed/, '队列行带最近处理（C1）');
   assert.match(cli, /align\.writeBackfilledMaps/, 'CLI 匹配步同样自动补写（A1）');
   assert.match(alignAdmin, /api\/admin\/align\/ignored/, '前端已忽略视图接线（B1）');
@@ -319,11 +323,123 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   assert.match(alignAdmin, /row\.method === 'content_word'/, '已忽略视图标注内容词归档组（DN）');
 
   // ── A3 批（docs/DESIGN-AUDIT.md A3）：库为唯一真相、skus.json 只读兼容 ──
-  assert.doesNotMatch(server, /writeFileSync\(alignSkuFile\(\)/, 'server 确认流程不再写 skus.json');
-  assert.match(server, /不再写回 skus\.json|只写 game_source_map/, 'server 确认注释锁（A3）');
+  assert.doesNotMatch(alignRoutes, /writeFileSync\(alignSkuFile\(\)/, '确认流程不再写 skus.json');
+  assert.match(alignRoutes, /不再写回 skus\.json|只写 game_source_map/, '确认注释锁（A3）');
   assert.match(cliSync, /loadConfirmedAppids/, 'sync sonkwo 读库映射接线（cli 同步域）');
   assert.match(cliSync, /resolveSkuAppid/, 'appid 解析统一走库优先+文件回落');
   assert.doesNotMatch(cli, /entry\.appid = appid/, 'match 全路径不再写 skus.json 的 appid');
   assert.match(cli, /映射已写 game_source_map/, '--confirm 落库文案');
   assert.match(alignAdmin, /写 game_source_map（confirmed）/, '确认弹窗「落地」文案与 A3 一致');
+});
+
+// ============================================================ CO-5/B4-2 第十四轮静态锁
+// admin-align 域（B4 #17：后台对齐审核）从 server.js/pg.js 巨石拆出后，
+// 静态断言按新落点指向：
+//   · 路由分支 → src/routes/admin-align.js；
+//   · 域专属 SQL（align_snapshots 表 DDL + 域内联 5 新函数）→ src/store/admin-align-repository.js，
+//     pg.js 必须 re-export（旧 db.* 导入签名不变），migrate() 继续消费 DDL；
+//   · server.js 只留单入口接线（管理段），且必须真实调用——删掉调用即红（防死模块）；
+//   · 旧分支不得残留在 server.js（防双实现）。
+// 反向自检口径：删掉 routes/admin-align.js 任一路由分支 → 第 1 组断言红；
+// 删掉 server.js 的入口接线 → 第 2 组红；把分支抄回 server.js → 第 3 组红；
+// 删 pg.js re-export → 第 4 组红。
+
+const AL_ROUTES = readFileSync(join(process.cwd(), 'src', 'routes', 'admin-align.js'), 'utf8');
+const AL_REPO = readFileSync(join(process.cwd(), 'src', 'store', 'admin-align-repository.js'), 'utf8');
+const AL_SERVER = readFileSync(join(process.cwd(), 'src', 'server.js'), 'utf8');
+const AL_PG = readFileSync(join(process.cwd(), 'src', 'store', 'pg.js'), 'utf8');
+
+test('CO-5/B4-2 第十四轮：admin-align 路由分支全部在 src/routes/admin-align.js（管理段单入口，删任一支即红）', () => {
+  assert.match(AL_ROUTES, /path === '\/api\/admin\/align' && req\.method === 'GET'/, '队列接口分支在新文件');
+  assert.match(AL_ROUTES, /path\.match\(\/\^\\\/api\\\/admin\\\/align\\\/preview\$\/\)/, '合并预览分支在新文件');
+  assert.match(AL_ROUTES, /path === '\/api\/admin\/align\/confirm' && req\.method === 'POST'/, '确认分支在新文件');
+  assert.match(AL_ROUTES, /path === '\/api\/admin\/align\/ignore' && req\.method === 'POST'/, '忽略分支在新文件');
+  assert.match(AL_ROUTES, /path === '\/api\/admin\/align\/ignored' && req\.method === 'GET'/, '已忽略视图分支在新文件');
+  assert.match(AL_ROUTES, /path === '\/api\/admin\/align\/restore' && req\.method === 'POST'/, '恢复分支在新文件');
+  assert.match(AL_ROUTES, /path === '\/api\/admin\/align\/history' && req\.method === 'GET'/, '审阅记录分支在新文件');
+  assert.match(AL_ROUTES, /path === '\/api\/admin\/align\/search' && req\.method === 'GET'/, '搜索候选分支在新文件');
+  // 单入口形态（§15.3 位置语义：管理段）
+  assert.match(AL_ROUTES, /export async function handleAdminAlignAdmin\(ctx\)/, '管理段入口');
+  // 守卫与语义随路由
+  assert.match(AL_ROUTES, /if \(!requireAdmin\(\)\) return true/, '管理段守卫');
+  assert.match(AL_ROUTES, /runGated\('GET \/api\/admin\/align', 1,/, '读接口并发闸随路由');
+  assert.match(AL_ROUTES, /triggerAlignGeneration\(\)/, '首次 202 触发后台生成');
+  assert.match(AL_ROUTES, /triggerAlignGeneration\(\{ force: true \}\)/, '?refresh=1 强制重算');
+  assert.match(AL_ROUTES, /loadLatestAlignSnapshotForUpdate\(tx\)/, '动作同事务锁快照行');
+  assert.match(AL_ROUTES, /updateAlignSnapshotAfterAction\(tx, snap,/, '同事务更新快照');
+  assert.match(AL_ROUTES, /markAlignSnapshotDirty\(tx, snap\)/, '恢复标脏');
+  assert.match(AL_ROUTES, /cached: true,/, '库快照 cached 语义');
+  assert.match(AL_ROUTES, /firstRun: true,/, '无快照 202 firstRun');
+  assert.match(AL_ROUTES, /store\.tx\(async \(tx\)/, '动作事务走 store.tx');
+  // 路由模块只做编排：SQL 走 repository / align.js（不许出现 SQL 字面量）
+  assert.ok(!/select |insert |update |delete from /.test(AL_ROUTES), 'routes/admin-align.js 不写 SQL 字面量');
+  // 内联 SQL 全部走 repository 新函数
+  assert.match(AL_ROUTES, /db\.gameAliasGameId\(q, 'sonkwo',/, '确认流程别名查询走 repository');
+  assert.match(AL_ROUTES, /db\.gameSteamAppidById\(q, fromId\)/, '源行 appid 守卫走 repository');
+  assert.match(AL_ROUTES, /db\.listOrphanGameRows\(q, name\)/, '孤儿行查询走 repository');
+  assert.match(AL_ROUTES, /db\.gameBySteamAppid\(tx, appid\)/, '目标游戏查询走 repository');
+  assert.match(AL_ROUTES, /db\.searchAlignGames\(q, kw\)/, '搜索候选走 repository');
+  // 未命中返回 false，宿主继续
+  assert.match(AL_ROUTES, /return false;/, '未命中返回 false，宿主继续');
+});
+
+test('CO-5/B4-2 第十四轮：server.js 必须真实接线管理段入口（删掉调用即红，防死模块）', () => {
+  assert.match(AL_SERVER, /import \{ handleAdminAlignAdmin \} from '\.\/routes\/admin-align\.js'/, 'server.js 必须导入域路由入口');
+  // 锁「完整调用形态」：必须是 if (await handleXxx(...)) return;——只断言字符串存在会被 if(false) 包一层绕过
+  assert.match(AL_SERVER, /if \(\s*await handleAdminAlignAdmin\(\{[\s\S]{0,1200}?path,[\s\S]{0,1200}?req,[\s\S]{0,1200}?res,[\s\S]{0,1200}?triggerAlignGeneration,[\s\S]{0,400}?\}\)\s*\)\s*return;/, '管理段接线（完整形态，且消费返回值）');
+  // 管理段 ctx 关键字段必须传齐：漏传 requireAdmin 守卫失效、漏传 user 审计落空、
+  // 漏传 store 事务报错、漏传 runGated 并发闸失效、漏传 triggerAlignGeneration 动作后不重算
+  assert.match(AL_SERVER, /await handleAdminAlignAdmin\(\{[\s\S]{0,1200}?requireAdmin,/);
+  assert.match(AL_SERVER, /await handleAdminAlignAdmin\(\{[\s\S]{0,1200}?user,/);
+  assert.match(AL_SERVER, /await handleAdminAlignAdmin\(\{[\s\S]{0,1200}?store,/);
+  assert.match(AL_SERVER, /await handleAdminAlignAdmin\(\{[\s\S]{0,1200}?runGated,/);
+  assert.match(AL_SERVER, /await handleAdminAlignAdmin\(\{[\s\S]{0,1200}?triggerAlignGeneration,/);
+  // 位置语义锁：调用必须在公告管理段接线之后、bulk 之前（本域原位置）
+  assert.match(AL_SERVER, /await handleAnnouncementsAdmin\(\{[\s\S]*?await handleAdminAlignAdmin\(\{/s, '接线在公告管理段接线之后（本域原位置）');
+  assert.match(AL_SERVER, /await handleAdminAlignAdmin\(\{[\s\S]*?path === '\/api\/admin\/bulk' && req\.method === 'POST'/s, '接线在 bulk 之前（本域原位置）');
+  // 后台生成 single-flight 留宿主（与 CLI align-snapshot 共享 ensureAlignSnapshot；闭包按引用传入）
+  assert.match(AL_SERVER, /let alignGeneration = null;/, '后台生成 single-flight 状态留 server.js');
+  assert.match(AL_SERVER, /const triggerAlignGeneration = /, 'triggerAlignGeneration 闭包留 server.js（按引用传入）');
+  assert.match(AL_SERVER, /createAlignCompute\(\{ q, db, logger \}\)/, 'computeAlignGroups 工厂留 server.js');
+});
+
+test('CO-5/B4-2 第十四轮：admin-align 路由分支不得双实现（server.js 里保留旧分支即红，防拆分后两处漂移）', () => {
+  assert.ok(!/path === '\/api\/admin\/align' && req\.method/.test(AL_SERVER), '队列接口分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/align\/confirm' && req\.method/.test(AL_SERVER), '确认分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/align\/ignore' && req\.method/.test(AL_SERVER), '忽略分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/align\/ignored' && req\.method/.test(AL_SERVER), '已忽略视图分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/align\/restore' && req\.method/.test(AL_SERVER), '恢复分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/align\/history' && req\.method/.test(AL_SERVER), '审阅记录分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/admin\/align\/search' && req\.method/.test(AL_SERVER), '搜索分支不得残留在 server.js');
+  assert.ok(!/const alignPreviewMatch = path\.match/.test(AL_SERVER), '预览分支不得残留在 server.js');
+  // 行映射/确认内部步骤随域移出（server.js 不再有域内实现）
+  assert.ok(!/const mapAlignRows =/.test(AL_SERVER), 'mapAlignRows 不得残留在 server.js');
+  assert.ok(!/const confirmAlignKey =/.test(AL_SERVER), 'confirmAlignKey 不得残留在 server.js');
+  // 边界锁：并发闸配置键留宿主（http-guard.test.js 也锁）
+  assert.match(AL_SERVER, /'GET \/api\/admin\/align': 1,/, 'HEAVY_GATE_CONFIG 键留 server.js');
+  // bulk 派发表无 align 条目（对齐审核不涉 bulk，本域全部走 /api/admin/align*）
+  const bulkBlock = (AL_SERVER.match(/const BULK_ACTIONS = \{[\s\S]*?\n\};/) ?? [''])[0];
+  assert.ok(!/align/i.test(bulkBlock), 'BULK_ACTIONS 无 align 条目');
+});
+
+test('CO-5/B4-2 第十四轮：admin-align-repository.js 签名不变 + pg.js re-export（删 re-export 即红）', () => {
+  // align_snapshots 表 DDL 搬家（migrate 继续消费，建表语义不变）
+  assert.match(AL_REPO, /export const ALIGN_SNAPSHOTS_DDL = `/, 'DDL 常量在 repository');
+  assert.match(AL_REPO, /create table if not exists align_snapshots \(/, 'align_snapshots 建表语句随常量搬家');
+  assert.match(AL_REPO, /create index if not exists idx_align_snapshots_gen/, '生成时间索引随常量搬家');
+  // 域内联 SQL 抽新函数（SQL 逐字照抄，语义不变）
+  assert.match(AL_REPO, /export async function gameAliasGameId\(q, platformCode, productId\)/, 'gameAliasGameId 签名');
+  assert.match(AL_REPO, /select game_id from game_aliases where platform_code = \$1 and platform_product_id = \$2/, '别名查询 SQL 逐字搬家');
+  assert.match(AL_REPO, /export async function gameSteamAppidById\(q, gameId\)/, 'gameSteamAppidById 签名');
+  assert.match(AL_REPO, /export async function listOrphanGameRows\(q, name\)/, 'listOrphanGameRows 签名');
+  assert.match(AL_REPO, /g\.steam_appid is null and g\.name = \$1 and not g\.deleted/, '孤儿行过滤条件逐字搬家');
+  assert.match(AL_REPO, /export async function gameBySteamAppid\(q, appid\)/, 'gameBySteamAppid 签名');
+  assert.match(AL_REPO, /select id, steam_appid from games where steam_appid = \$1 limit 1/, '目标查询 SQL 逐字搬家');
+  assert.match(AL_REPO, /export async function searchAlignGames\(q, kw\)/, 'searchAlignGames 签名');
+  assert.match(AL_REPO, /name ilike \$1 or name_en ilike \$1 or steam_appid::text = \$2/, '搜索 SQL 逐字搬家');
+  // pg.js 必须 re-export（旧 db.* 导入签名不变；routes/admin-align.js 与现有测试照旧走聚合壳）
+  assert.match(AL_PG, /export \{\s*ALIGN_SNAPSHOTS_DDL,[\s\S]{0,800}?gameAliasGameId,[\s\S]{0,800}?searchAlignGames,[\s\S]{0,400}?\} from '\.\/admin-align-repository\.js'/, 'pg.js 必须 re-export（DDL + 5 新函数）');
+  assert.match(AL_PG, /await store\.exec\(ALIGN_SNAPSHOTS_DDL\);/, 'migrate() 继续消费 DDL（签名不变）');
+  // 旧定义不得残留在 pg.js（双实现会漂移）
+  assert.ok(!/const ALIGN_SNAPSHOTS_DDL = `/.test(AL_PG), 'pg.js 不允许保留旧 DDL 定义（只许 re-export）');
 });

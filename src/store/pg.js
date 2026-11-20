@@ -180,6 +180,28 @@ export {
 // 这里 re-export 保持旧 db.* 导入签名不变（routes/admin-sessions.js、server.js 其它段
 // 与现有测试照旧走聚合壳）。
 export { listSessions } from './admin-sessions-repository.js';
+// CO-5/B4-2 第十四轮（docs/DESIGN-AUDIT.md B4）：admin-align 域（B4 #17：后台对齐审核
+// /api/admin/align*）SQL 落 admin-align-repository.js——align_snapshots 表 DDL（只被本域
+// 读写；CLI align-snapshot 走 align-snapshot.js 共享函数，建表仍由本文件 migrate() 消费）
+// + 域内联 SQL 抽 5 个新函数（确认流程别名/源行守卫、合并预览孤儿行、目标游戏、搜索候选）。
+// 这里 import 供 migrate() 建表并 re-export 保持旧 db.* 导入签名不变
+// （routes/admin-align.js、server.js 其它段与现有测试照旧走聚合壳）。
+import {
+  ALIGN_SNAPSHOTS_DDL,
+  gameAliasGameId,
+  gameSteamAppidById,
+  listOrphanGameRows,
+  gameBySteamAppid,
+  searchAlignGames,
+} from './admin-align-repository.js';
+export {
+  ALIGN_SNAPSHOTS_DDL,
+  gameAliasGameId,
+  gameSteamAppidById,
+  listOrphanGameRows,
+  gameBySteamAppid,
+  searchAlignGames,
+} from './admin-align-repository.js';
 
 export const SCHEMA = `
 create table if not exists platforms (
@@ -571,24 +593,6 @@ create table if not exists game_source_map (
   primary key (platform_code, product_id)
 );
 create index if not exists idx_gsm_game on game_source_map (game_id);
-`;
-
-// DL 批（docs/ALIGN-SNAPSHOT.md §3）：对齐审核快照落库——payload=当前队列全量组、
-// counts=统计卡口径、signature=数据签名（§4）、error=最近一次生成失败原因（成功为 null）；
-// dirty/last_action_at=确认/忽略同事务更新标记（§5）；保留最近 5 条由 prune 扩展删除。
-const ALIGN_SNAPSHOTS_DDL = `
-create table if not exists align_snapshots (
-  id             bigserial primary key,
-  payload        jsonb not null,
-  counts         jsonb not null,
-  signature      text  not null,
-  generated_at   timestamptz not null default now(),
-  generated_ms   int,
-  dirty          boolean not null default false,
-  last_action_at timestamptz,
-  error          text
-);
-create index if not exists idx_align_snapshots_gen on align_snapshots (generated_at desc);
 `;
 
 const ALTERS = [  'alter table games add column if not exists interested boolean not null default true',
