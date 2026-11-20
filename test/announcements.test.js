@@ -297,6 +297,10 @@ test('CO-5/B4-2 第五轮：announcements-repository.js 签名不变 + pg.js re-
   // 边界判据锁：DDL 与后台批量操作函数留在 pg.js——announcements 表被 B4 #11 批量操作也读写（跨域共用表，watchlist 先例）
   assert.match(ANN_PG, /create table if not exists announcements \(/, 'announcements 表 DDL 留 pg.js');
   assert.match(ANN_PG, /create table if not exists announcement_reads \(/, 'announcement_reads 表 DDL 留 pg.js');
-  assert.match(ANN_PG, /export async function bulkDeleteAnnouncements\(q, ids = \[\]\)/, '批量删除公告函数留 pg.js（B4 #11）');
-  assert.match(ANN_PG, /export async function bulkSetAnnouncementsActive\(q, \{ ids = \[\], active \}\)/, '批量启停公告函数留 pg.js（B4 #11）');
+  // B4 #11 拆分后：批量删除/启停公告函数随 admin-users 域搬到 admin-users-repository.js，
+  // pg.js 只许 re-export（旧 db.* 导入签名不变）
+  assert.match(ANN_PG, /bulkDeleteAnnouncements,/, '批量删除公告函数经 pg.js re-export（定义已随 B4 #11 拆到 admin-users-repository.js）');
+  assert.match(ANN_PG, /bulkSetAnnouncementsActive,/, '批量启停公告函数经 pg.js re-export（定义已随 B4 #11 拆到 admin-users-repository.js）');
+  assert.ok(!/export async function bulkDeleteAnnouncements/.test(ANN_PG), 'pg.js 不允许保留 bulkDeleteAnnouncements 旧定义（只许 re-export）');
+  assert.ok(!/export async function bulkSetAnnouncementsActive/.test(ANN_PG), 'pg.js 不允许保留 bulkSetAnnouncementsActive 旧定义（只许 re-export）');
 });

@@ -217,7 +217,7 @@ test('CO-5/B4-2 第十轮：admin-settings 路由分支不得双实现（server.
   // 边界锁：跨域共用的邮件发送（users 邮箱绑定）与设置路由留宿主
   assert.match(ST_SERVER, /await authRoutes\.handleEmailAuth\(\{ path, req, res, q, logger, json, readBody, captcha, ip \}\)/, '邮箱验证码 auth-routes 入口留 server.js（跨域）');
   assert.match(ST_SERVER, /handleSettingsRoutes\(\{ path, req, res, q, store, logger, json, readBody, user, afterHydrate/, '/api/admin/settings* 留 server.js（settings-routes.js 独立模块）');
-  assert.match(ST_SERVER, /path\.match\(\/\^\\\/api\\\/admin\\\/users\\\/\(\[\^\/\]\+\)\\\/email\\\/code\$\/\)/, 'users 邮箱发码路由留 server.js（B4 #11）');
+  assert.match(ST_SERVER, /await handleAdminUsersAdmin\(\{/, 'users 邮箱发码路由已随 admin-users 域拆到 routes/admin-users.js（B4 #11）');
 });
 
 test('CO-5/B4-2 第十轮：admin-settings-repository.js 签名不变 + pg.js re-export（删 re-export 即红）', () => {

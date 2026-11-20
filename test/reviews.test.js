@@ -929,7 +929,7 @@ test('CO-5/B4-2 第八轮：server.js 必须真实接线管理段入口（删掉
   // 位置语义锁：调用必须在 requireAdmin 就绪之后的管理段（banIpExclusive 定义之后、
   // 其它 admin 域路由之前——本域最早路由 views 的原位置）
   assert.match(AA_SERVER, /const banIpExclusive = \([^)]*\) => banIpExclusiveSql\(q, ip, note, kind, opts\)[\s\S]*?await handleAdminAccessAdmin\(\{/s, '接线在 banIpExclusive 定义之后（管理段）');
-  assert.match(AA_SERVER, /await handleAdminAccessAdmin\(\{[\s\S]*?path === '\/api\/admin\/users' && req\.method === 'POST'/s, '接线在本域原位置（users POST 之前）');
+  assert.match(AA_SERVER, /await handleAdminAccessAdmin\(\{[\s\S]*?await handleAnnouncementsAdmin\(\{/s, '接线在本域原位置（公告管理段之前；users/images 段已随 B4 #11/#13 拆走）');
 });
 
 test('CO-5/B4-2 第八轮：admin-access 路由分支不得双实现（server.js 里保留旧分支即红，防拆分后两处漂移）', () => {
@@ -949,10 +949,9 @@ test('CO-5/B4-2 第八轮：admin-access 路由分支不得双实现（server.js
   assert.ok(!/path === '\/api\/admin\/reviews\/reject' && req\.method/.test(AA_SERVER), 'reviews/reject 分支不得残留在 server.js');
   assert.ok(!/path === '\/api\/admin\/reviews\/act' && req\.method/.test(AA_SERVER), 'reviews/act 分支不得残留在 server.js');
   assert.ok(!/error: '临时封时长必须是 10 \/ 60 \/ 1440 分钟'/.test(AA_SERVER), 'act 校验文案不得残留在 server.js');
-  // 边界锁：其它 admin 域路由留宿主（#11 users 批量）；#10 mail/proxies 已拆到
-  // routes/admin-settings.js、#12 reports/backups/logs 已拆到 routes/admin-reports.js、
-  // #13 images 已拆到 routes/admin-images.js
-  assert.match(AA_SERVER, /path === '\/api\/admin\/users' && req\.method === 'POST'/, 'admin users 段留 server.js（B4 #11）');
+  // 边界锁：其它 admin 域路由（#11 users/#12 reports/#13 images 均已拆）；#10 mail/proxies
+  // 已拆到 routes/admin-settings.js
+  assert.match(AA_SERVER, /await handleAdminUsersAdmin\(\{/, 'admin users 段已拆到 routes/admin-users.js（B4 #11）');
   assert.match(AA_SERVER, /await handleAdminReportsAdmin\(\{/, 'admin reports 段已拆到 routes/admin-reports.js（B4 #12）');
   assert.match(AA_SERVER, /await handleAdminImagesAdmin\(\{/, 'admin images 段已拆到 routes/admin-images.js（B4 #13）');
   assert.match(AA_SERVER, /await handleAdminSettingsAdmin\(\{/, 'admin mail/proxies 段已拆到 routes/admin-settings.js（B4 #10）');

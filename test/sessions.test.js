@@ -470,10 +470,10 @@ test('CO-5/B4-2 第十一轮：server.js 必须真实接线管理段入口（删
 test('CO-5/B4-2 第十一轮：admin-sessions 路由分支不得双实现（server.js 里保留旧分支即红，防拆分后两处漂移）', () => {
   assert.ok(!/path === '\/api\/admin\/sessions' && req\.method/.test(SS_SERVER), 'sessions 列表分支不得残留在 server.js');
   assert.ok(!/const sessKick = path\.match/.test(SS_SERVER), 'sessions/:id 踢下线分支不得残留在 server.js');
-  // 边界锁：users 区按用户踢全部与前台退出其它设备留宿主（非本域）
-  assert.match(SS_SERVER, /const kickAllMatch = path\.match\(\/\^\\\/api\\\/admin\\\/users\\\/\(\[\^\/\]\+\)\\\/sessions\$\/\)/, 'kickAll（users/:name/sessions）留 server.js（B4 #11 users 区）');
+  // 边界锁：users 区按用户踢全部已随 #11 拆到 routes/admin-users.js；前台退出其它设备留宿主（非本域）
+  assert.match(SS_SERVER, /await handleAdminUsersAdmin\(\{/, 'kickAll（users/:name/sessions）已随 admin-users 域拆到 routes/admin-users.js（B4 #11）');
   assert.match(SS_SERVER, /path === '\/api\/user\/sessions\/revoke-others' && req\.method === 'POST'/, 'revoke-others 留 server.js（前台主段）');
-  assert.match(SS_SERVER, /'sessions\/kick': \{ max: 200, risk: 'low', keyType: 'id', run: bulkSessionKick \}/, 'bulk 派发表 sessions/kick 留 server.js（B4 #11）');
+  assert.ok(!/async function bulkSessionKick|const BULK_ACTIONS/.test(SS_SERVER), 'bulk 派发表与 helper 已随 admin-users 域拆走（server.js 不残留代码）');
 });
 
 test('CO-5/B4-2 第十一轮：admin-sessions-repository.js 签名不变 + pg.js re-export（删 re-export 即红）', () => {

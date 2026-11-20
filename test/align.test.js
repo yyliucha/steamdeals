@@ -394,9 +394,11 @@ test('CO-5/B4-2 第十四轮：server.js 必须真实接线管理段入口（删
   assert.match(AL_SERVER, /await handleAdminAlignAdmin\(\{[\s\S]{0,1200}?store,/);
   assert.match(AL_SERVER, /await handleAdminAlignAdmin\(\{[\s\S]{0,1200}?runGated,/);
   assert.match(AL_SERVER, /await handleAdminAlignAdmin\(\{[\s\S]{0,1200}?triggerAlignGeneration,/);
-  // 位置语义锁：调用必须在公告管理段接线之后、bulk 之前（本域原位置）
+  // 位置语义锁：调用必须在公告管理段接线之后、管理段 404 兜底之前（本域原位置；
+  // bulk 已随 B4 #11 拆到 routes/admin-users.js、steam-logs 已随 B4 #12 拆到
+  // routes/admin-reports.js，锚点改为 404 兜底）
   assert.match(AL_SERVER, /await handleAnnouncementsAdmin\(\{[\s\S]*?await handleAdminAlignAdmin\(\{/s, '接线在公告管理段接线之后（本域原位置）');
-  assert.match(AL_SERVER, /await handleAdminAlignAdmin\(\{[\s\S]*?path === '\/api\/admin\/bulk' && req\.method === 'POST'/s, '接线在 bulk 之前（本域原位置）');
+  assert.match(AL_SERVER, /await handleAdminAlignAdmin\(\{[\s\S]*?return json\(res, 404, \{ error: 'not found' \}\);/s, '接线在管理段 404 兜底之前（本域原位置，bulk/steam-logs 已随 #11/#12 拆走）');
   // 后台生成 single-flight 留宿主（与 CLI align-snapshot 共享 ensureAlignSnapshot；闭包按引用传入）
   assert.match(AL_SERVER, /let alignGeneration = null;/, '后台生成 single-flight 状态留 server.js');
   assert.match(AL_SERVER, /const triggerAlignGeneration = /, 'triggerAlignGeneration 闭包留 server.js（按引用传入）');
@@ -417,9 +419,11 @@ test('CO-5/B4-2 第十四轮：admin-align 路由分支不得双实现（server.
   assert.ok(!/const confirmAlignKey =/.test(AL_SERVER), 'confirmAlignKey 不得残留在 server.js');
   // 边界锁：并发闸配置键留宿主（http-guard.test.js 也锁）
   assert.match(AL_SERVER, /'GET \/api\/admin\/align': 1,/, 'HEAVY_GATE_CONFIG 键留 server.js');
-  // bulk 派发表无 align 条目（对齐审核不涉 bulk，本域全部走 /api/admin/align*）
-  const bulkBlock = (AL_SERVER.match(/const BULK_ACTIONS = \{[\s\S]*?\n\};/) ?? [''])[0];
-  assert.ok(!/align/i.test(bulkBlock), 'BULK_ACTIONS 无 align 条目');
+  // bulk 派发表无 align 条目（对齐审核不涉 bulk，本域全部走 /api/admin/align*）；
+  // B4 #11 拆分后 BULK_ACTIONS 随 admin-users 域移到 src/routes/admin-users.js，断言指向新落点
+  const AU_ROUTES = readFileSync(join(process.cwd(), 'src', 'routes', 'admin-users.js'), 'utf8');
+  const bulkBlock = (AU_ROUTES.match(/const BULK_ACTIONS = \{[\s\S]*?\n\};/) ?? [''])[0];
+  assert.ok(!/align/i.test(bulkBlock), 'BULK_ACTIONS 无 align 条目（派发表已随 #11 拆到 routes/admin-users.js）');
 });
 
 test('CO-5/B4-2 第十四轮：admin-align-repository.js 签名不变 + pg.js re-export（删 re-export 即红）', () => {

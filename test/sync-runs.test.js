@@ -250,10 +250,10 @@ test('CO-5/B4-2 第九轮：server.js 必须真实接线管理段入口（删掉
   assert.match(AS_SERVER, /await handleAdminSyncAdmin\(\{[\s\S]{0,1200}?invalidateSyncStatusCache,/);
   assert.match(AS_SERVER, /await handleAdminSyncAdmin\(\{[\s\S]{0,1200}?syncStatusTtlMs,/);
   // 位置语义锁：调用必须在 requireAdmin 就绪之后的管理段——本域最早路由 sync POST 的原位置
-  // （games 域主段接线之后、#10 admin-settings 接线之前；games/description 已随 B4 #21 抽走，
-  // 锚点改为 games 域接线 handleGamesRoutes）
+  // （games 域主段接线之后、#10 admin-settings 接线之前；users 邮箱绑定段已随 B4 #11 拆走、
+  // logs 段已随 B4 #12 拆走，锚点改为下一段 admin-access 接线）
   assert.match(AS_SERVER, /await handleGamesRoutes\(\{[\s\S]*?await handleAdminSyncAdmin\(\{/s, '接线在 games 域主段接线之后（本域原位置）');
-  assert.match(AS_SERVER, /await handleAdminSyncAdmin\(\{[\s\S]*?管理员：给用户绑定\/解绑登录邮箱/s, '接线在 users 邮箱绑定段之前（本域原位置，原 smtp 段已随 B4 #10 拆走）');
+  assert.match(AS_SERVER, /await handleAdminSyncAdmin\(\{[\s\S]*?await handleAdminAccessAdmin\(\{/s, '接线在 admin-access 接线之前（本域原位置，users/logs 段已随 #11/#12 拆走）');
 });
 
 test('CO-5/B4-2 第九轮：admin-sync 路由分支不得双实现（server.js 里保留旧分支即红，防拆分后两处漂移）', () => {
@@ -270,9 +270,9 @@ test('CO-5/B4-2 第九轮：admin-sync 路由分支不得双实现（server.js �
   assert.ok(!/path === '\/api\/admin\/rename' && req\.method/.test(AS_SERVER), 'rename 分支不得残留在 server.js');
   assert.ok(!/path === '\/api\/admin\/rename\/stop' && req\.method/.test(AS_SERVER), 'rename/stop 分支不得残留在 server.js');
   assert.ok(!/path === '\/api\/admin\/rename\/status' && req\.method/.test(AS_SERVER), 'rename/status 分支不得残留在 server.js');
-  // 边界锁：其它 admin 域路由留宿主（#10 smtp/emails 已拆到 routes/admin-settings.js、
-  // #12 steam-logs 已拆到 routes/admin-reports.js、#11 bulk、#16 wishlists）
-  assert.match(AS_SERVER, /path === '\/api\/admin\/bulk' && req\.method === 'POST'/, 'admin bulk 段留 server.js（B4 #11）');
+  // 边界锁：其它 admin 域路由留宿主（#10 smtp/emails 与 #11 bulk 已拆到 routes/admin-settings.js / routes/admin-users.js、#12 steam-logs 已拆到 routes/admin-reports.js、#16 wishlists）
+  assert.match(AS_SERVER, /await handleAdminUsersAdmin\(\{/, 'admin bulk 段已随 admin-users 域拆到 routes/admin-users.js（B4 #11）');
+  assert.match(AS_SERVER, /await handleAdminReportsAdmin\(\{/, 'admin steam-logs 段已随 admin-reports 域拆到 routes/admin-reports.js（B4 #12）');
   assert.match(AS_SERVER, /path === '\/api\/admin\/wishlists' && req\.method === 'GET'/, 'admin wishlists 段留 server.js（B4 #16）');
   // 中间件判据锁：sync/status|runs 访问日志豁免留 server.js（isLoggablePath 是中间件，§15.4）
   assert.match(AS_SERVER, /path === '\/api\/admin\/sync\/status' \|\| path === '\/api\/admin\/sync\/runs'/, 'sync/status|runs 访问日志豁免留 server.js（中间件）');

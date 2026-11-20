@@ -154,17 +154,19 @@ test('DT-4 验收 3：验证失败不关弹窗 + 「还剩 N 次机会」；过�
   // 失败分支：不关闭 visible，按后端 remainingAttempts 显示剩余次数
   assert.match(adminExtras, /if\(e\.data\?\.remainingAttempts!=null\)resetPwd\.error=`\$\{e\.message\}（还剩 \$\{e\.data\.remainingAttempts\} 次机会）/, '失败显示还剩 N 次机会');
   assert.match(adminExtras, /——弹窗不关闭，可直接重试/, '弹窗不关闭提示');
-  // 后端：过期/无码给明确提示（前端原样展示，弹窗不关）
-  const server = read('../src/server.js');
-  assert.match(server, /验证码已过期，请重新发送/, '过期提示（前端显示重新发送）');
-  assert.match(server, /没有可用的验证码，请先发送/, '无码提示先发送');
-  assert.match(server, /remainingAttempts: remaining/, '错码响应带剩余次数');
+  // 后端：过期/无码给明确提示（前端原样展示，弹窗不关）——
+  // CO-5/B4-2 第十六轮：DT-4 重置密码路由已随 admin-users 域拆到 src/routes/admin-users.js，断言指向新落点
+  const adminUsersRoutes = read('../src/routes/admin-users.js');
+  assert.match(adminUsersRoutes, /验证码已过期，请重新发送/, '过期提示（前端显示重新发送）');
+  assert.match(adminUsersRoutes, /没有可用的验证码，请先发送/, '无码提示先发送');
+  assert.match(adminUsersRoutes, /remainingAttempts: remaining/, '错码响应带剩余次数');
 });
 
 test('DT-4 验收 4：后台发码不占前台额度（分桶）+ retryAfterSec 回传', () => {
-  const server = read('../src/server.js');
-  assert.match(server, /purpose = 'admin_reset'/, '后台发码独立 purpose 分桶');
-  assert.match(server, /retryAfterSec: auth\.SEND_COOLDOWN_SEC/, '后台发码回传 retryAfterSec');
+  // CO-5/B4-2 第十六轮：DT-4 后台发码已随 admin-users 域拆到 src/routes/admin-users.js
+  const adminUsersRoutes = read('../src/routes/admin-users.js');
+  assert.match(adminUsersRoutes, /purpose: 'admin_reset'/, '后台发码独立 purpose 分桶');
+  assert.match(adminUsersRoutes, /retryAfterSec: auth\.SEND_COOLDOWN_SEC/, '后台发码回传 retryAfterSec');
   const authRoutes = read('../src/auth-routes.js');
   assert.match(authRoutes, /where email = \$1 and purpose = \$2/, '前台登录/重置发码冷却按 purpose 过滤');
   assert.match(authRoutes, /retryAfterSec: SEND_COOLDOWN_SEC/, '前台发码成功回传 retryAfterSec');

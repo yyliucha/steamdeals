@@ -238,6 +238,54 @@ export {
 // 这里 re-export 保持旧 db.* 导入签名不变（routes/admin-images.js、server.js 其它段
 // 与现有测试照旧走 pg.js 聚合壳）。
 export { imageCoverageRows, imageCoverageMissingRows } from './admin-images-repository.js';
+// CO-5/B4-2 第十六轮（docs/DESIGN-AUDIT.md B4）：admin-users 域（B4 #11：后台用户批量
+// /api/admin/users*、bulk、bulk-ops + DT-4 后台重置密码发码）SQL 落 admin-users-repository.js——
+// 用户 CRUD（unlockUser/updateUser/deleteUserAudited/listUserDeletions）、批量操作审计与
+// 批量 SQL（createBulkOp/listBulkOps/getBulkOp、bulkSetGamesBlocked/Deleted、bulkDeleteAnnouncements、
+// bulkSetAnnouncementsActive、bulkGetAbuseReviews/bulkRejectAbuseReviews、bulkRemoveBlockedIps/
+// WhitelistIps/DeviceBans、usersForBulk/countActiveAdmins/bulkSetUsersDisabled/deleteSessionsOfUsers）
+// 只被本域路由使用随域搬走，域内联 SQL（发码/校验/绑定邮箱/审计行）抽成 13 个新函数；
+// listUsers（cli.js users 命令共用）、setUserPassword（auth-routes.js 前台重置共用）、
+// writeAuditLog（admin-access 域审计共用）、deleteSessionsOfUser（前台 revoke-others/auth 域/
+// kickAll/禁用踢会话共用）、bulkSetFreeStatus（steam-status 收尾共用）属通用 SQL 留本文件。
+// 无 DDL 搬家——users/admin_bulk_ops 等表 DDL 在本文件 SCHEMA。
+// 这里 re-export 保持旧 db.* 导入签名不变（routes/admin-users.js、server.js 其它段
+// 与现有测试照旧走 pg.js 聚合壳）。
+export {
+  userSessionKickTarget,
+  userEmailTarget,
+  userEmailIdRow,
+  userStateRow,
+  userIdRow,
+  insertAdminEmailCode,
+  pendingEmailCode,
+  bumpEmailCodeAttempts,
+  consumeEmailCode,
+  markEmailVerified,
+  recentEmailCodes,
+  adminBindEmail,
+  ensureUsersEmailColumns,
+  unlockUser,
+  updateUser,
+  deleteUserAudited,
+  listUserDeletions,
+  bulkSetGamesBlocked,
+  bulkSetGamesDeleted,
+  bulkDeleteAnnouncements,
+  bulkSetAnnouncementsActive,
+  bulkGetAbuseReviews,
+  bulkRejectAbuseReviews,
+  bulkRemoveBlockedIps,
+  bulkRemoveWhitelistIps,
+  bulkRemoveDeviceBans,
+  usersForBulk,
+  countActiveAdmins,
+  bulkSetUsersDisabled,
+  deleteSessionsOfUsers,
+  createBulkOp,
+  listBulkOps,
+  getBulkOp,
+} from './admin-users-repository.js';
 
 export const SCHEMA = `
 create table if not exists platforms (
@@ -2131,7 +2179,6 @@ export async function watchCandidates(q, { region = 'cn' } = {}) {
 // ---------------------------------------------------------------- 用户与会话
 
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import { recordSteamLog } from '../steam-log.js';
 
 // AK-1（docs/AUTH-REDESIGN.md §4.2）：新格式 $scrypt$N$r$p$<salt b64>$<hash b64>（N=32768,r=8,p=1）；
 // 旧格式 salt:hash（N=16384 默认参数）继续可验，登录成功后静默升级。
@@ -2202,42 +2249,8 @@ export async function listUsers(q) {
   return r.rows;
 }
 
-/** 管理员解锁（AK-2，docs/AUTH-REDESIGN.md §4.4）：清零失败计数与锁定。 */
-export async function unlockUser(q, { username }) {
-  const r = await q(
-    'update users set failed_login_count = 0, locked_until = null where username = $1 returning id, username, failed_login_count, locked_until',
-    [username],
-  );
-  return r.rows[0] ?? null;
-}
-
 export async function setUserRole(q, { username, role }) {
   const r = await q('update users set role = $1 where username = $2 returning id, username, role', [role, username]);
-  return r.rows[0] ?? null;
-}
-
-/** 编辑用户：显示名、角色、启用状态。 */
-export async function updateUser(q, { username, displayName = undefined, role = undefined, disabled = undefined }) {
-  const sets = [];
-  const params = [];
-  if (displayName !== undefined) {
-    params.push(displayName);
-    sets.push(`display_name = $${params.length}`);
-  }
-  if (role !== undefined) {
-    params.push(role);
-    sets.push(`role = $${params.length}`);
-  }
-  if (disabled !== undefined) {
-    params.push(Boolean(disabled));
-    sets.push(`disabled = $${params.length}`);
-  }
-  if (!sets.length) return null;
-  params.push(username);
-  const r = await q(
-    `update users set ${sets.join(', ')} where username = $${params.length} returning id, username, display_name, role, disabled`,
-    params,
-  );
   return r.rows[0] ?? null;
 }
 
@@ -2261,88 +2274,6 @@ export async function setUserPassword(q, { username = null, userId = null, passw
   return r.rows[0];
 }
 
-/**
- * 彻底删除用户（docs/USER-LIFECYCLE.md §4.1，AH 批）：
- * 守卫（不存在 404 / confirmUsername 不符 400 / 删自己 400 / 最后一个可用管理员 409）→
- * 单事务：先手动清 steam_games / steam_wishlist（无外键，防孤儿行）→ 删 users（其余表级联/置空，
- * 会话立即失效）→ 落 admin_user_deletions 审计（邮箱打码、只存计数与操作者快照）。
- * 成功返回 { ok: true, deleted: { username, steamAccounts, sessions } }；守卫失败返回 { ok: false, status, error }。
- */
-export async function deleteUserAudited(q, { username, confirmUsername = null, operator = null, operatorId = null, reason = null }) {
-  const target = (await q('select id, username, email, role, disabled from users where username = $1', [username])).rows[0];
-  if (!target) return { ok: false, status: 404, error: '没有该用户' };
-  if (confirmUsername !== username) return { ok: false, status: 400, error: '请输入完整用户名确认' };
-  if (operator === username) return { ok: false, status: 400, error: '不能删除自己' };
-  if (target.role === 'admin' && !target.disabled) {
-    const admins = (await q("select count(*)::int as n from users where role = 'admin' and not disabled")).rows[0]?.n ?? 0;
-    if (admins <= 1) return { ok: false, status: 409, error: '不能删除最后一个可用管理员' };
-  }
-  const counts = (
-    await q(
-      'select (select count(*)::int from sessions where user_id = $1) as sessions, ' +
-        "(select count(*)::int from steam_accounts where user_id = $1) as steam_accounts, " +
-        "(select coalesce(array_agg(steam_id), '{}') from steam_accounts where user_id = $1) as steam_ids",
-      [target.id],
-    )
-  ).rows[0];
-  const steamAccounts = Number(counts?.steam_accounts ?? 0);
-  const sessions = Number(counts?.sessions ?? 0);
-  const steamIds = Array.isArray(counts?.steam_ids) ? counts.steam_ids.filter((s) => s != null) : [];
-  const mask = (() => {
-    const email = String(target.email ?? '').trim();
-    const at = email.indexOf('@');
-    if (!email || at <= 0) return null;
-    const tail = at < email.length - 1 ? email.slice(at) : '';
-    return `${email.slice(0, 1)}***${tail}`;
-  })();
-  await q('begin');
-  try {
-    if (steamIds.length) {
-      await q('delete from steam_games where steam_id = any($1::text[])', [steamIds]);
-      await q('delete from steam_wishlist where steam_id = any($1::text[])', [steamIds]);
-    }
-    await q('delete from users where id = $1', [target.id]);
-    await q(
-      'insert into admin_user_deletions (username, role, email_masked, steam_accounts, sessions, deleted_by, deleted_by_id, reason) values ($1,$2,$3,$4,$5,$6,$7,$8)',
-      [username, target.role, mask, steamAccounts, sessions, operator ?? '', operatorId, reason ? String(reason).slice(0, 500) : null],
-    );
-    // AT 批（docs/ADMIN-CONSOLE-IA.md §5）：用户被删后其 Steam 日志必须留下——
-    // 账号级联删除的同时给每个账号补一条 delete-cascade 审计（不挂外键，删除后仍可查）。
-    for (const sid of steamIds) {
-      await recordSteamLog(q, {
-        action: 'delete-cascade',
-        steamId: sid,
-        userId: target.id,
-        username,
-        actor: `admin:${operator ?? ''}`,
-        result: 'ok',
-        detail: { reason: reason ? String(reason).slice(0, 160) : null },
-      });
-    }
-    await q('commit');
-  } catch (err) {
-    await q('rollback').catch(() => {});
-    throw err;
-  }
-  return { ok: true, deleted: { username, role: target.role, steamAccounts, sessions } };
-}
-
-/** 最近删除审计（docs/USER-LIFECYCLE.md §4.5）：按用户名模糊搜索（大小写不敏感），倒序，limit ≤ 200。 */
-export async function listUserDeletions(q, { search = '', limit = 50 } = {}) {
-  const cap = Math.min(Math.max(Number(limit) || 50, 1), 200);
-  const like = String(search ?? '').trim().slice(0, 80);
-  const r = like
-    ? await q(
-        "select id, username, role, email_masked, steam_accounts, sessions, deleted_by, reason, created_at from admin_user_deletions where username ilike '%' || $1 || '%' order by id desc limit $2",
-        [like, cap],
-      )
-    : await q(
-        'select id, username, role, email_masked, steam_accounts, sessions, deleted_by, reason, created_at from admin_user_deletions order by id desc limit $1',
-        [cap],
-      );
-  return r.rows;
-}
-
 // ---------------------------------------------------------------- 邮件模板与发送记录（docs/USER-LIFECYCLE.md §3.1/§3.3/§4.3）
 // CO-5/B4-2 第十轮：listMailTemplates / upsertMailTemplate / resetMailTemplate / listMailLog
 // 已随 admin-settings 域搬到 admin-settings-repository.js（顶部 re-export）。insertMailLog
@@ -2358,6 +2289,19 @@ export async function insertMailLog(q, { event, toEmail, subject = null, ok = fa
     error ? String(error).slice(0, 500) : null,
     actor,
   ]);
+}
+
+/** CY 批（docs/DATA-ISOLATION.md §3）：写一条通用审计（永不抛出——审计失败不能影响主流程）。
+ *  跨模块共用（admin-access 域 / admin-users 域 / alert 手动推送 / 前台认证域），留本文件。 */
+export async function writeAuditLog(q, { actorId = null, actor = null, action, target = null, detail = null, ip = null }) {
+  try {
+    await q(
+      'insert into audit_logs (actor_id, actor, action, target, detail, ip) values ($1, $2, $3, $4, $5::jsonb, $6)',
+      [actorId, actor, String(action), target == null ? null : String(target), detail ?? null, ip ?? null],
+    );
+  } catch {
+    // 审计表未建好 / 写入失败：只吞掉，不影响主流程（与 steam_account_logs 同一先例）
+  }
 }
 
 /** 编辑游戏说明（人工维护优先，Steam 同步只在为空时填）。 */
@@ -3623,250 +3567,4 @@ export async function readModelRebuild(q, { region = null } = {}) {
   const deleted = del.rowCount ?? 0;
   await backfillGameRegionSnapshot(q);
   return { deleted };
-}
-
-// ---------------------------------------------------------------- 后台批量操作
-//
-// 统一约定（docs/ADMIN-BULK-ACTIONS.md）：
-// - 键已由调用方按 target 校验并去重，这里只做类型收敛；
-// - 返回「真正改动」的键，没命中的由调用方记 skipped —— 这样重复执行同一批
-//   是幂等的（已解封/已恢复/已忽略不会再算一次成功），也能如实反映 done 数量；
-// - SQL 仍然只写在本文件（server.js 不拼 SQL）。
-// 注意：games.id / announcements.id / abuse_reviews.id 是 bigint，pg 驱动会返回字符串，
-// 全部转成 Number 再和请求里的键比较，否则会永远对不上。
-
-function asIdList(list) {
-  return (Array.isArray(list) ? list : [])
-    .map((v) => Number(v))
-    .filter((n) => Number.isInteger(n) && n > 0);
-}
-
-function asTextList(list) {
-  return (Array.isArray(list) ? list : []).map((v) => String(v)).filter(Boolean);
-}
-
-/** 批量禁用 / 启用游戏：返回真正改动的 id。 */
-export async function bulkSetGamesBlocked(q, { ids = [], blocked }) {
-  const list = asIdList(ids);
-  if (!list.length) return [];
-  const r = await q(
-    `update games set blocked = $1, updated_at = now()
-      where id = any($2::bigint[]) and blocked is distinct from $1
-      returning id`,
-    [Boolean(blocked), list],
-  );
-  return r.rows.map((row) => Number(row.id));
-}
-
-/** 批量移入回收站 / 恢复：返回真正改动的 id。 */
-export async function bulkSetGamesDeleted(q, { ids = [], deleted }) {
-  const list = asIdList(ids);
-  if (!list.length) return [];
-  const r = await q(
-    `update games set deleted = $1,
-                      deleted_at = case when $1 then now() else null end,
-                      updated_at = now()
-      where id = any($2::bigint[]) and deleted is distinct from $1
-      returning id`,
-    [Boolean(deleted), list],
-  );
-  return r.rows.map((row) => Number(row.id));
-}
-
-/** 批量删除公告：返回真正删掉的 id。 */
-export async function bulkDeleteAnnouncements(q, ids = []) {
-  const list = asIdList(ids);
-  if (!list.length) return [];
-  const r = await q('delete from announcements where id = any($1::bigint[]) returning id', [list]);
-  return r.rows.map((row) => Number(row.id));
-}
-
-/** 批量启用 / 停用公告：返回真正改动的 id。 */
-export async function bulkSetAnnouncementsActive(q, { ids = [], active }) {
-  const list = asIdList(ids);
-  if (!list.length) return [];
-  const r = await q(
-    `update announcements set active = $1, updated_at = now()
-      where id = any($2::bigint[]) and active is distinct from $1
-      returning id`,
-    [Boolean(active), list],
-  );
-  return r.rows.map((row) => Number(row.id));
-}
-
-/** 审批封 IP / 封设备要逐条拿 ip 与指纹，所以先整批查出来再逐条执行。 */
-export async function bulkGetAbuseReviews(q, ids = []) {
-  const list = asIdList(ids);
-  if (!list.length) return [];
-  const r = await q(
-    `select id, ip, device_id, fingerprint, rule, status
-       from abuse_reviews where id = any($1::bigint[])`,
-    [list],
-  );
-  return r.rows.map((row) => ({ ...row, id: Number(row.id) }));
-}
-
-/** 批量忽略待审：只处理 pending，已处理过的返回 skipped。 */
-export async function bulkRejectAbuseReviews(q, { ids = [], reviewedBy = null, note = null }) {
-  const list = asIdList(ids);
-  if (!list.length) return [];
-  const r = await q(
-    `update abuse_reviews
-        set status = 'rejected', reviewed_by = $2, reviewed_at = now(), note = coalesce($3, note)
-      where id = any($1::bigint[]) and status = 'pending'
-      returning id`,
-    [list, reviewedBy, note ? String(note).slice(0, 300) : null],
-  );
-  return r.rows.map((row) => Number(row.id));
-}
-
-/** 批量解封 IP（黑名单）。 */
-export async function bulkRemoveBlockedIps(q, ips = []) {
-  const list = asTextList(ips);
-  if (!list.length) return [];
-  const r = await q('delete from ip_blacklist where ip = any($1::text[]) returning ip', [list]);
-  return r.rows.map((row) => String(row.ip));
-}
-
-/** 批量移出白名单。 */
-export async function bulkRemoveWhitelistIps(q, ips = []) {
-  const list = asTextList(ips);
-  if (!list.length) return [];
-  const r = await q('delete from ip_whitelist where ip = any($1::text[]) returning ip', [list]);
-  return r.rows.map((row) => String(row.ip));
-}
-
-/** 批量解封设备。 */
-export async function bulkRemoveDeviceBans(q, fingerprints = []) {
-  const list = asTextList(fingerprints).map((f) => f.toLowerCase());
-  if (!list.length) return [];
-  const r = await q('delete from device_bans where fingerprint = any($1::text[]) returning fingerprint', [list]);
-  return r.rows.map((row) => String(row.fingerprint));
-}
-
-/** 批量禁用用户需要的守卫数据（自己 / 最后一个可用管理员）。 */
-export async function usersForBulk(q, ids = []) {
-  const list = asIdList(ids);
-  if (!list.length) return [];
-  const r = await q('select id, username, role, disabled from users where id = any($1::integer[])', [list]);
-  return r.rows.map((row) => ({ ...row, id: Number(row.id) }));
-}
-
-/** 排除 excludeIds 之后还剩几个可用管理员（禁用前的守卫计算）。 */
-export async function countActiveAdmins(q, { excludeIds = [] } = {}) {
-  const list = asIdList(excludeIds);
-  const r = await q(
-    `select count(*)::int as n from users
-      where role = 'admin' and not disabled and not (id = any($1::integer[]))`,
-    [list],
-  );
-  return Number(r.rows[0]?.n ?? 0);
-}
-
-/** 批量禁用 / 启用用户：返回真正改动的行。 */
-export async function bulkSetUsersDisabled(q, { ids = [], disabled }) {
-  const list = asIdList(ids);
-  if (!list.length) return [];
-  const r = await q(
-    `update users set disabled = $1
-      where id = any($2::integer[]) and disabled is distinct from $1
-      returning id, username`,
-    [Boolean(disabled), list],
-  );
-  return r.rows.map((row) => ({ id: Number(row.id), username: row.username }));
-}
-
-/** 禁用后立即踢掉该用户的会话：禁用必须马上生效，不能等 cookie 自己过期。 */
-export async function deleteSessionsOfUsers(q, ids = []) {
-  const list = asIdList(ids);
-  if (!list.length) return 0;
-  const r = await q('delete from sessions where user_id = any($1::integer[])', [list]);
-  return r.rowCount ?? 0;
-}
-
-/** CY 批（docs/DATA-ISOLATION.md §3）：写一条通用审计（永不抛出——审计失败不能影响主流程）。 */
-export async function writeAuditLog(q, { actorId = null, actor = null, action, target = null, detail = null, ip = null }) {
-  try {
-    await q(
-      'insert into audit_logs (actor_id, actor, action, target, detail, ip) values ($1, $2, $3, $4, $5::jsonb, $6)',
-      [actorId, actor, String(action), target == null ? null : String(target), detail ?? null, ip ?? null],
-    );
-  } catch {
-    // 审计表未建好 / 写入失败：只吞掉，不影响主流程（与 steam_account_logs 同一先例）
-  }
-}
-
-/** 写一条批量操作审计；keys_sample 最多留 50 个键。 */
-export async function createBulkOp(q, {
-  actorId = null,
-  actor = null,
-  target,
-  action,
-  total = 0,
-  ok = 0,
-  failed = 0,
-  skipped = 0,
-  keysSample = [],
-  options = null,
-  ip = null,
-  durationMs = null,
-}) {
-  const r = await q(
-    `insert into admin_bulk_ops (actor_id, actor, target, action, total, ok, failed, skipped, keys_sample, options, ip, duration_ms)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12)
-     returning id, created_at`,
-    [
-      actorId,
-      actor,
-      String(target),
-      String(action),
-      Number(total) || 0,
-      Number(ok) || 0,
-      Number(failed) || 0,
-      Number(skipped) || 0,
-      JSON.stringify(asTextList(keysSample).slice(0, 50)),
-      options ? JSON.stringify(options) : null,
-      ip,
-      durationMs == null ? null : Math.round(Number(durationMs)),
-    ],
-  );
-  return { id: Number(r.rows[0].id), createdAt: r.rows[0].created_at };
-}
-
-export async function listBulkOps(q, { limit = 100, target = null } = {}) {
-  const params = [Math.min(Math.max(Number(limit) || 100, 1), 200)];
-  let where = '';
-  if (target) {
-    params.push(String(target));
-    where = 'where target = $2';
-  }
-  const r = await q(
-    `select id, created_at, actor, target, action, total, ok, failed, skipped, ip, duration_ms
-       from admin_bulk_ops ${where} order by id desc limit $1`,
-    params,
-  );
-  return r.rows.map((row) => ({
-    ...row,
-    id: Number(row.id),
-    total: Number(row.total),
-    ok: Number(row.ok),
-    failed: Number(row.failed),
-    skipped: Number(row.skipped),
-    duration_ms: row.duration_ms == null ? null : Number(row.duration_ms),
-  }));
-}
-
-/** 单条审计详情（含 keys_sample，用于「点开看这次动了哪些键」）。 */
-export async function getBulkOp(q, id) {
-  const r = await q('select * from admin_bulk_ops where id = $1', [Number(id)]);
-  const row = r.rows[0];
-  if (!row) return null;
-  return {
-    ...row,
-    id: Number(row.id),
-    total: Number(row.total),
-    ok: Number(row.ok),
-    failed: Number(row.failed),
-    skipped: Number(row.skipped),
-  };
 }
