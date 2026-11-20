@@ -348,3 +348,81 @@ test('BA 批：运行与同步页——健康条、记录精简与 5 轮折叠�
   assert.match(vue, /v-if="expandedLogs\.has\(index\)"/, '展开完整字段');
   assert.match(vue, /@media \(max-width:760px\)\{\.log-panel-body\{max-height:50vh\}/, '移动端 50vh');
 });
+
+// ===== DT-1（docs/ADMIN-PERMISSIONS.md）：菜单与路由权限隔离 =====
+// demo 状态 ↔ 断言映射（design/admin-menu-permissions-2026-11-19.html）：
+//   ①「管理员菜单（全量）＋『Steam 账号』菜单已删除」→ 用例 1/2；
+//   ②「普通用户菜单（5 项）＋其余分组不渲染」→ 用例 3/4；
+//   ③「直接访问无权限 section 会被路由守卫跳回个人资料」→ 用例 5/6/7。
+// 反向自检：把 {id:'steam',…} 加回 groups → 用例 1 红；把 USER_SECTIONS 减员或把「无权限」
+// 提示删掉 → 用例 3/6 红；删掉模板 UserSections 分支 → 用例 7 红。
+test('DT-1 验收 1：admin 菜单全量且「Steam 账号」菜单项已删除（无残留入口）', () => {
+  const c = read('../frontend/src/pages/Console.vue');
+  assert.ok(!c.includes("id:'steam'"), '侧栏不再有「Steam 账号」菜单项（账号管理并入个人资料）');
+  assert.ok(!c.includes("label:'Steam 账号'"), '「Steam 账号」文案无残留');
+  // admin 全量菜单（demo ① 逐项）：
+  for (const item of [
+    'id:\'games\',label:\'游戏管理\'',
+    'id:\'recycle\',label:\'回收站\'',
+    'id:\'announcements\',label:\'站点通知\'',
+    'id:\'wishlist\',label:\'愿望单\'',
+    'id:\'watchlist\',label:\'到价提醒\'',
+    'id:\'visitors\',label:\'访问记录\'',
+    'id:\'appeals\',label:\'申诉管理\'',
+    'id:\'users\',label:\'用户管理\'',
+    'id:\'sessions\',label:\'登录会话\'',
+    'id:\'mail\',label:\'邮件服务\'',
+    'id:\'op-logs\',label:\'操作日志\'',
+    'id:\'settings\',label:\'系统设置\'',
+    'id:\'stats\',label:\'数据统计\'',
+  ]) {
+    assert.ok(c.includes(item), `admin 全量菜单应含 ${item}`);
+  }
+  for (const name of ["name:'内容运营'", "name:'访问与安全'", "name:'账号与服务'", "name:'日志审计'", "name:'系统'"]) {
+    assert.ok(c.includes(name), `分组 ${name} 保留`);
+  }
+});
+
+test('DT-1 验收 2：普通用户仅 5 页（个人资料/登录会话（我的设备）/我的到价提醒/我的愿望单/站点公告）', () => {
+  const c = read('../frontend/src/pages/Console.vue');
+  // 允许集与顺序（demo ② 逐字文案）
+  assert.match(c, /const USER_SECTIONS = \['profile', 'sessions', 'watchlist', 'wishlist', 'announcements'\]/, 'USER_SECTIONS 恰好 5 项且顺序与 demo 一致');
+  assert.match(c, /id: 'profile', label: '个人资料'/, '普通用户菜单：个人资料');
+  assert.match(c, /id: 'sessions', label: '登录会话（我的设备）'/, '普通用户菜单：登录会话（我的设备）');
+  assert.match(c, /id: 'watchlist', label: '我的到价提醒'/, '普通用户菜单：我的到价提醒');
+  assert.match(c, /id: 'wishlist', label: '我的愿望单'/, '普通用户菜单：我的愿望单');
+  assert.match(c, /id: 'announcements', label: '站点公告'/, '普通用户菜单：站点公告（只读）');
+  assert.match(c, /name: '我的'/, '普通用户分组名「我的」（其余分组不渲染）');
+});
+
+test('DT-1 验收 3：普通用户菜单只渲染「我的」组（visibleGroups 按角色取 USER_GROUPS）', () => {
+  const c = read('../frontend/src/pages/Console.vue');
+  assert.match(c, /const source=isUserRole\.value\?USER_GROUPS:groups/, 'visibleGroups 普通用户走 USER_GROUPS');
+  assert.match(c, /const isUserRole = computed\(\(\) => Boolean\(user\.value && user\.value\.role !== 'admin'\)\)/, '普通用户角色判定');
+  assert.match(c, /const isAdminUser = computed\(\(\) => user\.value\?\.role === 'admin'\)/, 'admin 角色判定');
+});
+
+test('DT-1 验收 4：直达无权限 section → 跳 profile + 「无权限」提示（watch 路由变化）', () => {
+  const c = read('../frontend/src/pages/Console.vue');
+  assert.match(c, /if\(isUserRole\.value && !USER_SECTIONS\.includes\(id\)\)/, 'watch 守卫按允许集拦截');
+  assert.match(c, /if\(id\)ElMessage\.warning\('无权限'\)/, '跳回时提示「无权限」');
+  assert.match(c, /selected\.value='profile';\s*router\.replace\(\{path:'\/console',query:\{section:'profile'\}\}\)/, '跳回 profile（URL 同步改写）');
+});
+
+test('DT-1 验收 5：首帧直达（onMounted）同样拦截——无权限 section 跳 profile+提示，允许集 section 保留', () => {
+  const c = read('../frontend/src/pages/Console.vue');
+  assert.match(c, /if\(initial&&USER_SECTIONS\.includes\(initial\)\)\{\s*selected\.value=initial;/, '直达允许集 section（sessions/watchlist/wishlist/announcements）保留');
+  assert.match(c, /if\(initial\)ElMessage\.warning\('无权限'\);/, '直达无权限 section 提示「无权限」');
+});
+
+test('DT-1 验收 6：普通用户 4 个数据页渲染 UserSections（admin 渲染 AdminModules/AdminExtras 不变）', () => {
+  const c = read('../frontend/src/pages/Console.vue');
+  assert.match(c, /<AdminModules v-if="isAdminUser && nativeSections\.includes\(selected\)"/, 'admin 页面保持 AdminModules（admin 接口不变）');
+  assert.match(c, /<AdminExtras v-else :section="selected"/, 'admin 其它 section 保持 AdminExtras');
+  assert.match(c, /<UserSections v-else-if="isUserRole" :section="selected"/, '普通用户 4 数据页渲染 UserSections');
+  const u = read('../frontend/src/pages/UserSections.vue');
+  assert.match(u, /defineProps\(\{ section:/, 'UserSections 接收 section');
+  for (const label of ['登录会话（我的设备）', '我的到价提醒', '我的愿望单', '站点公告']) {
+    assert.ok(u.includes(label), `UserSections 含「${label}」页壳`);
+  }
+});

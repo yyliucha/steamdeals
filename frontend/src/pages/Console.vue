@@ -43,9 +43,12 @@
         </div>
         <div class="header-actions"><el-button v-if="isMobile" text class="theme-btn m-bell" title="站点通知" @click="goAnnouncements">🔔</el-button><span v-if="user?.role==='admin'" class="header-version" :title="versionTitle" @click="loadVersion(true)">v{{ verInfo.current || '—' }}<em v-if="verInfo.updateAvailable && verInfo.latest"> ↑ 新版 v{{ String(verInfo.latest).replace(/^v/i, '') }} 可用</em></span><el-button text class="theme-btn" :title="themeMode === 'dark' ? '切换亮色' : '切换暗色'" @click="toggleTheme">{{ themeMode === 'dark' ? '🌞' : '🌙' }}</el-button></div>
       </header>
-      <AdminModules v-if="nativeSections.includes(selected)" :section="selected" />
+      <AdminModules v-if="isAdminUser && nativeSections.includes(selected)" :section="selected" />
       <AdminLogs v-else-if="selected === 'op-logs'" />
       <ProfilePage v-else-if="selected === 'profile'" @profile-updated="loadMe" />
+      <!-- DT-1（docs/ADMIN-PERMISSIONS.md）：普通用户 5 页中除个人资料外的 4 页走用户级组件
+           （DT-2 接入数据）；admin 走上面分支保持 admin 接口不变 -->
+      <UserSections v-else-if="isUserRole" :section="selected" />
       <AdminExtras v-else :section="selected" :me="user" />
     </main>
   </div>
@@ -60,6 +63,7 @@ import AdminModules from './AdminModules.vue';
 import AdminExtras from './AdminExtras.vue';
 import AdminLogs from './AdminLogs.vue';
 import ProfilePage from './ProfilePage.vue';
+import UserSections from './UserSections.vue';
 import UserAvatar from '../components/UserAvatar.vue';
 import { useTheme } from '../composables/useTheme.js';
 import { fmtDateTime } from '../utils/siteTime.js';
@@ -93,16 +97,36 @@ function toggleTheme(){
 const nativeSections=['games','visitors','announcements','wishlist','watchlist','settings','stats','appeals'];
 // AT 批（docs/ADMIN-CONSOLE-IA.md §3）：侧栏删「批量操作记录」「运行日志」，新增「日志审计 / 操作日志」；
 // 旧书签 ?section=bulk-ops / ?section=sync 自动落到 op-logs 对应 tab，不 404（§7.4 验收 11）。
+// DT-1（docs/ADMIN-PERMISSIONS.md）：删除「Steam 账号」菜单项（账号管理并入个人资料页 CX 账号卡）；
+// 管理员看其它用户绑定账号走「用户管理 → 编辑用户」弹窗（DT-3）。
 const groups=[
   {name:'内容运营',items:[{id:'games',label:'游戏管理',glyph:'▦',description:'维护游戏目录、采集计划与数据回填'},{id:'recycle',label:'回收站',glyph:'▤',description:'查看并恢复已删除的游戏'},{id:'announcements',label:'站点通知',glyph:'▱',description:'发布和管理网站公告'},{id:'wishlist',label:'愿望单',glyph:'★',description:'全站用户愿望单，可查看与删除'},{id:'watchlist',label:'到价提醒',glyph:'🔔',description:'全站到价提醒清单（用户级 + 站点级），可查看与清理'}]},
   {name:'访问与安全',items:[{id:'visitors',label:'访问记录',glyph:'◉',description:'流量、异常请求和访问控制'},{id:'appeals',label:'申诉管理',glyph:'❧',description:'解封申诉的受理与处理'}]},
-  {name:'账号与服务',items:[{id:'profile',label:'个人资料',glyph:'👤',description:'编辑个人资料、头像与 Steam 账号绑定（仅本人可见）'},{id:'users',label:'用户管理',glyph:'♙',description:'管理账号、角色与登录权限'},{id:'steam',label:'Steam 账号',glyph:'◈',description:'绑定多个 Steam 账号，同步游戏库与愿望单'},{id:'sessions',label:'登录会话',glyph:'⟳',description:'查看在线会话、踢下线'},{id:'mail',label:'邮件服务',glyph:'✉',description:'配置 SMTP、邮件模板与发送测试'}]},
+  {name:'账号与服务',items:[{id:'profile',label:'个人资料',glyph:'👤',description:'编辑个人资料、头像与 Steam 账号绑定（仅本人可见）'},{id:'users',label:'用户管理',glyph:'♙',description:'管理账号、角色与登录权限'},{id:'sessions',label:'登录会话',glyph:'⟳',description:'查看在线会话、踢下线'},{id:'mail',label:'邮件服务',glyph:'✉',description:'配置 SMTP、邮件模板与发送测试'}]},
   {name:'日志审计',items:[{id:'op-logs',label:'操作日志',glyph:'☰',description:'用户删除 / 批量操作 / Steam 账号 / 邮件发送 / 运行与同步的审计记录'}]},
   {name:'系统',items:[{id:'settings',label:'系统设置',glyph:'⚙',description:'数据源、网络代理与提醒配置'},{id:'stats',label:'数据统计',glyph:'▥',description:'价格变化、缓存、备份与访问排行'}]},
+];
+// DT-1（docs/ADMIN-PERMISSIONS.md）：普通用户仅 5 页——个人资料 / 登录会话（我的设备）/
+// 我的到价提醒 / 我的愿望单 / 站点公告（只读）。文案与 demo
+// （design/admin-menu-permissions-2026-11-19.html「普通用户菜单（5 项）」）逐字对齐。
+// 守卫与可见性都以本列表为准（不在列表内的 section 对普通用户即「无权限」）。
+const USER_SECTIONS = ['profile', 'sessions', 'watchlist', 'wishlist', 'announcements'];
+const USER_GROUPS = [
+  { name: '我的', items: [
+    { id: 'profile', label: '个人资料', glyph: '👤', description: '编辑个人资料、头像与 Steam 账号绑定（仅本人可见）' },
+    { id: 'sessions', label: '登录会话（我的设备）', glyph: '⟳', description: '查看我登录过的设备，撤销某个设备的登录' },
+    { id: 'watchlist', label: '我的到价提醒', glyph: '🔔', description: '我设置的到价提醒清单' },
+    { id: 'wishlist', label: '我的愿望单', glyph: '★', description: '我收藏的愿望单游戏' },
+    { id: 'announcements', label: '站点公告', glyph: '▱', description: '站点发布的通知公告（只读）' },
+  ] },
 ];
 // 旧书签映射：bulk-ops → op-logs&tab=bulk；sync → op-logs&tab=run（mail&tab=records 在 AdminExtras 内处理）
 const LEGACY_SECTION = { 'bulk-ops': { section: 'op-logs', tab: 'bulk' }, sync: { section: 'op-logs', tab: 'run' } };
 const selected=ref(String(route.query.section||'games'));
+// DT-1（docs/ADMIN-PERMISSIONS.md）：角色判定——isAdminUser 决定管理菜单与 admin 组件；
+// isUserRole 决定普通用户 5 页菜单与 UserSections 渲染（loadMe 完成前 user 为 null，按现状渲染）。
+const isUserRole = computed(() => Boolean(user.value && user.value.role !== 'admin'));
+const isAdminUser = computed(() => user.value?.role === 'admin');
 // URL 里的 section 变化（如指标卡「已删除」跳转回收站）时同步选中态
 watch(()=>route.query.section,(v)=>{
   const id=String(v??'');
@@ -115,28 +139,36 @@ watch(()=>route.query.section,(v)=>{
     router.replace({path:'/console',query:{section:LEGACY_SECTION[id].section,tab:LEGACY_SECTION[id].tab}}).catch(()=>{});
     return;
   }
-  // CX 批：普通用户直开任意管理 section → 强制回「个人资料」（接口另有 requireAdmin 兜底）
-  if(user.value&&user.value.role!=='admin'&&id!=='profile'){
+  // DT-1：普通用户直达无权限 section → 强制回「个人资料」+「无权限」提示（接口另有 requireAdmin 兜底）；
+  // 允许集 = USER_SECTIONS（5 页）；无 section 参数静默落 profile 不提示。
+  if(isUserRole.value && !USER_SECTIONS.includes(id)){
     selected.value='profile';
     router.replace({path:'/console',query:{section:'profile'}}).catch(()=>{});
+    if(id)ElMessage.warning('无权限');
     return;
   }
   if(id&&groups.some(g=>g.items.some(i=>i.id===id)))selected.value=id;
 });
-const selectedItem=computed(()=>groups.flatMap(g=>g.items.map(i=>({...i,group:g.name}))).find(i=>i.id===selected.value)||groups[0].items[0]);
-// CX 批（docs/USER-PROFILE-EDIT.md §2 #9）：普通用户进控制台只看得到「个人资料」（仅本人；无他人入口）
+const selectedItem=computed(()=>{
+  // DT-1：普通用户菜单用「我的」组文案（登录会话（我的设备）/我的到价提醒/…），admin 用管理组文案
+  const source=isUserRole.value?USER_GROUPS:groups;
+  return source.flatMap(g=>g.items.map(i=>({...i,group:g.name}))).find(i=>i.id===selected.value)||source[0].items[0];
+});
+// DT-1（docs/ADMIN-PERMISSIONS.md）：admin 全量菜单；普通用户仅 5 页（USER_GROUPS「我的」组）。
+// 未加载出 user 时按现状显示全量（loadMe 完成后自动收敛，避免首帧闪烁）。
 const visibleGroups=computed(()=>{
   const q=filter.value.trim().toLocaleLowerCase();
-  return groups.map(g=>({...g,items:g.items.filter(i=>{
-    const allowed=!user.value||user.value.role==='admin'||i.id==='profile';
+  const source=isUserRole.value?USER_GROUPS:groups;
+  return source.map(g=>({...g,items:g.items.filter(i=>{
+    const allowed=!user.value||user.value.role==='admin'||USER_SECTIONS.includes(i.id);
     const matches=!q||`${i.label} ${i.description} ${g.name}`.toLocaleLowerCase().includes(q);
     return allowed&&matches;
   })})).filter(g=>g.items.length);
 });
 // AN 批（docs/UNSAVED-GUARD.md §4.3）：切菜单前先过离开确认——不要先改 selected 再拦
 async function select(item){ if(item.id===selected.value)return; if(!(await requestLeave()))return; selected.value=item.id; navDrawer.value=false; await router.replace({path:'/console',query:{section:item.id}}); if(item.id==='appeals')loadAppealsPending(); }
-// BW 批：手机顶栏通知铃 → 站点通知模块
-function goAnnouncements(){const item=groups.flatMap((g)=>g.items).find((i)=>i.id==='announcements');if(item)select(item);}
+// BW 批：手机顶栏通知铃 → 站点通知模块（DT-1：普通用户菜单也有站点公告，按角色取菜单池）
+function goAnnouncements(){const pool=isUserRole.value?USER_GROUPS:groups;const item=pool.flatMap((g)=>g.items).find((i)=>i.id==='announcements');if(item)select(item);}
 // 当前菜单项的「未保存修改」小圆点（与邮件配置的小标一致）
 const menuDirty=ref(false);
 let menuDirtyTimer=null;
@@ -171,15 +203,26 @@ onMounted(async()=>{try{
   const data=await loadMe();
   if(!data.user){ElMessage.warning('请先登录');bypassNextGuard();router.replace('/login');return;}
   if(data.user.must_change_password){ElMessage.warning('请先修改初始密码');bypassNextGuard();router.replace('/change-password?forced=1');return;}
-  const isAdminUser=data.user.role==='admin';
-  // CX 批：普通用户只开放「个人资料」（仅本人）；其余模块与入口不渲染
-  if(!isAdminUser){selected.value='profile';router.replace({path:'/console',query:{section:'profile'}}).catch(()=>{});}
+  const isAdmin=data.user.role==='admin';
+  // DT-1（docs/ADMIN-PERMISSIONS.md）：普通用户允许集 = USER_SECTIONS（5 页）；
+  // 直达无权限 section → 跳 profile + 「无权限」提示；直达允许集 section 保留（UserSections 渲染）；
+  // 无参数 → 静默落 profile。
+  if(!isAdmin){
+    const initial=String(route.query.section??'');
+    if(initial&&USER_SECTIONS.includes(initial)){
+      selected.value=initial;
+    }else{
+      selected.value='profile';
+      if(initial)ElMessage.warning('无权限');
+      router.replace({path:'/console',query:{section:'profile'}}).catch(()=>{});
+    }
+  }
   // 旧书签映射也要在直开时生效（watch 不触发首帧）
   const legacy=LEGACY_SECTION[selected.value];
   if(legacy){selected.value=legacy.section;router.replace({path:'/console',query:{...legacy}}).catch(()=>{});}
   else if(selected.value==='mail'&&route.query.tab==='records'){router.replace({path:'/console',query:{section:'op-logs',tab:'mail'}}).catch(()=>{});}
   const valid=groups.some(g=>g.items.some(i=>i.id===selected.value));
-  if(!valid)selected.value=isAdminUser?'games':'profile';
+  if(!valid)selected.value=isAdmin?'games':'profile';
   const st=data.prefs?.theme;if(st==='light'||st==='dark'){if(theme.storedMode()!==st)theme.set(st);}else if(theme.storedMode()){fetch('/api/prefs',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({theme:theme.storedMode()})}).catch(()=>{});}
 }catch{ElMessage.error('无法验证登录身份');bypassNextGuard();router.replace('/');return;}
 if(user.value?.role==='admin'){loadVersion(false);loadAppealsPending();}});
