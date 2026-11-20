@@ -270,9 +270,9 @@ test('CO-5/B4-2 第九轮：admin-sync 路由分支不得双实现（server.js �
   assert.ok(!/path === '\/api\/admin\/rename' && req\.method/.test(AS_SERVER), 'rename 分支不得残留在 server.js');
   assert.ok(!/path === '\/api\/admin\/rename\/stop' && req\.method/.test(AS_SERVER), 'rename/stop 分支不得残留在 server.js');
   assert.ok(!/path === '\/api\/admin\/rename\/status' && req\.method/.test(AS_SERVER), 'rename/status 分支不得残留在 server.js');
-  // 边界锁：其它 admin 域路由留宿主（#10 smtp/emails 已拆到 routes/admin-settings.js、#11 bulk、#12 steam-logs、#16 wishlists）
+  // 边界锁：其它 admin 域路由留宿主（#10 smtp/emails 已拆到 routes/admin-settings.js、
+  // #12 steam-logs 已拆到 routes/admin-reports.js、#11 bulk、#16 wishlists）
   assert.match(AS_SERVER, /path === '\/api\/admin\/bulk' && req\.method === 'POST'/, 'admin bulk 段留 server.js（B4 #11）');
-  assert.match(AS_SERVER, /path === '\/api\/admin\/steam-logs' && req\.method === 'GET'/, 'admin steam-logs 段留 server.js（B4 #12）');
   assert.match(AS_SERVER, /path === '\/api\/admin\/wishlists' && req\.method === 'GET'/, 'admin wishlists 段留 server.js（B4 #16）');
   // 中间件判据锁：sync/status|runs 访问日志豁免留 server.js（isLoggablePath 是中间件，§15.4）
   assert.match(AS_SERVER, /path === '\/api\/admin\/sync\/status' \|\| path === '\/api\/admin\/sync\/runs'/, 'sync/status|runs 访问日志豁免留 server.js（中间件）');

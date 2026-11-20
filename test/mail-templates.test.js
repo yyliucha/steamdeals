@@ -198,9 +198,9 @@ test('CO-5/B4-2 第十轮：server.js 必须真实接线管理段入口（删掉
   assert.match(ST_SERVER, /await handleAdminSettingsAdmin\(\{[\s\S]{0,1200}?appealEmail,/);
   assert.match(ST_SERVER, /await handleAdminSettingsAdmin\(\{[\s\S]{0,1200}?invalidateSiteCache,/);
   // 位置语义锁：调用必须在 requireAdmin 就绪之后的管理段——本域最早路由 version GET 的原位置
-  // （admin-sync 接线之前、backups 之前）
+  // （admin-sync 接线之前、backups 之前；backups 段已随 B4 #12 拆到 admin-reports 接线）
   assert.match(ST_SERVER, /await handleAdminSettingsAdmin\(\{[\s\S]*?await handleAdminSyncAdmin\(\{/s, '接线在 admin-sync 接线之前（本域 version 原位置）');
-  assert.match(ST_SERVER, /await handleAdminSettingsAdmin\(\{[\s\S]*?path === '\/api\/admin\/backups' && req\.method === 'GET'/s, '接线在 backups 之前（本域 version 原位置）');
+  assert.match(ST_SERVER, /await handleAdminSettingsAdmin\(\{[\s\S]*?await handleAdminReportsAdmin\(\{/s, '接线在 backups 之前（本域 version 原位置；backups 段已随 B4 #12 拆走）');
 });
 
 test('CO-5/B4-2 第十轮：admin-settings 路由分支不得双实现（server.js 里保留旧分支即红，防拆分后两处漂移）', () => {

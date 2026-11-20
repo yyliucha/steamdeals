@@ -21,7 +21,6 @@ import * as guard from './guard.js';
 import * as autoBan from './auto-ban.js';
 import * as devices from './devices.js';
 import * as captcha from './captcha.js';
-import { createBackup, listBackups } from './backup.js';
 import * as settings from './settings.js';
 import { baseRegion } from './sync-regions.js';
 import { handleSetupRoutes } from './setup-routes.js';
@@ -74,7 +73,7 @@ import { handleMeRoutes } from './routes/me.js';
 // handleSitePublic 在认证上下文解析之前（/api/site，原位置语义）、handleSiteRoutes
 // 在认证上下文就绪后的主段（/api/steam/* Steam 账号管理）。banState 限流桶随域移入模块
 // （只被本域使用）；siteName/appealEmail 宿主闭包经 ctx 按引用传入（语义共享）；
-// /api/admin/wishlists（B4 #16）、/api/admin/steam-logs（B4 #12）留本文件。
+// /api/admin/wishlists（B4 #16）留本文件。
 import { handleSitePreflight, handleSitePublic, handleSiteRoutes } from './routes/site.js';
 // CO-5/B4-2 第八轮：admin-access 域（B4 #8 后台访问安全：views/visitors/blacklist/
 // whitelist/abuse/devices/reviews）路由已抽到 src/routes/admin-access.js——
@@ -90,7 +89,7 @@ import { handleAdminAccessAdmin } from './routes/admin-access.js';
 // syncState 进程级状态持有对象、syncStatusCache/invalidateSyncStatusCache 短缓存
 // 按引用传入（语义共享：任务启停与状态轮询跨请求共享同一子进程槽位）；
 // isLoggablePath 的 sync/status|runs 访问日志豁免仍是中间件、留本文件；
-// /api/admin/steam-logs（B4 #12）、/api/admin/wishlists（B4 #16）、
+// /api/admin/wishlists（B4 #16）、
 // /api/admin/bulk 派发表（B4 #11）等其它 admin 域路由留本文件。
 import { handleAdminSyncAdmin } from './routes/admin-sync.js';
 // CO-5/B4-2 第十轮：admin-settings 域（B4 #10 后台系统设置：smtp/mail/emails/proxies/
@@ -129,6 +128,14 @@ import { handleAdminAlignAdmin } from './routes/admin-align.js';
 // /api/admin/games*（列表/stats/merge/links/deleted，B4 #15）与 /api/behavior 留本文件；
 // isLoggablePath 的 /api/games/stamp 与 /api/games/search 访问记录豁免仍是中间件、留本文件。
 import { handleGamesRoutes } from './routes/games.js';
+// CO-5/B4-2 第十五轮：admin-reports 域（B4 #12 后台报表/备份/日志：reports/backup/backups/logs/
+// steam-logs）路由已抽到 src/routes/admin-reports.js——handleAdminReportsAdmin 在 requireAdmin
+// 就绪之后的管理段（本域全部 6 条路由，管理段形态先例=admin-settings 域）。调用位置不能动：
+// 取本域最早路由 /api/admin/backups 的原位置（admin-settings 接线之后）。本域无跨模块共享的
+// 可变状态，ctx 只需基座字段；SQL 全部跨模块共用零搬家（priceChanges 等留 pg.js、listSteamLogs
+// 留 steam-log.js、createBackup/listBackups 留 backup.js，判定见 admin-reports-repository.js）。
+// isTimeoutExemptPath 的 '/api/admin/backup' 超时豁免仍是中间件、留本文件（§15.4）。
+import { handleAdminReportsAdmin } from './routes/admin-reports.js';
 // DX 批（docs/SEARCH-FIX-PERF.md §DX）：前台列表/搜索短 TTL 内存缓存（纯逻辑，测试锁语义）。
 import { createListCache } from './search-cache.js';
 
@@ -1605,8 +1612,8 @@ export function createApiServer({
       // 调用位置不能动：必须在认证上下文（user/requireUser/requireAdmin）就绪后的主段
       // （401/403 语义依赖该位置，原位置语义，移动 = 改契约）；本域无跨模块共享状态
       // （banState 限流桶随域移入模块），ctx 只需基座字段。
-      // steamAccountsMod / steamLogMod 动态 import 保留——本文件 admin 段仍用
-      // （/api/admin/wishlists 属 B4 #16、/api/admin/steam-logs 属 B4 #12）。
+      // steamAccountsMod 动态 import 保留——本文件 admin 段仍用
+      // （/api/admin/wishlists 属 B4 #16）；steamLogMod 已随 B4 #12 拆走。
       if (
         await handleSiteRoutes({
           path,
@@ -1626,7 +1633,6 @@ export function createApiServer({
         return;
 
       const steamAccountsMod = await import('./steam-accounts.js');
-      const steamLogMod = await import('./steam-log.js');
 
       // ---- CO-5/B4-2 第四轮：watchlist/wishlist 域用户段路由已抽到 src/routes/watchlist.js ----
       // 调用位置不能动：必须在认证上下文（user/requireUser）就绪后的主段；本域无跨模块共享状态
@@ -2069,23 +2075,25 @@ export function createApiServer({
       )
         return;
 
-      // ---- 管理员：备份（手动触发 + 列表）----
-      if (path === '/api/admin/backups' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        return json(res, 200, { backups: listBackups(process.env.BACKUP_DIR ?? 'data/backup') });
-      }
-
-      if (path === '/api/admin/backup' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        try {
-          const result = await createBackup(q, { dir: process.env.BACKUP_DIR ?? 'data/backup', logger });
-          logger?.info('api.backup_done', { ...result, by: user.username });
-          return json(res, 200, { result, backups: listBackups(process.env.BACKUP_DIR ?? 'data/backup') });
-        } catch (err) {
-          logger?.warn('api.backup_failed', { message: String(err.message).slice(0, 160) });
-          return json(res, 500, { error: '备份失败：' + String(err.message).slice(0, 120) });
-        }
-      }
+      // ---- CO-5/B4-2 第十五轮（docs/DESIGN-AUDIT.md B4）：admin-reports 域管理段路由已抽到
+      // src/routes/admin-reports.js。调用位置不能动：必须在 requireAdmin 就绪之后的管理段
+      // （401/403 语义依赖该位置；调用点取本域最早路由 /api/admin/backups 的原位置）。
+      // 域内 6 条路由 path+method 互不重叠、与相邻其它 admin 域路由无同 path 双匹配，
+      // 在管理段内集中到一处不改变匹配语义；本域无跨模块共享的可变状态，ctx 只需基座字段。
+      if (
+        await handleAdminReportsAdmin({
+          path,
+          req,
+          res,
+          url,
+          q,
+          logger,
+          json,
+          user,
+          requireAdmin,
+        })
+      )
+        return;
 
       // ---- 管理员：合并重复游戏（把 from 并进 to，按 Steam appid 指定）----
       if (path === '/api/admin/games/merge' && req.method === 'POST') {
@@ -2591,74 +2599,6 @@ export function createApiServer({
         }
       }
 
-      // ---- 管理员：最近日志（排障用；日志层已做脱敏）----
-      if (path === '/api/admin/logs' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const fsMod = await import('node:fs');
-        const dir = process.env.LOG_DIR ?? 'logs';
-        const limit = Math.min(Number(url.searchParams.get('limit') ?? 200) || 200, 1000);
-        const grep = String(url.searchParams.get('grep') ?? '').trim();
-        let files = [];
-        try {
-          files = fsMod.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).sort();
-        } catch {
-          files = [];
-        }
-        const picked = files.slice(-5);
-        const entries = [];
-        for (const f of picked) {
-          try {
-            const lines = fsMod.readFileSync(dir + '/' + f, 'utf8').split('\n').filter(Boolean);
-            for (const line of lines.slice(-limit)) {
-              try {
-                entries.push(JSON.parse(line));
-              } catch {
-                entries.push({ msg: line });
-              }
-            }
-          } catch {
-            /* 单个文件读失败不影响整体 */
-          }
-        }
-        // 容器启动输出（entrypoint / node 崩溃栈）也一起返回
-        try {
-          const bootLines = fsMod.readFileSync(dir + '/boot.log', 'utf8').split('\n').filter(Boolean).slice(-limit);
-          for (const line of bootLines) {
-            entries.push({ ts: new Date().toISOString(), level: /错误|失败|ERROR|Error/.test(line) ? 'warn' : 'info', event: line.slice(0, 300) });
-          }
-          if (bootLines.length) picked.push("boot.log");
-        } catch {
-          /* 没有 boot.log 就算了 */
-        }
-
-        // 按模块归类：用户 / Steam 同步 / 程序；error 单独一档
-        const scopeOf = (e) => {
-          const ev = String(e.event || '');
-          const job = String(e.job || '');
-          if (/^(auth\.|api\.login|api\.logout|api\.user_|api\.me)/.test(ev)) return 'user';
-          if (/^(sync\.steamall|sync\.item_failed|import\.steamcatalog|steam\.meta|api\.sync_)/.test(ev) || /^steam/.test(job)) return 'steam';
-          return 'app';
-        };
-        const scope = String(url.searchParams.get('scope') ?? '').trim();
-        const minutes = Math.max(0, Number(url.searchParams.get('minutes') ?? 0) || 0);
-        // 时间范围：只保留最近 N 分钟的日志（ts 是 ISO 字符串）
-        let ranged = entries;
-        if (minutes > 0) {
-          const cutoff = Date.now() - minutes * 60_000;
-          ranged = entries.filter((e) => {
-            const ts = e.ts || e.time;
-            if (!ts) return false;
-            const t = new Date(ts).getTime();
-            return Number.isFinite(t) && t >= cutoff;
-          });
-        }
-        const scoped = scope
-          ? ranged.filter((e) => (scope === 'error' ? String(e.level || '').toLowerCase() === 'error' : scopeOf(e) === scope))
-          : ranged;
-        const filtered = grep ? scoped.filter((e) => JSON.stringify(e).includes(grep)) : scoped;
-        return json(res, 200, { files: picked, count: filtered.length, entries: filtered.slice(-limit) });
-      }
-
       if (path === '/api/admin/users' && req.method === 'GET') {
         if (!requireAdmin()) return;
         return json(res, 200, { users: await db.listUsers(q) });
@@ -2792,52 +2732,6 @@ export function createApiServer({
           if (err?.code === 'BUSY') return json(res, 409, { error: '已有任务在运行（同步/回填），请等它结束' });
           throw err;
         }
-      }
-
-      // ---- 管理员：价格变动报表（涨跌榜 + 悬停线图序列 + CSV 导出）----
-      if (path === '/api/admin/reports/price' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const hours = Number(url.searchParams.get('hours') ?? 24);
-        const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 100) || 100, 1), 500);
-        const days = Math.min(Math.max(Number(url.searchParams.get('days') ?? 7) || 7, 1), 30);
-        const report = await db.priceChanges(q, { hours, limit });
-        // AT 批（docs/ADMIN-CONSOLE-IA.md §6）：去 daily、加 series——
-        // 报告里出现的 game_id 一次查出近 N 天每日最低（官方渠道），悬停零额外请求。
-        const gameIds = [...(report.topDrops || []), ...(report.topRises || [])].map((r) => r.game_id);
-        return json(res, 200, {
-          report,
-          series: await db.dailyMinSeriesBatch(q, { gameIds, days }),
-        });
-      }
-
-      if (path === '/api/admin/reports/price.csv' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const hours = Number(url.searchParams.get('hours') ?? 24);
-        const rows = await db.priceChangeRows(q, { hours });
-        const cell = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-        const lines = ['appid,name,platform,platform_name,old_price,new_price,drop_pct,captured_at'];
-        for (const r of rows) {
-          const pct = r.was > 0 ? (((r.was - r.now_price) / r.was) * 100).toFixed(1) : '';
-          lines.push([
-            r.steam_appid ?? '',
-            r.name,
-            r.platform,
-            r.platform_name,
-            yuanAmount(r.was),
-            yuanAmount(r.now_price),
-            pct,
-            String(r.captured_at).slice(0, 19).replace('T', ' '),
-          ].map(cell).join(','));
-        }
-        // 带 BOM：Excel 直接打开中文不乱码
-        const body = '\uFEFF' + lines.join('\r\n');
-        res.writeHead(200, {
-          'content-type': 'text/csv; charset=utf-8',
-          'content-disposition': 'attachment; filename="price-changes.csv"',
-          'cache-control': 'no-store',
-        });
-        res.end(body);
-        return;
       }
 
       // ---- CO-5/B4-2 第五轮（docs/DESIGN-AUDIT.md B4）：公告管理路由已抽到 src/routes/announcements.js ----
@@ -2997,18 +2891,6 @@ export function createApiServer({
         const op = await db.getBulkOp(q, Number(bulkOpMatch[1]));
         if (!op) return json(res, 404, { error: '记录不存在' });
         return json(res, 200, { op });
-      }
-
-      // ---- 管理员：Steam 账号操作日志（docs/ADMIN-CONSOLE-IA.md §6，AT 批）----
-      // 参数 limit(≤500) / steamId / action / result / days(默认 30)；返回 { entries, total }。
-      if (path === '/api/admin/steam-logs' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const limit = Number(url.searchParams.get('limit') ?? 100);
-        const steamId = String(url.searchParams.get('steamId') ?? '').trim() || null;
-        const action = String(url.searchParams.get('action') ?? '').trim() || null;
-        const result = String(url.searchParams.get('result') ?? '').trim() || null;
-        const days = Number(url.searchParams.get('days') ?? 30);
-        return json(res, 200, await steamLogMod.listSteamLogs(q, { limit, steamId, action, result, days }));
       }
 
       return json(res, 404, { error: 'not found' });

@@ -647,9 +647,9 @@ test('CO-5/B4-2 第七轮：site 域路由分支不得双实现（server.js 里�
   assert.ok(!/const requireAccountApiKey =/.test(SITE_SERVER), 'requireAccountApiKey 定义不得残留在 server.js');
   assert.ok(!/const banStateBuckets = new Map/.test(SITE_SERVER), 'banState 限流桶定义不得残留在 server.js');
   assert.ok(!/function banStateLimited/.test(SITE_SERVER), 'banStateLimited 定义不得残留在 server.js');
-  // 边界锁：admin 段仍留宿主（/api/admin/wishlists 属 B4 #16、/api/admin/steam-logs 属 B4 #12）
+  // 边界锁：admin 段仍留宿主（/api/admin/wishlists 属 B4 #16；steam-logs 已随 B4 #12
+  // 拆到 routes/admin-reports.js，见 test/admin-reports.test.js）
   assert.match(SITE_SERVER, /path === '\/api\/admin\/wishlists' && req\.method === 'GET'/, 'admin wishlists 段留 server.js（B4 #16）');
-  assert.match(SITE_SERVER, /path === '\/api\/admin\/steam-logs' && req\.method === 'GET'/, 'admin steam-logs 段留 server.js（B4 #12）');
 });
 
 test('CO-5/B4-2 第七轮：site-repository.js 签名不变 + pg.js re-export（删 re-export 即红）', () => {
