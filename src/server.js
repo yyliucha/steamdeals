@@ -2089,17 +2089,23 @@ export function createApiServer({
             : ratingParam === 'mature' ? ' and g.mature_flag'
               : ratingParam === 'none' ? ' and not g.adult_flag and not g.mature_flag'
                 : '';
-        // 平台筛选：按参数位置生成（计数查询与列表查询占位符不同）
+        // 平台筛选：按参数位置生成（计数查询与列表查询占位符不同）。
+        // DV 批（docs/ITAD-SOURCE-FILTER.md §2 方案 A）：ITAD 是聚合来源不是平台——
+        //   platform=itad 改走来源判定（game_source_sync 有 matched 标记），其余平台仍按 offers.platform_code。
         const platformCond = (index) =>
-          platform
-            ? " and exists (select 1 from offers po join platforms pp on pp.code = po.platform_code where po.game_id = g.id and po.platform_code = $" + index + ')'
-            : '';
+          platform === 'itad'
+            ? " and exists (select 1 from game_source_sync gs where gs.game_id = g.id and gs.platform_code = 'itad' and gs.status = 'matched')"
+            : platform
+              ? " and exists (select 1 from offers po join platforms pp on pp.code = po.platform_code where po.game_id = g.id and po.platform_code = $" + index + ')'
+              : '';
+        // itad 分支没有占位符，参数数组不能带 platform（pg 会报参数数不匹配）
+        const platformArgs = platform === 'itad' ? [] : platform ? [platform] : [];
         const baseWhere =
           'where ' + db.gameKeywordSql('$1', { appidAsText: true }) +
           deletedWhere + syncWhere + offersWhere + ratingWhere;
         const cnt = await q(
           'select count(*)::int as n from games g ' + baseWhere + platformCond(2),
-          platform ? [kw, platform] : [kw],
+          [kw, ...platformArgs],
         );
         const rows = await q(
           'select g.id, g.steam_appid, coalesce(nullif(g.name, \'\'), nullif(g.name_en, \'\'), \'appid:\' || g.steam_appid) as name, g.name_en, g.app_type, g.blocked, g.deleted, g.deleted_at, g.updated_at, ' +
@@ -2114,7 +2120,7 @@ export function createApiServer({
           "(select count(*)::int from offers o4 where o4.game_id = g.id and o4.buy_url ~ '^https?://') as link_count " +
           'from games g ' + baseWhere + platformCond(4) + ' ' +
           'order by g.updated_at desc nulls last, g.id desc limit $2 offset $3',
-          platform ? [kw, pageSize, offset, platform] : [kw, pageSize, offset],
+          [kw, pageSize, offset, ...platformArgs],
         );
         const total = cnt.rows[0]?.n ?? 0;
         const adminGamesPayload = { total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), games: rows.rows };

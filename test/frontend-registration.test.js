@@ -89,3 +89,22 @@ test('EM EL-3：后台 Steam 同步按钮走「触发 202 + 轮询 sync-status�
   assert.match(src, /同步失败：/, '失败显示明确原因');
   assert.doesNotMatch(src, /请求超时，请稍后再试/, '不再出现笼统超时错误（验收③）');
 });
+
+// ---------------------------------------------------------------- DV 批（docs/ITAD-SOURCE-FILTER.md §2 方案 A）
+
+test('DV：admin-ui.js 注册 ElOptionGroup（import/样式/use 三处，漏一处下拉分组静默失效）', () => {
+  // 反向自检：删掉 use 数组里的 ElOptionGroup → 第三条断言变红（页面静默不渲染分组）
+  assert.match(adminUiJs, /ElOptionGroup/, 'import ElOptionGroup');
+  assert.match(adminUiJs, /option-group\/style\/css/, '加载 option-group 样式');
+  assert.match(adminUiJs, /\[[^\]]*ElOptionGroup[^\]]*\]/, 'use 数组注册');
+});
+
+test('DV：游戏管理平台下拉分「平台 / 来源」两组，itad 标签为「ITAD（来源）」且不在平台数组里', () => {
+  const src = read('../frontend/src/pages/AdminModules.vue');
+  assert.match(src, /el-option-group label="平台"/, '平台分组存在');
+  assert.match(src, /el-option-group label="来源"/, '来源分组存在');
+  assert.match(src, /<el-option label="ITAD（来源）" value="itad"\/>/, 'itad 以「ITAD（来源）」出现在来源分组（验收④文案区分）');
+  // 反向自检：把 itad 加回 platforms 数组 → 下拉会出现两个 ITAD 选项（平台组旧标签），本断言变红
+  assert.match(src, /const platforms=\[\{value:'steam',label:'Steam'\},[^\]]*'steampy',label:'SteamPy'\}\]/, '平台数组不再含 itad');
+  assert.doesNotMatch(src, /\{value:'itad',label:'ITAD'\}/, '旧「ITAD」平台选项已移除');
+});
