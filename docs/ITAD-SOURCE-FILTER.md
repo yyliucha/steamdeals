@@ -1,6 +1,6 @@
 # 游戏管理「ITAD」筛选改为来源筛选（DV，待开发）
 
-> 状态：**已确认待开发（2026-11-19 所有者选方案 A）**。关联：`src/adapters/itad.js`、`src/server.js` 游戏管理列表筛选、`AdminModules.vue` 平台下拉。
+> 状态：**已实现并发布 v2.28.0（2026-11-20，实现 0a6b978；QA docs/QA-DV.md 第 1 轮 ✅ 5/0/0/0）**。关联：`src/adapters/itad.js`、`src/server.js` 游戏管理列表筛选、`AdminModules.vue` 平台下拉。
 
 ## 1. 问题（代码证据）
 

@@ -1,5 +1,29 @@
 # 变更日志
 
+## [2.28.0] - 2026-11-20
+
+DU + DV + EC + EM + DT-1~5 八条合并发版（✨ 功能 1 条 + ⚙️ 调整 5 条 + 🐞 缺陷 2 条，含新功能面 → 大版本，2.27.9 → 2.28.0 连续递增）。本批不涉及 App 仓库。
+
+### 新增
+
+- **DT-2 用户级数据接口 + 5 页数据接入（站点 403e6f2）**：`GET /api/me/sessions`（仅返回当前用户会话）、`POST /api/me/sessions/:id/revoke`（只能踢自己，非自己 404）、`GET /api/me/wishlist`（分页/搜索，复用 wishlist 服务层）；普通用户 5 页（个人资料/登录会话/到价提醒/愿望单/公告）全部接入用户级接口，管理员页面保持 admin 接口；以上接口强制 `session.user.id`、忽略传入 userId、越权 403/404 并审计。规格见 [docs/ADMIN-PERMISSIONS.md](docs/ADMIN-PERMISSIONS.md) DT-2。
+- **EC 图片覆盖治理（站点 ab7ba90）**：EC-1 管理后台「图片覆盖看板」（游戏总数/有 header_image 数/本地已缓存数/缺图数 + 缺图游戏列表分页标原因：header_image 空 / CDN 404 / 抓取失败 + 重置缺图负缓存）；EC-2 缺图回填任务（`src/image-backfill.js` + CLI `images backfill` + 调度任务 images-backfill，限速 ≥1.2s/请求防 429，日志 `images.backfill_*`，手动按钮 `POST /api/admin/images/backfill` single-flight）；EC-3 前端缺图品牌占位（CoverPlaceholder S 标/首字，列表与详情统一，不再空白块）。规格见 [docs/IMAGE-COVERAGE.md](docs/IMAGE-COVERAGE.md) §8。
+- **EM Steam 同步超时修复（站点 ba9b0b0）**：EL-1 同步类请求单次超时 30s→8s（快速失败交给代理池切换，切换/冷却日志保持可观测）；EL-2 愿望单/库同步改「触发后台任务 + 立即返回 202」（同账号 single-flight 重复触发 409「进行中」）+ `GET /api/steam/accounts/:id/sync-status`（进程内状态 + steam_logs 兜底 → idle/running/lastResult）；EL-3 后台按钮「同步中…」+ 2s 轮询（最长 60s）+ 完成后刷新列表并提示结果/失败原因 + 重试，不再出现笼统「请求超时」。规格见 [docs/STEAM-SYNC-TIMEOUT.md](docs/STEAM-SYNC-TIMEOUT.md)。
+- **DT-1 菜单与路由权限隔离（站点 7f5edba）**：admin 全量菜单 / 普通用户仅 5 页（个人资料/登录会话/我的到价提醒/我的愿望单/站点公告）；删除「Steam 账号」菜单项（管理员账号查看需求并入「用户管理 → 编辑用户」弹窗只读显示）；路由守卫：无权限 section 直达 URL 重定向 profile + 「无权限」提示。规格见 [docs/ADMIN-PERMISSIONS.md](docs/ADMIN-PERMISSIONS.md) DT-1。
+- **DT-3 用户管理打磨（站点 4a40737）**：删除「新建用户」（按钮 + `POST /api/admin/users` 接口下线 410，用户只能自助注册）；行内五操作：编辑（仅改角色 admin/user，用户名/邮箱/绑定 Steam 账号只读展示）/重置密码（单条）/禁用·启用/踢会话/删除，角色变更与禁用二次确认 + 审计（`admin.user_edit`/`admin.user_disabled`）；批量只保留「批量踢会话」；禁用用户会话立即失效（复用 BK）；e2e 建号链迁自助注册。规格见 [docs/ADMIN-PERMISSIONS.md](docs/ADMIN-PERMISSIONS.md) DT-3。
+- **DT-4 验证码体验（站点 4c49f7c）**：验证码冷却按场景分桶（后台「重置密码发码」不占用前台登录/注册/重置额度）+ `retryAfterSec` 供前端倒计时；所有验证码按钮统一倒计时 60s（发送中/剩余秒数/可重发三态）；重置密码弹窗打开不发码、点「发送验证码」才发、验证失败不关弹窗（显示还剩 N 次机会）、过期显示「重新发送」。规格见 [docs/ADMIN-PERMISSIONS.md](docs/ADMIN-PERMISSIONS.md) DT-4。
+- **DT-5 前后台入口（站点 c19f514）**：前台未登录顶栏「登录」按钮（跳 /login）；登录后前台不显示「退出登录/修改密码」；Console 全局顶栏（所有 section 共用）「返回网站 ↗ + 用户徽标」下拉菜单树（个人资料/修改密码/返回网站/退出登录，普通用户同样可用）；退出后回到未登录态且心跳基线正确。规格见 [docs/ADMIN-PERMISSIONS.md](docs/ADMIN-PERMISSIONS.md) DT-5。
+
+### 修复
+
+- **DU 个人简介 placeholder 插值未绑定（站点 791d729）**：ProfilePage.vue 静态 `placeholder="…{{ … }}…"` 改 `:placeholder` 动态绑定——admin 显示「介绍一下自己（可选）」、普通用户「介绍一下自己（1–200 字）」。
+- **DV 游戏管理「ITAD」筛选改来源筛选（站点 0a6b978）**：`platform=itad` 改走来源判定（`game_source_sync` 有 matched 标记），其余平台仍按 `offers.platform_code` 不变；前端平台下拉分「平台/来源」两组（「ITAD（来源）」视觉区分）；不动采集链路。规格见 [docs/ITAD-SOURCE-FILTER.md](docs/ITAD-SOURCE-FILTER.md)。
+
+### 测试
+
+- QA 八条全部第 1 轮 ✅ 放行（0 打回）：DU 3/0/0/0、DV 5/0/0/0、EC 4/0/0/1、EM 5/0/0/1、DT-1 6/0/0/1、DT-2 10/0/0/1、DT-3 5/0/0/1、DT-4 8/0/0/1、DT-5 6/0/0/1（需人工确认项均为本机沙箱 headless 渲染限制，CI 兜底；报告 docs/QA-DU.md、QA-DV.md、QA-EC.md、QA-EM.md、QA-DT-1~5.md）。
+- 站点：`node test/api.test.js` 38/38、`npm run frontend:build` ✓、`npm run scan` 干净、主链 test:1–4 全绿（test:1 仅 commit-own 4 项本机沙箱基线红，与改动无关）。部署提示：EC 看板/回填任务首轮执行、EM 同步异步化（触发即 202 + sync-status 轮询）、DT 权限/菜单与普通用户 5 页、DV「ITAD（来源）」筛选上线生效。
+
 ## [2.27.9] - 2026-11-20
 
 CO-5/B4-2 巨石拆分第十/十一/十二/十三轮交付（admin 系统设置域 + cli 同步类域 + cli 报表类域 + admin 会话域，契约零变化）（🧹 技术债重构，无新功能面 → 小版本，2.27.8 → 2.27.9 连续递增）。本批不涉及 App 仓库。

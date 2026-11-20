@@ -2859,3 +2859,61 @@ pm test（分段）+ rontend:build + scan 全绿）。
   **外部契约零变化**（路径/参数/响应/错误码不变）。
 - **验收**：QA 14/0/0/1 放行；`npm run test:1..4` + `node test/api.test.js` + `frontend:build` + `scan` 全绿
   （人工确认 1 项为本机沙箱 `frontend:build` 默认命令被拦，改用 native loader 变体，CI 兜底）。
+
+## DU. ~~🐞 缺陷：个人资料「个人简介」placeholder 插值未绑定（显示 {{ }} 源码）~~ → **已发布 v2.28.0（2026-11-20）**
+
+**类型：** 🐞 缺陷（Bug）
+**状态：已发布 v2.28.0（2026-11-20，实现 791d729；QA docs/QA-DU.md 第 1 轮 ✅ 3/0/0/0）**
+**优先级：** P3
+**规格**：TODO 正文（1 行修复）
+
+- **现象**：个人资料页「个人简介」文本框显示 `介绍一下自己（{{ isAdmin ? '可选' : '1–200 字' }}）` 源码。
+- **修复**：`frontend/src/pages/ProfilePage.vue` 静态 `placeholder` 改 `:placeholder` 动态绑定；全项目静态插值扫描并入 profile.test.js 防复发。
+- **验收**：admin「介绍一下自己（可选）」/普通用户「介绍一下自己（1–200 字）」；测试全绿。
+
+## DV. ~~⚙️ 调整：游戏管理「ITAD」筛选改为来源筛选~~ → **已发布 v2.28.0（2026-11-20）**
+
+**类型：** ⚙️ 调整（筛选语义修正）
+**状态：已发布 v2.28.0（2026-11-20，实现 0a6b978；QA docs/QA-DV.md 第 1 轮 ✅ 5/0/0/0）**
+**优先级：** P2
+**规格**：[ITAD-SOURCE-FILTER.md](ITAD-SOURCE-FILTER.md)
+
+- **修复（方案 A）**：`platform=itad` 改走来源判定（`game_source_sync` matched 标记，参数数组不带 platform），其余平台仍按 `offers.platform_code`；前端平台下拉分「平台/来源」两组（「ITAD（来源）」）；不动采集链路。
+- **验收**：ITAD（来源）筛出有匹配标记的游戏；其它平台不变；测试全绿。
+
+## DT. ~~后台用户管理与权限隔离（DT-1~DT-5）~~ → **已发布 v2.28.0（2026-11-20）**
+
+**类型：** ⚙️ 调整（DT-2 含 ✨ 功能）
+**状态：已发布 v2.28.0（2026-11-20，实现 7f5edba/403e6f2/4a40737/4c49f7c/c19f514；QA docs/QA-DT-1~5.md 第 1 轮 ✅ 全放行）**
+**规格**：[ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md)
+**Demo**：[design/admin-users-2026-11-19.html](design/admin-users-2026-11-19.html) + [design/admin-menu-permissions-2026-11-19.html](design/admin-menu-permissions-2026-11-19.html)
+
+- **DT-1（7f5edba）**：admin 全量菜单 / 普通用户仅 5 页；删「Steam 账号」菜单；无权限 section 守卫跳 profile + 提示。QA 6/0/0/1 ✅
+- **DT-2（403e6f2）**：`GET /api/me/sessions` + `POST /api/me/sessions/:id/revoke` + `GET /api/me/wishlist`；5 页切用户级接口；强制 session.user.id、越权 403/404 并审计。QA 10/0/0/1 ✅
+- **DT-3（4a40737）**：删新建用户（接口下线 410）；行内编辑角色/重置密码/禁用/踢会话/删除 + 审计；批量只留踢会话；绑定 Steam 账号只读；禁用即时踢会话；e2e 建号链迁自助注册。QA 5/0/0/1 ✅（争议项：UserCreateDrawer.vue 文件保留待所有者裁定是否移除）
+- **DT-4（4c49f7c）**：验证码冷却按场景分桶 + retryAfterSec；倒计时 60s 三态；重置密码弹窗打开不发码/失败不关/过期可重发。QA 8/0/0/1 ✅
+- **DT-5（c19f514）**：前台未登录「登录」按钮、登录后无退出/改密；Console 全局顶栏用户菜单树（含退出，心跳基线正确）。QA 6/0/0/1 ✅
+
+## EC. ~~⚙️ 调整：图片覆盖治理（覆盖看板 / 缺图回填 / 占位图）~~ → **已发布 v2.28.0（2026-11-20）**
+
+**类型：** ⚙️ 调整（运维可视化 + 数据补齐）
+**状态：已发布 v2.28.0（2026-11-20，实现 ab7ba90；QA docs/QA-EC.md 第 1 轮 ✅ 4/0/0/1）**
+**优先级：** P2
+**规格**：[IMAGE-COVERAGE.md](IMAGE-COVERAGE.md) §8
+
+- **EC-1**：后台图片覆盖看板（总数/header_image/本地缓存/缺图数 + 缺图列表分页标原因 + 重置负缓存，`GET /api/admin/images/coverage`）。
+- **EC-2**：缺图回填（`src/image-backfill.js` + CLI `images backfill` + 调度任务 images-backfill，限速 ≥1.2s/请求防 429，日志 `images.backfill_*`，手动 `POST /api/admin/images/backfill` single-flight）。
+- **EC-3**：前端品牌占位 CoverPlaceholder（S 标/首字，列表与详情统一）。
+- **验收**：看板数据一致、回填后缺图数下降、占位图显示；测试全绿。
+
+## EM. ~~🐞 缺陷：Steam 同步超时（愿望单/库同步被 15s 看门狗砍掉）~~ → **已发布 v2.28.0（2026-11-20）**
+
+**类型：** 🐞 缺陷（同步功能超时不可用）
+**状态：已发布 v2.28.0（2026-11-20，实现 ba9b0b0；QA docs/QA-EM.md 第 1 轮 ✅ 5/0/0/1）**
+**优先级：** P1
+**规格**：[STEAM-SYNC-TIMEOUT.md](STEAM-SYNC-TIMEOUT.md)
+
+- **EL-1**：同步类请求单次超时 30s→8s（快速失败交给代理池切换）。
+- **EL-2**：愿望单/库同步改后台任务 + 立即 202（single-flight 409）+ `GET /api/steam/accounts/:id/sync-status`。
+- **EL-3**：后台按钮「同步中…」+ 2s 轮询（≤60s）+ 结果/失败原因 + 重试。
+- **验收**：触发即返回后台同步中、轮询后列表更新、失败原因可见；测试全绿。

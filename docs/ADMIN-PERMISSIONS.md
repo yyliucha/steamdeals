@@ -1,6 +1,6 @@
 # 后台用户管理与权限隔离（DT，待开发；拆 5 个子需求）
 
-> 状态：**已确认待开发（2026-11-19 所有者 93–97 轮沟通）**。
+> 状态：**已实现并发布 v2.28.0（2026-11-20，DT-1 7f5edba / DT-2 403e6f2 / DT-3 4a40737 / DT-4 4c49f7c / DT-5 c19f514；QA docs/QA-DT-1~5.md 第 1 轮 ✅ 全放行）**。
 > Demo：[design/admin-users-2026-11-19.html](design/admin-users-2026-11-19.html)（用户管理/编辑弹窗/重置密码弹窗/全局顶栏）+
 > [design/admin-menu-permissions-2026-11-19.html](design/admin-menu-permissions-2026-11-19.html)（两套菜单/前台登录入口），同名 `.png` 已出。
 > 关联：[DATA-ISOLATION.md](DATA-ISOLATION.md)（CY 管理员只读边界）、[SESSION-MANAGEMENT.md](SESSION-MANAGEMENT.md)（BK 会话）、[AUTH-REDESIGN.md](AUTH-REDESIGN.md)（验证码）。
