@@ -207,7 +207,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   QA：B4-2 第九轮 ✅ [QA-CO5-B4-2-admin-sync.md](QA-CO5-B4-2-admin-sync.md) 第 1 轮（14/0/0/1）；需人工确认项为本机沙箱环境限制（`frontend:build` 默认命令被拦，改用 native loader 变体），CI 兜底。
   验证（本机发版门禁）：`node test/sync-runs.test.js` 9/9（含本批新增四组静态锁与反向自检）+ `source-sync` 5/5 + `admin-cache` 3/3 + 主链 `npm run test:2` 全绿 + `node test/api.test.js` 38/38 + `docs.test` 5/5 + `frontend:build` ✓（3.12s，`--configLoader native` 变体；默认命令受本机沙箱 spawn 限制）+ `scan` 干净（1521 文件，无高置信度凭据）；本批零代码改动（仅发布文档 + 版本号），test:1/3/4 未本机重跑，由 CI 全量兜底。
   同期：**EH + EI 同步双区域配置化**（897476c，10:45 由其实施会话提交并推 main，QA docs/QA-EH-EI.md 第 1 轮 ✅ 放行 9/0/0/2）随本 tag 一并成像；其 TODO/INDEX/DONE 状态回写（已实现待发版 → 已发布 v2.27.6）归其实施/质检会话收尾，本构建会话未代写以免并发写入冲突。
-  CI：待确认（docker-hub / docker-tcr 双 tag run）。
+  CI：docker-hub run 44664741632 ✅（test/smoke/publish 全 success）；docker-tcr run 44664741638 ✅（test/publish 全 success）；test-main（push）release 提交 52bb65a 的 run 44664716754 被并发 push 取消（EH+EI/EJ 会话随后提交），其后 test-main 连续被并发取消，兜底绿 = run 44668944594 ✅（最终 HEAD 7e24646 含 release 提交 52bb65a，test success）。两个镜像源均已推送；镜像含 EH+EI（897476c），不含 tag 之后的 EJ 提交（f340d78/51865de/8d72320/29e0d03），归 v2.27.7。
   **服务器部署待执行**（升级到 `2.27.6`；本批无 schema 变更、无新增依赖——升级后直接可用）。
 - **app-v2.23.0 已发布**（tag `app-v2.23.0`，App 仓库 d803612；Release 三资产：`steamdeals-2.23.0.apk` + `.apk.sha256` + `latest.json`）：
   DY 页面衔接状态保存（搜索/首页/愿望单/我的进详情或切 Tab 返回保持状态，详情旋转不重拉，表单非敏感输入旋转/进程重建不丢）+ DZ 公告「全部已读」（角标立即消失、刷新/重启不复现、单条已读与游客↔登录合并保留）+ EA-1~6 体验包（下拉刷新/搜索空态/详情分享/版本号+清缓存/骨架屏/全局弱网提示）+ EB 18R 内容选项（18R chip + 18+ 角标 + 首次年龄确认 + 默认关闭本地记忆）。
