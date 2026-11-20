@@ -380,6 +380,11 @@ export const SETTINGS = [
   def('network.noProxy', 'NO_PROXY', 'network', '代理排除列表', 'string', '', {
     help: '逗号分隔，如 sonkwo.hk,sonkwo.cn。',
   }),
+  // EK 批（docs/APP-RELEASE-SYNC-PROXY.md）：App Release 同步专用代理——只作用于 GitHub 资产下载
+  // （latest.json / APK / sha256），不复用 network.httpsProxy（避免波及 itad/gog/humble/images 等出站）。
+  def('network.appSyncProxy', 'APP_RELEASE_SYNC_PROXY', 'network', 'App 同步专用代理', 'secret', '', {
+    help: '只作用于 GitHub Release 资产下载（latest.json/APK/sha256）；留空直连。仅支持 http/https，如 http://steam-proxy:8888。',
+  }),
 
   // ---- 高级 ----
   def('system.circuitThreshold', 'CIRCUIT_THRESHOLD', 'advanced', '熔断阈值（连续失败次数）', 'int', 3, { min: 1, max: 100 }),
@@ -565,6 +570,13 @@ export function validateSetting(d, input) {
   }
   if (d.key === 'network.httpsProxy' && value && !isHttpUrl(value)) {
     return { ok: false, error: `${d.label} 需要 http/https 代理地址（不支持 socks5）` };
+  }
+  // EK 批（docs/APP-RELEASE-SYNC-PROXY.md §5）：仅 http/https（沿用 parseProxy 校验语义），
+  // 合法值归一化（去尾部斜杠等），非法按未配置处理入口侧、这里直接拒绝。
+  if (d.key === 'network.appSyncProxy' && value) {
+    const normalized = parseProxy(value);
+    if (!normalized) return { ok: false, error: `${d.label} 需要 http/https 代理地址（不支持 socks5）` };
+    value = normalized;
   }
   if (d.key === 'sources.itad.apiKey' && value && value.length < 8) {
     return { ok: false, error: 'ITAD API Key 看起来过短' };

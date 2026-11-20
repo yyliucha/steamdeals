@@ -175,3 +175,17 @@ test('CO-1/A5：app-sync 失败可见——写 sync_runs 且真失败抛错，�
   assert.match(sched, /jobFailureEmailChannel/, '调度器按开关构建告警邮件通道');
   assert.match(sched, /scheduler\.failure_alert/, '告警发送留日志');
 });
+
+// EK 批（docs/APP-RELEASE-SYNC-PROXY.md §3/§4）：专用代理设置项 + hydrate 写回 env →
+// 调度任务子进程 app-sync 继承 APP_RELEASE_SYNC_PROXY；app-release.js 下载默认读该 env；
+// CLI node src/cli.js app-sync 同入口同样生效（cmdAppSync 不传 proxy）。
+test('EK 接线：专用代理设置项 + hydrate 写回 env + 下载默认读 env', () => {
+  const root = join(process.cwd());
+  const appRelease = readFileSync(join(root, 'src', 'app-release.js'), 'utf8');
+  const settingsSrc = readFileSync(join(root, 'src', 'settings.js'), 'utf8');
+  assert.match(settingsSrc, /def\('network\.appSyncProxy', 'APP_RELEASE_SYNC_PROXY', 'network', 'App 同步专用代理', 'secret'/, 'settings：network.appSyncProxy（secret、网络组自动渲染）');
+  assert.match(settingsSrc, /env\[d\.env\] = valueToEnv\(read\.values\[d\.key\]\)/, 'hydrate 把库设置写回 env（调度子进程继承）');
+  assert.match(appRelease, /proxy = process\.env\.APP_RELEASE_SYNC_PROXY/, 'app-release 下载默认读 env（CLI/调度同入口生效）');
+  assert.match(appRelease, /new ProxyAgent\(proxyAgentOptions\(proxyUrl\)\)/, '下载走 undici ProxyAgent（复用 http.js proxyAgentOptions，零新依赖）');
+  assert.match(appRelease, /proxyAgent \? 30000 : timeoutMs \* 2/, '走代理 30s / 直连保持 10s');
+});

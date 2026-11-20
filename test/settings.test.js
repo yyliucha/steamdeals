@@ -20,9 +20,9 @@ async function fresh() {
   return { store, q };
 }
 
-test('设置定义完整：95 项、7 个密钥、关键分组都在', () => {
-  assert.equal(settings.SETTINGS.length, 95, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项 + DR app.syncIntervalMin 1 项 + EI 同步区域 3 项');
-  assert.equal(settings.SETTINGS.filter((d) => d.secret).length, 7);
+test('设置定义完整：96 项、8 个密钥、关键分组都在', () => {
+  assert.equal(settings.SETTINGS.length, 96, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项 + DR app.syncIntervalMin 1 项 + EI 同步区域 3 项 + EK appSyncProxy 1 项');
+  assert.equal(settings.SETTINGS.filter((d) => d.secret).length, 8);
   const appSync = settings.SETTINGS.find((d) => d.key === 'app.syncIntervalMin');
   assert.ok(appSync, 'DR 批：app.syncIntervalMin 设置项存在');
   assert.equal(appSync.default, 15, 'DR 批：App Release 同步间隔默认 15 分钟（原 60）');
@@ -42,6 +42,7 @@ test('设置定义完整：95 项、7 个密钥、关键分组都在', () => {
     'alerts.ingestAlertMin',
     'alerts.ingestAlertPct',
     'network.steamProxy',
+    'network.appSyncProxy',
     'system.circuitThreshold',
     'system.logLevel',
     'site.adultDisplay',
@@ -66,6 +67,14 @@ test('设置定义完整：95 项、7 个密钥、关键分组都在', () => {
   assert.ok(baseCurrency, 'EI：site.baseCurrency 设置项存在');
   assert.equal(baseCurrency.default, 'CNY', 'EI：本位币货币默认 CNY');
   assert.equal(baseCurrency.env, 'SITE_BASE_CURRENCY', 'env 兜底 SITE_BASE_CURRENCY');
+  // EK 批（docs/APP-RELEASE-SYNC-PROXY.md §4）：App Release 同步专用代理——secret 加密存储、
+  // 网络组自动渲染（不触发 demo 硬规则）、默认留空 = 直连 GitHub。
+  const appSyncProxy = settings.SETTINGS.find((d) => d.key === 'network.appSyncProxy');
+  assert.ok(appSyncProxy, 'EK：network.appSyncProxy 设置项存在');
+  assert.equal(appSyncProxy.type, 'secret', 'EK：代理地址是 secret（app_settings.secret_enc 加密存储）');
+  assert.equal(appSyncProxy.group, 'network', 'EK：网络组由 def 自动渲染');
+  assert.equal(appSyncProxy.default, '', 'EK：默认留空 = 直连');
+  assert.equal(appSyncProxy.env, 'APP_RELEASE_SYNC_PROXY', 'env 兜底 APP_RELEASE_SYNC_PROXY');
   const jobFailure = settings.SETTINGS.find((d) => d.key === 'alerts.jobFailureEmail');
   assert.equal(jobFailure.type, 'bool', '任务失败邮件告警是布尔开关');
   assert.equal(jobFailure.default, false, 'CO-1/A5：默认关闭，不新增 SMTP 依赖');
@@ -94,6 +103,16 @@ test('EI 批：区域/货币设置校验归一化（区域两字母小写、货�
   assert.equal(settings.validateSetting(settings.SETTING_MAP.get('sync.contentRegion'), 'usa').ok, false, '非法区域码拒绝');
   assert.equal(settings.validateSetting(settings.SETTING_MAP.get('site.baseRegion'), 'c1').ok, false, '非字母区域码拒绝');
   assert.equal(settings.validateSetting(settings.SETTING_MAP.get('site.baseCurrency'), 'CN').ok, false, '非法货币码拒绝');
+});
+
+test('EK 批：App 同步专用代理校验（仅 http/https，合法值归一化，留空直连）', () => {
+  const d = settings.SETTING_MAP.get('network.appSyncProxy');
+  assert.deepEqual(settings.validateSetting(d, 'http://steam-proxy:8888/'), { ok: true, value: 'http://steam-proxy:8888' }, '合法 http 代理归一化（去尾部斜杠）');
+  assert.deepEqual(settings.validateSetting(d, 'https://user:pw@proxy.example.com'), { ok: true, value: 'https://user:pw@proxy.example.com' }, '合法 https 代理（含凭据）通过');
+  assert.equal(settings.validateSetting(d, 'socks5://127.0.0.1:1080').ok, false, 'socks5 拒绝（仅支持 http/https）');
+  assert.equal(settings.validateSetting(d, 'not a url').ok, false, '非法地址拒绝');
+  assert.deepEqual(settings.validateSetting(d, 'steam-proxy:8888'), { ok: true, value: 'http://steam-proxy:8888' }, '无协议自动补 http://（parseProxy 既有语义）');
+  assert.deepEqual(settings.validateSetting(d, ''), { ok: true, value: '' }, '留空 = 直连');
 });
 
 test('默认值 + 密钥加密：库里不存明文，公开接口只给 hasValue', async () => {

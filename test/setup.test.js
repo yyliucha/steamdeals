@@ -83,7 +83,7 @@ test('未初始化：页面 302 到 /setup，API 返回 428，/setup 可访问',
     assert.ok(status.version);
 
     const schema = await (await fetch(base + '/api/setup/schema')).json();
-    assert.equal(schema.fields.length, 95, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项 + DR app.syncIntervalMin 1 项 + EI 同步区域 3 项');
+    assert.equal(schema.fields.length, 96, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项 + DR app.syncIntervalMin 1 项 + EI 同步区域 3 项 + EK appSyncProxy 1 项');
     assert.ok(schema.fields.some((f) => f.key === 'sources.itad.apiKey'));
     assert.equal(schema.values['sources.itad.apiKey'], '', '初始化页不能回显密钥');
   } finally {

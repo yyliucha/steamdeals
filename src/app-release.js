@@ -9,9 +9,16 @@
 // app.sync_http_404 / app.sync_no_release / app.sync_no_assets，不再只有笼统的 github_http_404。
 // DK 批（docs/TODO.md DK）：apk_download 失败带 apkFailed 标记（cmdAppSync 抛错 → 任务健康条显红）；
 // 新增 githubApkUrl——本地与镜像都无 APK 时 /api/app/latest 的 apkPath 兜底 GitHub Release 直链。
+// EK 批（docs/APP-RELEASE-SYNC-PROXY.md）：三件套资产下载（latest.json / APK / sha256）支持专用代理
+// network.appSyncProxy（env APP_RELEASE_SYNC_PROXY）——有代理走 undici.ProxyAgent（复用 http.js
+// proxyAgentOptions，零新依赖）且该次下载超时 30s；留空保持现状（直连、10s）。仅作用于资产下载，
+// releases 列表/latest 接口请求保持现状。
 import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync, readdirSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
+import { ProxyAgent, fetch as undiciFetch } from 'undici';
+import { proxyAgentOptions } from './http.js';
+import { parseProxy, redactProxy } from './proxy.js';
 
 const GITHUB_API = 'https://api.github.com';
 const RELEASES_PER_PAGE = 10;
@@ -29,6 +36,8 @@ function pickStableRelease(payload) {
  * 同步一次。返回 { synced: true, version, apk, latest } | { synced: false, reason, version? }。
  * fetchImpl 可注入（测试）；token 默认读 GITHUB_TOKEN（可选，公开仓库匿名可用）。
  * 目录默认 data/app（相对 process.cwd()）。
+ * proxy（EK 批）默认读 env APP_RELEASE_SYNC_PROXY（设置热加载写回 env，调度子进程继承）：
+ * 非空且为合法 http/https 时，资产下载走 ProxyAgent、超时 30s；空/非法 = 直连（现状，10s）。
  */
 export async function syncAppRelease({
   repo = 'yyliucha/steamdeals-app',
@@ -39,6 +48,7 @@ export async function syncAppRelease({
   fetchImpl = null,
   token = process.env.GITHUB_TOKEN || null,
   timeoutMs = 5000,
+  proxy = process.env.APP_RELEASE_SYNC_PROXY ?? '',
 } = {}) {
   const doFetch = fetchImpl ?? ((u, opts) => fetch(u, opts));
   const root = resolve(process.cwd(), dir);
@@ -130,9 +140,22 @@ export async function syncAppRelease({
     return { synced: false, reason: 'same_version', version };
   }
 
-  // 下载 latest.json → 校验 version/versionCode 合法 → .tmp → rename 原子写
+  // 下载 latest.json → 校验 version/versionCode 合法 → .tmp → rename 原子写。
+  // EK 批（docs/APP-RELEASE-SYNC-PROXY.md §3）：专用代理只作用于下面的资产下载三处
+  // （latest.json / APK / sha256）；releases 列表与 latest 接口请求保持现状。
+  // 非法代理值按 parseProxy 语义视为未配置（直连），避免拼错的地址被当成"已启用"。
+  const proxyUrl = parseProxy(proxy);
+  const proxyAgent = proxyUrl ? new ProxyAgent(proxyAgentOptions(proxyUrl)) : null;
+  const downloadTimeoutMs = proxyAgent ? 30000 : timeoutMs * 2;
+  log('release_proxy', { via: proxyAgent ? 'proxy' : 'direct', proxy: proxyAgent ? redactProxy(proxyUrl) : null });
+  // 下载 fetcher：注入的 fetchImpl 优先（测试据此断言 dispatcher）；默认实现仅在带 dispatcher 时走
+  // undici.fetch（全局 fetch 不认 dispatcher），无 dispatcher 时保持全局 fetch 直连（EK 批前的现状）。
+  const doDownloadFetch = fetchImpl ?? ((u, opts) => (opts.dispatcher ? undiciFetch(u, opts) : fetch(u, opts)));
   const download = async (url) => {
-    const res = await doFetch(url, { signal: AbortSignal.timeout(timeoutMs * 2) });
+    const res = await doDownloadFetch(url, {
+      signal: AbortSignal.timeout(downloadTimeoutMs),
+      ...(proxyAgent ? { dispatcher: proxyAgent } : {}),
+    });
     if (!res.ok) throw new Error(`http_${res.status}`);
     return Buffer.from(await res.arrayBuffer());
   };
