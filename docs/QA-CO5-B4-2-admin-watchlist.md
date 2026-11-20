@@ -87,3 +87,9 @@
   re-export → 行为测试 ×2 + 组 4 红（fail 3）→ 三次均恢复后全绿。
   备注：多测试任务并行跑时曾出现 api.test 37/38 与 test:3 6/1 的环境干扰误报（并行任务共享
   process.env），串行复跑均全绿——已在本轮记录，后续域并行跑测试时注意串行化。
+- 推送前 rebase 冲突解决：origin/main 前进至 #15 admin 游戏目录（42ee800，工人 A 已收工）——
+  server.js/pg.js 两文件冲突，按「对方 #15 的 handleAdminGamesAdmin 接线与 admin-games-repository
+  re-export 保留、我方 admin-watchlist 接线保留、对方已拆的 games/stats 区块不再出现」解决；
+  合并带动的边界锁锚点更新（#11 admin-users.test.js 与 #16 watchlist-migrate.test.js 的
+  games 边界锚改指 handleAdminGamesAdmin）。合并后串行复验：api.test 38/38、watchlist-migrate
+  8/8、admin-games 6/6、alert-push 9/9、admin-users 7/7、test:3/test:4 全链绿。
