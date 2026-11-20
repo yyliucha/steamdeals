@@ -1,5 +1,23 @@
 # 变更日志
 
+## [2.27.6] - 2026-11-20
+
+CO-5/B4-2 巨石拆分第九轮交付（admin 同步任务域，契约零变化）（技术债重构，无新功能面 → 小版本，2.27.5 → 2.27.6 连续递增）。
+
+### 技术债
+
+- **巨石拆分第九轮（CO-5/B4-2 admin 同步任务域，B4 队列 #9，站点 3997083）**：`src/routes/admin-sync.js`（管理段单入口 13 条路由——`POST /api/admin/sync`、`GET /api/admin/sync/status`、`GET /api/admin/sync/runs`、`POST /api/admin/circuit/reset`、`POST /api/admin/backfill`、`POST /api/admin/backfill/stop`、`GET /api/admin/backfill/status`、`POST /api/admin/heat`、`POST /api/admin/heat/stop`、`GET /api/admin/heat/status`、`POST /api/admin/rename`、`POST /api/admin/rename/stop`、`GET /api/admin/rename/status`）+ `src/store/admin-sync-repository.js`（`listSyncRuns` 唯一专属 SQL 搬家；`insertSyncRun`/`finishSyncRun`/`runningSyncRun`/`markStaleSyncRuns`/`sourceSyncStats` 等跨域共用 SQL 留 `pg.js` + re-export 兼容壳）；`syncState` 持有对象与 `startSteamJob` 闭包按引用共享（「语义共享，勿改成拷贝」注释）；`src/server.js` 净 −205（+59/−264）、`src/store/pg.js` 净 −8（+13/−21）；**外部契约零变化**（路径/参数/响应/错误码不变）。
+- 拆分模式见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §15；已交付九域（app/appeal/auth/watchlist/announcements/me/site/admin-access/admin-sync），剩余域继续按 docs/B4-QUEUE.md 队列推进（下一域 #10 admin 系统设置）。
+
+### 调整
+
+- **EH + EI 同步双区域配置化（站点 897476c；构建期间由其实施会话提交并推 main，随本版一并成像）**：新增 `src/sync-regions.js`（`contentRegion`/`baseRegion`/`baseCurrency`/`regionContext` 单点读取——settings 水合后的 env，默认 us / cn / CNY）；后台「系统设置 → 同步区域」三项配置（`sync.contentRegion` / `site.baseRegion` / `site.baseCurrency`，区域两字母/货币三字母校验归一化）；内容链路（`steam-meta`/`steam-status`/`discovery`/`rating-backfill`）统一按内容区请求（默认 us，绕过国区商店隐藏拿全量），价格链路（`steam.js`/`sync steam-prices`/`backfill`/`steamall`）按本位币区域+货币请求（默认 cn/CNY，国区报价口径不变）；`steam-status` 写价门控——仅 content=base 时顺带写本位币 offer，防内容区货币价混进本位币报价；前台查询默认 region 跟随 `baseRegion`（列表/详情/为你推荐/管理提醒清单/价格历史 CSV）；各链路日志带 `regions:{content,base,currency}`。QA：docs/QA-EH-EI.md 第 1 轮 ✅ 放行（9/0/0/2，2 项为上线后覆盖率观察）。规格见 docs/STEAM-SYNC-STATUS-AND-RATING.md §10/§11。
+
+### 测试
+
+- QA（本批 1 块全部放行）：B4-2 第九轮 ✅ docs/QA-CO5-B4-2-admin-sync.md 第 1 轮（14/0/0/1）；需人工确认项为本机沙箱环境限制（`frontend:build` 默认命令被拦，改用 native loader 变体），CI 兜底。
+- 站点：`test/sync-runs.test.js` 新增四组静态锁（分支在新文件 / 宿主真实接线 / 旧分支不残留 / re-export 边界判据）+ 反向自检（删 heat/stop 分支实测必红）；`test/source-sync.test.js` 静态断言指向 `src/routes/admin-sync.js`；`admin-cache.test.js`（B2 短缓存+熔断失效）、`api.test.js` 与主链分段回归。
+
 ## [2.27.5] - 2026-11-20
 
 EF 18R 数据同步与筛选修复 + EG 公告角标已读修复（均为 🐞 缺陷修复 → 小版本，2.27.4 → 2.27.5 连续递增）。App 仓库同步发布 app-v2.24.0（22400）。

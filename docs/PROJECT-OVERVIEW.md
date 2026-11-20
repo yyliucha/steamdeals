@@ -31,7 +31,7 @@ SteamDeals 是以 Steam AppID 为游戏主键的跨平台游戏价格采集、�
 - 数据库：PostgreSQL 15（兼容目标从文档/SQL约束看为 PostgreSQL 10+）；无 `DATABASE_URL` 时 CLI 可使用嵌入式 PGlite。
 - Web 前端：Vue 3、Vue Router、Element Plus、Vite；前端源码在 `frontend/`，由服务端提供静态资源和 JSON API。
 - 部署：Docker Compose；可使用内置 PostgreSQL 或外部数据库。生产镜像构建时打包前端静态资源。
-- 命令行入口：`src/cli.js`；常驻任务入口：`src/scheduler.js`；HTTP 服务入口：`src/server.js`，静态资源服务辅助模块：`src/serve.js`；域路由模块（CO-4/B4 起）：`src/routes/`（试点 `src/routes/app.js`、第二轮 `src/routes/appeal.js`、第三轮 `src/routes/auth.js`、第四轮 `src/routes/watchlist.js`、第五轮 `src/routes/announcements.js`、第六轮 `src/routes/me.js`、第七轮 `src/routes/site.js`、第八轮 `src/routes/admin-access.js`）。
+- 命令行入口：`src/cli.js`；常驻任务入口：`src/scheduler.js`；HTTP 服务入口：`src/server.js`，静态资源服务辅助模块：`src/serve.js`；域路由模块（CO-4/B4 起）：`src/routes/`（试点 `src/routes/app.js`、第二轮 `src/routes/appeal.js`、第三轮 `src/routes/auth.js`、第四轮 `src/routes/watchlist.js`、第五轮 `src/routes/announcements.js`、第六轮 `src/routes/me.js`、第七轮 `src/routes/site.js`、第八轮 `src/routes/admin-access.js`、第九轮 `src/routes/admin-sync.js`）。
 
 ## 系统结构
 
@@ -66,7 +66,7 @@ Node.js 服务 src/server.js
 
 ### Web 服务与前端
 
-`src/server.js` 负责组合 HTTP API、初始化/认证/设置路由和静态前端；辅助路由分别在 `src/setup-routes.js`、`src/auth-routes.js`、`src/settings-routes.js`，域路由（App 客户端 API + 分发）自 CO-4/B4 起落在 `src/routes/app.js`，申诉系统（公开 + 管理）自 CO-4/B4 第二轮起落在 `src/routes/appeal.js`，认证域（Web 登录/密码/验证码/设备 + Steam 绑定）自 CO-5/B4-2 第三轮起落在 `src/routes/auth.js`，watchlist/wishlist 用户段自第四轮起落在 `src/routes/watchlist.js`，公告自第五轮起落在 `src/routes/announcements.js`，me（个人资料/头像/游戏库）自第六轮起落在 `src/routes/me.js`，site 杂项（封禁自查/站点信息/Steam 账号）自第七轮起落在 `src/routes/site.js`，admin 访问安全自第八轮起落在 `src/routes/admin-access.js`（拆分模式见 [ARCHITECTURE.md](ARCHITECTURE.md) §15）。`src/serve.js` 提供静态文件服务。前端是 `frontend/` 里的 Vue 3 应用（Vue Router + Element Plus + Vite），主页面和后台页面位于 `frontend/src/pages/`；服务端按 `frontendDir` 提供构建产物（含 PWA 的 `/manifest.webmanifest` 与 `/icon-*.png`），`web/` 下的旧页面只在没有 `frontend/dist/index.html` 时作为回退。
+`src/server.js` 负责组合 HTTP API、初始化/认证/设置路由和静态前端；辅助路由分别在 `src/setup-routes.js`、`src/auth-routes.js`、`src/settings-routes.js`，域路由（App 客户端 API + 分发）自 CO-4/B4 起落在 `src/routes/app.js`，申诉系统（公开 + 管理）自 CO-4/B4 第二轮起落在 `src/routes/appeal.js`，认证域（Web 登录/密码/验证码/设备 + Steam 绑定）自 CO-5/B4-2 第三轮起落在 `src/routes/auth.js`，watchlist/wishlist 用户段自第四轮起落在 `src/routes/watchlist.js`，公告自第五轮起落在 `src/routes/announcements.js`，me（个人资料/头像/游戏库）自第六轮起落在 `src/routes/me.js`，site 杂项（封禁自查/站点信息/Steam 账号）自第七轮起落在 `src/routes/site.js`，admin 访问安全自第八轮起落在 `src/routes/admin-access.js`，admin 同步任务（一键同步/状态/回填/热度/改名/熔断）自第九轮起落在 `src/routes/admin-sync.js`（拆分模式见 [ARCHITECTURE.md](ARCHITECTURE.md) §15）。`src/serve.js` 提供静态文件服务。前端是 `frontend/` 里的 Vue 3 应用（Vue Router + Element Plus + Vite），主页面和后台页面位于 `frontend/src/pages/`；服务端按 `frontendDir` 提供构建产物（含 PWA 的 `/manifest.webmanifest` 与 `/icon-*.png`），`web/` 下的旧页面只在没有 `frontend/dist/index.html` 时作为回退。
 
 安全与用户能力由服务端模块承载：`src/session-cookie.js`、`src/email-auth.js`、`src/captcha.js`、`src/ratelimit.js`、`src/guard.js`、`src/visitors.js`、`src/devices.js`、`src/steam-login.js`。不要仅凭前端隐藏按钮判断授权；权限必须由 API 校验。
 

@@ -2710,3 +2710,28 @@ pm test（分段）+ rontend:build + scan 全绿）。
   会话切换快照作废，取代 markInFlight 闩）+ 网关缝解耦 + AnnouncementsStateTest 5 项锁竞态。
 - **验收**：ABC 三场景角标正确（B 递减 / C 立即归零 / A 按口径）；下拉刷新/重进首页/重启 App 不复现；
   App 构建通过——模拟器（10s 延迟代理放大竞态）+ 单测 83 项 + 站点测试全绿。
+
+## CO-5（第九轮，#9）. ~~开发中（🧹 技术债）：B4-2 巨石拆分第九轮（admin 同步任务域）~~ → **已发布 v2.27.6（2026-11-20）**
+
+**类型：** 🧹 技术债（重构，外部契约零变化）
+**状态：已发布 v2.27.6（2026-11-20，拆分 3997083；QA 报告 docs/QA-CO5-B4-2-admin-sync.md 第 1 轮 ✅ 14/0/0/1）**
+**优先级：** P2 —— 巨石渐进瘦身（B4 队列 #9；已交付九域：app/appeal/auth/watchlist/announcements/me/site/admin-access/admin-sync）
+**依赖：** 无
+**解锁：** 无（下一域 #10 admin 系统设置）
+**规格**：[ARCHITECTURE.md](ARCHITECTURE.md) §15（域路由拆分模式）+ [B4-QUEUE.md](B4-QUEUE.md) #9
+
+- **范围**：admin 同步任务域 13 条路由全拆——`POST /api/admin/sync`、`GET /api/admin/sync/status`、
+  `GET /api/admin/sync/runs`、`POST /api/admin/circuit/reset`、`POST /api/admin/backfill`、
+  `POST /api/admin/backfill/stop`、`GET /api/admin/backfill/status`、`POST /api/admin/heat`、
+  `POST /api/admin/heat/stop`、`GET /api/admin/heat/status`、`POST /api/admin/rename`、
+  `POST /api/admin/rename/stop`、`GET /api/admin/rename/status`；管理段单入口 `handleAdminSyncAdmin`（参照 admin-access）。
+- **边界**：`listSyncRuns` 唯一专属 SQL 搬家到 `src/store/admin-sync-repository.js`；`insertSyncRun`/`finishSyncRun`/
+  `runningSyncRun`/`markStaleSyncRuns`/`sourceSyncStats` 等跨域共用留 `pg.js`（cli/scheduler/server 都在用）+ re-export 兼容壳；
+  `syncState` 持有对象与 `startSteamJob` 闭包按引用传入（语义共享，勿改成拷贝）；`syncStatusCache`/`invalidateSyncStatusCache`
+  按引用共享；sync_runs 表 DDL 留 pg.js（migrate() 未动）。
+- **交付**：`src/server.js` 净 −205（+59/−264）、`src/store/pg.js` 净 −8（+13/−21）；新增 `src/routes/admin-sync.js` 356 行 +
+  `src/store/admin-sync-repository.js` 38 行；`test/sync-runs.test.js` +123 行四组静态锁（分支在新文件 / 宿主真实接线 /
+  旧分支不残留 / re-export 边界判据）+ 反向自检（删 heat/stop 分支实测必红）；`test/source-sync.test.js` 静态断言指向新文件；
+  **外部契约零变化**（路径/参数/响应/错误码不变）。
+- **验收**：QA 14/0/0/1 放行；`npm run test:1..4` + `node test/api.test.js` + `frontend:build` + `scan` 全绿
+  （人工确认 1 项为本机沙箱 `frontend:build` 默认命令被拦，改用 native loader 变体，CI 兜底）。

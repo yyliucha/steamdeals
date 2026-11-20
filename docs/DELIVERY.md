@@ -195,9 +195,16 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-20 更新，v2.27.5 已发布：EF 18R 数据同步与筛选修复 + EG 公告角标已读修复，App 同步发布 app-v2.24.0；app-v2.23.0 已发布：DY + DZ + EA-1~6 + EB（站点零改动）；v2.27.4 已发布：CO-5/B4-2 两域拆分（site/steam/ban 杂项 + admin 访问安全）；v2.27.3 已发布：CO-5/B4-2 三域拆分（watchlist/announcements/me）；v2.27.2 已发布：CO-5/B4-2 认证域拆分；v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
+### 当前状态（2026-11-20 更新，v2.27.6 已发布：CO-5/B4-2 第九轮 admin 同步任务域拆分（技术债重构，契约零变化）；v2.27.5 已发布：EF 18R 数据同步与筛选修复 + EG 公告角标已读修复，App 同步发布 app-v2.24.0；app-v2.23.0 已发布：DY + DZ + EA-1~6 + EB（站点零改动）；v2.27.4 已发布：CO-5/B4-2 两域拆分（site/steam/ban 杂项 + admin 访问安全）；v2.27.3 已发布：CO-5/B4-2 三域拆分（watchlist/announcements/me）；v2.27.2 已发布：CO-5/B4-2 认证域拆分；v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
+- **v2.27.6 已发布**（tag `v2.27.6`，release 提交见 git log）：CO-5/B4-2 巨石拆分第九轮（admin 同步任务域，契约零变化）（技术债重构，无新功能面 → 小版本，2.27.5 → 2.27.6 连续递增）。
+  第九轮 admin-sync（3997083）`src/routes/admin-sync.js`（管理段单入口 13 条路由——sync 3 / circuit 1 / backfill 3 / heat 3 / rename 3）+ `src/store/admin-sync-repository.js`（`listSyncRuns` 唯一专属 SQL 搬家；`insertSyncRun`/`finishSyncRun`/`runningSyncRun`/`markStaleSyncRuns`/`sourceSyncStats` 等跨域共用 SQL 留 `pg.js` + re-export 兼容壳）；`syncState` 持有对象与 `startSteamJob` 闭包按引用共享（「语义共享，勿改成拷贝」注释）；`src/server.js` 净 −205、`src/store/pg.js` 净 −8；**外部契约零变化**（路径/参数/响应/错误码不变）。已交付九域（app/appeal/auth/watchlist/announcements/me/site/admin-access/admin-sync），剩余域继续按 [B4-QUEUE.md](B4-QUEUE.md) 队列推进（下一域 #10 admin 系统设置）。
+  QA：B4-2 第九轮 ✅ [QA-CO5-B4-2-admin-sync.md](QA-CO5-B4-2-admin-sync.md) 第 1 轮（14/0/0/1）；需人工确认项为本机沙箱环境限制（`frontend:build` 默认命令被拦，改用 native loader 变体），CI 兜底。
+  验证（本机发版门禁）：`node test/sync-runs.test.js` 9/9（含本批新增四组静态锁与反向自检）+ `source-sync` 5/5 + `admin-cache` 3/3 + 主链 `npm run test:2` 全绿 + `node test/api.test.js` 38/38 + `docs.test` 5/5 + `frontend:build` ✓（3.12s，`--configLoader native` 变体；默认命令受本机沙箱 spawn 限制）+ `scan` 干净（1521 文件，无高置信度凭据）；本批零代码改动（仅发布文档 + 版本号），test:1/3/4 未本机重跑，由 CI 全量兜底。
+  同期：**EH + EI 同步双区域配置化**（897476c，10:45 由其实施会话提交并推 main，QA docs/QA-EH-EI.md 第 1 轮 ✅ 放行 9/0/0/2）随本 tag 一并成像；其 TODO/INDEX/DONE 状态回写（已实现待发版 → 已发布 v2.27.6）归其实施/质检会话收尾，本构建会话未代写以免并发写入冲突。
+  CI：待确认（docker-hub / docker-tcr 双 tag run）。
+  **服务器部署待执行**（升级到 `2.27.6`；本批无 schema 变更、无新增依赖——升级后直接可用）。
 - **app-v2.23.0 已发布**（tag `app-v2.23.0`，App 仓库 d803612；Release 三资产：`steamdeals-2.23.0.apk` + `.apk.sha256` + `latest.json`）：
   DY 页面衔接状态保存（搜索/首页/愿望单/我的进详情或切 Tab 返回保持状态，详情旋转不重拉，表单非敏感输入旋转/进程重建不丢）+ DZ 公告「全部已读」（角标立即消失、刷新/重启不复现、单条已读与游客↔登录合并保留）+ EA-1~6 体验包（下拉刷新/搜索空态/详情分享/版本号+清缓存/骨架屏/全局弱网提示）+ EB 18R 内容选项（18R chip + 18+ 角标 + 首次年龄确认 + 默认关闭本地记忆）。
   站点零改动（本批为 App 纯端功能，服务端 adult 参数已支持）。
