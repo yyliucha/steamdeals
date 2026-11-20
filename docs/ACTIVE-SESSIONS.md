@@ -17,7 +17,6 @@
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
 | CO-4 B4 监工调度+批量构建（#9 起） | docs/B4-QUEUE、docs/ACTIVE-SESSIONS、docs/TODO、docs/DONE、docs/DELIVERY、docs/REQUIREMENTS-INDEX、docs/PROJECT-OVERVIEW、docs/CHANGELOG、docs/ARCHITECTURE、package.json、package-lock.json | 打 tag 构建（批末 1 次，v2.27.6） | 08:50 | 12:15 | 夜班监工 08:48 轮 |
-| v2.27.5 站点构建 + app-v2.24.0 App 构建（EF+EG 批，所有者指令） | 站点 docs/{TODO,DONE,INDEX,DELIVERY,PROJECT-OVERVIEW,CHANGELOG,ANDROID-POLISH,STEAM-SYNC-STATUS-AND-RATING,ACTIVE-SESSIONS}.md、package.json、package-lock.json；App 仓库 app/build.gradle.kts、latest.json | 打 tag 构建（v2.27.5 + app-v2.24.0） | 09:03 | 10:45 | 构建会话（本会话，所有者直接指令） |
 | EH + EI 同步区域配置化（P1，所有者指令） | src/settings.js、src/adapters/steam.js、src/adapters/steam-meta.js、src/steam-status.js、src/discovery.js、src/backfill.js、src/cli.js、src/scheduler.js、src/server.js（与 B4 #9 重叠：等其提交后动手）、frontend/src、test/（避开 #9 的 source-sync/sync-runs）、docs/{TODO,REQUIREMENTS-INDEX,PROJECT-OVERVIEW}（与监工/构建会话重叠：写前按 HANDOVER §10 探测锁） | 无 | 09:40 | 12:30 | EH+EI 开发会话（所有者指令，本会话） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）

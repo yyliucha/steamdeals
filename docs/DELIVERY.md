@@ -226,8 +226,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   EF（7a3ac2b）：元数据 `appdetails` 请求 `cc=cn` → `cc=us`（价格口径调用点保持 cc=cn）；新增 `rating-backfill` 命令（cc=us 重采分级、只写分级不写价、限速 ≥1s、429 收轮 exit 75、前后 adult/mature 计数日志、断点续跑）+ 并入调度器；前台 `/api/games` 支持 `rating=adult|mature|none`；Web 首页 18R 筛选开关（badge+rating=adult，取消恢复全部，18+ 角标）；App 仓库 358ebc5 同步改筛选语义。
   EG（7eb5d4a）：`GET /api/announcements` 公开段补 Bearer 解析——此前 readIds 只认 Cookie 会话，App 登录用户恒拿空数组 → 已读标记虽落库但每次刷新/重进/重启角标回跳；App 仓库 3458bce 标记纪元守卫（陈旧快照只并集不覆盖、会话切换快照作废）。
   QA：EF ✅ [QA-EF.md](QA-EF.md) 第 1 轮（13/0/0/3）/ EG ✅ [QA-EG.md](QA-EG.md) 第 1 轮（3/0/0/0）。
-  验证（本机发版门禁）：announcements 8/8 + app-contract 2/2 + api.test 38/38 + 主链分段 + `frontend:build` + `scan`（输出随 release 提交记录）；App 单测 83/83 + `assembleRelease` + 模拟器覆盖安装自测（18R 筛选只看 18R / 角标已读归零）。
-  CI：docker-hub run <待记录> / docker-tcr run <待记录> / test-main run <待记录>（CI 待确认）。
+  验证（本机发版门禁）：announcements 8/8 + steam-meta 16/16 + scheduler 38/38 + app-contract 2/2 + `node test/api.test.js` 38/38 + 主链 `npm test` 全绿（退出码 0，&& 串行）+ `frontend:build` ✓（3.59s）+ `scan` 干净；App 单测 83/83 + `assembleRelease`（签名指纹 48A3…7A05 与 README 一致）+ 模拟器覆盖安装自测（2.22.0→2.24.0 ✓、版本号 2.24.0 ✓、18R 开关确认记忆 ✓、角标全部已读归零 + 重启不复现 ✓）。
+  CI：docker-hub run 44656117747 ✅（test/smoke/publish 全 success）；docker-tcr run 44656117688 ✅（test/publish 全 success）；test-main（push）run 44656695975 ✅（最终 HEAD 526fa72 含 release 提交 8b53782，test success，12m0s）。两个镜像源均已推送；镜像不含 tag 之后监工的 #9 域拆分（3997083）与 EH/EI/EJ 文档提交，归下个版本。
   **部署提示（重要）**：服务器升级到 `2.27.5` 后**执行一次 `node src/cli.js rating-backfill`**（cc=us 重采分级，限速 ≥1s、429 收轮 exit 75、可断点续跑）——回填后 adult 游戏数应显著增加（>20，前后计数日志可核对）；EF 已并入调度器，日常增量由 `steam-meta` 任务维持。**EG 无迁移**（无需数据命令）。
   **服务器部署待执行**（升级到 `2.27.5` 并执行 rating-backfill 一次；App 版本卡点「立即同步」后手机即可更新 app-v2.24.0）。
 - **v2.27.1 已发布**（tag `v2.27.1`，release 提交见 git log）：CO-4/B4 巨石拆分两域（试点 App 域 + 第二轮申诉域）+ DW 搜索关键词参数位错位修复合并发版（技术债重构 + 缺陷修复，无新功能面 → 小版本，2.27.0 → 2.27.1 连续递增）。
