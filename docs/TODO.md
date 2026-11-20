@@ -195,3 +195,19 @@ pm test（分段）+ rontend:build + scan 全绿）。
   读 baseRegion+baseCurrency；③ 前台默认 region 读配置；④ settings 暴露三项配置；⑤ 日志双区域。
 - **验收**：见规格 §11（默认内容 us/价格 cn；切 baseRegion=us+USD 生效；前台跟随；分级覆盖提升；
   `npm test`（分段）+ `scan` 全绿）。
+
+## EK. 待开发（⚙️ 调整）：后台「添加/编辑」统一弹窗
+
+**类型：** ⚙️ 调整（后台交互规范）
+**状态：** 待开发（2026-11-20 所有者要求）
+**优先级：** P2 —— 交互一致性
+**依赖：** 无（用户角色编辑并入 DT-3，不重复）
+**解锁：** 无
+**规格**：[ADMIN-EDIT-DIALOG.md](ADMIN-EDIT-DIALOG.md)
+
+- **范围（排查依据：frontend/src grep el-dialog/el-drawer/inline-form）**：
+  EK-1 IP 黑名单添加（内联→弹窗）、EK-2 IP 白名单添加（内联→弹窗）、EK-3 站点通知新建/编辑（抽屉→弹窗）、
+  EK-4 设置 Steam 专用代理编辑（内联→弹窗）、EK-5 通用/App 同步代理编辑（内联→弹窗）、
+  EK-6（可选）申诉处理抽屉→弹窗。
+- **保留**：搜索栏 inline-form、只读查看抽屉（审阅记录/游戏链接）、前台弹窗。
+- **验收**：见规格 §5（全部为弹窗、功能一致、移动端全宽、`npm test`（分段）+ `frontend:build` + `scan` 全绿）。
