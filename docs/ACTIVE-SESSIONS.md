@@ -16,7 +16,6 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| CO-4/B4 #7–#8 域拆分 + v2.27.4 批量构建（夜班监工轮） | src/server.js、src/store/pg.js、src/routes/、src/store/、test/、docs/（发布文档+B4-QUEUE） | 打 tag 构建 | 2026-11-20 05:40 | 2026-11-20 08:25 | 夜班监工 v4（05:35 轮） |
 | EG（🐞 P1 通知角标已读不消失） | App 仓库 ui/notifications/、ui/home/、app/src/test/；站点 docs/{TODO,REQUIREMENTS-INDEX,PROJECT-OVERVIEW,ANDROID-POLISH}.md（EG 回写） | Android 模拟器 steamdeals35 | 2026-11-20 06:55 | 2026-11-20 11:30 | EG 开发会话（本会话） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
