@@ -1,6 +1,6 @@
 <script setup>
 // 申诉管理（docs/APPEAL-SYSTEM.md §5，O-9/O-10/O-11/O-12）：
-// 列表（待处理/已处理/全部）+ 详情抽屉（内容/设备指纹/封禁记录/处理表单/复制回复）。
+// 列表（待处理/已处理/全部）+ 详情弹窗（内容/设备指纹/封禁记录/处理表单/复制回复；EL 批由抽屉改弹窗）。
 // 处理动作联动解封：unban_ip（删黑名单 + 清 ip_abuse + 清内存封禁）/ unban_device（删 device_bans + 清设备内存）
 // / both / reject（理由必填）/ note（仅备注，状态保持待处理）。
 import { computed, onMounted, ref } from 'vue';
@@ -159,7 +159,8 @@ onMounted(() => loadAppeals());
       <PaginationBar v-model:page="page" v-model:page-size="pageSize" :total="total" @change="loadAppeals(page)" />
     </div>
 
-    <el-drawer v-model="drawer.visible" :title="`申诉 ${drawer.row?.code || ''}`" :size="isMobile ? '100%' : '520px'">
+    <!-- EL 批（docs/ADMIN-EDIT-DIALOG.md EK-6）：申诉详情/处理由抽屉统一为弹窗（处理表单在弹窗内，动作放 footer） -->
+    <el-dialog v-model="drawer.visible" :title="`申诉 ${drawer.row?.code || ''}`" width="min(560px, 92vw)">
       <template v-if="drawer.row">
         <div class="appeal-detail"><dl>
           <div><dt>提交时间</dt><dd>{{ dateTime(drawer.row.created_at) }}</dd></div>
@@ -182,17 +183,18 @@ onMounted(() => loadAppeals());
             <el-radio value="note">仅备注</el-radio>
           </el-radio-group>
           <el-input v-model="drawer.note" type="textarea" :rows="3" maxlength="500" show-word-limit :placeholder="drawer.action === 'reject' ? '拒绝理由（必填，会邮件通知申请人）' : '备注（可选）'" />
-          <div class="resolve-buttons">
-            <el-button type="primary" :loading="drawer.saving" @click="submitResolve">提交处理</el-button>
-            <el-button plain @click="copyReply">复制回复内容</el-button>
-          </div>
         </template>
       </template>
-    </el-drawer>
+      <template #footer>
+        <el-button @click="drawer.visible = false">关闭</el-button>
+        <el-button v-if="drawer.row?.status === 'pending'" plain @click="copyReply">复制回复内容</el-button>
+        <el-button v-if="drawer.row?.status === 'pending'" type="primary" :loading="drawer.saving" @click="submitResolve">提交处理</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
 .appeal-filter-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:2px}.appeal-filter-row .module-tabs{border-bottom:0;padding:0}.seg-tabs{display:inline-flex;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--panel-2)}.seg-tabs button{border:0;background:transparent;padding:7px 14px;color:var(--fg-muted);font-size:12px;cursor:pointer}.seg-tabs button.on{background:var(--brand);color:#fff;font-weight:650}.appeal-reason{display:block;font-weight:600}.appeal-reason+small{display:block;margin-top:2px;font-size:10px}.appeal-empty-card{padding:18px;background:var(--panel-2);border-radius:12px;margin:14px}
-.appeal-detail dl{margin:0;border:1px solid var(--border);border-radius:12px;overflow:hidden}.appeal-detail dl div{display:flex;gap:10px;padding:9px 13px;border-bottom:1px solid var(--border);font-size:13px}.appeal-detail dl div:last-child{border-bottom:0}.appeal-detail dt{min-width:76px;color:var(--fg-muted);flex:none}.appeal-detail dd{margin:0;overflow-wrap:anywhere}.appeal-detail a{color:var(--brand);text-decoration:none}.appeal-message{white-space:pre-wrap}.resolve-title{margin:18px 0 10px;font-size:14px}.resolve-actions{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-bottom:12px}.resolve-buttons{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.appeal-detail dl{margin:0;border:1px solid var(--border);border-radius:12px;overflow:hidden}.appeal-detail dl div{display:flex;gap:10px;padding:9px 13px;border-bottom:1px solid var(--border);font-size:13px}.appeal-detail dl div:last-child{border-bottom:0}.appeal-detail dt{min-width:76px;color:var(--fg-muted);flex:none}.appeal-detail dd{margin:0;overflow-wrap:anywhere}.appeal-detail a{color:var(--brand);text-decoration:none}.appeal-message{white-space:pre-wrap}.resolve-title{margin:18px 0 10px;font-size:14px}.resolve-actions{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-bottom:12px}
 </style>

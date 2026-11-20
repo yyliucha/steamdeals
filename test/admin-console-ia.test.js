@@ -275,7 +275,7 @@ test('AdminLogs：5 个 tab 顺序与口径、tab↔URL 双向同步、懒加载
   assert.match(l, /\/api\/admin\/sync\/runs/, '运行与同步数据来源不变');
 });
 
-test('抽屉化：用户管理/站点通知顶部无内嵌表单，抽屉组件挂载 + URL 直达（验收 2/4/13）', () => {
+test('抽屉化：用户管理/站点通知顶部无内嵌表单，编辑组件挂载 + URL 直达（验收 2/4/13；EL 批通知改弹窗）', () => {
   const extras = read('../frontend/src/pages/AdminExtras.vue');
   const modules = read('../frontend/src/pages/AdminModules.vue');
   assert.ok(!extras.includes('新建用户</h3>'), '用户管理页不再有内嵌新建表单卡');

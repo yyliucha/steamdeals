@@ -1,10 +1,10 @@
 <template>
-  <el-drawer
+  <el-dialog
     v-model="open"
     :title="form.id ? '编辑通知' : '新建通知'"
-    size="min(660px, 100vw)"
+    width="min(660px, 92vw)"
     :before-close="onClose"
-    class="an-drawer"
+    class="an-dialog"
   >
     <div class="an-body">
       <el-form :model="form" label-position="top" class="an-form" @submit.prevent="submit">
@@ -23,15 +23,18 @@
           <span class="an-preview-badge" :class="form.level">{{ levelLabel(form.level) }}</span>
           <div class="an-preview-copy"><h5>{{ form.title || '（标题）' }}</h5><p>{{ form.body || '（正文）' }}</p><small>{{ form.startsAt ? fmtDateTime(form.startsAt) : '立即生效' }} — {{ form.endsAt ? fmtDateTime(form.endsAt) : '长期有效' }}</small></div>
         </div>
-        <div class="an-actions"><el-button @click="onClose(null)">取消</el-button><el-button type="primary" :loading="saving" @click="submit">{{ form.id ? '保存修改' : '发布通知' }}</el-button></div>
       </el-form>
     </div>
-  </el-drawer>
+    <template #footer>
+      <el-button @click="onClose(null)">取消</el-button>
+      <el-button type="primary" :loading="saving" @click="submit">{{ form.id ? '保存修改' : '发布通知' }}</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
-// AT 批（docs/ADMIN-CONSOLE-IA.md §3/§7）：新建/编辑站点通知改右侧抽屉（不跳页），带前台预览。
-// 编辑与新建共用同一抽屉：父组件传 edit（公告行）；?section=announcements&drawer=new&id=… 可直达。
+// AT 批（docs/ADMIN-CONSOLE-IA.md §3/§7）：新建/编辑站点通知改弹窗（不跳页），带前台预览；EL 批由抽屉统一为弹窗。
+// 编辑与新建共用同一弹窗：父组件传 edit（公告行）；?section=announcements&drawer=new&id=… 可直达。
 // 未保存守卫：脏判定沿用旧口径（与进入编辑/重置后的快照做 JSON 比较）；
 // save 抛错版——发布失败留在本页；点遮罩/✕/Esc 先过 requestLeave()。
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
@@ -129,7 +132,8 @@ async function submit() {
   }
 }
 
-async function onClose() {
+// el-dialog before-close 语义：done 不调用即阻止关闭；按钮「取消」路径直接传 null（手动关闭走同一脏确认）。
+async function onClose(done) {
   if (isDirty()) {
     if (!(await requestLeave())) return;
     if (isDirty()) return;
@@ -137,6 +141,7 @@ async function onClose() {
   resetForm();
   open.value = false;
   emit('closed');
+  done?.();
 }
 </script>
 
@@ -155,7 +160,6 @@ async function onClose() {
 .an-preview-copy h5{margin:0 0 4px;font-size:13px}
 .an-preview-copy p{margin:0 0 4px;font-size:12px;color:var(--fg-muted);overflow-wrap:anywhere}
 .an-preview-copy small{font-size:11px;color:var(--fg-muted)}
-.an-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
-:deep(.el-drawer__body){padding:16px 20px}
-@media(max-width:768px){.an-row{flex-direction:column;gap:0}.an-actions{position:sticky;bottom:0;background:var(--panel);padding-top:10px}}
+:deep(.el-dialog__body){padding:16px 20px}
+@media(max-width:768px){.an-row{flex-direction:column;gap:0}}
 </style>

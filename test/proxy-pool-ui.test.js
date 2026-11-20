@@ -8,10 +8,10 @@ import { fileURLToPath } from 'node:url';
 
 const src = readFileSync(fileURLToPath(new URL('../frontend/src/pages/AdminModules.vue', import.meta.url)), 'utf8');
 
-test('验收 8：列表编辑器——查看并编辑走明文通道、增/删/上移/下移/清空、上限 10 条、未配置文案', () => {
-  assert.match(src, /已配置 \{\{ proxyList\.length \}\} 条/, '卡片显示已配置 N 条');
+test('验收 8：列表编辑器——查看并编辑走明文通道、增/删/上移/下移/清空、上限 10 条、未配置文案（EL 批改为弹窗）', () => {
+  assert.match(src, /已配置 \{\{ proxySavedCount \}\} 条/, '卡片显示已配置 N 条');
   assert.match(src, /未配置，Steam 走直连\/通用代理/, 'N=0 时提示未配置');
-  assert.match(src, /revealProxyList/, '查看并编辑按钮');
+  assert.match(src, /openProxyDialog/, '编辑按钮（EL 批：内联展开改为弹窗编辑）');
   assert.match(src, /\/api\/admin\/settings\/value\?key=network\.steamProxy/, '明文走现有查看通道（§5.1）');
   assert.match(src, /上移/, '每行上移');
   assert.match(src, /下移/, '每行下移');
@@ -25,8 +25,7 @@ test('验收 8：列表编辑器——查看并编辑走明文通道、增/删/�
 
 test('验收 8：保存语义——非空行 join("\\n") 提交、清空传 null、前端校验 http/https 与 ≤10（服务端兜底）', () => {
   assert.match(src, /lines\.join\('\\n'\)/, '多行用换行 join 提交 network.steamProxy');
-  assert.match(src, /values\[f\.key\]=lines\.length\?lines\.join\(/, '非空才写值');
-  assert.match(src, /:null/, '清空传 null');
+  assert.match(src, /values:\{'network\.steamProxy':lines\.length\?lines\.join\('\\n'\):null\}/, '非空写值、清空传 null');
   assert.match(src, /第 \$\{i\+1\} 行不是合法的 http\/https 代理/, '前端校验报行号');
   assert.match(src, /Steam 代理池最多 10 条/, '前端校验 ≤10');
   assert.ok(src.includes('/^https?:\\/\\//i'), '只允许 http/https（/^https?:\\/\\//i 正则）');
