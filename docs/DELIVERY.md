@@ -195,7 +195,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-20 更新，App app-v2.23.0 已发布：DY + DZ + EA-1~6 + EB（站点零改动）；v2.27.3 已发布：CO-5/B4-2 三域拆分（watchlist/announcements/me）；v2.27.2 已发布：CO-5/B4-2 认证域拆分；v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
+### 当前状态（2026-11-20 更新，App app-v2.23.0 已发布：DY + DZ + EA-1~6 + EB（站点零改动）；v2.27.4 已发布：CO-5/B4-2 两域拆分（site/steam/ban 杂项 + admin 访问安全）；v2.27.3 已发布：CO-5/B4-2 三域拆分（watchlist/announcements/me）；v2.27.2 已发布：CO-5/B4-2 认证域拆分；v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 - **app-v2.23.0 已发布**（tag `app-v2.23.0`，App 仓库 d803612；Release 三资产：`steamdeals-2.23.0.apk` + `.apk.sha256` + `latest.json`）：
@@ -216,6 +216,12 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   验证（本机发版门禁）：主链 test:2/3/4 全绿（test:1 仅 commit-own 4 项已知沙箱环境红、与拆分前基线一致）+ `node test/api.test.js` 37/37 + `frontend:build` ✓（1.89s，native loader 变体）+ `scan` 干净；三域工人各自全链测试与反向自检记录见各 QA 报告。
   CI：docker-hub run 44608440588 ✅（test/smoke/publish 全 success，20m10s）；docker-tcr run 44608440514 ✅（test/publish 全 success，18m20s）；test-main（push）run 44608412265 ✅（test success，release 提交 02d62aa 的 push 门禁，14m13s）。两个镜像源均已推送。
   **服务器部署待执行**（升级到 `2.27.3`；本批无 schema 变更、无新增依赖——升级后直接可用）。
+- **v2.27.4 已发布**（tag `v2.27.4`，release 提交见 git log）：CO-5/B4-2 巨石拆分第七/八轮（site 杂项 + admin 访问安全两域，契约零变化）（技术债重构，无新功能面 → 小版本，2.27.3 → 2.27.4 连续递增）。
+  第七轮 site 杂项（552fb40）`src/routes/site.js`（预检段 `GET /api/ban/state` + 公开段 `GET /api/site` + 主段 `/api/steam/*` 全 10 条）+ `src/store/site-repository.js`（3 函数搬家 + 域内联 SQL 新函数；`/api/admin/wishlists` 留 #16、`/api/admin/steam-logs` 留 #12）；第八轮 admin 访问安全（b3ebd8a）`src/routes/admin-access.js`（管理段单入口 20 条路由 + device-bans 3 条）+ `src/store/admin-access-repository.js`（15 函数搬家 + 4 内联 SQL 新函数；封禁拦截链/黑名单加载等中间件留 server.js）；`src/server.js` 两域净 −528、`src/store/pg.js` 净 −249；pg.js re-export 兼容壳零删改；**外部契约零变化**（路径/参数/响应/错误码不变）。已交付八域（app/appeal/auth/watchlist/announcements/me/site/admin-access），剩余域拆分继续按 [B4-QUEUE.md](B4-QUEUE.md) 队列推进（下一域 #9 admin 同步任务）。
+  QA：B4-2 第七轮 ✅ [QA-CO5-B4-2-site.md](QA-CO5-B4-2-site.md) 第 1 轮（18/0/0/2）/ 第八轮 ✅ [QA-CO5-B4-2-admin-access.md](QA-CO5-B4-2-admin-access.md) 第 1 轮（20/0/0/1）；需人工确认项均为本机沙箱环境限制（commit-own 测试 spawn EPERM、frontend:build 默认命令），CI 兜底。
+  验证（本机发版门禁）：主链 test:2/3/4 全绿（test:1 仅 commit-own 4 项已知沙箱环境红、与拆分前基线一致）+ `node test/api.test.js` 37/37 + `frontend:build` ✓（native loader 变体）+ `scan` 干净；两域工人各自全链测试与反向自检记录见各 QA 报告。注：本轮因主树被 EG/EF 会话占用，构建在独立 worktree（nightshift-v2274，基 b3ebd8a）执行，主树未动。
+  CI：**待回填**（发布时 CI 进行中/待确认）。
+  **服务器部署待执行**（升级到 `2.27.4`；本批无 schema 变更、无新增依赖——升级后直接可用）。
 - **v2.27.1 已发布**（tag `v2.27.1`，release 提交见 git log）：CO-4/B4 巨石拆分两域（试点 App 域 + 第二轮申诉域）+ DW 搜索关键词参数位错位修复合并发版（技术债重构 + 缺陷修复，无新功能面 → 小版本，2.27.0 → 2.27.1 连续递增）。
   CO-4/B4：试点 App 域（0c8f5ff）`src/routes/app.js`（App 域 6 条路由）+ `src/store/app-repository.js`（`api_tokens` DDL + 4 个 token 函数）；第二轮申诉域（34a7bcc）`src/routes/appeal.js`（申诉域 5 条路由：公开段 + 管理段）+ `src/store/appeal-repository.js`（`appeals` DDL + 12 个申诉 SQL 函数）；`src/store/pg.js` 两域 re-export 兼容壳；`src/server.js` 试点 -216 行、第二轮再 -267 行（域路由换为入口接线，appealExempt 豁免与限流桶等中间件留原地）；**外部契约零变化**（路径/参数/响应/错误码不变）；已交付 app/appeal 两域，剩余 ~18 个域拆分另行立项（B4-2/CO-5）。
   DW：`gameSearch` 关键词归一化拆两个显式变量（`kwNormCandidate` 供候选探测/fuzzy、`kwNorm` 供主查询），注释约束两者不可互换（互换 = 精确名 LIKE 匹配 cap/42P18，新测试必红）；`filterParams` 顺序不变、候选查询绑定不变；新增 `test/game-search-exact.test.js` 进主链 test:3（精确名命中/region 值不命中/回归/零命中 + 注入错位反向自检）。

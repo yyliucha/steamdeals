@@ -1,5 +1,19 @@
 # 变更日志
 
+## [2.27.4] - 2026-11-20
+
+CO-5/B4-2 巨石拆分第七/八轮交付（site 杂项域 + admin 访问安全域，契约零变化）（技术债重构，无新功能面 → 小版本，2.27.3 → 2.27.4 连续递增）。
+
+### 技术债
+
+- **巨石拆分第七轮（CO-5/B4-2 site 杂项域）**：`src/routes/site.js`（预检段 `GET /api/ban/state` + 公开段 `GET /api/site` + 主段 `/api/steam/*` 全 10 条——账号列表/兼容信息/认领/游戏库与同步/愿望单与同步/改别名与自配 API Key/解绑/设默认）+ `src/store/site-repository.js`（setDefaultSteamAccount/clearDefaultSteamIfMatches/userLibraryItems 3 函数搬家 + 域内联 SQL 抽新函数）；`/api/admin/wishlists` 留 #16、`/api/admin/steam-logs` 留 #12；banState 限流桶与 MAX_ACCOUNTS_PER_USER 消费方随域迁入（语义共享注释）；`src/server.js` 净 −243、`src/store/pg.js` 净 −50；**外部契约零变化**。
+- **巨石拆分第八轮（CO-5/B4-2 admin 访问安全域）**：`src/routes/admin-access.js`（管理段单入口 20 条路由——views / visitors 与 by-ip / blacklist / whitelist / abuse / devices + device-bans / reviews 审批四操作）+ `src/store/admin-access-repository.js`（15 函数搬家 + 域内联 SQL 抽 4 新函数）；封禁拦截链/黑名单加载等中间件留 server.js（§15.4 中间件 ≠ 路由）；跨域共用 SQL（listBlockedIps/insertDeviceLog 等）留 pg.js；`src/server.js` 净 −285、`src/store/pg.js` 净 −199。
+- 拆分模式见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §15；已交付 app/appeal/auth/watchlist/announcements/me/site/admin-access 八域；剩余域继续按 docs/B4-QUEUE.md 队列推进（下一域 #9 admin 同步任务）。
+
+### 测试
+
+- QA（本批 2 块全部放行）：B4-2 第七轮 ✅ docs/QA-CO5-B4-2-site.md 第 1 轮（18/0/0/2）、第八轮 ✅ docs/QA-CO5-B4-2-admin-access.md 第 1 轮（20/0/0/1）；需人工确认项均为本机沙箱环境限制（commit-own 测试 spawn EPERM、frontend:build 默认命令被拦），CI 兜底。
+
 ## [2.27.3] - 2026-11-20
 
 CO-5/B4-2 巨石拆分第四/五/六轮交付（watchlist/wishlist + announcements + me 三域，契约零变化）（技术债重构，无新功能面 → 小版本，2.27.2 → 2.27.3 连续递增）。
