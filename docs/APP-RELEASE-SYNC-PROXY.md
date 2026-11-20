@@ -1,6 +1,6 @@
-# App Release 同步代理支持（待开发）
+# App Release 同步代理支持（已实现待发版）
 
-> 状态：**需求与方案已确认（2026-11-20），待开发**。
+> 状态：**已实现待发版（2026-11-20 开发完成，待质检与发版）**。
 > 关联：[APP-SYNC-404.md](APP-SYNC-404.md)（同步 404 修复）、[APP-INSTANT-UPDATE.md](APP-INSTANT-UPDATE.md)（立即同步）、
 > 站点设置体系 `src/settings.js`（DB > env > 默认、热加载）。
 

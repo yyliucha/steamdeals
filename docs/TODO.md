@@ -20,9 +20,9 @@
 
 | 类型 | 数量 | 编号 |
 |---|---|---|
-| 🐞 缺陷 | 1 | DU |
+| 🐞 缺陷 | 2 | DU / EK |
 | ✨ 功能 | 1 | DT-2 |
-| ⚙️ 调整 | 10 | DT-1 / DT-3 / DT-4 / DT-5 / DV / EC / EH / EI / EJ / EK |
+| ⚙️ 调整 | 10 | DT-1 / DT-3 / DT-4 / DT-5 / DV / EC / EH / EI / EJ / EL |
 | 🧹 技术债 | 1 | DX |
 | 🧪 测试基建 | 1 | ED |
 | 📝 文档流程 | 0 | — |
@@ -196,18 +196,37 @@ pm test（分段）+ rontend:build + scan 全绿）。
 - **验收**：见规格 §11（默认内容 us/价格 cn；切 baseRegion=us+USD 生效；前台跟随；分级覆盖提升；
   `npm test`（分段）+ `scan` 全绿）。
 
-## EK. 待开发（⚙️ 调整）：后台「添加/编辑」统一弹窗
+## EL. 待开发（⚙️ 调整）：后台「添加/编辑」统一弹窗
 
 **类型：** ⚙️ 调整（后台交互规范）
-**状态：** 待开发（2026-11-20 所有者要求）
+**状态：** 待开发（2026-11-20 所有者要求；原编号 EK，2026-11-20 因与「App Release 同步代理」编号撞车由所有者裁决改为 EL）
 **优先级：** P2 —— 交互一致性
 **依赖：** 无（用户角色编辑并入 DT-3，不重复）
 **解锁：** 无
 **规格**：[ADMIN-EDIT-DIALOG.md](ADMIN-EDIT-DIALOG.md)
 
 - **范围（排查依据：frontend/src grep el-dialog/el-drawer/inline-form）**：
-  EK-1 IP 黑名单添加（内联→弹窗）、EK-2 IP 白名单添加（内联→弹窗）、EK-3 站点通知新建/编辑（抽屉→弹窗）、
-  EK-4 设置 Steam 专用代理编辑（内联→弹窗）、EK-5 通用/App 同步代理编辑（内联→弹窗）、
-  EK-6（可选）申诉处理抽屉→弹窗。
+  EL-1 IP 黑名单添加（内联→弹窗）、EL-2 IP 白名单添加（内联→弹窗）、EL-3 站点通知新建/编辑（抽屉→弹窗）、
+  EL-4 设置 Steam 专用代理编辑（内联→弹窗）、EL-5 通用/App 同步代理编辑（内联→弹窗）、
+  EL-6（可选）申诉处理抽屉→弹窗。
 - **保留**：搜索栏 inline-form、只读查看抽屉（审阅记录/游戏链接）、前台弹窗。
 - **验收**：见规格 §5（全部为弹窗、功能一致、移动端全宽、`npm test`（分段）+ `frontend:build` + `scan` 全绿）。
+
+## EK. 🐞 缺陷：App Release 同步资产下载支持专用代理（有代理走代理，无代理直连 GitHub）
+
+**类型：** 🐞 缺陷（线上同步失败：大陆直连 GitHub 资产域名超时）
+**状态：** 已实现待发版（2026-11-20 EK 会话完成开发与验证，实现 cc4fcf5；待质检）
+**优先级：** P1 —— 线上 `app-release-sync` 每 15 分钟连续失败，App 发版信息无法更新
+**依赖：** 无
+**解锁：** 无
+**规格**：[APP-RELEASE-SYNC-PROXY.md](APP-RELEASE-SYNC-PROXY.md)
+
+- **现象（2026-11-20 线上）**：`app-release-sync` 连续失败 `reason=apk_download / latest_download`、
+  `message="The operation was aborted due to timeout"`——大陆服务器直连
+  `release-assets.githubusercontent.com` 超时（实测宿主机 756B 需 3.3s，波动撞 10s 下载超时线）。
+- **方案**：`src/settings.js` 新增 `network.appSyncProxy`（secret，env `APP_RELEASE_SYNC_PROXY`）；
+  `src/app-release.js` 三件套下载（latest.json / APK / sha256）配置非空时走 `undici.ProxyAgent`
+  （复用 http.js `proxyAgentOptions`，零新依赖）且该次超时 30s；留空保持现状（全局 fetch、10s 直连）。
+- **不做**：调度频率、githubApkUrl 兜底、前端。
+- **验收**：见规格 §6（6 条；含代理/直连/反向自检/代理不可用场景 +
+  `test/app-release.test.js` / `test/app-release-sync.test.js` / `test/settings.test.js` + `frontend:build` + `scan`）。
