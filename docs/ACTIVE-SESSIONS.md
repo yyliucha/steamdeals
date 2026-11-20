@@ -16,7 +16,6 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| EK App Release 同步代理（P1，交接单指令；编号撞车已由所有者裁决：同步代理保留 EK、后台弹窗改 EL） | src/settings.js、src/app-release.js、test/app-release.test.js、test/app-release-sync.test.js、test/settings.test.js、test/setup.test.js、docs/{TODO,REQUIREMENTS-INDEX,PROJECT-OVERVIEW,APP-RELEASE-SYNC-PROXY} | 无 | 11:25 | 13:30 | EK 开发会话（本会话） |
 | EH + EI 同步区域配置化（P1，所有者指令） | src/settings.js、src/adapters/steam.js、src/adapters/steam-meta.js、src/steam-status.js、src/discovery.js、src/backfill.js、src/cli.js、src/scheduler.js、src/server.js（与 B4 #9 重叠：等其提交后动手）、frontend/src、test/（避开 #9 的 source-sync/sync-runs）、docs/{TODO,REQUIREMENTS-INDEX,PROJECT-OVERVIEW}（与监工/构建会话重叠：写前按 HANDOVER §10 探测锁） | 无 | 09:40 | 12:30 | EH+EI 开发会话（所有者指令，本会话） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）

@@ -195,7 +195,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-20 更新，v2.27.7 已发布：EJ 昵称显示规则统一（Web + App，App 同步发布 app-v2.24.2）；v2.27.6 已发布：CO-5/B4-2 第九轮 admin 同步任务域拆分（技术债重构，契约零变化）；v2.27.5 已发布：EF 18R 数据同步与筛选修复 + EG 公告角标已读修复，App 同步发布 app-v2.24.0；app-v2.23.0 已发布：DY + DZ + EA-1~6 + EB（站点零改动）；v2.27.4 已发布：CO-5/B4-2 两域拆分（site/steam/ban 杂项 + admin 访问安全）；v2.27.3 已发布：CO-5/B4-2 三域拆分（watchlist/announcements/me）；v2.27.2 已发布：CO-5/B4-2 认证域拆分；v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
+### 当前状态（2026-11-20 更新，**EK App Release 同步代理已质检通过、待发版**（✅ 6/0/0/1，QA docs/QA-EK.md，实现 cc4fcf5）；v2.27.7 已发布：EJ 昵称显示规则统一（Web + App，App 同步发布 app-v2.24.2）；v2.27.6 已发布：CO-5/B4-2 第九轮 admin 同步任务域拆分（技术债重构，契约零变化）；v2.27.5 已发布：EF 18R 数据同步与筛选修复 + EG 公告角标已读修复，App 同步发布 app-v2.24.0；app-v2.23.0 已发布：DY + DZ + EA-1~6 + EB（站点零改动）；v2.27.4 已发布：CO-5/B4-2 两域拆分（site/steam/ban 杂项 + admin 访问安全）；v2.27.3 已发布：CO-5/B4-2 三域拆分（watchlist/announcements/me）；v2.27.2 已发布：CO-5/B4-2 认证域拆分；v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 - **v2.27.7 已发布**（tag `v2.27.7`，release 提交见 git log）：EJ 昵称显示规则统一（Web + App）（显示口径调整，无新功能面 → 小版本，2.27.6 → 2.27.7 连续递增）。
