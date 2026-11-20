@@ -538,3 +538,43 @@ test('CO-5/B4-2 第六轮：域边界——/api/me/email/* 留 auth-routes.js，
   // me 域路由模块不得出现 me/email 路由分支（防误搬半截；文件头注释说明除外）
   assert.ok(!/'\/api\/me\/email\//.test(ME_ROUTES), 'routes/me.js 不得含 /api/me/email 路由分支');
 });
+
+// ===== EJ（docs/DISPLAY-NAME-RULE.md §3/§4）：昵称显示规则统一 =====
+// 静态锁：Web 所有「用户」展示位统一 `display_name || username`；后台用户管理不再保留并列的「显示名」列
+// （边界：不做昵称与用户名并列展示）；登录/账号标识仍用 username（不改认证）。
+// 反向自检：把某个模板改回 `row.username`（只显示用户名）或把「显示名」列加回来 → 对应用例红。
+test('EJ 静态锁：后台用户/会话/提醒/愿望单/日志/审核记录的用户列统一 display_name || username', () => {
+  const front = (rel) => readFileSync(new URL(`../frontend/src/${rel}`, import.meta.url), 'utf8');
+  const extras = front('pages/AdminExtras.vue');
+  const modules = front('pages/AdminModules.vue');
+  const logs = front('pages/AdminLogs.vue');
+  const align = front('components/AlignAdmin.vue');
+
+  // 用户管理：用户列按「昵称 → 用户名」，且不再并列展示「显示名」列
+  assert.match(extras, /\{\{ row\.display_name\|\|row\.username \}\}/, '用户管理表格「用户」列按 display_name || username');
+  assert.ok(!/label="显示名"/.test(extras), '用户管理不再有并列的「显示名」列（不做昵称与用户名并列）');
+  assert.ok(!/prop="username" label="用户"/.test(extras), '用户管理不残留只显示 username 的用户列');
+  // 用户卡片（手机端）
+  assert.match(extras, /\{\{ u\.display_name\|\|u\.username \}\}/, '用户管理手机卡片显示名按昵称优先');
+  // 会话列表（接口字段 displayName）
+  assert.match(extras, /\{\{ row\.displayName \|\| row\.username \}\}/, '会话列表「用户」列按 displayName || username');
+  assert.match(extras, /\{\{ s\.displayName \|\| s\.username \}\}/, '会话手机卡片按 displayName || username');
+
+  // 愿望单 / 到价提醒
+  assert.match(modules, /\{\{ row\.display_name \|\| row\.username \}\}/, '愿望单「用户」列按 display_name || username');
+  assert.match(modules, /\{\{ row\.display_name \|\| row\.username \|\| '站点级' \}\}/, '到价提醒「用户」列按 display_name || username（站点级兜底）');
+  assert.match(modules, /\{\{ w\.display_name \|\| w\.username \|\| '站点级' \}\}/, '到价提醒手机卡片按 display_name || username');
+  assert.ok(!/prop="username" label="用户"/.test(modules), '愿望单/提醒不残留只显示 username 的用户列');
+
+  // 操作日志：Steam 审计「归属用户」列（服务端 join users 带 user_display_name）；操作者仍保留账号标识（审计）
+  assert.match(logs, /\{\{ row\.user_display_name \|\| row\.username \|\| '—' \}\}/, 'Steam 日志「归属用户」列按昵称优先');
+  assert.match(logs, /\{\{ s\.user_display_name \|\| s\.username \|\| '未归属' \}\}/, 'Steam 日志手机卡片按昵称优先');
+
+  // 异常审核的审阅记录（操作人）
+  assert.match(align, /\{\{ r\.display_name \|\| r\.username \|\| '系统' \}\}/, '审核记录「操作人」按昵称优先');
+
+  // 前台「我的」：用户菜单与后台顶栏（/api/me 返回 camelCase displayName，不是 display_name）
+  assert.match(front('pages/Home.vue'), /user\.displayName \|\| user\.username/, '前台用户菜单昵称优先');
+  assert.match(front('pages/Console.vue'), /user\.displayName \|\| user\.username/, '后台顶栏昵称优先');
+  assert.ok(!/user\.display_name \|\| user\.username/.test(front('pages/Home.vue') + front('pages/Console.vue')), '/api/me 是 displayName，不能再读 display_name（读错会永远回退用户名）');
+});

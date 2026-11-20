@@ -18,6 +18,7 @@
 |---|---|---|---|---|---|
 | CO-4 B4 监工调度+批量构建（#9 起） | docs/B4-QUEUE、docs/ACTIVE-SESSIONS、docs/TODO、docs/DONE、docs/DELIVERY、docs/REQUIREMENTS-INDEX、docs/PROJECT-OVERVIEW、docs/CHANGELOG、docs/ARCHITECTURE、package.json、package-lock.json | 打 tag 构建（批末 1 次，v2.27.6） | 08:50 | 12:15 | 夜班监工 08:48 轮 |
 | EH + EI 同步区域配置化（P1，所有者指令） | src/settings.js、src/adapters/steam.js、src/adapters/steam-meta.js、src/steam-status.js、src/discovery.js、src/backfill.js、src/cli.js、src/scheduler.js、src/server.js（与 B4 #9 重叠：等其提交后动手）、frontend/src、test/（避开 #9 的 source-sync/sync-runs）、docs/{TODO,REQUIREMENTS-INDEX,PROJECT-OVERVIEW}（与监工/构建会话重叠：写前按 HANDOVER §10 探测锁） | 无 | 09:40 | 12:30 | EH+EI 开发会话（所有者指令，本会话） |
+| EJ 昵称显示规则统一（Web + App） | src/{store/pg.js,steam-accounts.js,steam-log.js,align.js,align-compute.js,server.js(仅 sessions 路由 1 处，与 EH+EI 同文件不同 hunk—提交走部分索引)}、frontend/src/{pages/AdminExtras.vue,pages/AdminModules.vue,pages/AdminLogs.vue,components/AlignAdmin.vue}、test/{sessions,watchlist-user,wishlist,profile}.test.js、docs/QA-EJ.md；App 仓库 app/src/main（MeScreen/ProfileEdit/ui/components）+ app/src/test | 无（不占 e2e/模拟器/打 tag） | 10:35 | 12:30 | EJ 开发会话（10:22 轮） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 

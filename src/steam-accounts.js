@@ -459,6 +459,8 @@ export async function setAccountApiKey(q, { steamId, apiKeyEnc, log = null }) {
 }
 
 /** 后台愿望单清单（BE 批 §4.2）：用户 / 游戏 / 当前价 / 史低 / 加入时间。 */
+// EJ（docs/DISPLAY-NAME-RULE.md）：多带 display_name——后台「用户」列按「昵称 → 用户名」显示；
+// 关键字筛选仍按 username（账号标识，登录用）。
 export async function listWishlists(q, { limit = 200, keyword = '', userId = null } = {}) {
   const kw = String(keyword ?? '').trim().slice(0, 80);
   const params = [];
@@ -478,7 +480,7 @@ export async function listWishlists(q, { limit = 200, keyword = '', userId = nul
   params.push(size);
   const rows = (await q(
     `select uw.id, uw.user_id, uw.game_id, uw.created_at,
-            u.username, g.name, g.name_en, g.steam_appid,
+            u.username, nullif(btrim(u.display_name), '') as display_name, g.name, g.name_en, g.steam_appid,
             rs.price_cents as current_low, rs.hist_low_cents as hist_low
        from user_wishlist uw
        join users u on u.id = uw.user_id

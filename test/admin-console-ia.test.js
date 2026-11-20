@@ -112,6 +112,8 @@ test('sync/unbind 写审计（ok 与 failed）；用户被删后 Steam 日志仍
     await db.createUser(q, { username: 'admin1', password: 'password123', role: 'admin' });
     const bob = await db.createUser(q, { username: 'bob', password: 'password123' });
     await q('insert into steam_accounts (steam_id, persona_name, user_id) values ($1, $2, $3)', [SID, 'Bob', bob.id]);
+    // EJ（docs/DISPLAY-NAME-RULE.md §4）：审计日志「归属用户」列按「昵称 → 用户名」显示。
+    await db.updateUser(q, { username: 'bob', displayName: '  鲍勃  ' });
     // 成功同步：fake fetch，不真出网
     await steamAccounts.syncAccountLibrary(q, { steamId: SID, apiKey: 'x', fetchImpl: async () => [{ appid: 730, name: 'CS2', playtimeMinutes: 1 }], log: { actor: 'self', userId: bob.id, username: 'bob', personaName: 'Bob' } });
     // 失败同步：fetch 抛错 → 审计 failed + 原样上抛
@@ -132,6 +134,20 @@ test('sync/unbind 写审计（ok 与 failed）；用户被删后 Steam 日志仍
     const cascade = logs.entries.find((e) => e.action === 'delete-cascade');
     assert.equal(cascade.actor, 'admin:admin1');
     assert.equal(cascade.username, 'bob');
+    // EJ：日志行带 user_display_name（昵称 trim 后）；用户被删后 join 不到 → null，
+    // 展示层回退日志里的 username（账号标识，审计必需）。
+    // 反向自检：删掉 left join users / 去掉 trim → 断言红。
+    assert.equal(cascade.user_display_name, null, '用户已删除 → 昵称 join 不到（回退 username）');
+    const syncLog = logs.entries.find((e) => e.action === 'sync-library');
+    assert.equal(syncLog.user_display_name, null, '删除后历史行同样 join 不到昵称');
+    // 未删除用户的历史日志能带出昵称
+    const carol = await db.createUser(q, { username: 'carol', password: 'password123' });
+    await db.updateUser(q, { username: 'carol', displayName: '卡罗尔' });
+    await recordSteamLog(q, { action: 'claim', steamId: SID, userId: carol.id, username: 'carol', actor: 'admin:admin1', result: 'ok' });
+    const withNick = await listSteamLogs(q, { steamId: SID, days: 30 });
+    const claim = withNick.entries.find((e) => e.action === 'claim');
+    assert.equal(claim.user_display_name, '卡罗尔', '有昵称的日志带出昵称');
+    assert.equal(claim.username, 'carol', '账号标识仍保留（审计口径）');
   } finally {
     await store.close();
   }

@@ -1378,6 +1378,10 @@ export function createApiServer({
           sessions: list.rows.map((r) => ({
             id: Number(r.id),
             username: r.username,
+            // EJ（docs/DISPLAY-NAME-RULE.md）：「用户」列按「昵称 → 用户名」显示；
+            // username 保留（踢下线/筛选等按账号标识走，登录仍用 username）。
+            // SQL 已把空白昵称归一为 null（nullif(btrim(...), '')），前端 `displayName || username` 回退用户名。
+            displayName: r.display_name ?? null,
             role: r.role,
             disabled: Boolean(r.disabled),
             ip: r.ip ?? null,

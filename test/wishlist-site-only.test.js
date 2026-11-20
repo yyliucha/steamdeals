@@ -77,6 +77,17 @@ test('GET /api/admin/wishlists：匿名 401、普通用户 403、管理员 200�
     assert.equal(row.current_low, 12345, '当前价来自 game_region_snapshot(cn)');
     assert.equal(row.hist_low, 9999, '史低来自 game_region_snapshot(cn)');
     assert.ok(row.created_at, '加入时间');
+    // EJ（docs/DISPLAY-NAME-RULE.md §4）：后台愿望单「用户」列按「昵称 → 用户名」显示。
+    // 反向自检：删掉 SQL 里的 display_name / 改成不 trim 原文 → 下面两条断言红。
+    assert.equal(row.display_name, null, '没有昵称 → null（前端回退 username）');
+    await db.updateUser(ctx.q, { username: 'alice', displayName: '  爱丽丝  ' });
+    const nick = await getJson(`${ctx.base}/api/admin/wishlists?limit=200`, ctx.admin);
+    const nickRow = nick.body.items.find((x) => x.id === ctx.w1.id);
+    assert.equal(nickRow.display_name, '爱丽丝', '有昵称 → 返回 trim 后的昵称');
+    assert.equal(nickRow.username, 'alice', '账号标识仍返回 username（筛选/审计按它走）');
+    await db.updateUser(ctx.q, { username: 'alice', displayName: '' });
+    const cleared = await getJson(`${ctx.base}/api/admin/wishlists?limit=200`, ctx.admin);
+    assert.equal(cleared.body.items.find((x) => x.id === ctx.w1.id).display_name, null, '清空昵称 → null，回退用户名');
   } finally {
     await ctx.srv.close();
     await ctx.store.close();

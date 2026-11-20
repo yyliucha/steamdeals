@@ -2344,7 +2344,11 @@ export async function listWatches(q, { region = 'cn' } = {}) {
   return r.rows;
 }
 
-/** 管理员：全站提醒清单（含用户名；分页 + 可选用户名筛选 + CU-1「无报价」筛选）。 */
+/**
+ * 管理员：全站提醒清单（含用户名/昵称；分页 + 可选用户名筛选 + CU-1「无报价」筛选）。
+ * EJ（docs/DISPLAY-NAME-RULE.md）：多带 display_name——展示层按「昵称 → 用户名」口径，
+ * 筛选仍按 username（账号标识，登录用）。
+ */
 export async function listAllWatchesAdmin(q, { region = 'cn', page = 1, pageSize = 20, username = null, noPriceOnly = false } = {}) {
   const size = Math.min(Math.max(Number(pageSize) || 20, 1), 200);
   const pg = Math.max(1, Number(page) || 1);
@@ -2368,7 +2372,8 @@ export async function listAllWatchesAdmin(q, { region = 'cn', page = 1, pageSize
     )).rows[0]?.n ?? 0,
   );
   const rows = await q(
-    `select w.id, w.user_id, u.username, w.game_id, w.target_cents, w.note, w.source, w.created_at,
+    `select w.id, w.user_id, u.username, nullif(btrim(u.display_name), '') as display_name,
+            w.game_id, w.target_cents, w.note, w.source, w.created_at,
             w.last_notified_cents, w.last_notified_at,
             g.steam_appid, coalesce(nullif(g.name, ''), nullif(g.name_en, ''), 'appid:' || g.steam_appid) as name,
             (select min(o.price_cents) from offers o
@@ -2384,7 +2389,7 @@ export async function listAllWatchesAdmin(q, { region = 'cn', page = 1, pageSize
               where o.game_id = g.id and o.region = $1 and o.in_stock
                 and p.kind in ${OFFICIAL_KINDS}) as has_price,
             (select coalesce(json_agg(x order by x."userId"), '[]'::json) from (
-               select distinct sa.user_id as "userId", u2.username, u2.email
+               select distinct sa.user_id as "userId", u2.username, nullif(btrim(u2.display_name), '') as display_name, u2.email
                  from steam_wishlist sw
                  join steam_accounts sa on sa.steam_id = sw.steam_id
                  join users u2 on u2.id = sa.user_id
@@ -2815,7 +2820,7 @@ export async function listSessions(q, { user = '', ip = '', includeExpired = fal
   const limitIdx = params.length;
   params.push(Math.max(Number(offset) || 0, 0));
   const r = await q(
-    `select s.id, s.user_id, u.username, u.role, u.disabled,
+    `select s.id, s.user_id, u.username, nullif(btrim(u.display_name), '') as display_name, u.role, u.disabled,
             s.ip, s.user_agent, s.device_id, s.created_at, s.last_seen_at, s.expires_at
        from sessions s join users u on u.id = s.user_id
        ${whereSql}

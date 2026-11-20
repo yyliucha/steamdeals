@@ -738,7 +738,7 @@ onUnmounted(() => { clearTimeout(firstRunTimer); clearTimeout(dirtyTimer); });
         <div v-for="r in history.records" :key="`${r.product_id}-${r.reviewed_at ?? 'null'}-${r.decision}`" class="history-item">
           <el-tag :type="r.decision === 'ignored' ? 'danger' : r.decision === 'pending' ? 'warning' : 'success'" size="small">{{ ACTION_TEXT[r.decision] || r.decision }}</el-tag>
           <span class="mono">SKU {{ r.product_id }}</span>
-          <span class="muted">{{ r.username || '系统' }} · {{ r.reviewed_at ? fmtMin(r.reviewed_at) : '—' }}</span>
+          <span class="muted">{{ r.display_name || r.username || '系统' }} · {{ r.reviewed_at ? fmtMin(r.reviewed_at) : '—' }}</span>
         </div>
       </div>
     </el-drawer>

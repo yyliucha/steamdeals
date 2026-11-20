@@ -317,3 +317,32 @@ test('BK-3 验收 19：prune 空闲兜底——idle=7 删 8 天未活动的未�
     await t.close();
   }
 });
+
+// ---------------------------------------------------------------- EJ（docs/DISPLAY-NAME-RULE.md §4）
+// 会话列表的「用户」列要能显示昵称：接口带 displayName；无昵称/清空昵称 → null，前端 `displayName || username`
+// 回退用户名。反向自检：把 SQL 里的 display_name 去掉或前端改成只读 username → 本用例红。
+test('EJ 验收 1/2：会话列表带 displayName——有昵称给昵称、清空后为 null（前端回退用户名）', async () => {
+  const t = await boot();
+  try {
+    await db.createUser(t.q, { username: 'bob', password: 'password12345', role: 'user' });
+    await login(t.base, 'bob', 'password12345');
+    const adminCookie = await login(t.base, 'admin', 'admin123456');
+
+    const first = await (await get(t.base, adminCookie, '/api/admin/sessions?limit=50&user=bob')).json();
+    assert.equal(first.sessions.length, 1, 'bob 只有一条会话');
+    assert.equal(first.sessions[0].username, 'bob', '账号标识仍返回 username（踢下线/筛选按它走）');
+    assert.equal(first.sessions[0].displayName, null, '没有昵称 → null（展示层回退 username）');
+
+    await db.updateUser(t.q, { username: 'bob', displayName: '  鲍勃  ' });
+    const nick = await (await get(t.base, adminCookie, '/api/admin/sessions?limit=50&user=bob')).json();
+    assert.equal(nick.sessions[0].displayName, '鲍勃', '有昵称 → 返回 trim 后的昵称');
+    assert.equal(nick.sessions[0].username, 'bob', 'username 不变（不改认证/账号标识）');
+
+    await db.updateUser(t.q, { username: 'bob', displayName: '' });
+    const cleared = await (await get(t.base, adminCookie, '/api/admin/sessions?limit=50&user=bob')).json();
+    assert.equal(cleared.sessions[0].displayName, null, '清空昵称 → null，回退用户名');
+    assert.ok(!JSON.stringify(cleared).includes('token'), '仍绝不返回 token');
+  } finally {
+    await t.close();
+  }
+});

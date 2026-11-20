@@ -174,6 +174,39 @@ test('管理员全站清单：分页 + 用户名筛选 + total 精确', async ()
   }
 });
 
+// EJ（docs/DISPLAY-NAME-RULE.md §4）：到价提醒「用户」列要能显示昵称——接口带 display_name；
+// 无昵称/清空昵称 → null（前端 `display_name || username` 回退用户名）；筛选仍按 username。
+// 反向自检：删掉 SQL 里的 display_name 或改成用户名 → 本用例红。
+test('EJ 验收 1/2：管理员全站清单带 display_name——有昵称给昵称、清空后为 null', async () => {
+  const { store, q } = await setup();
+  try {
+    const u1 = (await db.createUser(q, { username: 'ejlistuser', password: 'wpass123456', role: 'user' })).id;
+    const g1 = await makeGame(q, store, 400021, '昵称测试游戏', 7000);
+    await db.upsertUserWatch(q, { userId: u1, gameId: g1, targetCents: 6000 });
+    await db.upsertWatch(q, { gameId: g1, targetCents: 5000 }); // 站点级：display_name 必须为 null
+
+    let all = await db.listAllWatchesAdmin(q, { page: 1, pageSize: 20 });
+    let mine = all.items.find((i) => Number(i.user_id) === Number(u1));
+    assert.equal(mine.username, 'ejlistuser', '账号标识仍返回 username（筛选/审计按它走）');
+    assert.equal(mine.display_name, null, '没有昵称 → null');
+
+    await db.updateUser(q, { username: 'ejlistuser', displayName: '  昵称乙  ' });
+    all = await db.listAllWatchesAdmin(q, { page: 1, pageSize: 20 });
+    mine = all.items.find((i) => Number(i.user_id) === Number(u1));
+    assert.equal(mine.display_name, '昵称乙', '有昵称 → 返回 trim 后的昵称');
+    assert.equal(mine.username, 'ejlistuser', 'username 不变');
+
+    const site = all.items.find((i) => i.user_id === null);
+    assert.equal(site.display_name, null, '站点级行 display_name 为 null（前端显示「站点级」）');
+
+    await db.updateUser(q, { username: 'ejlistuser', displayName: '' });
+    all = await db.listAllWatchesAdmin(q, { page: 1, pageSize: 20 });
+    assert.equal(all.items.find((i) => Number(i.user_id) === Number(u1)).display_name, null, '清空昵称 → null，回退用户名');
+  } finally {
+    await store.close();
+  }
+});
+
 test('watchCandidates 带 user_id/邮箱；evaluateAlerts 透传；groupAlertsByUser 分组稳定', async () => {
   const { store, q } = await setup();
   try {

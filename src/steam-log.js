@@ -45,33 +45,40 @@ export async function recordSteamLog(q, entry) {
 /**
  * 查询审计（docs/ADMIN-CONSOLE-IA.md §6）：limit ≤ 500 / steamId / action / result / days（默认 30）。
  * 返回 { entries, total }；total 与 entries 同一过滤口径（分页显示条数用）。
+ * EJ（docs/DISPLAY-NAME-RULE.md）：额外 left join users 带 user_display_name——「归属用户」列按
+ * 「昵称 → 用户名」显示；操作者 actor 仍是账号标识（审计留痕，不改写）。
+ * 日志行故意不挂外键（用户删了证据还在），join 不到时 user_display_name 为 null，展示层回退 username。
  */
 export async function listSteamLogs(q, { limit = 100, steamId = null, action = null, result = null, days = 30 } = {}) {
   const cap = Math.min(Math.max(Number(limit) || 100, 1), 500);
   const span = Math.min(Math.max(Number(days) || 30, 1), 365);
   const where = [];
   const params = [];
-  where.push(`created_at > now() - ($1::text || ' days')::interval`);
+  where.push(`l.created_at > now() - ($1::text || ' days')::interval`);
   params.push(String(span));
   if (steamId) {
     params.push(String(steamId).slice(0, 64));
-    where.push(`steam_id = $${params.length}`);
+    where.push(`l.steam_id = $${params.length}`);
   }
   if (action && STEAM_LOG_ACTIONS.includes(String(action))) {
     params.push(String(action));
-    where.push(`action = $${params.length}`);
+    where.push(`l.action = $${params.length}`);
   }
   if (result === 'ok' || result === 'failed') {
     params.push(result);
-    where.push(`result = $${params.length}`);
+    where.push(`l.result = $${params.length}`);
   }
   const cond = 'where ' + where.join(' and ');
-  const count = await q(`select count(*)::int as n from steam_account_logs ${cond}`, params);
+  const count = await q(`select count(*)::int as n from steam_account_logs l ${cond}`, params);
   params.push(cap);
   const rows = await q(
-    `select id, created_at, action, steam_id, persona_name, user_id, username, actor, result, detail, elapsed_ms, error
-       from steam_account_logs ${cond}
-      order by id desc limit $${params.length}`,
+    `select l.id, l.created_at, l.action, l.steam_id, l.persona_name, l.user_id, l.username, l.actor,
+            l.result, l.detail, l.elapsed_ms, l.error,
+            nullif(btrim(u.display_name), '') as user_display_name
+       from steam_account_logs l
+       left join users u on u.username = l.username
+      ${cond}
+      order by l.id desc limit $${params.length}`,
     params,
   );
   return {

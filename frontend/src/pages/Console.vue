@@ -11,7 +11,7 @@
         <el-empty v-if="!visibleGroups.length" :image-size="44" description="没有匹配的功能" />
       </nav>
       <div class="admin-bottom">
-        <div class="bottom-actions"><el-tag v-if="user" type="success" effect="plain"><UserAvatar :user-id="user.id" :name="user.display_name || user.username" :size="18" class="tag-avatar" />{{ user.display_name || user.username }}</el-tag><el-button text @click="router.push('/')">返回网站 ↗</el-button></div>
+        <div class="bottom-actions"><el-tag v-if="user" type="success" effect="plain"><UserAvatar :user-id="user.id" :name="user.displayName || user.username" :size="18" class="tag-avatar" />{{ user.displayName || user.username }}</el-tag><el-button text @click="router.push('/')">返回网站 ↗</el-button></div>
       </div>
     </aside>
     <!-- BW 批（docs/MOBILE-REDESIGN.md §5.1）：手机端侧栏收进 ☰ 抽屉，沿用 5 分组 13 模块 -->
@@ -26,7 +26,7 @@
         <el-empty v-if="!visibleGroups.length" :image-size="44" description="没有匹配的功能" />
       </nav>
       <div class="admin-bottom">
-        <div class="bottom-actions"><el-tag v-if="user" type="success" effect="plain"><UserAvatar :user-id="user.id" :name="user.display_name || user.username" :size="18" class="tag-avatar" />{{ user.display_name || user.username }}</el-tag><el-button text @click="router.push('/')">返回网站 ↗</el-button></div>
+        <div class="bottom-actions"><el-tag v-if="user" type="success" effect="plain"><UserAvatar :user-id="user.id" :name="user.displayName || user.username" :size="18" class="tag-avatar" />{{ user.displayName || user.username }}</el-tag><el-button text @click="router.push('/')">返回网站 ↗</el-button></div>
       </div>
     </el-drawer>
     <main class="admin-content">

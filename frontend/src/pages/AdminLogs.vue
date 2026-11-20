@@ -68,7 +68,7 @@
             <el-table-column label="时间" min-width="155"><template #default="{ row }">{{ dateTime(row.created_at) }}</template></el-table-column>
             <el-table-column label="动作" width="120"><template #default="{ row }">{{ steamActionLabel(row.action) }}</template></el-table-column>
             <el-table-column label="账号" min-width="190"><template #default="{ row }"><div class="steam-log-cell"><strong>{{ row.persona_name || row.steam_id }}</strong><small>{{ row.steam_id }}</small></div></template></el-table-column>
-            <el-table-column label="归属用户" width="110"><template #default="{ row }">{{ row.username || '—' }}</template></el-table-column>
+            <el-table-column label="归属用户" width="110"><template #default="{ row }">{{ row.user_display_name || row.username || '—' }}</template></el-table-column>
             <el-table-column label="操作者" width="110"><template #default="{ row }">{{ actorLabel(row.actor) }}</template></el-table-column>
             <el-table-column label="结果" width="80"><template #default="{ row }"><el-tag :type="row.result === 'ok' ? 'success' : 'danger'" size="small">{{ row.result === 'ok' ? '成功' : '失败' }}</el-tag></template></el-table-column>
             <el-table-column label="耗时" width="90" align="right"><template #default="{ row }">{{ row.elapsed_ms == null ? '—' : row.elapsed_ms + ' ms' }}</template></el-table-column>
@@ -78,7 +78,7 @@
           <el-empty v-if="!steamLogs.length && !loading.steam" description="还没有 Steam 账号操作记录" />
           <PaginationBar v-model:page="steamPage" v-model:page-size="steamPageSize" :total="steamLogs.length" />
         </div>
-        <div v-else class="game-card-list"><div v-for="s in pagedSteamLogs" :key="s.id" class="admin-card"><div class="admin-card-main"><strong>{{ steamActionLabel(s.action) }} · {{ s.persona_name || s.steam_id }}</strong><small class="mono">{{ s.steam_id }}</small><small class="muted">{{ dateTime(s.created_at) }} · {{ s.username || '未归属' }} · 操作者 {{ actorLabel(s.actor) }}</small><p class="admin-card-tags"><el-tag :type="s.result === 'ok' ? 'success' : 'danger'" size="small">{{ s.result === 'ok' ? '成功' : '失败' }}</el-tag><el-tag v-if="s.elapsed_ms != null" size="small" type="info">{{ s.elapsed_ms }} ms</el-tag></p></div><div class="admin-card-actions"><span class="muted">{{ detailText(s.detail) }}<template v-if="s.error"> · {{ s.error }}</template></span></div></div><el-empty v-if="!steamLogs.length && !loading.steam" description="还没有 Steam 账号操作记录"/></div>
+        <div v-else class="game-card-list"><div v-for="s in pagedSteamLogs" :key="s.id" class="admin-card"><div class="admin-card-main"><strong>{{ steamActionLabel(s.action) }} · {{ s.persona_name || s.steam_id }}</strong><small class="mono">{{ s.steam_id }}</small><small class="muted">{{ dateTime(s.created_at) }} · {{ s.user_display_name || s.username || '未归属' }} · 操作者 {{ actorLabel(s.actor) }}</small><p class="admin-card-tags"><el-tag :type="s.result === 'ok' ? 'success' : 'danger'" size="small">{{ s.result === 'ok' ? '成功' : '失败' }}</el-tag><el-tag v-if="s.elapsed_ms != null" size="small" type="info">{{ s.elapsed_ms }} ms</el-tag></p></div><div class="admin-card-actions"><span class="muted">{{ detailText(s.detail) }}<template v-if="s.error"> · {{ s.error }}</template></span></div></div><el-empty v-if="!steamLogs.length && !loading.steam" description="还没有 Steam 账号操作记录"/></div>
         <PaginationBar v-if="isMobile" v-model:page="steamPage" v-model:page-size="steamPageSize" :total="steamLogs.length" />
       </el-tab-pane>
 

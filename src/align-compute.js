@@ -52,7 +52,7 @@ export function createAlignCompute({ q, db, logger }) {
     // DH 批（§2 C1）：每组「最近处理」——队列里的组只可能是 pending（恢复为待处理）留下的痕迹
     const reviewedBySku = new Map(
       (await q(
-        `select m.product_id, m.decision, m.reviewed_by, m.reviewed_at, u.username
+        `select m.product_id, m.decision, m.reviewed_by, m.reviewed_at, u.username, u.display_name
            from game_source_map m
            left join users u on u.id = m.reviewed_by
           where m.platform_code = 'sonkwo' and m.product_id = any($1::text[])`,
@@ -77,7 +77,9 @@ export function createAlignCompute({ q, db, logger }) {
         .filter((r) => r?.decision === 'pending' && r.reviewed_at != null)
         .sort((a, b) => new Date(b.reviewed_at) - new Date(a.reviewed_at));
       if (traces.length) {
-        g.lastReviewed = { by: traces[0].username ?? null, at: traces[0].reviewed_at, action: '恢复' };
+        // EJ（docs/DISPLAY-NAME-RULE.md）：「恢复」操作人按「昵称 → 用户名」显示（账号标识仅作回退）
+        const by = String(traces[0].display_name ?? '').trim() || traces[0].username || null;
+        g.lastReviewed = { by, at: traces[0].reviewed_at, action: '恢复' };
       }
     }
     logger?.info('align.computed', { groups: groups.length, partial, backfilled, contentWordGroups: contentWords.groups, ms: Date.now() - wallStartedAt });

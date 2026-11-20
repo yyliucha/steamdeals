@@ -222,7 +222,7 @@ export function resolveSkuAppid(confirmedMap, item) {
  */
 export async function loadIgnoredGroups({ q, entries, qFilter = '' }) {
   const rows = (await q(
-    `select m.product_id, m.reviewed_by, m.reviewed_at, m.match_method, u.username
+    `select m.product_id, m.reviewed_by, m.reviewed_at, m.match_method, u.username, u.display_name
        from game_source_map m
        left join users u on u.id = m.reviewed_by
       where m.platform_code = $1 and m.decision = 'ignored'
@@ -240,7 +240,7 @@ export async function loadIgnoredGroups({ q, entries, qFilter = '' }) {
     if (row.match_method) g.methods.add(row.match_method);
     if (!g.ignoredAt || (row.reviewed_at != null && new Date(row.reviewed_at) > new Date(g.ignoredAt))) {
       g.ignoredAt = row.reviewed_at;
-      g.ignoredBy = row.username ?? null;
+      g.ignoredBy = String(row.display_name ?? '').trim() || row.username || null;
     }
   }
   let out = [...groups.values()].map((g) => ({
@@ -261,12 +261,14 @@ export async function loadIgnoredGroups({ q, entries, qFilter = '' }) {
 /**
  * DH 批（docs/ALIGN-INTEGRITY.md §2 C1/§3）：某组的处理记录（操作人/时间/动作，按 SKU 行返回，
  * 时间倒序）。decision=confirmed/ignored/pending 分别对应确认/忽略/恢复。
+ * EJ（docs/DISPLAY-NAME-RULE.md）：多带 display_name，前端「操作人」按「昵称 → 用户名」显示。
  */
 export async function loadGroupHistory({ q, entries, key }) {
   const skuIds = skuIdsForGroupKey(entries, key);
   if (!skuIds.length) return [];
   return (await q(
-    `select m.product_id, m.game_id, m.decision, m.match_method, m.reviewed_by, m.reviewed_at, u.username
+    `select m.product_id, m.game_id, m.decision, m.match_method, m.reviewed_by, m.reviewed_at,
+            u.username, u.display_name
        from game_source_map m
        left join users u on u.id = m.reviewed_by
       where m.platform_code = $1 and m.product_id = any($2::text[])
