@@ -212,6 +212,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   - **EK**：线上配置 `APP_RELEASE_SYNC_PROXY` 或后台「App 同步专用代理」后，`app-release-sync` 资产下载走代理；未配置保持直连（现状）。
   - **DX**：部署后按本节「当前状态」的压测目标复测（列表/搜索 P95 ≤150ms、`/api/site` ≤50ms）。
   - **EF 的 `rating-backfill` 回填**若尚未执行，请一并提醒执行（cc=us 重采分级、只写分级不写价）。
+  CI：docker-hub run **44706356922** ✅（test/smoke/publish 全 success）；docker-tcr run **44706356847** ✅（test/publish 全 success）；test-main（push）release 提交 `15acdc9` 的 run 44706158286 被并发 push 取消（2.28.0 会话高频提交），兜底绿 = run **44709985126** ✅（HEAD `ab7ba90` 含 release 提交，test success）。两个镜像源均已推送；镜像含 release 提交 `15acdc9`（DX 090af4c / ED 143d97e / EL e0821f9 / EK cc4fcf5 均在其祖先；EH+EI 897476c 已随 v2.27.6 成像），不含 tag 之后 2.28.0 会话的提交（归后续版本）。
   **服务器部署待执行**（按本文第 4 节升级到 `2.27.8`）。
 - **v2.27.7 已发布**（tag `v2.27.7`，release 提交见 git log）：EJ 昵称显示规则统一（Web + App）（显示口径调整，无新功能面 → 小版本，2.27.6 → 2.27.7 连续递增）。
   全站「用户」展示统一为「昵称（trim 非空）? 昵称 : 用户名」：后台用户管理列表/卡片、登录会话、到价提醒（含候选/迁移下拉）、愿望单、Steam 操作日志「归属用户」、异常审核审阅人、前台「我的」菜单与 App「我的」账号卡；昵称清空回退用户名；用户管理去掉并列「显示名」列；认证与审计「操作者」仍用 username。
