@@ -465,9 +465,9 @@ test('AY：关键词先走候选 ID——零命中不跑 count/列表；名称/�
 //   · 旧分支不得残留在 server.js（防双实现）。
 // 反向自检口径：删掉 routes/games.js 任一路由分支 → 第 1 组断言红；删掉 server.js 的入口
 // 接线 → 第 2 组红；把分支抄回 server.js → 第 3 组红；删 pg.js re-export → 第 4 组红。
-// 边界判定：只拆公开 /api/games/*——/api/admin/games*（列表/stats/merge/links/deleted，
-// B4 #15）与 /api/behavior 留 server.js；/img/steam/* 图片代理不是 API 路由、留 server.js；
-// isLoggablePath 的 stamp/search 访问记录豁免是中间件、留 server.js。
+// 边界判定：只拆公开 /api/games/*——/api/admin/games*（列表/stats/merge/links/deleted）已随
+// B4 #15 拆到 routes/admin-games.js，/api/behavior 留 server.js；/img/steam/* 图片代理不是
+// API 路由、留 server.js；isLoggablePath 的 stamp/search 访问记录豁免是中间件、留 server.js。
 
 const GM_ROUTES = readFileSync(fileURLToPath(new URL('../src/routes/games.js', import.meta.url)), 'utf8');
 const GM_REPO = readFileSync(fileURLToPath(new URL('../src/store/games-repository.js', import.meta.url)), 'utf8');
@@ -537,12 +537,8 @@ test('CO-5/B4-2 第十五轮：server.js 必须真实接线主段入口（删掉
   // （handleAuthRoutes 之后、handleMeRoutes 之前）
   assert.match(GM_SERVER, /await handleAuthRoutes\(\{[\s\S]*?await handleGamesRoutes\(\{/s, '接线在 auth 主段接线之后（本域原位置）');
   assert.match(GM_SERVER, /await handleGamesRoutes\(\{[\s\S]*?await handleMeRoutes\(\{/s, '接线在 me 主段接线之前（本域原位置）');
-  // 边界锁：其它域路由与中间件留宿主
-  assert.match(GM_SERVER, /path === '\/api\/admin\/games' && req\.method === 'GET'/, 'admin games 列表段留 server.js（B4 #15）');
-  assert.match(GM_SERVER, /path === '\/api\/admin\/games\/stats' && req\.method === 'GET'/, 'admin games/stats 段留 server.js（B4 #15）');
-  assert.match(GM_SERVER, /path === '\/api\/admin\/games\/merge' && req\.method === 'POST'/, 'admin games/merge 段留 server.js（B4 #15）');
-  assert.match(GM_SERVER, /const linkMatch = path\.match\(\/\^\\\/api\\\/admin\\\/games\\\/\(\\d\+\)\\\/links\$\/\)/, 'admin games/:id/links 段留 server.js（B4 #15）');
-  assert.match(GM_SERVER, /path === '\/api\/admin\/games\/deleted' && req\.method === 'GET'/, 'admin games/deleted 段留 server.js（B4 #15）');
+  // 边界锁：其它域路由与中间件留宿主（admin games 段已随 B4 #15 拆到 routes/admin-games.js）
+  assert.match(GM_SERVER, /await handleAdminGamesAdmin\(\{/, 'admin games 段已拆到 routes/admin-games.js（B4 #15）');
   assert.match(GM_SERVER, /path === '\/api\/behavior' && req\.method === 'POST'/, 'behavior 路由留 server.js（不属 /api/games/* 前缀）');
   assert.match(GM_SERVER, /const behaviorBuckets = new Map\(\);/, 'behaviorBuckets 留 server.js（behavior 路由留宿主）');
   assert.match(GM_SERVER, /path\.match\(\/\^\\\/img\\\/steam\\\/\(\\d\+\)\\\/\(\[a-z0-9_\]\+\)\$\/\)/, 'Steam 图片代理路由留 server.js（非 API 路由）');

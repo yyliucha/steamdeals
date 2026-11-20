@@ -131,7 +131,8 @@ import { handleAdminUsersAdmin } from './routes/admin-users.js';
 // invalidateAdminGamesCache（#15 admin games 短缓存）/gameCountCache（60s count 缓存对象）/
 // maybeFillDlcOnRead（DLC 读路径回源节流）/dlcReadThrottleMs/dlcFetchImpl 经 ctx 按引用传入
 // （语义共享，勿改成拷贝）；forYouCache/historyCsvEnabled 只被本域使用、随域移入模块。
-// /api/admin/games*（列表/stats/merge/links/deleted，B4 #15）与 /api/behavior 留本文件；
+// /api/admin/games*（列表/stats/merge/links/deleted）已随 B4 #15 拆到 routes/admin-games.js、
+// /api/behavior 留本文件；
 // isLoggablePath 的 /api/games/stamp 与 /api/games/search 访问记录豁免仍是中间件、留本文件。
 import { handleGamesRoutes } from './routes/games.js';
 // CO-5/B4-2 第十五轮：admin-reports 域（B4 #12 后台报表/备份/日志：reports/backup/backups/logs/
@@ -150,6 +151,15 @@ import { handleAdminReportsAdmin } from './routes/admin-reports.js';
 // startSteamJobImpl（EC 批测试注入替身）经 ctx 按引用传入（语义共享，勿改成拷贝）；
 // images.js 是共享业务模块（/img/ 代理与 cli/ops.js images 命令也走），保留 import 不动。
 import { handleAdminImagesAdmin } from './routes/admin-images.js';
+// CO-5/B4-2 第十七轮：admin-games 域（B4 #15 后台游戏目录：/api/admin/games* 管理段）路由已
+// 抽到 src/routes/admin-games.js——handleAdminGamesAdmin 在 requireAdmin 就绪之后的管理段
+// （本域全部 5 条路由，管理段形态先例=admin-settings 域）。调用位置不能动：取本域最早路由
+// /api/admin/games/stats 的原位置（wishlists 段之后）。runGated（并发闸 Map，'GET
+// /api/admin/games' 键在 HEAVY_GATE_CONFIG 留本文件）、adminGamesCache（B2 短缓存对象）、
+// invalidateAdminGamesCache（本域 merge 与 #21 域删除/屏蔽/说明、bulk 共用失效闭包）、
+// invalidateListCache（DX 批前台缓存）、adminCacheTtlMs 经 ctx 按引用/值传入（语义共享，
+// 勿改成拷贝）；/api/games/* 公开区已随 B4 #21 拆到 routes/games.js，本域不碰。
+import { handleAdminGamesAdmin } from './routes/admin-games.js';
 // DX 批（docs/SEARCH-FIX-PERF.md §DX）：前台列表/搜索短 TTL 内存缓存（纯逻辑，测试锁语义）。
 import { createListCache } from './search-cache.js';
 
@@ -1495,7 +1505,7 @@ export function createApiServer({
       // /api/games/for-you 的原位置。runGated/listCache/invalidateListCache/
       // invalidateAdminGamesCache/gameCountCache/maybeFillDlcOnRead/dlcsReadThrottleMs/
       // dlcFetchImpl 经 ctx 按引用传入（语义共享，勿改成拷贝）。
-      // /api/admin/games*（#15）与 /api/behavior 留本文件。
+      // /api/admin/games* 已随 B4 #15 拆到 routes/admin-games.js、/api/behavior 留本文件。
       if (
         await handleGamesRoutes({
           path,
@@ -1694,126 +1704,34 @@ export function createApiServer({
         return json(res, 200, await steamAccountsMod.listWishlists(q, { limit, keyword, userId: filterUserId }));
       }
       // CY 批：/api/admin/wishlists/:id 的 DELETE 已移除——愿望单属用户私有数据，管理员只读（越权写走 404/白名单拦截）
-      // ---- 管理员：游戏同步概览（待同步数量统计）----
-      if (path === '/api/admin/games/stats' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        return json(res, 200, { stats: await db.adminGameStats(q) });
-      }
 
-      // ---- 管理员：游戏列表（分页 + 搜索 + 平台筛选 + 同步状态 + 回收站）----
-      if (path === '/api/admin/games' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        // B1 批（docs/DESIGN-AUDIT.md B1）：重查询接口并发闸（≤1）
-        return await runGated('GET /api/admin/games', 1, async () => {
-        // B2 批（docs/DESIGN-AUDIT.md B2）：短缓存命中直接返回（key = 完整 query；写操作后立即失效）
-        const gamesCacheKey = 'admin/games?' + url.search;
-        const gamesCacheNow = Date.now();
-        if (adminGamesCache.key === gamesCacheKey && adminGamesCache.value && gamesCacheNow - adminGamesCache.at < adminCacheTtlMs) {
-          return json(res, 200, adminGamesCache.value);
-        }
-        const kw = String(url.searchParams.get('q') ?? '').trim();
-        const page = Math.max(1, Number(url.searchParams.get('page') ?? 1) || 1);
-        const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize') ?? 20) || 20, 5), 200);
-        const offset = (page - 1) * pageSize;
-        const platform = String(url.searchParams.get('platform') ?? '').trim();
-        const sync = String(url.searchParams.get('sync') ?? '').trim();
-        // 报价筛选：priced=有任意平台报价，none=没有任何报价（控制台指标卡点击用）
-        const offersParam = String(url.searchParams.get('offers') ?? '').trim();
-        const deletedParam = String(url.searchParams.get('deleted') ?? 'exclude');
-        // 默认只看正常游戏；deleted=only 就是回收站，include 两边都看
-        const deletedWhere =
-          deletedParam === 'only' ? ' and g.deleted = true' : deletedParam === 'include' ? '' : ' and not g.deleted';
-        const offersWhere =
-          offersParam === 'priced'
-            ? ' and exists (select 1 from offers of1 where of1.game_id = g.id)'
-            : offersParam === 'none'
-              ? ' and not exists (select 1 from offers of2 where of2.game_id = g.id)'
-              : '';
-        // 同步状态（docs/STEAM-SYNC-STATUS-AND-RATING.md §4）：
-        //   sync=pending（旧参数，兼容）= 从未探测或 ok 但缺简介；done=ok 且有简介
-        //   status=<steam_status|pending|synced|other>（新参数，指标卡点击用）
-        const statusParam = String(url.searchParams.get('status') ?? '').trim();
-        const statusWhere =
-          statusParam === 'pending'
-            ? ' and g.steam_appid is not null and g.steam_status is null'
-            : statusParam === 'synced'
-              ? " and g.steam_appid is not null and g.steam_status = 'ok' and g.description is not null and g.description <> ''"
-              : statusParam === 'other'
-                ? " and g.steam_appid is not null and g.steam_status is not null and g.steam_status not in ('ok','free','coming_soon','region_locked','no_price','not_found')"
-                : ['ok', 'free', 'coming_soon', 'region_locked', 'no_price', 'not_found'].includes(statusParam)
-                  ? ` and g.steam_appid is not null and g.steam_status = '${statusParam}'`
-                  : '';
-        const syncWhere =
-          sync === 'pending'
-            ? " and g.steam_appid is not null and (g.steam_status is null or (g.steam_status = 'ok' and (g.description is null or g.description = '')))"
-            : sync === 'done'
-              ? " and g.steam_appid is not null and g.steam_status = 'ok' and g.description is not null and g.description <> ''"
-              : statusWhere;
-        // 内容分级筛选（docs/STEAM-SYNC-STATUS-AND-RATING.md §13.2）：可与搜索/平台/同步状态叠加
-        const ratingParam = String(url.searchParams.get('rating') ?? '').trim();
-        const ratingWhere =
-          ratingParam === 'adult' ? ' and g.adult_flag'
-            : ratingParam === 'mature' ? ' and g.mature_flag'
-              : ratingParam === 'none' ? ' and not g.adult_flag and not g.mature_flag'
-                : '';
-        // 平台筛选：按参数位置生成（计数查询与列表查询占位符不同）。
-        // DV 批（docs/ITAD-SOURCE-FILTER.md §2 方案 A）：ITAD 是聚合来源不是平台——
-        //   platform=itad 改走来源判定（game_source_sync 有 matched 标记），其余平台仍按 offers.platform_code。
-        const platformCond = (index) =>
-          platform === 'itad'
-            ? " and exists (select 1 from game_source_sync gs where gs.game_id = g.id and gs.platform_code = 'itad' and gs.status = 'matched')"
-            : platform
-              ? " and exists (select 1 from offers po join platforms pp on pp.code = po.platform_code where po.game_id = g.id and po.platform_code = $" + index + ')'
-              : '';
-        // itad 分支没有占位符，参数数组不能带 platform（pg 会报参数数不匹配）
-        const platformArgs = platform === 'itad' ? [] : platform ? [platform] : [];
-        const baseWhere =
-          'where ' + db.gameKeywordSql('$1', { appidAsText: true }) +
-          deletedWhere + syncWhere + offersWhere + ratingWhere;
-        const cnt = await q(
-          'select count(*)::int as n from games g ' + baseWhere + platformCond(2),
-          [kw, ...platformArgs],
-        );
-        const rows = await q(
-          'select g.id, g.steam_appid, coalesce(nullif(g.name, \'\'), nullif(g.name_en, \'\'), \'appid:\' || g.steam_appid) as name, g.name_en, g.app_type, g.blocked, g.deleted, g.deleted_at, g.updated_at, ' +
-          '(g.description is not null and g.description <> \'\') as has_desc, ' +
-          'g.steam_status, g.steam_checked_at, g.required_age, g.adult_flag, g.mature_flag, ' +
-          '(select count(*) from offers o where o.game_id = g.id) as offer_count, ' +
-          '(select min(o.price_cents) from offers o where o.game_id = g.id and o.platform_code = \'steam\' and o.in_stock) as steam_price, ' +
-          // 平台列：这款游戏当前有报价的渠道（多个用数组，前端渲染成多个标签）
-          '(select coalesce(array_agg(distinct p.name), \'{}\') from offers o2 join platforms p on p.code = o2.platform_code where o2.game_id = g.id) as platform_names, ' +
-          '(select coalesce(array_agg(distinct o3.platform_code), \'{}\') from offers o3 where o3.game_id = g.id) as platform_codes, ' +
-          // AG 批（docs/ADMIN-PLATFORM-LINKS.md）：列表只带数量，完整链接按需从 /links 接口取
-          "(select count(*)::int from offers o4 where o4.game_id = g.id and o4.buy_url ~ '^https?://') as link_count " +
-          'from games g ' + baseWhere + platformCond(4) + ' ' +
-          'order by g.updated_at desc nulls last, g.id desc limit $2 offset $3',
-          [kw, pageSize, offset, ...platformArgs],
-        );
-        const total = cnt.rows[0]?.n ?? 0;
-        const adminGamesPayload = { total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), games: rows.rows };
-        adminGamesCache.value = adminGamesPayload;
-        adminGamesCache.key = gamesCacheKey;
-        adminGamesCache.at = Date.now();
-        return json(res, 200, adminGamesPayload);
-        }, (msg) => json(res, 503, { error: msg }));
-      }
-
-      // ---- 管理员：单游戏全部平台链接（AG 批 docs/ADMIN-PLATFORM-LINKS.md §3-A，仅 http/https）----
-      const linkMatch = path.match(/^\/api\/admin\/games\/(\d+)\/links$/);
-      if (linkMatch && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const gameId = Number(linkMatch[1]);
-        const g = await q('select id, steam_appid, name, name_en from games where id = $1 and not deleted', [gameId]);
-        if (!g.rows[0]) return json(res, 404, { error: '没有该游戏' });
-        return json(res, 200, { game: g.rows[0], links: await db.adminGameLinks(q, { gameId }) });
-      }
-
-      // ---- 管理员：回收站（逻辑删除的游戏）----
-      if (path === '/api/admin/games/deleted' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const limit = Number(url.searchParams.get('limit') ?? 200);
-        return json(res, 200, { games: await db.listDeletedGames(q, { limit }) });
-      }
+      // ---- CO-5/B4-2 第十七轮（docs/DESIGN-AUDIT.md B4）：admin-games 域管理段路由已抽到
+      // src/routes/admin-games.js。调用位置不能动：必须在 requireAdmin 就绪之后的管理段
+      // （401/403 语义依赖该位置；调用点取本域最早路由 /api/admin/games/stats 的原位置）。
+      // 域内 5 条路由 path+method 互不重叠、与相邻其它 admin 域路由无同 path 双匹配，
+      // 在管理段内集中到一处不改变匹配语义；runGated（'GET /api/admin/games' 闸键在
+      // HEAVY_GATE_CONFIG 留本文件）、adminGamesCache、invalidateAdminGamesCache、
+      // invalidateListCache、adminCacheTtlMs 按引用/值传入（语义共享），勿改成拷贝。
+      if (
+        await handleAdminGamesAdmin({
+          path,
+          req,
+          res,
+          url,
+          q,
+          logger,
+          json,
+          readBody,
+          user,
+          requireAdmin,
+          runGated,
+          adminGamesCache,
+          invalidateAdminGamesCache,
+          invalidateListCache,
+          adminCacheTtlMs,
+        })
+      )
+        return;
 
       // ---- 管理员：到价提醒（CL 批 docs/USER-ALERTS.md §3.2：全站清单只读+清理；旧加/删兼容保留）----
       if (path === '/api/admin/watchlist' && req.method === 'GET') {
@@ -2128,26 +2046,6 @@ export function createApiServer({
       )
         return;
 
-      // ---- 管理员：合并重复游戏（把 from 并进 to，按 Steam appid 指定）----
-      if (path === '/api/admin/games/merge' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const body = await readBody(req);
-        const fromAppid = Number(body.fromAppid);
-        const toAppid = Number(body.toAppid);
-        if (!Number.isFinite(fromAppid) || !Number.isFinite(toAppid)) {
-          return json(res, 400, { error: '需要 fromAppid 与 toAppid' });
-        }
-        if (fromAppid === toAppid) return json(res, 400, { error: '源和目标不能是同一个游戏' });
-        const from = await db.gameDetail(q, { steamAppid: fromAppid });
-        const to = await db.gameDetail(q, { steamAppid: toAppid });
-        if (!from) return json(res, 404, { error: '源游戏不存在：' + fromAppid });
-        if (!to) return json(res, 404, { error: '目标游戏不存在：' + toAppid });
-        const result = await db.mergeGames(q, { fromGameId: from.id, toGameId: to.id, logger });
-        logger?.info('api.game_merged', { fromAppid, toAppid, ...result, by: user.username });
-        invalidateAdminGamesCache();
-        invalidateListCache(); // DX 批：合并改变列表内容，前台缓存立即失效
-        return json(res, 200, { result });
-      }
       // ---- CO-5/B4-2 第九轮（docs/DESIGN-AUDIT.md B4）：admin-sync 域管理段路由已抽到
       // src/routes/admin-sync.js。调用位置不能动：必须在 requireAdmin 就绪之后的管理段
       // （401/403 语义依赖该位置；调用点取本域最早路由 /api/admin/sync 的原位置）。

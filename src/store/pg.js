@@ -286,6 +286,26 @@ export {
   listBulkOps,
   getBulkOp,
 } from './admin-users-repository.js';
+// CO-5/B4-2 第十七轮（docs/DESIGN-AUDIT.md B4）：admin-games 域（B4 #15：后台游戏目录
+// /api/admin/games*）SQL 落 admin-games-repository.js——adminGameStats（同步概览）、
+// adminGameLinks（单游戏平台链接）、listDeletedGames（回收站）只被本域路由使用随域搬走，
+// 域内联 SQL（DV 批平台筛选片段/游戏列表 count+rows/links 守卫行）抽 3 个新函数
+// （adminGamesPlatformCond/listAdminGames/adminGameLinkRow）；gameKeywordSql 与
+// backfillCandidateWhere 被 repository import 引用（循环导入只取函数声明，运行时调用，
+// #21 games-repository.js 先例）、gameDetail/mergeGames/setInterest/setOwned/
+// setGameDescription 等被 #21 域、CLI、align 域跨模块共用，属通用 SQL 留本文件；
+// games 表 DDL 在本文件 SCHEMA 不搬。
+// 这里 re-export 保持旧 db.* 导入签名不变（routes/admin-games.js、server.js 其它段
+// 与现有测试照旧走 pg.js 聚合壳）。
+export {
+  adminGameStats,
+  adminGameLinks,
+  listDeletedGames,
+  adminGamesPlatformCond,
+  adminGamesWhereParts,
+  listAdminGames,
+  adminGameLinkRow,
+} from './admin-games-repository.js';
 
 export const SCHEMA = `
 create table if not exists platforms (
@@ -3196,64 +3216,7 @@ export async function setOwned(q, { steamAppid = null, gameId = null, owned }) {
 }
 
 /** 后台游戏同步概览：总数 / 有 appid / 六态分项 / 已删除 / 有报价。
- *  待同步口径（docs/STEAM-SYNC-STATUS-AND-RATING.md §4）：steam_status 为 null（从未探测）
- *  或 ok 但缺简介；free/coming_soon/region_locked/no_price/not_found 都不再计入。 */
-export async function adminGameStats(q) {
-  const r = await q(`
-    select count(*)::int as total,
-           count(*) filter (where g.steam_appid is not null)::int as with_appid,
-           count(*) filter (where g.deleted)::int as deleted,
-           count(*) filter (where exists (select 1 from offers o2 where o2.game_id = g.id))::int as with_offers,
-           -- 已同步（AC-2，docs/SYNC-FAILURE-MODES.md AC8）：ok 且有报价——steam-status 判 ok 时顺带写首价，
-           -- 口径与用户感知一致（"已同步"就得有价格）；免费游戏无报价仍属正常（不算待同步）
-           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'ok' and g.is_free is not true and exists (select 1 from offers o2 where o2.game_id = g.id))::int as synced,
-           -- 待同步：从未探测，或 ok 但缺报价（非免费）
-           count(*) filter (where g.steam_appid is not null and not g.deleted and (g.steam_status is null or (g.steam_status = 'ok' and g.is_free is not true and not exists (select 1 from offers o2 where o2.game_id = g.id))))::int as pending,
-           -- 六态分项（指标卡）
-           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status is null)::int as pending_probe,
-           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'free')::int as free,
-           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'coming_soon')::int as coming_soon,
-           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'region_locked')::int as region_locked,
-           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'no_price')::int as no_price,
-           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'not_found')::int as not_found,
-           count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status is not null and g.steam_status not in ('ok','free','coming_soon','region_locked','no_price','not_found'))::int as other,
-           -- 内容分级计数（docs/STEAM-SYNC-STATUS-AND-RATING.md §13.2）：成人/成熟（未标注 = total-deleted 减这两项）
-           count(*) filter (where not g.deleted and g.adult_flag)::int as adult,
-           count(*) filter (where not g.deleted and g.mature_flag)::int as mature,
-           -- BL 批（docs/BACKFILL-THROUGHPUT.md §3.4）：回填队列口径
-           -- 待回填 = 新候选谓词（缺描述/无报价/有价缺图，排除四态与跳过中，不带 1 天冷却——那是运行期游标不是队列口径）
-           count(*) filter (where ${backfillCandidateWhere({ includeCooldown: false })} )::int as backfill_pending,
-           -- 已排除 = 旧候选谓词 ∩ 四态（本次被去噪排除掉的量，用于对账：待回填 + 已排除 + 跳过中 ≈ 旧候选数）
-           count(*) filter (where ${backfillCandidateWhere({ includeCooldown: false, includeSkip: false, excludeStates: false })} and coalesce(g.steam_status, '') in ('free', 'coming_soon', 'region_locked', 'not_found'))::int as backfill_excluded,
-           -- 跳过中 = 失败隔离期内（连续 3 次失败 → 30 天）
-           count(*) filter (where g.backfill_skip_until is not null and g.backfill_skip_until > now())::int as backfill_skipped
-      from games g`);
-  const row = r.rows[0] ?? {};
-  const num = (k) => Number(row[k] ?? 0);
-  return {
-    total: num('total'),
-    withAppid: num('with_appid'),
-    pending: num('pending'),
-    synced: num('synced'),
-    deleted: num('deleted'),
-    withOffers: num('with_offers'),
-    // 六态分项（前端指标卡按状态筛选）
-    pendingProbe: num('pending_probe'),
-    free: num('free'),
-    comingSoon: num('coming_soon'),
-    regionLocked: num('region_locked'),
-    noPrice: num('no_price'),
-    notFound: num('not_found'),
-    other: num('other'),
-    // 内容分级计数
-    adult: num('adult'),
-    mature: num('mature'),
-    // BL 批（docs/BACKFILL-THROUGHPUT.md §3.4）：回填队列口径
-    backfillPending: num('backfill_pending'),
-    backfillExcluded: num('backfill_excluded'),
-    backfillSkipped: num('backfill_skipped'),
-  };
-}
+ *  已随 B4 #15 搬到 admin-games-repository.js（pg.js 顶部 re-export，旧 db.* 签名不变）。 */
 
 // ---------------------------------------------------------------- Steam 同步状态与内容分级
 // docs/STEAM-SYNC-STATUS-AND-RATING.md：状态判定与分级采集共用同一次 appdetails 请求。
@@ -3333,41 +3296,8 @@ export async function setSteamStatus(q, {
   return r.rows[0] ?? null;
 }
 
-/**
- * AG 批（docs/ADMIN-PLATFORM-LINKS.md §3-A）：单游戏全部平台链接（仅 http/https，过滤 javascript: 等脏数据），
- * 按平台名 / 区服 / 最近更新排序；同平台多区服各一行。
- */
-export async function adminGameLinks(q, { gameId }) {
-  const r = await q(
-    `select o.platform_code, p.name as platform_name, o.region, o.currency,
-            o.price_cents, o.original_cents, o.discount_pct, o.in_stock,
-            o.buy_url, o.last_seen_at
-       from offers o join platforms p on p.code = o.platform_code
-      where o.game_id = $1 and o.buy_url ~ '^https?://'
-      order by p.name, o.region, o.last_seen_at desc`,
-    [gameId],
-  );
-  return r.rows;
-}
-
-/** 已删除（回收站）的游戏列表，按删除时间倒序。 */
-export async function listDeletedGames(q, { limit = 200 } = {}) {
-  const r = await q(
-    `select g.id, g.steam_appid, coalesce(nullif(g.name, ''), nullif(g.name_en, ''), 'appid:' || g.steam_appid) as name, g.name_en,
-            g.app_type, g.deleted_at,
-            coalesce(array_agg(distinct p.name) filter (where p.name is not null), '{}') as platform_names,
-            (select count(*)::int from offers o where o.game_id = g.id) as offer_count
-       from games g
-       left join offers o on o.game_id = g.id
-       left join platforms p on p.code = o.platform_code
-      where g.deleted
-      group by g.id
-      order by g.deleted_at desc nulls last
-      limit $1`,
-    [Math.min(Math.max(Number(limit) || 200, 1), 1000)],
-  );
-  return r.rows;
-}
+/** 已随 B4 #15 搬到 admin-games-repository.js（adminGameLinks 单游戏平台链接 /
+ *  listDeletedGames 回收站列表，pg.js 顶部 re-export，旧 db.* 签名不变）。 */
 export async function markNotified(q, { watchId, priceCents }) {
   await q('update watchlist set last_notified_at = now(), last_notified_cents = $1 where id = $2', [
     priceCents,
