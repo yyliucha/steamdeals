@@ -124,19 +124,19 @@
 | **DN** | 对齐审核内容词 SKU 默认归档（季票/服装/DLC 等无效数据不进待审队列） | 本条目 + [SONKWO-STEAM-MATCH.md](SONKWO-STEAM-MATCH.md) | 已发布 v2.27.0（2026-11-19，实现 0c5fde4；QA docs/QA-DN.md 第 1 轮 ✅ 10/0/0/1） | ✅ 本轮已给 |
 | **DR** | App 发版后即刻可更新（后台立即同步 + App 检查节流 1h + 同步间隔 15 分钟可配） | [APP-INSTANT-UPDATE.md](APP-INSTANT-UPDATE.md) | 已发布 v2.27.0（2026-11-19，站点 39aaebb + App 仓库 98dabca；QA docs/QA-DR.md 第 1 轮 ✅ 8/0/0/2；App 侧 app-v2.22.0 随本批） | ✅ 本轮已给 |
 | **DS** | 搜索全自动派生（缩写/罗马数字/拼音 token + 分级排序 + 模糊兜底，零人工） | [SEARCH-ALIASES.md](SEARCH-ALIASES.md) | 已发布 v2.27.0（2026-11-19，实现 d607e27；QA docs/QA-DS.md 第 1 轮 ✅ 5/0/0/3） | ✅ 本交接已给 |
-| **DT-1** | 菜单与路由权限隔离（admin 全量 / 普通用户 5 页 / 删 Steam 账号菜单 / 路由守卫） | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-1 | 待开发（2026-11-19 沟通确认） | ✅ 本轮已给 |
-| **DT-2** | 用户级数据接口（/api/me/sessions+踢自己、/api/me/wishlist）+ 5 页数据接入 | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-2 | 待开发（依赖 DT-1） | ✅ 本轮已给 |
-| **DT-3** | 用户管理打磨（去新建用户/行内操作/批量踢会话/编辑角色/绑定账号只读） | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-3 | 待开发（2026-11-19 沟通确认） | ✅ 本轮已给 |
-| **DT-4** | 验证码体验（冷却分桶 + 倒计时 60s + 重置密码弹窗不发码/失败不关/可重发） | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-4 | 待开发（2026-11-19 沟通确认） | ✅ 本轮已给 |
-| **DT-5** | 前后台入口（前台登录按钮/去退出改密；Console 全局顶栏用户菜单树） | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-5 | 待开发（2026-11-19 沟通确认） | ✅ 本轮已给 |
-| **DU** | 🐞 缺陷：个人资料「个人简介」placeholder 插值未绑定（显示 {{ }} 源码） | 本交接（TODO DU 条目） | 待开发（2026-11-19 截图发现，P3） | ✅ 本轮已给 |
-| **DV** | 游戏管理「ITAD」筛选改为来源筛选（game_source_sync matched） | [ITAD-SOURCE-FILTER.md](ITAD-SOURCE-FILTER.md) | 待开发（2026-11-19 方案 A 确认） | ✅ 本轮已给 |
+| **DT-1** | 菜单与路由权限隔离（admin 全量 / 普通用户 5 页 / 删 Steam 账号菜单 / 路由守卫） | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-1 | 已发布 v2.28.0（2026-11-20，实现 7f5edba；QA docs/QA-DT-1~5.md 第 1 轮 ✅ 全放行） | ✅ 本轮已给 |
+| **DT-2** | 用户级数据接口（/api/me/sessions+踢自己、/api/me/wishlist）+ 5 页数据接入 | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-2 | 已发布 v2.28.0（2026-11-20，实现 403e6f2；QA docs/QA-DT-1~5.md 第 1 轮 ✅ 全放行） | ✅ 本轮已给 |
+| **DT-3** | 用户管理打磨（去新建用户/行内操作/批量踢会话/编辑角色/绑定账号只读） | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-3 | 已发布 v2.28.0（2026-11-20，实现 4a40737；QA docs/QA-DT-1~5.md 第 1 轮 ✅ 全放行） | ✅ 本轮已给 |
+| **DT-4** | 验证码体验（冷却分桶 + 倒计时 60s + 重置密码弹窗不发码/失败不关/可重发） | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-4 | 已发布 v2.28.0（2026-11-20，实现 4c49f7c；QA docs/QA-DT-1~5.md 第 1 轮 ✅ 全放行） | ✅ 本轮已给 |
+| **DT-5** | 前后台入口（前台登录按钮/去退出改密；Console 全局顶栏用户菜单树） | [ADMIN-PERMISSIONS.md](ADMIN-PERMISSIONS.md) §DT-5 | 已发布 v2.28.0（2026-11-20，实现 c19f514；QA docs/QA-DT-1~5.md 第 1 轮 ✅ 全放行） | ✅ 本轮已给 |
+| **DU** | 🐞 缺陷：个人资料「个人简介」placeholder 插值未绑定（显示 {{ }} 源码） | 本交接（TODO DU 条目） | 已发布 v2.28.0（2026-11-20，实现 791d729；QA docs/QA-DU.md 第 1 轮 ✅ 3/0/0/0） | ✅ 本轮已给 |
+| **DV** | 游戏管理「ITAD」筛选改为来源筛选（game_source_sync matched） | [ITAD-SOURCE-FILTER.md](ITAD-SOURCE-FILTER.md) | 已发布 v2.28.0（2026-11-20，实现 0a6b978；QA docs/QA-DV.md 第 1 轮 ✅ 5/0/0/0） | ✅ 本轮已给 |
 | **DW** | 🐞 缺陷：搜索关键词参数位错位风险（精确名匹配失效，中文名搜不到）——候选/主查询两套绑定显式化 + 锁行为测试 | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DW | 已发布 v2.27.1（2026-11-19，修复 fc410af + 锁行为测试 77f8214；QA-DW.md 第 1 轮 6/0/0/1） | ✅ 本轮已给 |
 | **DY** | 🐞 缺陷：安卓页面衔接状态丢失（详情返回后搜索/滚动/表单丢）——ViewModel/rememberSaveable 治理 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §DY | 已发布 app-v2.23.0（2026-11-20，App d803612/tag app-v2.23.0；QA docs/QA-DY-DZ.md 第 2 轮 ✅） | ✅ 本轮已给 |
 | **DZ** | ⚙️ 调整：安卓公告未读角标无法清除（首页铃铛常驻 1）——弹层加「全部已读」 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §DZ | 已发布 app-v2.23.0（2026-11-20，App d803612/tag app-v2.23.0；QA docs/QA-DY-DZ.md 第 2 轮 ✅） | ✅ 本轮已给 |
 | **EA** | ⚙️ 调整：安卓体验包（攒批）——下拉刷新/搜索空态/详情分享/版本号+清缓存/骨架屏/弱网提示 | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EA | 已发布 app-v2.23.0（2026-11-20，App d803612/tag app-v2.23.0；QA docs/QA-EA-1-3.md、QA-EA-4-6.md 第 1 轮 ✅） | ✅ 本轮已给 |
 | **EB** | ✨ 功能：安卓 18R 内容选项（筛选 chips「18R」+ adult=badge 显示/角标 + 首次 18+ 确认 + 本地记忆，攒批） | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EB | 已发布 app-v2.23.0（2026-11-20，App d803612/tag app-v2.23.0；QA docs/QA-EB.md 第 1 轮 ✅） | ✅ 本轮已给 |
-| **EC** | ⚙️ 调整：图片覆盖治理（后台覆盖看板 + 缺图回填任务 + 前端占位图） | [IMAGE-COVERAGE.md](IMAGE-COVERAGE.md) §8 | 待开发（2026-11-19 立项） | ✅ 本轮已给 |
+| **EC** | ⚙️ 调整：图片覆盖治理（后台覆盖看板 + 缺图回填任务 + 前端占位图） | [IMAGE-COVERAGE.md](IMAGE-COVERAGE.md) §8 | 已发布 v2.28.0（2026-11-20，实现 ab7ba90；QA docs/QA-EC.md 第 1 轮 ✅ 4/0/0/1） | ✅ 本轮已给 |
 | **ED** | 🧪 测试基建：test-main 加文档路径忽略（纯 docs 提交不跑测试，避免夜班文档提交反复取消 CI） | 本条目正文 | 已发布 v2.27.8（2026-11-20，QA docs/QA-ED.md 第 1 轮 ✅ 4/0/0/0） | ✅ 本轮已给 |
 | **EF** | 🐞 缺陷：18R 数据同步与筛选修复（元数据 cc=cn 锁国区 → 改 cc=us + 回填 + 前台 rating + Web/App 筛选） | [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §9 | 已发布 v2.27.5（2026-11-20；站点 7a3ac2b + App 358ebc5；app-v2.24.0 随本批） | ✅ 本轮已给 |
 | **EG** | 🐞 缺陷：通知角标已读后不消失（ABC 三场景） | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EG | 已发布 v2.27.5（2026-11-20；站点 7eb5d4a + App 3458bce；app-v2.24.0 随本批） | ✅ 本轮已给 |
@@ -145,7 +145,7 @@
 | **EJ** | ⚙️ 调整：昵称显示规则统一（有昵称显示昵称，无昵称显示用户名；Web + App） | [DISPLAY-NAME-RULE.md](DISPLAY-NAME-RULE.md) | 已发布 v2.27.7（2026-11-20，站点 f340d78 + release 提交见 git log；App app-v2.24.2 / 6254978；QA docs/QA-EJ.md ✅） | ✅ 本轮已给 |
 | **EL** | ⚙️ 调整：后台「添加/编辑」统一弹窗（IP 黑/白名单、站点通知、设置代理、申诉处理；原编号 EK，2026-11-20 编号撞车由所有者裁决改为 EL） | [ADMIN-EDIT-DIALOG.md](ADMIN-EDIT-DIALOG.md) | 已发布 v2.27.8（2026-11-20，实现 e0821f9；QA docs/QA-EL.md 第 1 轮 ✅ 5/0/0/2） | ✅ 本轮已给 |
 | **EK** | 🐞 缺陷：App Release 同步资产下载走专用代理（有代理走代理、无代理直连 GitHub；代理超时 30s） | [APP-RELEASE-SYNC-PROXY.md](APP-RELEASE-SYNC-PROXY.md) | 已发布 v2.27.8（2026-11-20，实现 cc4fcf5；QA docs/QA-EK.md 第 1 轮 ✅ 6/0/0/1） | ✅ 本轮已给 |
-| **EM** | 🐞 缺陷：Steam 同步超时（代理快速切换 + 同步异步化 + 结果反馈） | [STEAM-SYNC-TIMEOUT.md](STEAM-SYNC-TIMEOUT.md) | 待开发（2026-11-20 P1） | ✅ 本轮已给 |
+| **EM** | 🐞 缺陷：Steam 同步超时（代理快速切换 + 同步异步化 + 结果反馈） | [STEAM-SYNC-TIMEOUT.md](STEAM-SYNC-TIMEOUT.md) | 已发布 v2.28.0（2026-11-20，实现 ba9b0b0；QA docs/QA-EM.md 第 1 轮 ✅ 5/0/0/1） | ✅ 本轮已给 |
 | **DX** | 🧹 技术债：列表/站点接口性能优化（count 合并 + 短 TTL 缓存 + /api/site 缓存 + 压测） | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DX | 已发布 v2.27.8（2026-11-20，实现 090af4c；QA docs/QA-DX.md 第 1 轮 ✅ 6/0/0/1） | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
