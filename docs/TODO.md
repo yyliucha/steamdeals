@@ -204,6 +204,7 @@ pm test（分段）+ rontend:build + scan 全绿）。
 **依赖：** 无
 **解锁：** 无
 **规格**：[DISPLAY-NAME-RULE.md](DISPLAY-NAME-RULE.md)
+**涉及 App 仓库：** 是（App 提交 6254978；build 时同步发 `app-v2.24.2`，当前 App 2.24.1 / 22401 → 22402）
 
 - **规则**：显示名 = `displayName`（昵称非空）? 昵称 : `username`；前端与手机端所有用户可见位置统一。
 - **现状问题**：① App `MeScreen.kt:154` 只显示用户名（有昵称也不显示）；② Web 后台用户管理列表列 `username`
