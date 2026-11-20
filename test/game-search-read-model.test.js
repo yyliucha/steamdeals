@@ -400,9 +400,13 @@ test('AY：关键词先走候选 ID——零命中不跑 count/列表；名称/�
     );
     const base = { region: 'cn', compact: true, pageSize: 20, sort: 'discount', interest: 'all', owned: 'include', blocked: 'exclude', typeFilter: 'all', released: 'all', marks: 'any', adult: 'hide' };
     // 统计 count 查询次数：零命中必须一次都不跑（原实现要扫两遍全表）
+    // DX 批（docs/SEARCH-FIX-PERF.md §DX）：count 与 rows 合并后，命中路径也不再有独立 count
+    // 查询（total 由 rows 里的 count(*) over() 窗口一次拿回），锁「合并 rows 跑一次」。
     let countQueries = 0;
+    let mergedRows = 0;
     const wrapped = (sql, params) => {
       if (/^\s*select count/i.test(String(sql))) countQueries += 1;
+      if (String(sql).includes('count(*) over()')) mergedRows += 1;
       return q(sql, params);
     };
     const zero = await db.gameSearch(wrapped, { ...base, keyword: 'zzzzzz' });
@@ -422,19 +426,23 @@ test('AY：关键词先走候选 ID——零命中不跑 count/列表；名称/�
     // AppID（纯数字）
     const byAppid = await db.gameSearch(q, { ...base, keyword: '7002' });
     assert.deepEqual(byAppid.rows.map((r) => Number(r.id)), [ids.portal], 'AppID 精确命中');
-    // 命中路径仍然跑一次 count（分页 total 正确）
+    // DX 批：命中路径不再跑独立 count——total 由合并 rows 的 count(*) over() 一次拿回
     countQueries = 0;
+    mergedRows = 0;
     const hit = await db.gameSearch(wrapped, { ...base, keyword: '反恐精英' });
     assert.equal(hit.total, 1);
-    assert.equal(countQueries, 1, '命中时 count 只跑一次');
+    assert.equal(countQueries, 0, 'DX：命中路径不跑独立 count 查询（合并进 rows）');
+    assert.equal(mergedRows, 1, 'DX：合并 rows 查询只跑一次（原 count+rows 两条）');
     // 候选数达到上限 → 回退原 LIKE 路径（total 仍精确）；用环境变量把上限压到 1 来锁这条分支
     process.env.SEARCH_KEYWORD_CANDIDATE_CAP = '1';
     try {
       countQueries = 0;
+      mergedRows = 0;
       const fallback = await db.gameSearch(wrapped, { ...base, keyword: '反恐精英' });
       assert.equal(fallback.total, 1, '回退路径 total 仍精确');
       assert.deepEqual(fallback.rows.map((r) => Number(r.id)), [ids.cs]);
-      assert.equal(countQueries, 1, '回退路径照常跑 count');
+      assert.equal(countQueries, 0, 'DX：回退路径同样不跑独立 count（窗口合并）');
+      assert.equal(mergedRows, 1, 'DX：回退路径合并 rows 只跑一次');
     } finally {
       delete process.env.SEARCH_KEYWORD_CANDIDATE_CAP;
     }

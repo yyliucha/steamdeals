@@ -623,7 +623,7 @@ test('CO-5/B4-2 第七轮：server.js 必须真实接线三个入口（删掉调
   // 锁「完整调用形态」：必须是 if (await handleXxx(...)) return;——只断言字符串存在会被 if(false) 包一层绕过；
   // 这个形态锁住"调用且消费返回值结束响应"。
   assert.match(SITE_SERVER, /if \(\s*await handleSitePreflight\(\{ path, req, res, json, ip, whitelisted, deviceId \}\)\) return;/, '预检段接线（含 ip/whitelisted/deviceId，且消费返回值）');
-  assert.match(SITE_SERVER, /if \(\s*await handleSitePublic\(\{ path, req, res, q, json, siteName, appealEmail \}\)\) return;/, '公开段接线（含 siteName/appealEmail，且消费返回值）');
+  assert.match(SITE_SERVER, /if \(\s*await handleSitePublic\(\{ path, req, res, q, json, siteName, appealEmail, siteCache, siteCacheTtlMs \}\)\) return;/, '公开段接线（含 siteName/appealEmail + DX 批 siteCache/siteCacheTtlMs，且消费返回值）');
   assert.match(SITE_SERVER, /if \(\s*await handleSiteRoutes\(\{[\s\S]{0,900}?url,[\s\S]{0,900}?user,[\s\S]{0,900}?requireUser,[\s\S]{0,900}?requireAdmin,/, '主段接线（含 url/user/requireUser/requireAdmin）');
   assert.match(SITE_SERVER, /if \(\s*await handleSiteRoutes\(\{[\s\S]{0,900}?q,[\s\S]{0,900}?logger,[\s\S]{0,900}?json,[\s\S]{0,900}?readBody,/, '主段接线（基座字段传齐）');
   // 三入口位置语义锁：预检段必须在 handleAppPreflight 之前、公开段必须在 handleAnnouncementsPublic 之前、

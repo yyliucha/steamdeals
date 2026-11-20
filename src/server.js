@@ -104,6 +104,8 @@ import { handleAdminAccessAdmin } from './routes/admin-access.js';
 // /api/admin/steam-logs（B4 #12）、/api/admin/wishlists（B4 #16）、
 // /api/admin/bulk 派发表（B4 #11）等其它 admin 域路由留本文件。
 import { handleAdminSyncAdmin } from './routes/admin-sync.js';
+// DX 批（docs/SEARCH-FIX-PERF.md §DX）：前台列表/搜索短 TTL 内存缓存（纯逻辑，测试锁语义）。
+import { createListCache, stableHash } from './search-cache.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -449,6 +451,8 @@ export function createApiServer({
   gateMaxQueue = 20, // B1 批测试注入：并发闸队列长度上限（超出立即 503）
   adminCacheTtlMs = 3000, // B2 批测试注入：/api/admin/games 短缓存 TTL
   syncStatusTtlMs = 3000, // B2 批测试注入：/api/admin/sync/status 短缓存 TTL
+  listCacheTtlMs = 45000, // DX 批测试注入：前台列表/搜索短缓存 TTL（规格 30–60s）
+  siteCacheTtlMs = 60000, // DX 批测试注入：/api/site 短缓存 TTL（规格 60s）
   appSyncFetchImpl = null, // DR 批测试注入：POST /api/admin/app-sync 的 GitHub fetch 替身（默认真实 fetch）
   appSyncDir = null, // DR 批测试注入：app-sync 落盘目录（默认 env APP_DATA_DIR ?? data/app）
 }) {
@@ -513,6 +517,18 @@ export function createApiServer({
   const invalidateSyncStatusCache = () => {
     syncStatusCache.value = null;
     syncStatusCache.at = 0;
+  };
+  // DX 批（docs/SEARCH-FIX-PERF.md §DX）：前台列表/搜索与 /api/site 的短缓存状态——
+  // 按服务实例隔离（与 adminGamesCache 同先例，测试多实例互不干扰）。
+  // listCache 的失效三路：TTL / 进程内主动 invalidate（admin 写操作、手动同步子进程结束、
+  // 用户标记变更）/ 数据世代 gen 不匹配（调度器跨进程同步，见 db.dataGen）。
+  // siteCache 的失效：设置保存（afterHydrate）/ SMTP 保存时主动失效 + TTL 兜底；重启自然清空。
+  const listCache = createListCache({ ttlMs: listCacheTtlMs });
+  const siteCache = { value: null, at: 0 };
+  const invalidateListCache = () => listCache.invalidate();
+  const invalidateSiteCache = () => {
+    siteCache.value = null;
+    siteCache.at = 0;
   };
   // AW 批（docs/IMAGE-FETCH.md §3.2）：图片负缓存也按实例隔离（测试多实例互不干扰）。
   const imgMissCache = new Map(); // appid/size -> { at, kind }
@@ -587,6 +603,8 @@ export function createApiServer({
       } catch {
         /* 记录失败不影响主流程 */
       }
+      // DX 批：手动同步/回填/heat/rename 子进程结束（无论成败）→ 前台列表缓存立即失效
+      invalidateListCache();
       logger?.info('api.sync_finished', { mode, runId: run.id, status, exitCode });
     };
     child.stdout?.on('data', (d) => append(String(d)));
@@ -1231,7 +1249,8 @@ export function createApiServer({
       // 调用位置不能动：必须在认证上下文解析（must_change_password 白名单）之前——
       // 注册页/改密页在认证前也要读站点信息（原位置语义，移动 = 改契约）。
       // siteName / appealEmail 是宿主闭包（serveBanPage / 申诉域仍用），经 ctx 按引用传入（语义共享）。
-      if (await handleSitePublic({ path, req, res, q, json, siteName, appealEmail })) return;
+      // DX 批：siteCache 按引用传入（与 syncStatusCache 同先例）——配置变更/重启时宿主主动失效。
+      if (await handleSitePublic({ path, req, res, q, json, siteName, appealEmail, siteCache, siteCacheTtlMs })) return;
       // ---- CO-5/B4-2 第五轮（docs/DESIGN-AUDIT.md B4）：公告域路由已抽到 src/routes/announcements.js ----
       // 公开段调用位置不能动：必须在认证上下文解析（must_change_password 白名单）之前——
       // 游客与待改密用户也要能读到公告（原位置语义，移动 = 改契约）。
@@ -1434,7 +1453,8 @@ export function createApiServer({
       if (path.startsWith('/api/admin/settings')) {
         if (!requireAdmin()) return;
         // BR 批：设置保存后立即热加载限流阈值（hydrate 写回 env → configureFromEnv 重配）
-        const handled = await handleSettingsRoutes({ path, req, res, q, store, logger, json, readBody, user, afterHydrate: () => { ratelimit.configureFromEnv(process.env); appRateLimit.configureFromEnv(process.env); } });
+        // DX 批：注册开关等 /api/site 字段来自设置表——保存/恢复后立即失效 site 缓存
+        const handled = await handleSettingsRoutes({ path, req, res, q, store, logger, json, readBody, user, afterHydrate: () => { ratelimit.configureFromEnv(process.env); appRateLimit.configureFromEnv(process.env); invalidateSiteCache(); } });
         if (handled) return;
       }
 
@@ -1654,9 +1674,28 @@ export function createApiServer({
           ownedIds: normalizeIds(body?.guestFlags?.ownedIds),
           excludeIds: normalizeIds(body?.guestFlags?.excludeIds),
         } : null;
+        // DX 批（docs/SEARCH-FIX-PERF.md §DX）：缓存 key = 归一化筛选参数 + region + userId 摘要。
+        // 游客长 id 数组走稳定哈希（键长恒定，避免 5000 个 id 把 Map 键撑爆）。
+        const region = String(getInput('region') ?? baseRegion()).slice(0, 12);
+        const guestFlagsKey = guestFlags ? stableHash(JSON.stringify(guestFlags)) : '';
+        const cacheKey = JSON.stringify([
+          region, page, pageSize, keyword, sort, interest, ownedParam, blockedParam,
+          user?.id ?? null, typeFilter, released, marks, compact, guestFlagsKey,
+          adult, rating, Number.isFinite(reviewMin) && reviewMin >= 1 && reviewMin <= 9 ? reviewMin : null,
+          deck, discountOnly, histLowOnly, freeOnly, unreleased,
+          Boolean(user && guestSearchPost && body?.wishlist === true),
+        ]);
+        // DX 批：数据世代校验——调度器同步是独立进程（无法回调本进程失效缓存），
+        // 每次列表请求顺带读一次 sync_runs max(id)（主键轻查询）感知跨进程写库。
+        const gen = await db.dataGen(q).catch(() => null);
+        const hit = listCache.get(cacheKey, gen);
+        if (hit !== undefined) {
+          logger?.info('search.cache_hit', { key: cacheKey.slice(0, 120), gen: gen ?? null, userId: user?.id ?? null });
+          return json(res, 200, hit);
+        }
         const result = await db.gameSearch(q, {
           // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：前台查询默认 region 读本位币区域
-          region: String(getInput('region') ?? baseRegion()).slice(0, 12),
+          region,
           page,
           pageSize,
           keyword,
@@ -1682,7 +1721,7 @@ export function createApiServer({
           // 愿望单是登录用户专属维度；游客传入的 wishlist=true 一律无效
           wishlist: Boolean(user && guestSearchPost && body?.wishlist === true),
         }, logger);
-        return json(res, 200, {
+        const payload = {
           games: result.rows,
           total: result.total,
           page: result.page,
@@ -1693,7 +1732,9 @@ export function createApiServer({
           interest,
           q: keyword,
           type: typeFilter,
-        });
+        };
+        listCache.set(cacheKey, payload, gen);
+        return json(res, 200, payload);
         }, (msg) => json(res, 503, { error: msg }));
       }
 
@@ -1872,6 +1913,7 @@ export function createApiServer({
         });
         if (!flags) return json(res, 404, { error: '没有该游戏' });
         logger?.info('api.user_flag', { userId: user.id, gameId, interested: flags.interested, owned: flags.owned });
+        invalidateListCache(); // DX 批：个人标记直接影响 interest/owned 过滤与列值，前台缓存立即失效
         return json(res, 200, { flags });
       }
 
@@ -1884,6 +1926,7 @@ export function createApiServer({
         const row = await db.setInterest(q, { steamAppid: appid, interested: Boolean(body.interested) });
         if (!row) return json(res, 404, { error: '没有该游戏' });
         logger?.info('api.interest', { appid, interested: row.interested, by: user.username });
+        invalidateListCache(); // DX 批：全局兴趣标记影响列表 interest 列，前台缓存立即失效
         return json(res, 200, { game: row });
       }
 
@@ -1896,6 +1939,7 @@ export function createApiServer({
         const row = await db.setOwned(q, { steamAppid: appid, owned: Boolean(body.owned) });
         if (!row) return json(res, 404, { error: '没有该游戏' });
         logger?.info('api.owned', { appid, owned: row.owned, by: user.username });
+        invalidateListCache(); // DX 批：全局拥有标记影响列表 owned 列，前台缓存立即失效
         return json(res, 200, { game: row });
       }
 
@@ -1908,6 +1952,7 @@ export function createApiServer({
         const row = await db.setInterest(q, { gameId, interested: Boolean(body.interested) });
         if (!row) return json(res, 404, { error: '没有该游戏' });
         logger?.info('api.interest_by_id', { gameId, interested: row.interested, by: user.username });
+        invalidateListCache(); // DX 批：同全局兴趣标记，前台缓存立即失效
         return json(res, 200, { game: row });
       }
 
@@ -1919,6 +1964,7 @@ export function createApiServer({
         const row = await db.setOwned(q, { gameId, owned: Boolean(body.owned) });
         if (!row) return json(res, 404, { error: '没有该游戏' });
         logger?.info('api.owned_by_id', { gameId, owned: row.owned, by: user.username });
+        invalidateListCache(); // DX 批：同全局拥有标记，前台缓存立即失效
         return json(res, 200, { game: row });
       }
 
@@ -1941,6 +1987,7 @@ export function createApiServer({
           user,
           requireUser,
           requireAdmin,
+          invalidateListCache, // DX 批：账号库/愿望单同步后失效前台列表缓存（owned/wishlist 维度）
         })
       )
         return;
@@ -2440,6 +2487,7 @@ export function createApiServer({
         const result = await db.mergeGames(q, { fromGameId: from.id, toGameId: to.id, logger });
         logger?.info('api.game_merged', { fromAppid, toAppid, ...result, by: user.username });
         invalidateAdminGamesCache();
+        invalidateListCache(); // DX 批：合并改变列表内容，前台缓存立即失效
         return json(res, 200, { result });
       }
 
@@ -2454,6 +2502,7 @@ export function createApiServer({
         if (!row) return json(res, 404, { error: '没有该游戏' });
         logger?.info('api.game_deleted', { ...target, deleted: row.deleted, by: user.username });
         invalidateAdminGamesCache();
+        invalidateListCache(); // DX 批：删除/恢复改变列表内容，前台缓存立即失效
         return json(res, 200, { game: row });
       }
 
@@ -2683,6 +2732,7 @@ export function createApiServer({
         if (!row) return json(res, 404, { error: '没有该游戏' });
         logger?.info('api.game_blocked', { appid: Number(blockMatch[1]), blocked: row.blocked, by: user.username });
         invalidateAdminGamesCache();
+        invalidateListCache(); // DX 批：屏蔽/取消屏蔽改变列表内容，前台缓存立即失效
         return json(res, 200, { game: row });
       }
 
@@ -2777,6 +2827,8 @@ export function createApiServer({
           ],
         );
         logger?.info('api.smtp_saved', { by: user.username, host: String(body.host ?? '').trim() });
+        // DX 批：SMTP 就绪状态是 /api/site 响应字段——保存后立即失效 site 缓存
+        invalidateSiteCache();
         if (store) {
           await settings.hydrateSettings({ store, logger }).catch((err) => {
             logger?.warn('settings.hydrate_failed', { message: String(err.message).slice(0, 160) });
@@ -3677,6 +3729,7 @@ export function createApiServer({
         if (Number.isFinite(outcome.removedFromBlacklist)) reply.removedFromBlacklist = outcome.removedFromBlacklist;
         // B2 批：批量操作可能改 games 列表内容（封/恢复/删/停用等），短缓存立即失效
         invalidateAdminGamesCache();
+        invalidateListCache(); // DX 批：批量封/恢复/删/停用同样影响前台列表，一并失效
         return json(res, 200, reply);
       }
 
@@ -4171,10 +4224,12 @@ export function startApiServer({
   gateMaxQueue = 20,
   adminCacheTtlMs = 3000,
   syncStatusTtlMs = 3000,
+  listCacheTtlMs = 45000,
+  siteCacheTtlMs = 60000,
   appSyncFetchImpl = null, // DR 批测试注入：POST /api/admin/app-sync 的 GitHub fetch 替身
   appSyncDir = null, // DR 批测试注入：app-sync 落盘目录（默认 env APP_DATA_DIR ?? data/app）
 }) {
-  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, imgMissTtl, dlcFetchImpl, dlcReadThrottleMs, requestTimeoutMs, gateWaitMs, gateMaxQueue, adminCacheTtlMs, syncStatusTtlMs, appSyncFetchImpl, appSyncDir });
+  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, imgMissTtl, dlcFetchImpl, dlcReadThrottleMs, requestTimeoutMs, gateWaitMs, gateMaxQueue, adminCacheTtlMs, syncStatusTtlMs, listCacheTtlMs, siteCacheTtlMs, appSyncFetchImpl, appSyncDir });
   // 黑名单定时刷新（管理端增删后也会即时刷新；unref 不阻止进程退出）
   const blockTimer = setInterval(() => {
     visitors.refreshBlocklist(query).catch(() => {});

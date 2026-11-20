@@ -2080,19 +2080,23 @@ export async function gameSearch(
           ? '(0.4*coalesce(rs.discount_pct,0) + 0.35*(coalesce(g.review_score,5)/9.0)*100 + 0.25*coalesce(g.heat,0)) desc nulls last, name asc'
           : 'rs.discount_pct desc nulls last, rs.price_cents asc nulls last, name asc';
 
-  const total = useReadModel
-    ? Number(
-        (await q(
-          `select count(*)::int as n ${compact ? rmFromList : rmFromFull} ${rmWhereStr}`,
-          filterParams,
-        )).rows[0]?.n ?? 0,
-      )
-    : Number(
-        (await q(
-          `select count(*)::int as n from games g ${userJoin(3)} ${where}`,
-          filterParams,
-        )).rows[0]?.n ?? 0,
-      );
+  // DX 批（docs/SEARCH-FIX-PERF.md §DX）：count 与 rows 合并——count(*) over() 在 limit/offset
+  // 之前计算，一次查询同时拿到 total 与当页行；只有空页（total=0 或 offset 越界）才退回单跑
+  // count（低频路径）。窗口与旧 count 查询共用同一 from/where，口径完全一致（total 正确性不变）。
+  const countFallback = async () =>
+    useReadModel
+      ? Number(
+          (await q(
+            `select count(*)::int as n ${compact ? rmFromList : rmFromFull} ${rmWhereStr}`,
+            filterParams,
+          )).rows[0]?.n ?? 0,
+        )
+      : Number(
+          (await q(
+            `select count(*)::int as n from games g ${userJoin(3)} ${where}`,
+            filterParams,
+          )).rows[0]?.n ?? 0,
+        );
   const extra = userId
     ? `, ${col('interested')} as eff_interested, uf.interested as user_interested, ${EFFECTIVE_OWNED_SQL('$3')} as eff_owned, uf.owned as user_owned,
        ${OWNED_BY_SQL('$3')} as owned_by, ${WISHLISTED_SQL('$3')} as wishlisted,
@@ -2134,7 +2138,7 @@ export async function gameSearch(
       ${userId ? SITE_WISHLISTED_SQL('$3') : 'false'} as site_wishlisted,
       g.blocked, pr.current_low, pr.currency, pr.steam_price, pr.current_original,
       pr.discount, dr.hist_low, dr.prev_hist_low, dr.day_count, pr.last_seen_at,
-      pr.low_platform_name, pr.low_platform
+      pr.low_platform_name, pr.low_platform, count(*) over() as total_rows
     from games g ${userJoin(3)}
     left join price_rollup pr on pr.game_id = g.id
     left join daily_rollup dr on dr.game_id = g.id
@@ -2159,7 +2163,8 @@ export async function gameSearch(
       rs.original_cents as current_original, rs.discount_pct as discount,
       rs.hist_low_cents as hist_low, rs.prev_hist_low_cents as prev_hist_low,
       (select count(*)::int from daily_prices d where d.game_id = g.id and d.region = $1) as day_count,
-      rs.last_seen_at, rs.low_platform_name, rs.low_platform, rs.platform_names
+      rs.last_seen_at, rs.low_platform_name, rs.low_platform, rs.platform_names,
+      count(*) over() as total_rows
     ${rmFromList}
     ${rmWhereStr}
     order by ${rankPrefix}${primaryOrder ?? `g.heat desc nulls last, ${rmSort}, g.id asc`}
@@ -2169,12 +2174,20 @@ export async function gameSearch(
     useReadModel
       ? compact
         ? compactRmQuery.replace('__LIST_LIMIT__', `$${limitIndex}`).replace('__LIST_OFFSET__', `$${limitIndex + 1}`)
-        : `${GAME_SELECT_RM}${extra} ${rmFromFull} ${rmWhereStr} order by ${rankPrefix}${primaryOrder ?? `g.heat desc nulls last, ${rmSort}`} limit $${limitIndex} offset $${limitIndex + 1}`
+        : `${GAME_SELECT_RM}${extra}, count(*) over() as total_rows ${rmFromFull} ${rmWhereStr} order by ${rankPrefix}${primaryOrder ?? `g.heat desc nulls last, ${rmSort}`} limit $${limitIndex} offset $${limitIndex + 1}`
       : compact
         ? compactQuery.replace('__LIST_LIMIT__', `$${limitIndex}`).replace('__LIST_OFFSET__', `$${limitIndex + 1}`)
-        : `${GAME_SELECT}${extra} from games g ${userJoin(3)} ${where} order by ${rankPrefix}${primaryOrder ?? `g.heat desc nulls last, ${order}`} limit $${limitIndex} offset $${limitIndex + 1}`,
+        : `${GAME_SELECT}${extra}, count(*) over() as total_rows from games g ${userJoin(3)} ${where} order by ${rankPrefix}${primaryOrder ?? `g.heat desc nulls last, ${order}`} limit $${limitIndex} offset $${limitIndex + 1}`,
     [...filterParams, size, offset],
   )).rows;
+  // DX 批：窗口列只用于 count 合并，不随行返回（响应契约不变）；空页拿不到窗口值才回落 countFallback。
+  let total;
+  if (rows.length) {
+    total = Number(rows[0].total_rows ?? 0);
+    for (const row of rows) delete row.total_rows;
+  } else {
+    total = await countFallback();
+  }
   if (userId && !compact) {
     for (const row of rows) {
       row.interested = row.eff_interested;
@@ -3249,6 +3262,16 @@ export async function finishSyncRun(q, id, { status = 'ok', exitCode = null, out
     'update sync_runs set status = $1, exit_code = $2, output = $3, finished_at = now() where id = $4',
     [status, exitCode, output ? String(output).slice(-8000) : null, id],
   );
+}
+
+/**
+ * DX 批（docs/SEARCH-FIX-PERF.md §DX）：数据世代——sync_runs 最大 id。
+ * 调度器是独立进程，同步完成后无法回调 HTTP 进程；列表缓存条目记下建立时的世代，
+ * 每次列表请求顺带读一次 max(id)（主键查询）即可感知「调度同步已写库」，跨进程失效。
+ */
+export async function dataGen(q) {
+  const r = await q('select coalesce(max(id), 0)::bigint as gen from sync_runs');
+  return Number(r.rows[0]?.gen ?? 0);
 }
 
 /** 正在跑的同步（进程内只有一条；服务重启后这行会残留，启动时清掉）。 */

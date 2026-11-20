@@ -100,10 +100,18 @@ export async function handleSitePreflight(ctx) {
  * 公开段：server.js 在拦截链之后、认证上下文解析之前调用（原 /api/site 位置，
  * handleAnnouncementsPublic 之前）。siteName / appealEmail 是宿主闭包（serveBanPage /
  * 申诉域仍用），经 ctx 按引用传入（语义共享）。
+ * DX 批（docs/SEARCH-FIX-PERF.md §DX）：60s 短缓存——响应里的注册开关/SMTP 就绪状态
+ * 来自 DB 查询（基线 257ms 主要耗在这两次查询），缓存由宿主提供（{ value, at } 按实例
+ * 隔离）；配置变更（设置保存/SMTP 保存）或重启时宿主主动失效，TTL 兜底。
  */
 export async function handleSitePublic(ctx) {
-  const { path, req, res, q, json, siteName, appealEmail } = ctx;
+  const { path, req, res, q, json, siteName, appealEmail, siteCache = null, siteCacheTtlMs = 60_000 } = ctx;
   if (path !== '/api/site' || req.method !== 'GET') return false;
+  // DX 批：命中直接复用整份响应体（契约与未命中完全一致）
+  if (siteCache && siteCache.value && Date.now() - siteCache.at < siteCacheTtlMs) {
+    json(res, 200, siteCache.value);
+    return true;
+  }
   // AL 批（docs/AUTH-REDESIGN.md §5.3）：注册页用——开关与 SMTP 就绪状态（不可用时不显示表单）
   let registrationEnabled = true;
   let registrationSmtpReady = false;
@@ -115,14 +123,19 @@ export async function handleSitePublic(ctx) {
   } catch {
     /* 表不存在等兜底：默认开放、SMTP 未就绪 */
   }
-  json(res, 200, {
+  const payload = {
     name: siteName(),
     version: VERSION,
     appealEmail: appealEmail(),
     // 前台成人内容展示策略（hide/badge/show），Home 卡片按它决定角标
     adultDisplay: String(process.env.SITE_ADULT_DISPLAY ?? 'hide'),
     registration: { enabled: registrationEnabled, smtpReady: registrationSmtpReady },
-  });
+  };
+  if (siteCache) {
+    siteCache.value = payload;
+    siteCache.at = Date.now();
+  }
+  json(res, 200, payload);
   return true;
 }
 
@@ -132,7 +145,7 @@ export async function handleSitePublic(ctx) {
  * ctx 字段契约见 docs/ARCHITECTURE.md「路由上下文注入」。
  */
 export async function handleSiteRoutes(ctx) {
-  const { path, req, res, url, q, logger, json, readBody, user, requireUser, requireAdmin } = ctx;
+  const { path, req, res, url, q, logger, json, readBody, user, requireUser, requireAdmin, invalidateListCache = null } = ctx;
 
   // BE 批（docs/WISHLIST-SITE-ONLY.md §4.4）：账号级同步（游戏库/愿望单）一律用该账号自己的 API Key；
   // 未配置或解密失败直接报错，**不回退**全局 STEAM_API_KEY（全局 key 只给系统级采集任务）。
@@ -237,6 +250,7 @@ export async function handleSiteRoutes(ctx) {
         // 补全目录类型（类型未知数靠 app_type；只挑缺失的，天然收敛）
         const types = await steamAccountsMod.backfillOwnedAppTypes(q, { steamId, apiKey, logger });
         const stats = await steamAccountsMod.ownedTypeStats(q, steamId);
+        invalidateListCache?.(); // DX 批：库同步后 owned 维度变化，前台列表缓存立即失效
         json(res, 200, { ...result, typeUnknown: stats.typeUnknown, typesChecked: types.checked, typesTyped: types.typed });
         return true;
       } catch (err) {
@@ -261,6 +275,7 @@ export async function handleSiteRoutes(ctx) {
           logger,
           log: { actor: 'self', userId: user.id, username: user.username, personaName: row.persona_name },
         });
+        invalidateListCache?.(); // DX 批：愿望单同步后 wishlist 维度变化，前台列表缓存立即失效
         json(res, 200, result);
         return true;
       } catch (err) {
