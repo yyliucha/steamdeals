@@ -140,8 +140,8 @@
 | **ED** | 🧪 测试基建：test-main 加文档路径忽略（纯 docs 提交不跑测试，避免夜班文档提交反复取消 CI） | 本条目正文 | 质检通过（2026-11-20，QA docs/QA-ED.md 第 1 轮 ✅） | ✅ 本轮已给 |
 | **EF** | 🐞 缺陷：18R 数据同步与筛选修复（元数据 cc=cn 锁国区 → 改 cc=us + 回填 + 前台 rating + Web/App 筛选） | [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §9 | 已发布 v2.27.5（2026-11-20；站点 7a3ac2b + App 358ebc5；app-v2.24.0 随本批） | ✅ 本轮已给 |
 | **EG** | 🐞 缺陷：通知角标已读后不消失（ABC 三场景） | [ANDROID-POLISH.md](ANDROID-POLISH.md) §EG | 已发布 v2.27.5（2026-11-20；站点 7eb5d4a + App 3458bce；app-v2.24.0 随本批） | ✅ 本轮已给 |
-| **EH** | ⚙️ 调整：同步逻辑去 cn（内容类：steam-status 状态/分级 + discovery 搜索改 cc=us；价格保持 cc=cn） | [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §10 | 待开发（2026-11-20 P1） | ✅ 本轮已给 |
-| **EI** | ⚙️ 调整：同步双区域配置（contentRegion=us 拿全量 / baseRegion=cn 价格本位币可配；国际化预留） | [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §11 | 待开发（2026-11-20 P1） | ✅ 本轮已给 |
+| **EH** | ⚙️ 调整：同步逻辑去 cn（内容类：steam-status 状态/分级 + discovery 搜索改 cc=us；价格保持 cc=cn） | [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §10 | 质检通过（2026-11-20，897476c；QA-EH-EI ✅） | ✅ 本轮已给 |
+| **EI** | ⚙️ 调整：同步双区域配置（contentRegion=us 拿全量 / baseRegion=cn 价格本位币可配；国际化预留） | [STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §11 | 质检通过（2026-11-20，897476c；QA-EH-EI ✅） | ✅ 本轮已给 |
 | **EJ** | ⚙️ 调整：昵称显示规则统一（有昵称显示昵称，无昵称显示用户名；Web + App） | [DISPLAY-NAME-RULE.md](DISPLAY-NAME-RULE.md) | 已发布 v2.27.7（2026-11-20，站点 f340d78 + release 提交见 git log；App app-v2.24.2 / 6254978；QA docs/QA-EJ.md ✅） | ✅ 本轮已给 |
 | **EL** | ⚙️ 调整：后台「添加/编辑」统一弹窗（IP 黑/白名单、站点通知、设置代理、申诉处理；原编号 EK，2026-11-20 编号撞车由所有者裁决改为 EL） | [ADMIN-EDIT-DIALOG.md](ADMIN-EDIT-DIALOG.md) | 质检通过（2026-11-20，实现 e0821f9；QA docs/QA-EL.md 第 1 轮 ✅） | ✅ 本轮已给 |
 | **EK** | 🐞 缺陷：App Release 同步资产下载走专用代理（有代理走代理、无代理直连 GitHub；代理超时 30s） | [APP-RELEASE-SYNC-PROXY.md](APP-RELEASE-SYNC-PROXY.md) | 质检通过（2026-11-20，实现 cc4fcf5；QA docs/QA-EK.md 第 1 轮 ✅） | ✅ 本轮已给 |
