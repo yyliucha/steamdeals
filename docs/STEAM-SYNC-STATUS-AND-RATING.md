@@ -375,7 +375,7 @@ export async function applySteamDetails(q, { appid, cnEntry, hkEntry = null, met
 且带 18+ 角标，取消恢复全部；③ 价格仍为国区口径（不变）；④ `npm test`（分段）+ `frontend:build` + `scan` 全绿；
 ⑤ 回填限速、可断点续跑。
 
-## 10. EH 同步逻辑去 cn（内容类链路，2026-11-20 立项，待开发）
+## 10. EH 同步逻辑去 cn（内容类链路，2026-11-20 立项，已实现待发版）
 
 **背景**：所有者 2026-11-20：「后续我们的同步逻辑，不要加 cn」。审计结论：
 - **必须保留 cn**：价格链路（`steam.js` 价格接口、`backfill` 价格、`sync steam-prices`）——国区报价是业务核心，
@@ -391,7 +391,7 @@ export async function applySteamDetails(q, { appid, cnEntry, hkEntry = null, met
 ② discovery 候选集包含国区不显示的游戏；③ **价格链路零改动**（`cc=cn` 保持不变，抽查价格仍国区）；
 ④ `npm test`（分段）+ `scan` 全绿；⑤ 日志注明区域。
 
-## 11. EI 同步双区域配置（内容统一美国 + 本位币可配置，2026-11-20 立项，待开发）
+## 11. EI 同步双区域配置（内容统一美国 + 本位币可配置，2026-11-20 立项，已实现待发版）
 
 **所有者需求（2026-11-20）**：「针对锁区的国家做设定——同步统一用美国，默认本位币是同步的金额；
 这样可以把数据都同步，还能把对应区域的价格也同步过来。」

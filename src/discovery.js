@@ -4,6 +4,7 @@
 import { fetchJson } from './http.js';
 import * as db from './store/pg.js';
 import { bestMatch } from './match.js';
+import { contentRegion, baseRegion } from './sync-regions.js';
 
 const SEARCH_URL = 'https://store.steampowered.com/api/search/results';
 
@@ -30,12 +31,15 @@ export async function runDiscoveryRound({ q, pages = 100, fallbackLimit = 100, l
   let matched = 0;
   let requests = 0;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // EH/EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §10/§11）：搜索走内容区
+  // （默认 us——国区商店不显示的游戏也能进 Deck 认证/好评率候选集；价格口径与此无关）。
+  const cc = contentRegion();
 
   // ① 翻页主路径
   for (let page = 1; page <= Math.max(1, Number(pages)); page += 1) {
     let rows = null;
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const { json } = await doFetch(`${SEARCH_URL}?sort_by=Reviews_DESC&count=50&start=${(page - 1) * 50}&cc=cn`, {});
+      const { json } = await doFetch(`${SEARCH_URL}?sort_by=Reviews_DESC&count=50&start=${(page - 1) * 50}&cc=${cc}`, {});
       requests += 1;
       if (Array.isArray(json?.items)) {
         rows = json.items;
@@ -83,7 +87,7 @@ export async function runDiscoveryRound({ q, pages = 100, fallbackLimit = 100, l
     const term = encodeURIComponent(rawTerm);
     let json = null;
     try {
-      ({ json } = await doFetch(`${SEARCH_URL}?term=${term}&cc=cn`, {}));
+      ({ json } = await doFetch(`${SEARCH_URL}?term=${term}&cc=${cc}`, {}));
       fallbackRequests += 1;
     } catch (err) {
       logger?.warn?.('discovery.fallback_failed', { appid: g.steam_appid, message: String(err?.message ?? err).slice(0, 120) });
@@ -115,7 +119,7 @@ export async function runDiscoveryRound({ q, pages = 100, fallbackLimit = 100, l
     await sleep(Number(rateMs));
   }
 
-  logger?.info?.('discovery.round_done', { pages: Number(pages), matched, fallbackRequests, fallbackMatched, requests });
+  logger?.info?.('discovery.round_done', { pages: Number(pages), matched, fallbackRequests, fallbackMatched, requests, contentRegion: cc });
   return { matched, fallbackRequests, fallbackMatched, requests };
 }
 
@@ -127,7 +131,7 @@ const BEHAVIOR_WEIGHTS = { detail: 2, price_history: 2, dlc: 2, buy_click: 4, wi
  * 候选排除已拥有/不感兴趣/成人（hide 口径），按 tags 预过滤 + 标签相似度与综合分混合打分，
  * 每条带 because（贡献最大的已拥有游戏名）。每用户实例级缓存 15 分钟由调用方处理。
  */
-export async function computeForYou(q, { userId, region = 'cn', limit = 20, tasteWeight = 50, scoreWeights = { discount: 40, review: 35, heat: 25 }, logger = null }) {
+export async function computeForYou(q, { userId, region = baseRegion(), limit = 20, tasteWeight = 50, scoreWeights = { discount: 40, review: 35, heat: 25 }, logger = null }) {
   const profile = (await q('select 1 from steam_accounts where user_id = $1 limit 1', [userId])).rows.length > 0;
   if (!profile) return { profile: false, games: [] };
 

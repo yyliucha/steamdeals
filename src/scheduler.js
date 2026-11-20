@@ -57,8 +57,8 @@ export function jobsFromEnv(env = process.env) {
     {
       name: 'steam-status',
       // 每天判定一次 Steam 同步状态 + 内容分级（docs/STEAM-SYNC-STATUS-AND-RATING.md）：
-      // 逐 appid 全量 appdetails（cc=cn 失败补 cc=hk），状态与分级共用同一次请求；
-      // 免费已由迁移一次性置位；steam_checked_at 作续跑游标，失败不写游标下轮重试；
+      // 逐 appid 全量 appdetails（EH/EI 批 §10/§11：内容区 cc=contentRegion，默认 us；失败补 cc=hk），
+      // 状态与分级共用同一次请求；免费已由迁移一次性置位；steam_checked_at 作续跑游标，失败不写游标下轮重试；
       // 归入 STEAM_HEAVY 与价格/热度/回填互斥串行；每款平均 2 请求，6000 款 ≈ 5 小时/轮（AB 批从 12000 下调）。
       args: ['steam-status', '--limit', String(num(env.STEAM_STATUS_LIMIT, 6000)), '--rate', String(num(env.STEAM_STATUS_RATE_MS, 1500))],
       intervalMin: num(env.STEAM_STATUS_INTERVAL_MIN, 1440),
@@ -105,10 +105,10 @@ export function jobsFromEnv(env = process.env) {
     },
     {
       name: 'rating-backfill',
-      // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：每天回填一批内容分级（cc=us 逐 appid，
-      // 国区商店隐藏成人内容 → adult_flag 全库仅约 20 个）。与价格/热度/回填共用 200 次/5 分钟
-      // 配额 → STEAM_HEAVY 互斥串行；候选自带收敛（required_age 已采到即不再选），全量播完
-      // 后日常增量由 steam-status 维护。429 收轮 exit 75，1 小时后自动重排续跑。
+      // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：每天回填一批内容分级（EI 批 §11：
+      // 内容区 cc=contentRegion，默认 us——国区商店隐藏成人内容 → adult_flag 全库仅约 20 个）。
+      // 与价格/热度/回填共用 200 次/5 分钟配额 → STEAM_HEAVY 互斥串行；候选自带收敛
+      // （required_age 已采到即不再选），全量播完后日常增量由 steam-status 维护。429 收轮 exit 75，1 小时后自动重排续跑。
       args: ['rating-backfill', '--limit', String(num(env.STEAM_RATING_BACKFILL_LIMIT, 5000)), '--batch', '30', '--rate', String(num(env.STEAM_RATING_BACKFILL_RATE_MS, 1500))],
       intervalMin: num(env.STEAM_RATING_BACKFILL_INTERVAL_MIN, 1440),
       initialDelaySec: num(env.STEAM_RATING_BACKFILL_INITIAL_DELAY_SEC, 14400),

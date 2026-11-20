@@ -25,6 +25,7 @@ import { createBackup, listBackups } from './backup.js';
 import { versionInfo } from './version.js';
 import { VERSION } from './settings.js';
 import * as settings from './settings.js';
+import { baseRegion } from './sync-regions.js';
 import { handleSetupRoutes } from './setup-routes.js';
 import { sessionCookie } from './session-cookie.js';
 import { parseAlignPage } from './align-query.js';
@@ -1493,7 +1494,8 @@ export function createApiServer({
         const env = process.env;
         const result = await computeForYou(q, {
           userId: user.id,
-          region: 'cn',
+          // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：前台查询默认 region 读本位币区域
+          region: baseRegion(),
           limit: 20,
           tasteWeight: Number(env.PERSONAL_TASTE_WEIGHT ?? 50),
           scoreWeights: {
@@ -1649,7 +1651,8 @@ export function createApiServer({
           excludeIds: normalizeIds(body?.guestFlags?.excludeIds),
         } : null;
         const result = await db.gameSearch(q, {
-          region: String(getInput('region') ?? 'cn').slice(0, 12),
+          // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：前台查询默认 region 读本位币区域
+          region: String(getInput('region') ?? baseRegion()).slice(0, 12),
           page,
           pageSize,
           keyword,
@@ -1695,10 +1698,13 @@ export function createApiServer({
       const byIdMatch = path.match(/^\/api\/games\/by-id\/(\d+)$/);
       if (byIdMatch && req.method === 'GET') {
         const id = Number(byIdMatch[1]);
-        const game = await db.gameDetail(q, { gameId: id, region: url.searchParams.get('region') ?? 'cn', userId: user?.id ?? null, adult: String(process.env.SITE_ADULT_DISPLAY ?? 'hide') });
+        // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：详情默认 region 读本位币区域；
+        // offers/series 跟随同一次请求的 region（原硬编码 'cn' 会与显式 region 参数打架）
+        const region = String(url.searchParams.get('region') ?? baseRegion()).slice(0, 12);
+        const game = await db.gameDetail(q, { gameId: id, region, userId: user?.id ?? null, adult: String(process.env.SITE_ADULT_DISPLAY ?? 'hide') });
         if (!game) return json(res, 404, { error: '没有该游戏' });
-        const offers = await db.offersOfGame(q, { gameId: game.id, region: 'cn' });
-        const series = await db.dailyMinSeries(q, { gameId: game.id, region: 'cn' });
+        const offers = await db.offersOfGame(q, { gameId: game.id, region });
+        const series = await db.dailyMinSeries(q, { gameId: game.id, region });
         // CL 批（docs/USER-ALERTS.md §3.1）：详情回显当前用户的到价提醒（游客 null）
         const watch = user ? await db.getUserWatch(q, { userId: user.id, gameId: game.id, region: 'cn' }) : null;
         if (user) await db.recordView(q, { userId: user.id, path: `/game/id/${id}`, appid: game.steam_appid ?? null });
@@ -1782,10 +1788,12 @@ export function createApiServer({
       if (gameMatch && req.method === 'GET') {
         const appid = Number(gameMatch[1]);
         // 单款查询：不走"列表前 500 名"，否则排在后面的游戏会 404（后台编辑曾因此失败）
-        const game = await db.gameDetail(q, { steamAppid: appid, region: url.searchParams.get('region') ?? 'cn', userId: user?.id ?? null, adult: String(process.env.SITE_ADULT_DISPLAY ?? 'hide') });
+        // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：详情默认 region 读本位币区域
+        const region = String(url.searchParams.get('region') ?? baseRegion()).slice(0, 12);
+        const game = await db.gameDetail(q, { steamAppid: appid, region, userId: user?.id ?? null, adult: String(process.env.SITE_ADULT_DISPLAY ?? 'hide') });
         if (!game) return json(res, 404, { error: '没有该游戏' });
         const offers = await db.regionOffers(q, { steamAppid: appid });
-        const series = await db.dailyMinSeries(q, { gameId: game.id, region: 'cn' });
+        const series = await db.dailyMinSeries(q, { gameId: game.id, region });
         // BP 批（docs/GAME-DLC.md §3.3）：详情只带摘要（DLC 上千时列表走单独接口，详情不拖慢）
         const dlc = await db.dlcSummary(q, { steamAppid: appid });
         // CL 批（docs/USER-ALERTS.md §3.1）：详情回显当前用户的到价提醒（游客 null）
@@ -2081,7 +2089,8 @@ export function createApiServer({
       // ---- 管理员：到价提醒（CL 批 docs/USER-ALERTS.md §3.2：全站清单只读+清理；旧加/删兼容保留）----
       if (path === '/api/admin/watchlist' && req.method === 'GET') {
         if (!requireAdmin()) return;
-        const region = String(url.searchParams.get('region') ?? 'cn');
+        // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：默认 region 读本位币区域
+        const region = String(url.searchParams.get('region') ?? baseRegion());
         const page = Math.max(1, Number(url.searchParams.get('page') ?? 1) || 1);
         const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize') ?? 20) || 20, 1), 200);
         const username = String(url.searchParams.get('username') ?? '').trim() || null;
@@ -2394,7 +2403,8 @@ export function createApiServer({
         const game = await db.gameDetail(q, { steamAppid: appid });
         if (!game) return json(res, 404, { error: '没有该游戏' });
         const cutoff = Date.now() - days * 86400000;
-        const series = (await db.dailyMinSeries(q, { gameId: game.id, region: 'cn' })).filter(
+        // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：CSV 区域跟随本位币区
+        const series = (await db.dailyMinSeries(q, { gameId: game.id, region: baseRegion() })).filter(
           (p) => new Date(p.day).getTime() >= cutoff,
         );
         const lines = ['date,price_cents,price,currency'];

@@ -391,43 +391,100 @@ test('runSteamStatusRound：取 .json、无条目不写库、4xx 继续、429 �
   }
 });
 
-test('AC-2/AC8：判定 ok（国区有价）→ 顺带写首次 offer；锁区/无价/免费不写价', async () => {
+test('AC-2/AC8：判定 ok（本位币区有价）且显式传 price → 顺带写首次 offer；锁区/无价/免费不写价', async () => {
   const store = await openStore('pglite:', {});
   await db.migrate(store);
   const q = (sql, p) => store.query(sql, p);
   try {
     await q("insert into games (steam_appid, name, is_free) values (6001, '有价A', false), (6002, '锁区B', false), (6003, '无价C', false), (6004, '免费D', true)");
-    // 有价 → 状态 ok + offer 落库
+    // 有价 → 状态 ok + offer 落库（EI 批：调用方显式传 price={region,currency} 说明价格口径）
     const metaOk = normalizeOfficial(6001, { name: '有价A', price_overview: { final: 6534, initial: 9900, currency: 'CNY', discount_percent: 34 } });
-    const okOut = await applySteamDetails(q, { appid: 6001, cnEntry: entryFromMeta(metaOk), meta: metaOk });
+    const price = { region: 'cn', currency: 'CNY' };
+    const okOut = await applySteamDetails(q, { appid: 6001, cnEntry: entryFromMeta(metaOk), meta: metaOk, price });
     assert.equal(okOut.status, 'ok');
-    assert.equal(okOut.offerWritten, true, 'ok 顺带写价');
+    assert.equal(okOut.offerWritten, true, 'ok 且显式 price 顺带写价');
     const offer = (await q("select price_cents, original_cents, discount_pct, currency, region from offers o join games g on g.id = o.game_id where g.steam_appid = 6001")).rows[0];
-    assert.equal(offer.price_cents, 6534, '价格用国区 final');
+    assert.equal(offer.price_cents, 6534, '价格用本位币 final');
     assert.equal(offer.original_cents, 9900);
     assert.equal(offer.discount_pct, 34);
     assert.equal(offer.currency, 'CNY');
     assert.equal(offer.region, 'cn');
-    // 锁区（cn 无条目、hk 有价）→ 状态 region_locked，不写价
+    // 锁区（内容区无条目、hk 有价）→ 状态 region_locked，不写价
     const metaHk = normalizeOfficial(6002, { name: '锁区B', price_overview: { final: 9900, currency: 'CNY' } });
-    const lockedOut = await applySteamDetails(q, { appid: 6002, cnEntry: null, hkEntry: entryFromMeta(metaHk), meta: metaHk });
+    const lockedOut = await applySteamDetails(q, { appid: 6002, cnEntry: null, hkEntry: entryFromMeta(metaHk), meta: metaHk, price });
     assert.equal(lockedOut.status, 'region_locked');
     assert.equal(lockedOut.offerWritten, false, '锁区不写价');
     // ok 但无 price_overview（字段缺失）→ 不写价
-    const noPriceOut = await applySteamDetails(q, { appid: 6003, cnEntry: { success: true, data: { price_overview: { final: 1 } } }, meta: normalizeOfficial(6003, { name: '无价C' }) });
+    const noPriceOut = await applySteamDetails(q, { appid: 6003, cnEntry: { success: true, data: { price_overview: { final: 1 } } }, meta: normalizeOfficial(6003, { name: '无价C' }), price });
     assert.equal(noPriceOut.status, 'ok');
     assert.equal(noPriceOut.offerWritten, false, '没有价格信息不写价');
     // 免费 → 状态 free，不写价
-    const freeOut = await applySteamDetails(q, { appid: 6004, cnEntry: { success: true, data: { is_free: true } }, meta: normalizeOfficial(6004, { name: '免费D', is_free: true }) });
+    const freeOut = await applySteamDetails(q, { appid: 6004, cnEntry: { success: true, data: { is_free: true } }, meta: normalizeOfficial(6004, { name: '免费D', is_free: true }), price });
     assert.equal(freeOut.status, 'free');
     assert.equal(freeOut.offerWritten, false);
     // 只写了 6001 一条 offer
     const total = (await q('select count(*)::int as n from offers')).rows[0].n;
     assert.equal(total, 1, '只有 ok+有价的游戏写了 offer');
     // 幂等：再跑一次不重复插入（fingerprint 相同 → unchanged）
-    await applySteamDetails(q, { appid: 6001, cnEntry: entryFromMeta(metaOk), meta: metaOk });
+    await applySteamDetails(q, { appid: 6001, cnEntry: entryFromMeta(metaOk), meta: metaOk, price });
     assert.equal((await q('select count(*)::int as n from offers')).rows[0].n, 1, '重复判定不重复写价');
   } finally {
+    await store.close();
+  }
+});
+
+// ---------------------------------------------------------------- EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）
+
+test('EI：默认配置下 steam-status 请求内容区 cc=us，且不把内容区价格写进本位币 offer', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  try {
+    await q("insert into games (steam_appid, name, is_free) values (7001,'美区有价',false)");
+    const seen = [];
+    const fakeFetch = async (url) => {
+      seen.push(url);
+      // 内容区（us）有价：USD 口径——绝不能作为 cn 报价落库（默认 content us ≠ base cn）
+      return { json: { 7001: { success: true, data: { name: '美区有价', price_overview: { final: 5999, initial: 5999, currency: 'USD', discount_percent: 0 } } } } };
+    };
+    const r = await runSteamStatusRound(q, { limit: 1, rateMs: 0, fetchJsonImpl: fakeFetch });
+    assert.ok(seen[0]?.includes('cc=us'), `默认内容区请求应带 cc=us，实际 ${seen[0]}`);
+    assert.equal(r.wrote, 1, '状态照常写入（内容区口径）');
+    assert.equal(r.offers, 0, 'content≠base 时不写价——美元价混进国区 offer 即事故');
+    assert.equal((await q('select count(*)::int as n from offers')).rows[0].n, 0, 'offers 表零写入');
+  } finally {
+    await store.close();
+  }
+});
+
+test('EI：content=base（如全站美区 USD）时 steam-status 顺带写本位币 offer', async () => {
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  const prevContent = process.env.SYNC_CONTENT_REGION;
+  const prevBase = process.env.SITE_BASE_REGION;
+  const prevCurrency = process.env.SITE_BASE_CURRENCY;
+  process.env.SYNC_CONTENT_REGION = 'us';
+  process.env.SITE_BASE_REGION = 'us';
+  process.env.SITE_BASE_CURRENCY = 'USD';
+  try {
+    await q("insert into games (steam_appid, name, is_free) values (7101,'美区有价B',false)");
+    const seen = [];
+    const fakeFetch = async (url) => {
+      seen.push(url);
+      return { json: { 7101: { success: true, data: { name: '美区有价B', price_overview: { final: 1999, initial: 2999, currency: 'USD', discount_percent: 33 } } } } };
+    };
+    const r = await runSteamStatusRound(q, { limit: 1, rateMs: 0, fetchJsonImpl: fakeFetch });
+    assert.ok(seen[0]?.includes('cc=us'), `请求应带 cc=us，实际 ${seen[0]}`);
+    assert.equal(r.offers, 1, 'content=base 时顺带写本位币 offer（AC-2 特性保留）');
+    const offer = (await q('select price_cents, currency, region from offers')).rows[0];
+    assert.equal(offer.region, 'us', 'offer region 跟随 baseRegion');
+    assert.equal(offer.currency, 'USD', 'offer currency 跟随 baseCurrency');
+    assert.equal(offer.price_cents, 1999);
+  } finally {
+    if (prevContent === undefined) delete process.env.SYNC_CONTENT_REGION; else process.env.SYNC_CONTENT_REGION = prevContent;
+    if (prevBase === undefined) delete process.env.SITE_BASE_REGION; else process.env.SITE_BASE_REGION = prevBase;
+    if (prevCurrency === undefined) delete process.env.SITE_BASE_CURRENCY; else process.env.SITE_BASE_CURRENCY = prevCurrency;
     await store.close();
   }
 });

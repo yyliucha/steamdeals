@@ -20,8 +20,8 @@ async function fresh() {
   return { store, q };
 }
 
-test('设置定义完整：59 项、7 个密钥、关键分组都在', () => {
-  assert.equal(settings.SETTINGS.length, 92, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项 + DR app.syncIntervalMin 1 项');
+test('设置定义完整：95 项、7 个密钥、关键分组都在', () => {
+  assert.equal(settings.SETTINGS.length, 95, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项 + DR app.syncIntervalMin 1 项 + EI 同步区域 3 项');
   assert.equal(settings.SETTINGS.filter((d) => d.secret).length, 7);
   const appSync = settings.SETTINGS.find((d) => d.key === 'app.syncIntervalMin');
   assert.ok(appSync, 'DR 批：app.syncIntervalMin 设置项存在');
@@ -53,6 +53,19 @@ test('设置定义完整：59 项、7 个密钥、关键分组都在', () => {
     assert.ok(keys.includes(key), `缺少 ${key}`);
   }
   assert.equal(new Set(keys).size, keys.length, 'key 不能重复');
+  // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：双区域三项——内容默认 us、本位币默认 cn/CNY
+  const contentRegion = settings.SETTINGS.find((d) => d.key === 'sync.contentRegion');
+  assert.ok(contentRegion, 'EI：sync.contentRegion 设置项存在');
+  assert.equal(contentRegion.default, 'us', 'EI：内容采集区域默认 us（绕过国区商店隐藏）');
+  assert.equal(contentRegion.env, 'SYNC_CONTENT_REGION', 'env 兜底 SYNC_CONTENT_REGION');
+  const baseRegion = settings.SETTINGS.find((d) => d.key === 'site.baseRegion');
+  assert.ok(baseRegion, 'EI：site.baseRegion 设置项存在');
+  assert.equal(baseRegion.default, 'cn', 'EI：本位币区域默认 cn（国区报价是业务核心）');
+  assert.equal(baseRegion.env, 'SITE_BASE_REGION', 'env 兜底 SITE_BASE_REGION');
+  const baseCurrency = settings.SETTINGS.find((d) => d.key === 'site.baseCurrency');
+  assert.ok(baseCurrency, 'EI：site.baseCurrency 设置项存在');
+  assert.equal(baseCurrency.default, 'CNY', 'EI：本位币货币默认 CNY');
+  assert.equal(baseCurrency.env, 'SITE_BASE_CURRENCY', 'env 兜底 SITE_BASE_CURRENCY');
   const jobFailure = settings.SETTINGS.find((d) => d.key === 'alerts.jobFailureEmail');
   assert.equal(jobFailure.type, 'bool', '任务失败邮件告警是布尔开关');
   assert.equal(jobFailure.default, false, 'CO-1/A5：默认关闭，不新增 SMTP 依赖');
@@ -72,6 +85,15 @@ test('设置定义完整：59 项、7 个密钥、关键分组都在', () => {
   const ssd = settings.SETTINGS.find((d) => d.key === 'steamStatus.initialDelaySec');
   assert.equal(ssd.default, 600, 'steam-status 首轮延迟默认 600 秒（Y 批并入 AB）');
   assert.equal(ssd.env, 'STEAM_STATUS_INITIAL_DELAY_SEC');
+});
+
+test('EI 批：区域/货币设置校验归一化（区域两字母小写、货币三字母大写）', () => {
+  assert.deepEqual(settings.validateSetting(settings.SETTING_MAP.get('sync.contentRegion'), ' US '), { ok: true, value: 'us' });
+  assert.deepEqual(settings.validateSetting(settings.SETTING_MAP.get('site.baseRegion'), 'CN'), { ok: true, value: 'cn' });
+  assert.deepEqual(settings.validateSetting(settings.SETTING_MAP.get('site.baseCurrency'), ' usd '), { ok: true, value: 'USD' });
+  assert.equal(settings.validateSetting(settings.SETTING_MAP.get('sync.contentRegion'), 'usa').ok, false, '非法区域码拒绝');
+  assert.equal(settings.validateSetting(settings.SETTING_MAP.get('site.baseRegion'), 'c1').ok, false, '非字母区域码拒绝');
+  assert.equal(settings.validateSetting(settings.SETTING_MAP.get('site.baseCurrency'), 'CN').ok, false, '非法货币码拒绝');
 });
 
 test('默认值 + 密钥加密：库里不存明文，公开接口只给 hasValue', async () => {
@@ -285,13 +307,19 @@ test('CQ meta：sources/site/advanced 全有 section+tier；6 张平台卡每卡
   }
   const sections = settings.SETTINGS_SECTIONS;
   const src = sections.filter((s) => s.group === 'sources');
-  assert.equal(src.length, 6, '6 张平台卡');
-  assert.deepEqual(src.map((s) => s.id), ['global', 'steam', 'sonkwo', 'itad', 'gog-humble', 'discovery'], '卡序（全局/Steam/杉果/ITAD/GOG+Humble/发现与热度）');
+  assert.equal(src.length, 7, '6 张平台卡 + 1 张同步区域卡（EI 批）');
+  assert.deepEqual(src.map((s) => s.id), ['global', 'steam', 'sonkwo', 'itad', 'gog-humble', 'discovery', 'sync-region'], '卡序（全局/Steam/杉果/ITAD/GOG+Humble/发现与热度/同步区域）');
   for (const s of src) {
     const prim = byGroup.sources.filter((d) => d.section === s.id && d.tier !== 'advanced');
     const rows = s.compact ? Math.ceil(prim.length / s.compact) : prim.length;
     assert.ok(rows <= 3, `${s.id} 常用 ${rows} 行 > 3（验收：每卡常用 ≤3 项）`);
   }
+  // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：同步区域卡跨组 keys——
+  // 三项一起展示（内容区 + 本位币区域/货币），site 组字段进卡靠显式 keys
+  const syncRegion = src.find((s) => s.id === 'sync-region');
+  assert.deepEqual(syncRegion.keys, ['sync.contentRegion', 'site.baseRegion', 'site.baseCurrency'], '同步区域卡三项');
+  assert.equal(settings.SETTING_MAP.get('site.baseRegion').section, 'sync-region', 'site.baseRegion 展示归同步区域卡');
+  assert.equal(settings.SETTING_MAP.get('site.baseCurrency').section, 'sync-region', 'site.baseCurrency 展示归同步区域卡');
   const adv = sections.filter((s) => s.group === 'advanced');
   assert.equal(adv.length, 4, '高级 4 折叠组');
   assert.deepEqual(adv.map((s) => s.id), ['schedule', 'backup', 'cache', 'timezone'], '调度与熔断/备份与日志/缓存与图片/时区与显示');

@@ -30,6 +30,7 @@ import {
 import { bestMatchMulti } from './match.js';
 import { renderCompare, groupOffersByRegion } from './compare.js';
 import { extractAppId, fetchMetadata, normalizeOfficial } from './adapters/steam-meta.js';
+import { contentRegion, baseRegion, baseCurrency, regionContext } from './sync-regions.js';
 import { describeProxy, decideProxy, parseProxy, redactProxy } from './proxy.js';
 import { passwordPolicyError } from './password-policy.js';
 import { startStaticServer } from './serve.js';
@@ -356,13 +357,13 @@ async function cmdSyncSteamPrices() {
     return;
   }
 
-  logger.info('sync.start', { platform: 'steam', mode: 'prices', appids: appids.length });
+  logger.info('sync.start', { platform: 'steam', mode: 'prices', appids: appids.length, regions: regionContext() });
   const runId_ = await withStore((store) => db.startFetchRun((sql, p) => store.query(sql, p), steam.code));
   try {
     const result = await syncPrices({
       appids,
       logger,
-      region: 'cn',
+      region: baseRegion(),
       batchSize: 30,
       rateLimitMs: 1600,
       log: (m) => logger.debug('sync.progress', { msg: m }),
@@ -477,9 +478,9 @@ async function cmdSyncSteamAll() {
     concurrency,
     async (appid) => {
       try {
-        // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：本路径用 priceOverview 写国区报价，
-        // 必须保持 cc=cn（美区请求会把美元价写进国区 offer）
-        const one = await fetchMetadata([appid], { backend, logger, cc: 'cn' });
+        // EF/EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9/§11）：本路径用 priceOverview 写本位币报价，
+        // 必须保持 cc=baseRegion（默认 cn；用内容区会把美元价写进国区 offer）
+        const one = await fetchMetadata([appid], { backend, logger, cc: baseRegion() });
         if (one.items?.length) items.push(...one.items);
       } catch (err) {
         const status = Number(err.status) || 0;
@@ -524,8 +525,8 @@ async function cmdSyncSteamAll() {
           steamAppid: item.steamAppid,
           title: item.nameZh ?? item.nameEn ?? String(item.steamAppid),
           productType: 'official_direct',
-          region: 'cn',
-          currency: item.priceOverview.currency ?? 'CNY',
+          region: baseRegion(),
+          currency: item.priceOverview.currency ?? baseCurrency(),
           priceCents: Math.round(item.priceOverview.final),
           originalCents: Math.round(item.priceOverview.initial ?? item.priceOverview.final),
           discountPct: Number(item.priceOverview.discountPercent ?? 0),
@@ -543,7 +544,7 @@ async function cmdSyncSteamAll() {
       ingestOffers(store, { platform: { code: 'steam', name: 'Steam 国区', kind: 'official' }, offers, logger }),
     );
     const dlcCount = items.filter((i) => i.appType === 'dlc').length;
-    logger.info('sync.steamall.done', { appids: appids.length, items: items.length, dlc: dlcCount, described, priced, ...stats });
+    logger.info('sync.steamall.done', { appids: appids.length, items: items.length, dlc: dlcCount, described, priced, regions: regionContext(), ...stats });
     console.log(`完成：${items.length} 条元数据（其中 DLC ${dlcCount} 款；说明 ${described} 条）、${priced} 条 Steam 价格（新增 ${stats.inserted}）`);
     syncNote = `元数据 ${items.length} 条（说明 ${described}）、Steam 价格 ${priced} 条（新增 ${stats.inserted}）`;
   } else if (!items.length) {
@@ -2229,10 +2230,10 @@ async function cmdBackfill() {
       for (const appid of missed.slice(0, fallbackMax)) {
         if (partial) break;
         try {
-          // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：回填的价格以国区口径为准
-          // （mergePriceOffers/applySteamDetails 会把 priceOverview 写进国区 offer），
-          // 这里保持 cc=cn；成人描述符回填由 rating-backfill 命令负责（cc=us）。
-          const one = await fetchMetadata([appid], { backend: 'official', logger, cc: 'cn' });
+          // EF/EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9/§11）：回填的价格以本位币口径为准
+          // （mergePriceOffers/applySteamDetails 会把 priceOverview 写进本位币 offer），
+          // 这里保持 cc=baseRegion；成人描述符回填由 rating-backfill 命令负责（内容区）。
+          const one = await fetchMetadata([appid], { backend: 'official', logger, cc: baseRegion() });
           if (one.items?.length) items.push(...one.items);
           fallback += 1;
         } catch (err) {
@@ -2256,13 +2257,14 @@ async function cmdBackfill() {
     let fallbackOffers = [];
     if (missing.length) {
       try {
-        const got = await syncPrices({ appids: missing, logger, region: 'cn', batchSize: 50, rateLimitMs: 2000 });
+        const got = await syncPrices({ appids: missing, logger, region: baseRegion(), batchSize: 50, rateLimitMs: 2000 });
         fallbackOffers = got.offers;
         logger.info('backfill.price_fallback', {
           appids: missing.length,
           offers: fallbackOffers.length,
           skipped: got.skipped.length,
           requests: got.requests,
+          regions: regionContext(),
         });
       } catch (err) {
         if (err.status === 403 || err.status === 429) {
@@ -2407,8 +2409,8 @@ async function cmdRename() {
     if (fallbackMax > 0) {
       for (const appid of missed.slice(0, fallbackMax)) {
         try {
-          // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：重写名字只写元数据、不写价格，
-          // 保持默认 cc=us——国区商店隐藏成人游戏，us 才能拿到成人游戏的中文名。
+          // EF/EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9/§11）：重写名字只写元数据、不写价格，
+          // 走默认内容区（sync.contentRegion，默认 us）——国区商店隐藏成人游戏，us 才能拿到成人游戏的中文名。
           const one = await fetchMetadata([appid], { backend: 'official', logger });
           if (one.items?.length) items.push(...one.items);
           fallback += 1;
@@ -2448,8 +2450,9 @@ async function cmdRename() {
 /**
  * EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：内容分级回填。
  * 根因：cc=cn 的 appdetails 国区商店隐藏成人内容 → content_descriptors 采不到 → 全库
- * adult_flag 仅约 20 个。本命令逐 appid 用 cc=us 重采 content_descriptors / required_age /
- * age_ratings，只写分级、不写 steam_status、不写价格（国区价格口径不受影响）。
+ * adult_flag 仅约 20 个。本命令逐 appid 用内容区（EI 批 §11：sync.contentRegion，默认 us）
+ * 重采 content_descriptors / required_age / age_ratings，只写分级、不写 steam_status、
+ * 不写价格（本位币价格口径不受影响）。
  * 限速 ≥1s/请求；撞 429 立即收轮（exit 75，调度器 1 小时后重排）；高嫌疑优先；
  * backfill_at 1 天冷却 + required_age 已采到即收敛 → 可断点续跑。
  * 开工前 / 收工后各记一次 adult/mature 计数（验收①：steam.meta.backfill_before/done）。
@@ -2671,8 +2674,9 @@ async function cmdHeat() {
 
 /**
  * Steam 同步状态 + 内容分级（docs/STEAM-SYNC-STATUS-AND-RATING.md + AB 批 docs/STEAM-STATUS-FIX.md）：
- * 逐 appid 请求全量 appdetails（cc=cn；success:false 时补一次 cc=hk 判定锁区），
- * 状态判定与分级解析共用同一次响应；steam_checked_at 作续跑游标，失败不写游标下轮重试。
+ * 逐 appid 请求全量 appdetails（EH/EI 批 §10/§11：cc=contentRegion，默认 us；success:false 时
+ * 补一次 cc=hk 判定锁区），状态判定与分级解析共用同一次响应；steam_checked_at 作续跑游标，
+ * 失败不写游标下轮重试。
  * AB 批：取值 .json、写入不可静默（wrote 只计真写入）、限速按每请求、429 立即收轮、整轮复用连接。
  */
 async function cmdSteamStatus() {
@@ -2697,7 +2701,7 @@ async function cmdSteamStatus() {
     }),
   );
   const { wrote, skipped, failed, requests, counts, offers, dlcWritten, dlcFill } = result;
-  logger.info('steam-status.done', { wrote, skipped, failed, requests, offers, dlcWritten, dlcFill, ...counts, elapsedMs: Date.now() - startedMs });
+  logger.info('steam-status.done', { wrote, skipped, failed, requests, offers, dlcWritten, dlcFill, regions: regionContext(), ...counts, elapsedMs: Date.now() - startedMs });
   console.log(
     `完成：写入 ${wrote} 款，跳过 ${skipped}，失败 ${failed}，顺带写价 ${offers} 款，写 DLC 归属 ${dlcWritten} 款，补 DLC 明细 ${dlcFill?.dlcs ?? 0} 条（${dlcFill?.batches ?? 0} 批），分布 ${JSON.stringify(counts)}${result.aborted429 ? '（429 提前收轮）' : ''}`,
   );
@@ -3172,14 +3176,14 @@ async function main() {
                        --limit 200000 --batch 100 --sleep 3000 --fallback 10（回退数设 0 关闭单条回退）
   rename               存量修复：把目录导入留下的英文名换成中文名（GetItems schinese）
                        --limit 200000 --batch 100 --sleep 1500 --fallback 10（无简中的行保持英文）
-  rating-backfill      内容分级回填：逐 appid 用 cc=us 重采 content_descriptors/required_age/age_ratings
+  rating-backfill      内容分级回填：逐 appid 用内容区（sync.contentRegion，默认 us）重采 content_descriptors/required_age/age_ratings
                        （EF 批 §9：国区商店隐藏成人内容，cc=cn 采不到 → adult_flag 全库仅约 20 个）
                        --limit 200000 --batch 30 --rate 1500（限速 ≥1s；429 收轮 exit 75；断点续跑）
   search-tokens        派生搜索 token 重建：增量（token 空/未生成/名字已变更，--limit 50000 每轮）
                        --full 全量重建（19.8 万行预算内完成；纯本地计算，无 Steam 请求）
   heat                 热度回填：评测数 + 发行日期（逐 appid 请求，约 1.7s/款）
                        --limit 200000 --sleep 1700（按 heat_at 为 null 自动续跑；全量约 90 小时，可分多周跑）
-  steam-status         Steam 同步状态判定 + 内容分级（逐 appid 全量 appdetails，cc=cn 失败补 cc=hk）
+  steam-status         Steam 同步状态判定 + 内容分级（逐 appid 全量 appdetails，内容区失败补 cc=hk）
                        --limit 200000 --batch 30 --rate 1500（steam_checked_at 作续跑游标；免费已由迁移置位）
   prune                定期清理：访问记录/采集与任务记录/验证码/Steam 账号日志
                        --visitor-days 180 --run-days 90 --email-days 7 --steam-days 180

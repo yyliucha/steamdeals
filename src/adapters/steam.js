@@ -1,5 +1,6 @@
 import { fetchJson, sleep } from '../http.js';
 import { redactUrl } from '../log.js';
+import { baseRegion, baseCurrency } from '../sync-regions.js';
 
 // 一平台一个适配器，统一吐 RawOffer：
 // { platformCode, platformProductId, steamAppid, title, productType, region,
@@ -8,8 +9,15 @@ export const descriptor = {
   code: 'steam',
   name: 'Steam 国区',
   kind: 'official',
-  defaultRegion: 'cn',
-  currency: 'CNY',
+  // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：价格口径读本位币区域配置
+  // （默认 cn/CNY）。用 getter 每次求值：settings 水合/保存后热加载，
+  // 不锁模块加载时的旧值（价格链路零改动，切 site.baseRegion 即切换口径）。
+  get defaultRegion() {
+    return baseRegion();
+  },
+  get currency() {
+    return baseCurrency();
+  },
   buyUrlBase: 'https://store.steampowered.com/app/',
 };
 

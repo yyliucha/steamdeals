@@ -11,6 +11,7 @@
 import { fetchJson } from '../http.js';
 import { failFields } from '../log.js';
 import { formatDayUtc } from '../format.js';
+import { contentRegion } from '../sync-regions.js';
 
 // Steam 官方分类 id → 中文名。只收录确定的那几个，未知 id 原样保留为 genre:<id>，
 // 宁可显示得少，也不瞎猜名字（Steam 的分类 id 表不是公开稳定的文档）。
@@ -202,12 +203,13 @@ export async function probeOfficial({ fetchImpl = globalThis.fetch, logger = nul
   }
 }
 
-async function fetchOfficial(appids, { logger, fetchImpl, cc = 'us' }) {
+async function fetchOfficial(appids, { logger, fetchImpl, cc = contentRegion() }) {
   const items = [];
   // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：默认 cc=us——国区商店隐藏成人内容，
   // cc=cn 会采不到 content_descriptors；元数据（名字/分级）以美区为准，l=schinese 保留中文名。
-  // 价格口径不在这里决定：需要国区 price_overview 的调用方（backfill/sync steamall）
-  // 显式传 cc='cn'，否则会把美元价写进国区 offer。
+  // EI 批（§11）：默认区域改为读 sync.contentRegion（settings 可改，仍默认 us）；
+  // 价格口径不在这里决定：需要本位币 price_overview 的调用方（backfill/sync steamall）
+  // 显式传 cc=baseRegion，否则会把内容区货币价写进本位币 offer。
   // 注意：appdetails 一次只能查一个 appid，传逗号列表会返回 400（实测）
   for (const appid of appids) {
     const url = `${OFFICIAL_DETAILS}?appids=${appid}&cc=${cc}&l=schinese`;
@@ -247,9 +249,10 @@ async function fetchSteamcmd(appids, { logger, fetchImpl }) {
 /**
  * 取元数据。backend: 'auto' | 'official' | 'steamcmd'
  * auto 会先探官方，不通则回落镜像（并记录实际后端，便于排障）。
- * cc 只对 official 生效（EF 批默认 'us'；价格口径调用方显式传 'cn'）。
+ * cc 只对 official 生效：默认读 sync.contentRegion（EI 批 §11，默认 us——国区商店隐藏
+ * 成人/锁区内容，美区才能拿全量）；价格口径调用方（backfill/sync steamall）显式传 cc=baseRegion。
  */
-export async function fetchMetadata(appids, { backend = 'auto', logger = null, fetchImpl = null, cc = 'us' } = {}) {
+export async function fetchMetadata(appids, { backend = 'auto', logger = null, fetchImpl = null, cc = contentRegion() } = {}) {
   const unique = [...new Set((appids ?? []).map(Number).filter((n) => Number.isFinite(n) && n > 0))];
   if (!unique.length) return { backend: null, items: [] };
 

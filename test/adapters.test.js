@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildAppDetailsUrl, parseAppDetails, syncPrices, chunk } from '../src/adapters/steam.js';
+import { buildAppDetailsUrl, parseAppDetails, syncPrices, chunk, descriptor } from '../src/adapters/steam.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/steam-appdetails.json', import.meta.url), 'utf8'));
 
@@ -71,4 +71,33 @@ test('syncPrices 走批量请求、去重、把失败项归入 skipped（无网�
   assert.equal(result.offers.length, 2);
   assert.equal(result.skipped.length, 2);
   assert.ok(result.bytes > 0);
+});
+
+test('EI 批：描述符 getter 每次求值跟随 env（默认 cn/CNY；切 us/USD 后 URL 与报价跟随）', () => {
+  const prevRegion = process.env.SITE_BASE_REGION;
+  const prevCurrency = process.env.SITE_BASE_CURRENCY;
+  try {
+    delete process.env.SITE_BASE_REGION;
+    delete process.env.SITE_BASE_CURRENCY;
+    assert.equal(descriptor.defaultRegion, 'cn', '默认本位币区域 cn（国区报价是业务核心）');
+    assert.equal(descriptor.currency, 'CNY', '默认本位币货币 CNY');
+    const defaultUrl = new URL(buildAppDetailsUrl([730]));
+    assert.equal(defaultUrl.searchParams.get('cc'), 'cn', 'buildAppDetailsUrl 默认 cc 跟随 baseRegion');
+
+    // EI 验收②：切 site.baseRegion=us + baseCurrency=USD → 价格同步美区且 USD（env 即 settings 水合值）
+    process.env.SITE_BASE_REGION = 'us';
+    process.env.SITE_BASE_CURRENCY = 'usd';
+    assert.equal(descriptor.defaultRegion, 'us', 'getter 热加载：区域切美区立即生效');
+    assert.equal(descriptor.currency, 'USD', '货币归一化大写');
+    const usUrl = new URL(buildAppDetailsUrl([730]));
+    assert.equal(usUrl.searchParams.get('cc'), 'us', '切配置后 cc=us');
+    const { offers } = parseAppDetails(fixture, {});
+    assert.ok(offers.length > 0);
+    assert.equal(offers[0].region, 'us', '解析默认 region 跟随 baseRegion');
+    // 夹具响应里带的是 CNY（currency 以 Steam 响应为准，descriptor.currency 只作兜底）
+    assert.equal(offers[0].currency, 'CNY', '响应自带 currency 优先');
+  } finally {
+    if (prevRegion === undefined) delete process.env.SITE_BASE_REGION; else process.env.SITE_BASE_REGION = prevRegion;
+    if (prevCurrency === undefined) delete process.env.SITE_BASE_CURRENCY; else process.env.SITE_BASE_CURRENCY = prevCurrency;
+  }
 });

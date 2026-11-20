@@ -163,8 +163,30 @@ test('EF 批：official 请求默认 cc=us（成人内容国区采不到），�
 
   seen.length = 0;
   await fetchMetadata([7001], { backend: 'official', fetchImpl, cc: 'cn' });
-  assert.match(seen[0], /cc=cn/, '显式 cc=cn：backfill/sync steamall 的价格口径调用点保持国区价');
+  assert.match(seen[0], /cc=cn/, '显式 cc=cn：backfill/sync steamall 的价格口径调用点保持本位币价');
   assert.match(seen[0], /l=schinese/, 'l=schinese 在 cc 覆盖时同样保留');
+});
+
+test('EI 批：默认 cc 读 sync.contentRegion（env 覆盖后跟随）', async () => {
+  const prev = process.env.SYNC_CONTENT_REGION;
+  process.env.SYNC_CONTENT_REGION = 'eu';
+  try {
+    const seen = [];
+    const fetchImpl = routes({
+      'api/appdetails': (url) => {
+        seen.push(url);
+        const appid = (url.match(/appids=(\d+)/) ?? [])[1] ?? '1';
+        return { [appid]: { success: true, data: { type: 'game', name: 'X' } } };
+      },
+      'api.steamcmd.net': steamcmd,
+    });
+    await fetchMetadata([7001], { backend: 'official', fetchImpl });
+    assert.match(seen[0], /cc=eu/, 'env SYNC_CONTENT_REGION=eu → 请求 cc=eu（设置热加载后下一轮生效）');
+    assert.match(seen[0], /l=schinese/, 'l=schinese 不随区域变化');
+  } finally {
+    if (prev === undefined) delete process.env.SYNC_CONTENT_REGION;
+    else process.env.SYNC_CONTENT_REGION = prev;
+  }
 });
 
 test('backend 可强制指定，且会去重', async () => {

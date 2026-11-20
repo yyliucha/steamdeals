@@ -69,6 +69,10 @@ const SETTINGS_META = {
   'discovery.pages': { section: 'discovery', tier: 'primary' },
   'discovery.fallbackLimit': { section: 'discovery', tier: 'primary' },
   'discovery.intervalMin': { section: 'discovery', tier: 'primary' },
+  // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：同步区域卡（内容 vs 本位币两套口径）
+  'sync.contentRegion': { section: 'sync-region', tier: 'primary' },
+  'site.baseRegion': { section: 'sync-region', tier: 'primary' },
+  'site.baseCurrency': { section: 'sync-region', tier: 'primary' },
   // 站点与内容——常用 4 项 + 推荐与评分折叠
   'site.adultDisplay': { section: 'site', tier: 'primary' },
   'site.publicUrl': { section: 'site', tier: 'primary' },
@@ -111,6 +115,9 @@ export const SETTINGS_SECTIONS = [
   { group: 'sources', id: 'itad', title: 'ITAD', icon: '🔗', foldTitle: '高级' },
   { group: 'sources', id: 'gog-humble', title: 'GOG / Humble', icon: '🕹️', hint: '两个平台', compact: 3, foldTitle: '高级' },
   { group: 'sources', id: 'discovery', title: '发现与热度', icon: '📈', hint: 'steam-discovery', foldTitle: '高级' },
+  // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：跨组 keys（site.baseRegion/baseCurrency 属 site 组，
+  // 但展示归「同步区域」卡）——与 system.timezone 进「站点与内容」卡同款机制。
+  { group: 'sources', id: 'sync-region', title: '同步区域', icon: '🌍', hint: '内容统一美国 · 价格本位币', keys: ['sync.contentRegion', 'site.baseRegion', 'site.baseCurrency'] },
   { group: 'site', id: 'site', title: '站点与内容', icon: '🌐', keys: ['site.adultDisplay', 'site.publicUrl', 'app.mobileRedirectEnabled', 'system.timezone'] },
   { group: 'site', id: 'recommend', title: '推荐与评分', icon: '⭐', foldTitle: '推荐与评分' },
   { group: 'advanced', id: 'schedule', title: '调度与熔断', icon: '🔧', foldTitle: '调度与熔断' },
@@ -248,6 +255,17 @@ export const SETTINGS = [
   }),
   def('sources.gog.regions', 'GOG_REGIONS', 'sources', 'GOG 区服', 'string', 'cn', {
     help: `逗号分隔：${GOG_REGION_CODES.join(', ')}`,
+  }),
+  // ---- EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：同步双区域配置 ----
+  // 内容链路统一美区拿全量；价格链路本位币区域。保存后：价格下一轮同步生效、前台默认 region 立即生效。
+  def('sync.contentRegion', 'SYNC_CONTENT_REGION', 'sources', '内容采集区域', 'string', 'us', {
+    help: '元数据/状态/分级/发现等内容采集的 Steam cc 区域（默认 us：国区商店隐藏成人/锁区内容，美区才能拿全量）。价格采集不受此项影响。',
+  }),
+  def('site.baseRegion', 'SITE_BASE_REGION', 'site', '本位币区域', 'string', 'cn', {
+    help: '价格同步区域与前台查询默认 region（默认 cn：国区报价是业务核心）。切换即切换比价口径（offers 已有 region/currency 维度，不改表结构）。',
+  }),
+  def('site.baseCurrency', 'SITE_BASE_CURRENCY', 'site', '本位币货币', 'string', 'CNY', {
+    help: '展示/入库货币，随本位币区域映射（默认 CNY；切美区时建议 USD）。',
   }),
 
   // ---- 提醒 ----
@@ -550,6 +568,16 @@ export function validateSetting(d, input) {
   }
   if (d.key === 'sources.itad.apiKey' && value && value.length < 8) {
     return { ok: false, error: 'ITAD API Key 看起来过短' };
+  }
+  // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：区域/货币码归一化——区域两字母小写、
+  // 货币三字母大写，防「CN / Usd」这类手输值把请求 URL 或 offers.currency 写脏。
+  if (['sync.contentRegion', 'site.baseRegion'].includes(d.key) && value) {
+    if (!/^[a-z]{2}$/i.test(value)) return { ok: false, error: `${d.label} 需要 2 位 Steam 区域码（如 us / cn / hk）` };
+    value = value.toLowerCase();
+  }
+  if (d.key === 'site.baseCurrency' && value) {
+    if (!/^[A-Za-z]{3}$/.test(value)) return { ok: false, error: `${d.label} 需要 3 位 ISO 货币码（如 CNY / USD）` };
+    value = value.toUpperCase();
   }
   if (d.key === 'sources.steam.apiKey' && value && value.length < 10) {
     return { ok: false, error: 'Steam Web API Key 看起来过短' };

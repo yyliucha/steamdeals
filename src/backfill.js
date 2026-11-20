@@ -4,6 +4,7 @@
 // 避免前端传什么后端就跑什么（limit 上限 20 万、sleep 上限 60 秒等）。
 import { mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { baseRegion, baseCurrency } from './sync-regions.js';
 
 export const BACKFILL_LIMITS = {
   limit: { min: 1, max: 200000, def: 200000 },
@@ -135,8 +136,8 @@ export function offerFromItem(item) {
     steamAppid: appid,
     title: item.nameZh ?? item.nameEn ?? String(appid),
     productType: 'official_direct',
-    region: 'cn',
-    currency: p.currency ?? 'CNY',
+    region: baseRegion(),
+    currency: p.currency ?? baseCurrency(),
     priceCents: Math.round(p.final),
     originalCents: Math.round(p.initial ?? p.final),
     discountPct: Number(p.discountPercent ?? 0),

@@ -7,6 +7,7 @@ import * as db from './store/pg.js';
 import { ingestOffers } from './ingest.js';
 import { classifySteamStatus } from './adapters/steam.js';
 import { classifyContentRating, normalizeOfficial, fetchMetadata } from './adapters/steam-meta.js';
+import { contentRegion, baseRegion, baseCurrency } from './sync-regions.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -33,7 +34,7 @@ export function entryFromMeta(item) {
  * wroteStatus 只有「状态真写进库且 UPDATE 命中行」才为 true（AB 批 §3-B：写入不可静默）；
  * ratingWritten（EF 批 §9）：分级 UPDATE 命中行（与状态无关——rating-backfill 只写分级靠它计数）。
  */
-export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = null, meta = null, logger = null }) {
+export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = null, meta = null, logger = null, price = null }) {
   // BP 批（docs/GAME-DLC.md §3.2）：同一次 appdetails 响应里顺带写 dlc_appids + game_dlc 占位（零额外请求）。
   // GetItems 路径的 meta 没有 dlcAppIds → 不写（不得清空已有值）。写失败不影响状态判定。
   let dlcWritten = null;
@@ -83,18 +84,22 @@ export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = nu
   // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：分级字段的 UPDATE 命中行——与状态无关，
   // rating-backfill（只写分级）靠它统计真实写入数。
   const ratingWritten = row != null;
-  // AC-2（docs/SYNC-FAILURE-MODES.md AC8，2026-11-09 确认）：判定 ok（国区有价）时顺带写首次 offer——
+  // AC-2（docs/SYNC-FAILURE-MODES.md AC8）：判定 ok（本位币区有价）时顺带写首次 offer——
   // 与状态共用同一次 appdetails 响应，不额外消耗配额；免费/锁区/未发售不写价。
+  // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：调用方必须显式传 price={region,currency}
+  // 说明「本次响应的价格口径」。steam-status 只有内容区=本位币区时才传（两区不同时响应里是
+  // 内容区货币价，写进本位币 offer 会把美元价混进国区——价格口径交给 steam-prices/backfill）；
+  // 不传 price 一律不写价（rating-backfill 路径与锁区判定天然走这里）。
   let offerWritten = false;
-  if (wroteStatus && status === 'ok' && meta?.priceOverview && meta.priceOverview.final != null) {
+  if (wroteStatus && status === 'ok' && price && meta?.priceOverview && meta.priceOverview.final != null) {
     const offer = {
       platformCode: 'steam',
       platformProductId: String(appid),
       steamAppid: Number(appid),
       title: meta.nameZh ?? meta.nameEn ?? String(appid),
       productType: 'official_direct',
-      region: 'cn',
-      currency: meta.priceOverview.currency ?? 'CNY',
+      region: price.region,
+      currency: meta.priceOverview.currency ?? price.currency,
       priceCents: Math.round(meta.priceOverview.final),
       originalCents: Math.round(meta.priceOverview.initial ?? meta.priceOverview.final),
       discountPct: Number(meta.priceOverview.discountPercent ?? 0),
@@ -122,9 +127,12 @@ export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = nu
  * - A 取 appdetails 条目用 `res.json[appid]`（fetchJson 返回 { ...res, json }）；
  * - B 写入不可静默：`wrote` 只统计真的写进库的行；判定不了记 `steam-status.skip_write`（debug）、
  *   写库未命中记 `steam-status.write_miss`（warn），`counts` 只统计已知状态；
- * - C 限速按「每个请求」计（cn/hk 之后各 sleep 一次，非 429 的 4xx 异常路径也 sleep）；
+ * - C 限速按「每个请求」计（内容区/hk 之后各 sleep 一次，非 429 的 4xx 异常路径也 sleep）；
  *   撞 429 立即结束本轮（不睡 30 分钟空转），下轮续跑；
  * - 候选按 steam_checked_at 游标选取；判定不了/失败不推游标，下轮重试。
+ * - EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：状态/分级请求读 sync.contentRegion
+ *   （默认 us——国区商店隐藏成人/锁区内容）；失败兜底仍补 cc=hk 判定锁区；
+ *   顺带写价仅当 contentRegion === baseRegion（防内容区货币价混进本位币 offer）。
  *
  * fetchJsonImpl 可注入（测试离线验证）；返回 { wrote, skipped, failed, requests, counts, aborted429, attempted }。
  */
@@ -163,6 +171,11 @@ export async function runSteamStatusRound(
   while (attempted < size) {
     const rows = await db.listSteamStatusCandidates(q, { limit: Math.min(step, size - attempted) });
     if (!rows.length) break;
+    // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：内容区=本位币区时，状态判定顺带写的
+    // offer 才是本位币价（contentRegion 默认 us ≠ baseRegion 默认 cn → 默认不写，防美元价混进国区）。
+    const cRegion = contentRegion();
+    const bRegion = baseRegion();
+    const offerPrice = cRegion === bRegion ? { region: bRegion, currency: baseCurrency() } : null;
     for (const row of rows) {
       const appid = row.steamAppid;
       let cnEntry = null;
@@ -170,7 +183,7 @@ export async function runSteamStatusRound(
       let meta = null;
       try {
         const cn = await fetchUse(
-          `https://store.steampowered.com/api/appdetails?appids=${appid}&cc=cn&l=schinese`,
+          `https://store.steampowered.com/api/appdetails?appids=${appid}&cc=${cRegion}&l=schinese`,
           { logger, label: 'steam.status', timeoutMs: 30000, retries: 1 },
         );
         requests += 1;
@@ -178,7 +191,7 @@ export async function runSteamStatusRound(
         cnEntry = cn?.json?.[String(appid)] ?? null; // AB 批 §3-A：fetchJson 返回 { ...res, json }
         let data = cnEntry?.success === true ? cnEntry.data : null;
         if (!data) {
-          // 国区不可售/下架：补一次港区判定锁区（有价/免费=锁国区）
+          // 内容区不可售/下架：补一次港区判定锁区（有价/免费=锁区）
           const hk = await fetchUse(
             `https://store.steampowered.com/api/appdetails?appids=${appid}&cc=hk&l=schinese`,
             { logger, label: 'steam.status.hk', timeoutMs: 30000, retries: 1 },
@@ -206,7 +219,7 @@ export async function runSteamStatusRound(
         if (rateMs) await sleep(rateMs);
         continue;
       }
-      const outcome = await applySteamDetails(q, { appid, cnEntry, hkEntry, meta, logger });
+      const outcome = await applySteamDetails(q, { appid, cnEntry, hkEntry, meta, logger, price: offerPrice });
       attempted += 1;
       if (outcome.headerImageFilled) headerFilled += 1;
       if (outcome.dlcWritten?.changed) dlcWritten += 1;
@@ -276,11 +289,11 @@ export async function listRatingBackfillCandidates(q, { limit = 30 } = {}) {
 /**
  * EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：内容分级回填一轮。
  * 根因：cc=cn 的 appdetails 国区商店隐藏成人内容 → content_descriptors 采不到 → 全库
- * adult_flag 仅约 20 个。本函数逐 appid 用 cc=us 重采 content_descriptors / required_age /
- * age_ratings，只写分级（applySteamDetails 传 cnEntry/hkEntry=null：不写 steam_status、
- * 不写价格 offer——国区价格口径不受影响）。限速按「每个请求」计（rateMs ≥ 1s）；
- * 撞 429 立即收轮（aborted429=true，调用方 exit 75 由调度器 1 小时后重排）；
- * 开工前 / 收工后各记一次 adult/mature 计数（验收① steam.meta.backfill_before/done）。
+ * adult_flag 仅约 20 个。本函数逐 appid 用内容区（EI 批 §11：sync.contentRegion，默认 us）重采
+ * content_descriptors / required_age / age_ratings，只写分级（applySteamDetails 传
+ * cnEntry/hkEntry=null：不写 steam_status、不写价格 offer——本位币价格口径不受影响）。
+ * 限速按「每个请求」计（rateMs ≥ 1s）；撞 429 立即收轮（aborted429=true，调用方 exit 75
+ * 由调度器 1 小时后重排）；开工前 / 收工后各记一次 adult/mature 计数（验收① steam.meta.backfill_before/done）。
  * fetchMetadataImpl 可注入（测试离线验证）；返回 { done, wrote, adultWrote, matureWrote, failed, batches, aborted429, before, after, elapsedMs }。
  */
 export async function runRatingBackfillRound(
@@ -309,8 +322,10 @@ export async function runRatingBackfillRound(
       )
     ).rows[0];
 
+  // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：分级回填走内容区（默认 us）
+  const cc = contentRegion();
   const before = await countRating();
-  logger?.info?.('steam.meta.backfill_before', { total: before.total, adult: before.adult, mature: before.mature });
+  logger?.info?.('steam.meta.backfill_before', { total: before.total, adult: before.adult, mature: before.mature, contentRegion: cc });
 
   while (done < size && !aborted429) {
     const stepSize = Math.min(step, size - done);
@@ -321,7 +336,7 @@ export async function runRatingBackfillRound(
     const metas = new Map();
     for (const appid of appids) {
       try {
-        const one = await fetchMeta([appid], { backend: 'official', logger, cc: 'us' });
+        const one = await fetchMeta([appid], { backend: 'official', logger, cc });
         if (one?.items?.length) metas.set(appid, one.items[0]);
       } catch (err) {
         const status = Number(err?.status) || 0;
@@ -371,6 +386,7 @@ export async function runRatingBackfillRound(
     matureBefore: before.mature,
     matureAfter: after.mature,
     aborted429,
+    contentRegion: cc,
     elapsedMs: Date.now() - startedMs,
   });
   return { done, wrote, adultWrote, matureWrote, failed, batches, aborted429, before, after, elapsedMs: Date.now() - startedMs };
