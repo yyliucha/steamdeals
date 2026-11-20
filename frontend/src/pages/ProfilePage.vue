@@ -188,7 +188,8 @@
       </div>
       <div v-loading="dialog.loading" class="d-list">
         <div v-for="g in dialog.items" :key="g.appid" class="grow">
-          <img v-if="g.appid" :src="`/img/steam/${g.appid}/capsule_sm_120`" class="gcover" alt="" @error="$event.target.style.display='none'" />
+          <img v-if="g.appid && !g.coverFailed" :src="`/img/steam/${g.appid}/capsule_sm_120`" class="gcover" alt="" @error="g.coverFailed = true" />
+          <CoverPlaceholder v-else-if="g.appid" :name="g.name" size="sm" />
           <div class="gname">
             {{ g.name || ('appid:' + g.appid) }}
             <div class="en">{{ g.name_en || ' ' }}</div>
@@ -275,6 +276,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { fmtDateTime, fmtDay } from '../utils/siteTime.js';
 import { formatMoney } from '../utils/money.js';
 import { avatarInitial } from '../utils/avatar.js';
+import CoverPlaceholder from '../components/CoverPlaceholder.vue';
 import { registerUnsavedSource } from '../composables/useUnsavedGuard.js';
 import { markSessionLoggedOut } from '../composables/useSessionHeartbeat.js';
 import { openLogin } from '../utils/login-entry.js';

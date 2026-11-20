@@ -48,7 +48,7 @@
       </div>
       <div v-if="!isMobile && activeAccount && libraryGames.length" class="module-card table-card">
         <div class="card-heading padded"><div><h3>{{ activeAccount.alias||activeAccount.persona_name||activeAccount.steam_id }} 的游戏库</h3><p>最多显示 500 条，按游玩时长排序。</p></div><el-button text @click="activeAccount=null;libraryGames=[]">收起</el-button></div>
-        <el-table :data="pagedSteamGames" v-loading="loading" stripe><el-table-column label="游戏" min-width="260"><template #default="{row}"><div class="game-admin"><img :src="`/img/steam/${row.appid}/capsule_sm_120`" @error="$event.target.style.display='none'"><div><a :href="`https://store.steampowered.com/app/${row.appid}/`" target="_blank" rel="noopener">{{ row.name||`appid:${row.appid}` }}</a><small>AppID {{ row.appid }} · {{ row.in_db?'已在本站目录':'尚未入库' }}</small></div></div></template></el-table-column><el-table-column label="游玩时间" width="155" align="right"><template #default="{row}">{{ Number(row.playtime_minutes||0) }} 分钟 · {{ (Number(row.playtime_minutes||0)/60).toFixed(1) }} 小时</template></el-table-column><el-table-column label="本站最低价" width="130" align="right"><template #default="{row}">{{ price(row.current_low) }}</template></el-table-column><el-table-column label="最近游玩" min-width="150"><template #default="{row}">{{ dateTime(row.last_played_at) }}</template></el-table-column></el-table>
+        <el-table :data="pagedSteamGames" v-loading="loading" stripe><el-table-column label="游戏" min-width="260"><template #default="{row}"><div class="game-admin"><img v-if="!row.coverFailed" :src="`/img/steam/${row.appid}/capsule_sm_120`" @error="row.coverFailed=true"><CoverPlaceholder v-else :name="row.name" size="sm"/><div><a :href="`https://store.steampowered.com/app/${row.appid}/`" target="_blank" rel="noopener">{{ row.name||`appid:${row.appid}` }}</a><small>AppID {{ row.appid }} · {{ row.in_db?'已在本站目录':'尚未入库' }}</small></div></div></template></el-table-column><el-table-column label="游玩时间" width="155" align="right"><template #default="{row}">{{ Number(row.playtime_minutes||0) }} 分钟 · {{ (Number(row.playtime_minutes||0)/60).toFixed(1) }} 小时</template></el-table-column><el-table-column label="本站最低价" width="130" align="right"><template #default="{row}">{{ price(row.current_low) }}</template></el-table-column><el-table-column label="最近游玩" min-width="150"><template #default="{row}">{{ dateTime(row.last_played_at) }}</template></el-table-column></el-table>
         <PaginationBar v-model:page="steamPage" v-model:page-size="steamPageSize" :total="libraryGames.length"/>
       </div>
       <template v-else-if="isMobile">
@@ -110,6 +110,7 @@ import BulkResultDialog from '../components/BulkResultDialog.vue';
 import UserCreateDrawer from '../components/UserCreateDrawer.vue';
 import GameDetailDialog from '../components/GameDetailDialog.vue';
 import UserAvatar from '../components/UserAvatar.vue';
+import CoverPlaceholder from '../components/CoverPlaceholder.vue';
 // BM-3（docs/SESSION-MANAGEMENT.md §8.4.3）：401 统一软跳登录页
 import { redirectToLogin } from '../utils/session.js';
 import { useBulkSelection,promptBulkConfirm } from '../composables/useBulkSelection.js';

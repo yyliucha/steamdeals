@@ -459,6 +459,7 @@ export function createApiServer({
   siteCacheTtlMs = 60000, // DX 批测试注入：/api/site 短缓存 TTL（规格 60s）
   appSyncFetchImpl = null, // DR 批测试注入：POST /api/admin/app-sync 的 GitHub fetch 替身（默认真实 fetch）
   appSyncDir = null, // DR 批测试注入：app-sync 落盘目录（默认 env APP_DATA_DIR ?? data/app）
+  startSteamJobImpl = null, // EC 批测试注入：POST /api/admin/images/backfill 的启动替身（默认宿主闭包 startSteamJob）
 }) {
   const q = query;
   // B1 批（docs/DESIGN-AUDIT.md B1）：重型接口并发闸——按 key 每实例一把闸，
@@ -3050,6 +3051,81 @@ export function createApiServer({
         return json(res, 200, { cleared });
       }
 
+      // EC 批（docs/IMAGE-COVERAGE.md §8 EC-1）：图片覆盖看板——
+      // 缺图集合 = header_image 为 null 的游戏 ∪ 负缓存（header 尺寸）里有记录的游戏；
+      // 列表原因三种：header_image 空 / CDN 404（负缓存 notfound）/ 抓取失败（负缓存 error）。
+      if (path === '/api/admin/images/coverage' && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const page = Math.max(Number(url.searchParams.get('page') ?? 1) || 1, 1);
+        const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize') ?? 50) || 50, 1), 200);
+        const rows = await db.imageCoverageRows(q);
+        const byAppid = new Map(rows.map((r) => [r.steamAppid, r]));
+        const totalGames = rows.length;
+        const withHeader = rows.filter((r) => r.headerImage).length;
+        const noHeader = totalGames - withHeader;
+        // 负缓存 key 形如 `<appid>/header`；只看 header 尺寸，且库里有该游戏才算看板缺图
+        const missByAppid = new Map();
+        for (const [key, miss] of imgMissCache) {
+          if (!key.endsWith('/header')) continue;
+          const appid = Number(key.slice(0, -'/header'.length));
+          if (!Number.isFinite(appid) || !byAppid.has(appid)) continue;
+          missByAppid.set(appid, miss);
+        }
+        let cdn404 = 0;
+        let fetchFailed = 0;
+        for (const [appid, miss] of missByAppid) {
+          if (!byAppid.get(appid)?.headerImage) continue; // header_image 空优先级更高，计入 noHeader
+          if (miss?.kind === 'notfound') cdn404 += 1;
+          else fetchFailed += 1;
+        }
+        const missing = noHeader + cdn404 + fetchFailed;
+        const cache = images.imageStats();
+        const missAppids = [...missByAppid.keys()];
+        const missingList = await q(
+          'select g.id, g.steam_appid, coalesce(nullif(g.name, \'\'), nullif(g.name_en, \'\'), \'appid:\' || g.steam_appid) as name, g.header_image, g.updated_at ' +
+            'from games g where g.steam_appid is not null and not g.deleted ' +
+            'and (g.header_image is null or g.steam_appid::text = any($1::text[])) ' +
+            'order by (g.header_image is null) desc, g.updated_at desc nulls last, g.id desc limit $2 offset $3',
+          [missAppids.map(String), pageSize, (page - 1) * pageSize],
+        );
+        const items = missingList.rows.map((r) => ({
+          id: Number(r.id),
+          steam_appid: Number(r.steam_appid),
+          name: r.name,
+          reason: !r.header_image ? 'header_image 空' : missByAppid.get(Number(r.steam_appid))?.kind === 'notfound' ? 'CDN 404' : '抓取失败',
+        }));
+        return json(res, 200, {
+          stats: {
+            totalGames,
+            withHeaderImage: withHeader,
+            cachedGames: cache.games,
+            cachedImages: cache.images,
+            cachedBytes: cache.bytes,
+            missing,
+            missingByReason: { noHeader, cdn404, fetchFailed },
+          },
+          list: { items, page, pageSize, total: missing },
+        });
+      }
+
+      // EC 批（docs/IMAGE-COVERAGE.md §8 EC-2）：手动触发缺图回填——复用同步子进程槽位（single-flight），
+      // 已有任务在跑时 409；子进程跑 CLI `images backfill`，限速防 429。
+      if (path === '/api/admin/images/backfill' && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 100) || 100, 1), 500);
+        try {
+          const job = await (startSteamJobImpl ?? startSteamJob)({
+            mode: 'images-backfill',
+            args: ['src/cli.js', 'images', 'backfill', '--limit', String(limit)],
+            by: user.username,
+          });
+          return json(res, 202, { started: true, runId: job.runId, mode: 'images-backfill' });
+        } catch (err) {
+          if (err?.code === 'BUSY') return json(res, 409, { error: '已有任务在运行（同步/回填），请等它结束' });
+          throw err;
+        }
+      }
+
       // ---- 管理员：价格变动报表（涨跌榜 + 悬停线图序列 + CSV 导出）----
       if (path === '/api/admin/reports/price' && req.method === 'GET') {
         if (!requireAdmin()) return;
@@ -4003,8 +4079,9 @@ export function startApiServer({
   siteCacheTtlMs = 60000,
   appSyncFetchImpl = null, // DR 批测试注入：POST /api/admin/app-sync 的 GitHub fetch 替身
   appSyncDir = null, // DR 批测试注入：app-sync 落盘目录（默认 env APP_DATA_DIR ?? data/app）
+  startSteamJobImpl = null, // EC 批测试注入：POST /api/admin/images/backfill 的启动替身
 }) {
-  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, imgMissTtl, dlcFetchImpl, dlcReadThrottleMs, requestTimeoutMs, gateWaitMs, gateMaxQueue, adminCacheTtlMs, syncStatusTtlMs, listCacheTtlMs, siteCacheTtlMs, appSyncFetchImpl, appSyncDir });
+  const server = createApiServer({ query, logger, outDir, frontendDir, store, setupToken, getSetupState, imageFetch, steamVerify, imgMissTtl, dlcFetchImpl, dlcReadThrottleMs, requestTimeoutMs, gateWaitMs, gateMaxQueue, adminCacheTtlMs, syncStatusTtlMs, listCacheTtlMs, siteCacheTtlMs, appSyncFetchImpl, appSyncDir, startSteamJobImpl });
   // 黑名单定时刷新（管理端增删后也会即时刷新；unref 不阻止进程退出）
   const blockTimer = setInterval(() => {
     visitors.refreshBlocklist(query).catch(() => {});

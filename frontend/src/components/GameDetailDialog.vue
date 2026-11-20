@@ -26,7 +26,7 @@
     <div v-else class="gdd-body">
       <div class="gdd-hero" :class="{ 'ph': coverFailed || !appid }">
         <img v-if="appid && !coverFailed" :src="coverUrl" alt="" loading="lazy" @error="coverFailed = true">
-        <span v-if="coverFailed || !appid" class="gdd-ph">{{ firstChar(displayName) }}</span>
+        <CoverPlaceholder v-if="coverFailed || !appid" class="gdd-ph-box" :name="displayName" fill/>
         <i class="gdd-hero-fade"></i>
       </div>
 
@@ -94,6 +94,7 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import { fmtDateTime as dateTime } from '../utils/siteTime.js';
 import { formatMoney } from '../utils/money.js';
+import CoverPlaceholder from './CoverPlaceholder.vue';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -175,9 +176,6 @@ function onClosed() {
   expanded.value = false;
   showMore.value = false;
 }
-function firstChar(name) {
-  return (String(name ?? '').trim().charAt(0) || '?').toUpperCase();
-}
 function money(cents, currency) {
   return formatMoney(cents, currency);
 }
@@ -257,7 +255,7 @@ watch(
 .gdd-hero{position:relative;height:150px;border-radius:10px;overflow:hidden;background:var(--panel-2)}
 .gdd-hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .gdd-hero.ph{display:grid;place-items:center}
-.gdd-ph{font-size:56px;font-weight:800;color:var(--fg-subtle)}
+.gdd-ph-box{position:absolute;inset:0;border-radius:inherit}
 .gdd-hero-fade{position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,var(--panel));pointer-events:none}
 .gdd-hint{margin:10px 2px 0;font-size:11.5px;color:var(--warn)}
 .gdd-title-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:12px 0 2px}

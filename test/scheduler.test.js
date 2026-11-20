@@ -70,7 +70,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   const jobs = jobsFromEnv({});
   assert.deepEqual(jobs.map((j) => j.name), [
     'steam-prices', 'heat', 'steam-status', 'steam-discovery', 'app-release-sync', 'align-snapshot', 'rename', 'rating-backfill', 'backfill', 'prune', 'proxy-probe', 'readmodel', 'search-tokens-rebuild', 'sonkwo', 'itad', 'gog', 'humble',
-    'discover', 'backup', 'logs', 'alerts', 'images',
+    'discover', 'backup', 'logs', 'alerts', 'images', 'images-backfill',
   ]);
   const interval = (name) => jobs.find((j) => j.name === name).intervalMin;
   assert.equal(interval('steam-prices'), 1440, 'Steam 价格默认每天刷新');
@@ -90,12 +90,15 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.equal(interval('logs'), 7 * 1440, '日志每 7 天清理一次');
   assert.equal(interval('alerts'), 360);
   assert.equal(interval('images'), 240, '封面图补缓存默认每 4 小时');
+  assert.equal(interval('images-backfill'), 360, 'EC 批：缺图回填默认每 6 小时一轮');
   assert.equal(interval('app-release-sync'), 15, 'DR 批：App Release 同步默认每 15 分钟（原 60；settings app.syncIntervalMin 热加载可改）');
   assert.equal(interval('align-snapshot'), 30, 'DL 批：对齐审核快照后台生成默认每 30 分钟');
   const args = (name) => jobs.find((j) => j.name === name).args;
   assert.deepEqual(args('discover'), ['discover', 'sonkwo', '--ahead', '60', '--max-misses', '12']);
   assert.deepEqual(args('backup'), ['backup']);
   assert.deepEqual(args('images'), ['images', 'pull', '--limit', '500', '--sleep', '300'], 'BC 批：每轮补图默认 500');
+  assert.deepEqual(args('images-backfill'), ['images', 'backfill', '--limit', '100', '--sleep', '1200'], 'EC 批：缺图回填默认每轮 100 款、限速 1.2s/请求');
+  assert.ok(!jobsFromEnv({ IMAGES_BACKFILL_ENABLED: '0' }).some((j) => j.name === 'images-backfill'), 'EC 批：IMAGES_BACKFILL_ENABLED=0 可关闭');
   assert.deepEqual(args('steam-prices'), ['sync', 'steam-prices', '--limit', '200000']);
   assert.deepEqual(args('heat'), ['heat', '--limit', '20000', '--sleep', '1700']);
   assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '6000', '--rate', '1500']);
@@ -272,7 +275,7 @@ test('显式禁用或间隔为 0 的任务会被剔除', () => {
     READMODEL_ENABLED: '0',
     PROXY_PROBE_ENABLED: '0',
   });
-  assert.deepEqual(jobs.map((j) => j.name), ['heat', 'steam-discovery', 'app-release-sync', 'align-snapshot', 'rename', 'rating-backfill', 'backfill', 'prune', 'search-tokens-rebuild', 'sonkwo', 'alerts']);
+  assert.deepEqual(jobs.map((j) => j.name), ['heat', 'steam-discovery', 'app-release-sync', 'align-snapshot', 'rename', 'rating-backfill', 'backfill', 'prune', 'search-tokens-rebuild', 'sonkwo', 'alerts', 'images-backfill']);
 });
 
 test('从未跑过的任务在 initialDelay 之后才算到点', () => {

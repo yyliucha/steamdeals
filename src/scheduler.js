@@ -260,6 +260,22 @@ export function jobsFromEnv(env = process.env) {
       enabled: env.IMAGES_ENABLED !== '0',
     },
     {
+      name: 'images-backfill',
+      // EC 批（docs/IMAGE-COVERAGE.md §8 EC-2）：缺图回填——header_image 为空的游戏逐 appid
+      // 重同步元数据补封面（限速 ≥1s/请求防 429）；补完即收敛，缺图数逐轮下降。
+      args: [
+        'images',
+        'backfill',
+        '--limit',
+        String(num(env.IMAGES_BACKFILL_LIMIT, 100)),
+        '--sleep',
+        String(num(env.IMAGES_BACKFILL_SLEEP_MS, 1200)),
+      ],
+      intervalMin: num(env.IMAGES_BACKFILL_INTERVAL_MIN, 360),
+      initialDelaySec: num(env.IMAGES_BACKFILL_INITIAL_DELAY_SEC, 1800),
+      enabled: env.IMAGES_BACKFILL_ENABLED !== '0',
+    },
+    {
       name: 'report',
       // 价格报表推送：只在配置了提醒通道时启用（--notify 内部还会再判断一次）
       args: ['report', 'price', '--hours', '24', '--notify'],
@@ -393,7 +409,7 @@ export const STEAM_HEAVY = new Set(['steam-prices', 'rename', 'backfill', 'ratin
 // 轻任务：目标站与配额都和重任务独立（杉果国内源、GOG/Humble catalog、备份/日志/提醒/图片），
 // 允许在 heat/steam-prices 等长任务运行时并行执行——否则 heat 首轮播种 9 小时会饿死所有其它源。
 // DL 批：align-snapshot 是本地库计算（不占外部配额），归轻任务受并行上限约束。
-const LIGHT_JOBS = new Set(['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'backup', 'logs', 'alerts', 'images', 'align-snapshot']);
+const LIGHT_JOBS = new Set(['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'backup', 'logs', 'alerts', 'images', 'images-backfill', 'align-snapshot']);
 
 /** 轻任务并行上限（环境变量 SCHEDULER_LIGHT_CONCURRENCY 可调，默认 3，范围 1–8）。 */
 export function lightConcurrency(env = process.env) {
@@ -614,6 +630,7 @@ export function auditJobs(env = process.env) {
     ['logs', 'LOGS_PRUNE_ENABLED'],
     ['alerts', 'ALERTS_ENABLED'],
     ['images', 'IMAGES_ENABLED'],
+    ['images-backfill', 'IMAGES_BACKFILL_ENABLED'],
   ];
   for (const [name, envName] of switches) {
     if (!present.has(name) && String(env[envName] ?? '') === '0') warnings.push({ name, reason: `${envName}=0` });

@@ -1669,8 +1669,26 @@ async function cmdImages() {
     );
     return;
   }
+  if (sub === 'backfill') {
+    // EC 批（docs/IMAGE-COVERAGE.md §8 EC-2）：缺图回填——header_image 为空的游戏逐 appid
+    // 重同步元数据补封面；限速 ≥1s/请求防 429（单款失败不中断整轮）。
+    const limit = Math.min(Math.max(Number(flag('limit', '100')) || 100, 1), 500);
+    const sleepMs = Math.max(Number(flag('sleep', '1200')) || 1000, 1000);
+    const steamMeta = await import('./adapters/steam-meta.js');
+    const { backfillMissingHeaders } = await import('./image-backfill.js');
+    const r = await withStore((store) =>
+      backfillMissingHeaders((sql, p) => store.query(sql, p), {
+        fetchMeta: (appids) => steamMeta.fetchMetadata(appids, { logger }),
+        limit,
+        sleepMs,
+        logger,
+      }),
+    );
+    console.log(`缺图回填完成：扫描 ${r.scanned} 款，补 header_image ${r.filled} 款，失败 ${r.failed} 款，跳过 ${r.skipped} 款`);
+    return;
+  }
   if (sub !== 'pull') {
-    throw new Error('用法: node src/cli.js images pull [--limit 200] [--sleep 300] [--sizes capsule_sm_120,header] | images stats | images prune --max-bytes <字节>');
+    throw new Error('用法: node src/cli.js images pull [--limit 200] [--sleep 300] [--sizes capsule_sm_120,header] | images backfill [--limit 100] [--sleep 1200] | images stats | images prune --max-bytes <字节>');
   }
   const limit = Math.min(Math.max(Number(flag('limit', '200')) || 200, 1), 5000);
   const sleepMs = Math.max(0, Number(flag('sleep', '300')) || 0);

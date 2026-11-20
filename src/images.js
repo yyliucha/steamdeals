@@ -92,6 +92,23 @@ export function imageStats(env = process.env) {
 }
 
 /**
+ * EC 批（docs/IMAGE-COVERAGE.md §8 EC-1）：本地已缓存 header 图的 appid 集合（只看 header 尺寸）——
+ * 供看板把「header_image 非空但本地无缓存」与「有直链且已缓存」区分开。
+ */
+export function cachedHeaderIds(env = process.env) {
+  const root = imgRoot(env);
+  const ids = new Set();
+  try {
+    for (const id of readdirSync(root)) {
+      if (existsSync(join(root, id, 'header.jpg'))) ids.add(id);
+    }
+  } catch {
+    /* 目录还没建：空集合 */
+  }
+  return ids;
+}
+
+/**
  * D2（docs/ROADMAP.md）：图片缓存总量上限——超出 maxBytes 时按 mtime 从最旧删到合规。
  * 只删 .jpg，不动其它文件；maxBytes <= 0 视为不限，直接返回。
  * 返回 { removed, freedBytes, remainingBytes }。

@@ -3885,6 +3885,29 @@ export async function fillHeaderImage(q, { steamAppid, url }) {
   if (!steamAppid || !url) return { rowCount: 0 };
   return q('update games set header_image = $2 where steam_appid = $1 and header_image is null', [steamAppid, url]);
 }
+
+/**
+ * EC 批（docs/IMAGE-COVERAGE.md §8 EC-1）：图片覆盖看板数据行——只取 steam_appid/header_image 两列
+ * （缺图原因判定与本地缓存比对在 server 路由层做，避免 SQL 与文件系统耦合）。
+ */
+export async function imageCoverageRows(q) {
+  const r = await q('select g.steam_appid, g.header_image from games g where g.steam_appid is not null and not g.deleted');
+  return r.rows.map((row) => ({ steamAppid: Number(row.steam_appid), headerImage: row.header_image ?? null }));
+}
+
+/**
+ * EC 批（docs/IMAGE-COVERAGE.md §8 EC-2）：header_image 为空的回填候选——
+ * 限速逐 appid 元数据重同步（appdetails 响应带 header_image），补完即收敛（谓词不再命中）。
+ */
+export async function missingHeaderImageAppids(q, { limit = 100 } = {}) {
+  const r = await q(
+    'select g.id, g.steam_appid, coalesce(nullif(g.name, \'\'), nullif(g.name_en, \'\'), \'appid:\' || g.steam_appid) as name ' +
+      'from games g where g.steam_appid is not null and g.header_image is null and not g.deleted ' +
+      'order by g.updated_at desc nulls last, g.id desc limit $1',
+    [Math.min(Math.max(Number(limit) || 100, 1), 500)],
+  );
+  return r.rows.map((row) => ({ id: Number(row.id), steamAppid: Number(row.steam_appid), name: String(row.name ?? '') }));
+}
 export async function setSteamStatus(q, {
   steamAppid,
   status = null,

@@ -1,13 +1,14 @@
 <script setup>
 // AO 批（docs/ADMIN-LINKS-DRAWER.md §4）：平台链接抽屉——头部/渠道卡片/空态/移动端。
 // 只读展示 + 复制 + 跳转；纯前端，数据由父组件传 `links`（GET /api/admin/games/:id/links）。
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { copyText } from '../utils/clipboard.js';
 import { nameCopyText } from '../utils/gameNames.js';
 import { pickLowestLink } from '../utils/linkPrices.js';
 import { fmtDateTime } from '../utils/siteTime.js';
 import { CURRENCY_SYMBOLS, yuanAmount } from '../utils/money.js';
+import CoverPlaceholder from './CoverPlaceholder.vue';
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -50,8 +51,17 @@ const sortedLinks = computed(() => {
     return String(a.platform_name ?? '').localeCompare(String(b.platform_name ?? ''));
   });
 });
+// EC 批（docs/IMAGE-COVERAGE.md §8 EC-3）：封面失败显示品牌占位，不再空白
+const coverFailed = ref(false);
+watch(
+  () => props.game,
+  () => {
+    coverFailed.value = false;
+  },
+);
 // BD 批（docs/ADMIN-LINKS-DRAWER.md §12）：最低价醒目——同币种内比、缺货不参与、全部同价不标。
 const lowestLink = computed(() => pickLowestLink(sortedLinks.value));
+
 
 async function doCopy(text, tip) {
   const ok = await copyText(text);
@@ -82,7 +92,8 @@ function close() {
   >
     <div v-if="game" class="ld-wrap">
       <div class="ld-head">
-        <img v-if="game.steam_appid" class="ld-cover" :src="`/img/steam/${game.steam_appid}/capsule_sm_120`" alt="封面" @error="$event.target.style.display='none'" />
+        <img v-if="game.steam_appid && !coverFailed" class="ld-cover" :src="`/img/steam/${game.steam_appid}/capsule_sm_120`" alt="封面" @error="coverFailed = true" />
+        <CoverPlaceholder v-else-if="game.steam_appid" :name="game.name" size="sm" />
         <div class="ld-title">
           <h3 :title="game.name">{{ game.name }}</h3>
           <div class="ld-en" :title="game.name_en">{{ game.name_en }}</div>

@@ -323,7 +323,9 @@ test('AW 验收 6/7：前端不再用 favicon 兜底且有占位元素；cli pul
   assert.match(home, /cover-placeholder/, '存在占位元素类名');
   assert.match(home, /markCoverFailed/, '失败回调挂 class 隐藏 img、显示占位块');
   assert.match(home, /img-failed/, '失败状态类存在');
-  assert.match(home, /firstChar/, '占位块显示游戏名首字');
+  // EC 批（docs/IMAGE-COVERAGE.md §8 EC-3）：首字渲染从内联 firstChar 移到 CoverPlaceholder 组件
+  // （组件内的 charAt(0).toUpperCase() 由 frontend-registration.test.js EC-3 测试锁住）——占位行为不变。
+  assert.match(home, /cover-placeholder[\s\S]{0,80}CoverPlaceholder/, '占位块渲染 CoverPlaceholder（S 标 + 游戏名首字）');
   const cli = readFileSync(fileURLToPath(new URL('../src/cli.js', import.meta.url)), 'utf8');
   assert.match(cli, /notFound/, 'images pull 统计包含 notFound');
   assert.match(cli, /404 缺图/, '命令行摘要包含 404 缺图计数');

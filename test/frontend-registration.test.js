@@ -31,3 +31,46 @@ test('封禁页跳转：serveBanPage 注入的内联脚本在模块加载前改�
   assert.match(serverJs, /location\.pathname!=='\/banned'/, '应排除 /banned 防循环');
   assert.match(serverJs, /location\.pathname!=='\/appeal'/, '应排除 /appeal 保住申诉入口');
 });
+
+// ---------------------------------------------------------------- EC 批（docs/IMAGE-COVERAGE.md §8 EC-3）
+
+const read = (p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), 'utf8');
+
+test('EC-3 品牌占位组件：S 标 + 游戏名首字，模板可编译', async () => {
+  const src = read('../frontend/src/components/CoverPlaceholder.vue');
+  const { compile } = await import('@vue/compiler-dom');
+  // 编译级断言：只编译 template 段，模板不合法直接抛错（静态字符串断言查不出模板错误）
+  const tpl = /<template>([\s\S]*?)<\/template>/.exec(src)?.[1] ?? '';
+  assert.ok(tpl, '模板段存在');
+  compile(tpl, { mode: 'module' });
+  assert.match(tpl, />S</, '占位必须带品牌 S 标');
+  assert.match(src, /\.charAt\(0\)\.toUpperCase\(\)/, '首字 = 游戏名首字符大写');
+  assert.match(tpl, /ph-char/, '首字渲染节点');
+  // 反向自检：删掉模板里的 <i class="ph-s">S</i> → 第一条断言变红（S 标缺失）；把 name 换成固定字符串
+  // 常量 → charAt 断言变红（首字不再跟随游戏名）。空名回退 S 保证占位永不空白。
+  assert.match(src, /\(props\.name \|\| 'S'\)/, '空名回退 S');
+});
+
+test('EC-3 封面使用点统一引用 CoverPlaceholder，失败路径不再 display:none 空白块', () => {
+  const points = {
+    '../frontend/src/pages/Home.vue': ['列表与详情', 2], // import 1 处 + 列表 1 处 + 详情 1 处 = 3 次出现
+    '../frontend/src/components/GameDetailDialog.vue': ['后台详情弹窗', 1],
+    '../frontend/src/pages/ProfilePage.vue': ['愿望单/游戏库弹窗', 1],
+    '../frontend/src/pages/AdminModules.vue': ['游戏目录列表', 1],
+    '../frontend/src/pages/AdminExtras.vue': ['Steam 游戏库', 1],
+    '../frontend/src/components/GameLinksDrawer.vue': ['平台链接抽屉', 1],
+  };
+  for (const [file, [label]] of Object.entries(points)) {
+    const src = read(file);
+    assert.match(src, /CoverPlaceholder/, `${label}（${file}）必须渲染品牌占位`);
+    // 封面 img 的失败处理不允许 display:none（那是空白块）；反向自检：把 @error 改回 display:none → 变红
+    assert.doesNotMatch(
+      src,
+      /\/img\/steam\/[\s\S]{0,140}display='none'/,
+      `${label}（${file}）封面失败不得再 display:none`,
+    );
+  }
+  const home = read('../frontend/src/pages/Home.vue');
+  const n = home.split('CoverPlaceholder').length - 1;
+  assert.ok(n >= 3, `Home.vue 列表与详情都渲染占位（import + 2 使用点，实际 ${n} 处）`);
+});
