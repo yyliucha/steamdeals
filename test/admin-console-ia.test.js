@@ -280,8 +280,10 @@ test('抽屉化：用户管理/站点通知顶部无内嵌表单，编辑组件�
   const modules = read('../frontend/src/pages/AdminModules.vue');
   assert.ok(!extras.includes('新建用户</h3>'), '用户管理页不再有内嵌新建表单卡');
   assert.ok(!extras.includes('<h3>最近删除</h3>'), '最近删除卡已搬进操作日志');
-  assert.match(extras, /<UserCreateDrawer v-model:visible="newUserDrawer"/, '新建用户抽屉挂载');
-  assert.match(extras, /drawer:'new'/, '?section=users&drawer=new 可直达');
+  // DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：新建用户入口整体下线（按钮 + 抽屉 + URL 直达都无）
+  assert.ok(!extras.includes('UserCreateDrawer'), '新建用户抽屉不再挂载（DT-3 下线）');
+  assert.ok(!extras.includes('openNewUserDrawer'), '无新建用户入口函数');
+  assert.ok(!extras.includes("＋ 新建用户"), '无「＋ 新建用户」按钮');
   assert.ok(!modules.includes('announcement-form'), '站点通知页不再有内嵌发布表单');
   assert.match(modules, /<AnnouncementDrawer v-model:visible="announcementDrawer.visible"/, '通知抽屉挂载');
   assert.match(modules, /drawer:'new'/, '?section=announcements&drawer=new 可直达');

@@ -522,15 +522,16 @@
       "name": "后台账号：新建 e2e_ 用户并登录（验证码）",
       "tag": ["admin"],
       "kind": "api",
-      "steps": ["后台 POST /api/admin/users 建 e2e_<时间戳>（强密码）", "GET /api/captcha 拿 token + 库内读答案", "POST /api/login 登录", "GET /api/me 断言"],
-      "assert": ["创建返回 201", "登录 200", "/api/me 用户名一致", "must_change_password=true（后台建号强制改密）"],
-      "expect": "后台建号 → 真实登录链可用（决策 #5）",
+      "steps": ["自助注册建 e2e_<时间戳>（registerCode + verify，强密码）", "GET /api/captcha 拿 token + 库内读答案", "POST /api/login 登录", "GET /api/me 断言"],
+      "assert": ["创建返回 201", "登录 200", "/api/me 用户名一致", "must_change_password=false（自助注册不强制改密）"],
+      "expect": "自助注册 → 真实登录链可用（决策 #5，DT-3 建号入口迁移）",
       "run": [
         { "adminLogin": { "username": "admin", "password": "E2eAdmin#2026$Xy7q" } },
         { "eval": { "saveAs": "e2eUser", "expr": "ctx.e2eUsername = 'e2e_' + Date.now()" } },
-        { "apiCall": { "method": "POST", "path": "/api/admin/users", "cookie": "admin", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "role": "user" }, "expect": "status===201", "saveAs": "createdUser" } },
+        { "registerCode": { "email": "${e2eUser}@e2e.local", "code": "654321" } },
+        { "apiCall": { "method": "POST", "path": "/api/auth/register/verify", "cookie": "none", "body": { "email": "${e2eUser}@e2e.local", "code": "654321", "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" }, "expect": "status===201", "saveAs": "createdUser" } },
         { "userLogin": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" } },
-        { "apiCall": { "method": "GET", "path": "/api/me", "cookie": "user", "expect": "status===200 && body.user.username==='${e2eUser}' && body.user.mustChangePassword===true", "desc": "身份与强制改密标记" } }
+        { "apiCall": { "method": "GET", "path": "/api/me", "cookie": "user", "expect": "status===200 && body.user.username==='${e2eUser}' && body.user.mustChangePassword===false", "desc": "身份与改密标记（自助注册不强制）" } }
       ]
     },
     {
@@ -544,7 +545,8 @@
       "run": [
         { "adminLogin": { "username": "admin", "password": "E2eAdmin#2026$Xy7q" } },
         { "eval": { "saveAs": "e2eUser", "expr": "ctx.e2eUsername = 'e2e_' + Date.now()" } },
-        { "apiCall": { "method": "POST", "path": "/api/admin/users", "cookie": "admin", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "role": "user" }, "expect": "status===201" } },
+        { "registerCode": { "email": "${e2eUser}@e2e.local", "code": "654321" } },
+        { "apiCall": { "method": "POST", "path": "/api/auth/register/verify", "cookie": "none", "body": { "email": "${e2eUser}@e2e.local", "code": "654321", "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" }, "expect": "status===201" } },
         { "userLogin": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" } },
         { "apiCall": { "method": "POST", "path": "/api/user/password", "cookie": "user", "body": { "oldPassword": "E2e#Seed9$Ab7zQ", "newPassword": "E2e#NewPw$Zc8yX" }, "expect": "status===200" } },
         { "apiCall": { "method": "POST", "path": "/api/login", "cookie": "none", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "captchaToken": "auto", "captchaAnswer": "auto" }, "expect": "status!==200", "desc": "旧密码被拒" } },
@@ -563,9 +565,10 @@
       "run": [
         { "adminLogin": { "username": "admin", "password": "E2eAdmin#2026$Xy7q" } },
         { "eval": { "saveAs": "e2eUser", "expr": "ctx.e2eUsername = 'e2e_' + Date.now()" } },
-        { "apiCall": { "method": "POST", "path": "/api/admin/users", "cookie": "admin", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "role": "user" }, "expect": "status===201", "saveAs": "createdUser" } },
+        { "registerCode": { "email": "${e2eUser}@e2e.local", "code": "654321" } },
+        { "apiCall": { "method": "POST", "path": "/api/auth/register/verify", "cookie": "none", "body": { "email": "${e2eUser}@e2e.local", "code": "654321", "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" }, "expect": "status===201", "saveAs": "createdUser" } },
         { "userLogin": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" } },
-        { "apiCall": { "method": "POST", "path": "/api/user/password", "cookie": "user", "body": { "oldPassword": "E2e#Seed9$Ab7zQ", "newPassword": "E2e#NewPw$Zc8yX" }, "expect": "status===200", "desc": "首登强制改密（后台建号 must_change_password）" } },
+        { "apiCall": { "method": "POST", "path": "/api/user/password", "cookie": "user", "body": { "oldPassword": "E2e#Seed9$Ab7zQ", "newPassword": "E2e#NewPw$Zc8yX" }, "expect": "status===200", "desc": "用户自助改密（DT-3 起自助注册无强制改密）" } },
         { "apiCall": { "method": "POST", "path": "/api/wishlist", "cookie": "user", "body": { "appid": 413150 }, "expect": "status===200 && body.ok===true", "desc": "用户加愿望单" } },
         { "apiCall": { "method": "GET", "path": "/api/admin/wishlists?userId=${createdUser.user.id}", "cookie": "admin", "expect": "status===200 && body.items.length>=1", "desc": "后台可见" } },
         { "apiCall": { "method": "DELETE", "path": "/api/wishlist/413150", "cookie": "user", "expect": "status===200 && body.ok===true", "desc": "用户移除" } },
@@ -602,10 +605,11 @@
       "run": [
         { "adminLogin": { "username": "admin", "password": "E2eAdmin#2026$Xy7q" } },
         { "eval": { "saveAs": "e2eUser", "expr": "ctx.e2eUsername = 'e2e_' + Date.now()" } },
-        { "apiCall": { "method": "POST", "path": "/api/admin/users", "cookie": "admin", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "role": "user" }, "expect": "status===201", "saveAs": "createdUser" } },
+        { "registerCode": { "email": "${e2eUser}@e2e.local", "code": "654321" } },
+        { "apiCall": { "method": "POST", "path": "/api/auth/register/verify", "cookie": "none", "body": { "email": "${e2eUser}@e2e.local", "code": "654321", "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" }, "expect": "status===201", "saveAs": "createdUser" } },
         { "sql": { "sql": "insert into steam_accounts (steam_id, persona_name, user_id) values ('76561198000009999', 'E2E 测试号', ${createdUser.user.id})", "expect": "rowCount===1", "desc": "模拟 OpenID 绑定（同构数据）" } },
         { "userLogin": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" } },
-        { "apiCall": { "method": "POST", "path": "/api/user/password", "cookie": "user", "body": { "oldPassword": "E2e#Seed9$Ab7zQ", "newPassword": "E2e#NewPw$Zc8yX" }, "expect": "status===200", "desc": "首登强制改密（后台建号 must_change_password）" } },
+        { "apiCall": { "method": "POST", "path": "/api/user/password", "cookie": "user", "body": { "oldPassword": "E2e#Seed9$Ab7zQ", "newPassword": "E2e#NewPw$Zc8yX" }, "expect": "status===200", "desc": "用户自助改密（DT-3 起自助注册无强制改密）" } },
         { "apiCall": { "method": "PATCH", "path": "/api/steam/accounts/76561198000009999", "cookie": "user", "body": { "alias": "我的主号" }, "expect": "status===200 && body.ok===true", "desc": "改别名" } },
         { "sql": { "sql": "select alias from steam_accounts where steam_id='76561198000009999'", "expect": "rows[0].alias==='我的主号'", "desc": "别名落库" } },
         { "apiCall": { "method": "DELETE", "path": "/api/steam/accounts/76561198000009999", "cookie": "user", "expect": "status===200", "desc": "解绑" } },
@@ -623,9 +627,10 @@
       "run": [
         { "adminLogin": { "username": "admin", "password": "E2eAdmin#2026$Xy7q" } },
         { "eval": { "saveAs": "e2eUser", "expr": "ctx.e2eUsername = 'e2e_' + Date.now()" } },
-        { "apiCall": { "method": "POST", "path": "/api/admin/users", "cookie": "admin", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "role": "user" }, "expect": "status===201" } },
+        { "registerCode": { "email": "${e2eUser}@e2e.local", "code": "654321" } },
+        { "apiCall": { "method": "POST", "path": "/api/auth/register/verify", "cookie": "none", "body": { "email": "${e2eUser}@e2e.local", "code": "654321", "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" }, "expect": "status===201" } },
         { "userLogin": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" } },
-        { "apiCall": { "method": "POST", "path": "/api/user/password", "cookie": "user", "body": { "oldPassword": "E2e#Seed9$Ab7zQ", "newPassword": "E2e#NewPw$Zc8yX" }, "expect": "status===200", "desc": "首登强制改密（后台建号 must_change_password）" } },
+        { "apiCall": { "method": "POST", "path": "/api/user/password", "cookie": "user", "body": { "oldPassword": "E2e#Seed9$Ab7zQ", "newPassword": "E2e#NewPw$Zc8yX" }, "expect": "status===200", "desc": "用户自助改密（DT-3 起自助注册无强制改密）" } },
         { "apiCall": { "method": "GET", "path": "/api/admin/sessions?user=${e2eUser}", "cookie": "admin", "expect": "status===200 && body.sessions.length>=1", "saveAs": "sessList" } },
         { "apiCall": { "method": "DELETE", "path": "/api/admin/sessions/${sessList.sessions[0].id}", "cookie": "admin", "expect": "status===200 && body.removed===1", "desc": "踢下线" } },
         { "apiCall": { "method": "GET", "path": "/api/me", "cookie": "user", "expect": "status===401 || body.user===null", "desc": "被踢会话立即失效" } }
@@ -642,9 +647,10 @@
       "run": [
         { "adminLogin": { "username": "admin", "password": "E2eAdmin#2026$Xy7q" } },
         { "eval": { "saveAs": "e2eUser", "expr": "ctx.e2eUsername = 'e2e_' + Date.now()" } },
-        { "apiCall": { "method": "POST", "path": "/api/admin/users", "cookie": "admin", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "role": "user" }, "expect": "status===201", "saveAs": "createdUser" } },
+        { "registerCode": { "email": "${e2eUser}@e2e.local", "code": "654321" } },
+        { "apiCall": { "method": "POST", "path": "/api/auth/register/verify", "cookie": "none", "body": { "email": "${e2eUser}@e2e.local", "code": "654321", "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" }, "expect": "status===201", "saveAs": "createdUser" } },
         { "userLogin": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ" } },
-        { "apiCall": { "method": "POST", "path": "/api/user/password", "cookie": "user", "body": { "oldPassword": "E2e#Seed9$Ab7zQ", "newPassword": "E2e#NewPw$Zc8yX" }, "expect": "status===200", "desc": "首登强制改密（后台建号 must_change_password）" } },
+        { "apiCall": { "method": "POST", "path": "/api/user/password", "cookie": "user", "body": { "oldPassword": "E2e#Seed9$Ab7zQ", "newPassword": "E2e#NewPw$Zc8yX" }, "expect": "status===200", "desc": "用户自助改密（DT-3 起自助注册无强制改密）" } },
         { "apiCall": { "method": "DELETE", "path": "/api/admin/users/${e2eUser}", "cookie": "admin", "body": { "confirmUsername": "${e2eUser}", "reason": "e2e 收尾" }, "expect": "status===200 && body.ok===true" } },
         { "apiCall": { "method": "GET", "path": "/api/admin/users", "cookie": "admin", "expect": "!(body.users??[]).some(u=>u.username==='${e2eUser}')", "desc": "列表已无该用户" } },
         { "apiCall": { "method": "POST", "path": "/api/login", "cookie": "none", "body": { "username": "${e2eUser}", "password": "E2e#Seed9$Ab7zQ", "captchaToken": "auto", "captchaAnswer": "auto" }, "expect": "status!==200", "desc": "已删用户登录被拒" } },

@@ -108,3 +108,34 @@ test('DV：游戏管理平台下拉分「平台 / 来源」两组，itad 标签�
   assert.match(src, /const platforms=\[\{value:'steam',label:'Steam'\},[^\]]*'steampy',label:'SteamPy'\}\]/, '平台数组不再含 itad');
   assert.doesNotMatch(src, /\{value:'itad',label:'ITAD'\}/, '旧「ITAD」平台选项已移除');
 });
+
+// ---------------------------------------------------------------- DT-3（docs/ADMIN-PERMISSIONS.md DT-3）
+
+test('DT-3：用户管理无新建入口；行内五操作；批量只保留「批量踢会话」；编辑弹窗仅改角色', () => {
+  const src = read('../frontend/src/pages/AdminExtras.vue');
+  // demo 状态 ↔ 断言（design/admin-users-2026-11-19.html ①/②）：
+  // 反向自检：把「＋ 新建用户」按钮加回来 → 前两条变红；给批量再加 disable → 第三条变红。
+  assert.doesNotMatch(src, /＋ 新建用户/, '无「＋ 新建用户」按钮');
+  assert.doesNotMatch(src, /UserCreateDrawer/, '新建抽屉不再挂载');
+  assert.match(src, /用户只能自助注册，不提供新增入口/, '页头文案说明自助注册');
+  // 行内操作：编辑 / 重置密码 / 禁用·启用 / 踢会话 / 删除（改名/邮箱/验证入口已移除）
+  assert.match(src, /openEditUser\(row\)/, '行内有「编辑」');
+  assert.match(src, /openResetPassword\(row\)/, '行内有「重置密码」（DT-4 弹窗版）');
+  assert.match(src, /kickAllSessions\(row\)/, '行内有「踢会话」');
+  assert.match(src, /toggleUser\(row\)/, '行内有「禁用/启用」');
+  assert.match(src, /openDeleteUser\(row\)/, '行内有「删除」');
+  assert.doesNotMatch(src, /editName\(/, '行内不再有「改名」');
+  assert.doesNotMatch(src, /editEmail\(/, '行内不再有「邮箱」');
+  assert.doesNotMatch(src, /verifyEmail\(/, '行内不再有「验证」');
+  // 批量只保留批量踢会话
+  assert.match(src, /label:'批量踢会话',target:'users',action:'kick'/, '批量操作只有「批量踢会话」');
+  assert.doesNotMatch(src, /label:'禁用',target:'users'/, '批量禁用已移除');
+  assert.doesNotMatch(src, /label:'启用',target:'users'/, '批量启用已移除');
+  // 编辑弹窗：用户名/邮箱/绑定 Steam 账号只读，角色可改；角色变更二次确认
+  assert.match(src, /用户名（只读）/, '弹窗用户名只读');
+  assert.match(src, /邮箱（只读）/, '弹窗邮箱只读');
+  assert.match(src, /绑定的 Steam 账号（只读）/, '绑定账号只读展示');
+  assert.match(src, /仅可修改角色/, '弹窗说明「仅可修改角色」');
+  assert.match(src, /确认角色变更/, '角色变更二次确认');
+  assert.match(src, /steam-accounts/, '弹窗拉取绑定账号接口');
+});

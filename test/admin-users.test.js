@@ -1,13 +1,15 @@
-// 管理员建号：邮箱与账号同一次写入（原子）。
-// 修 2026-11-06 生产反馈的 bug——先建号、再绑邮箱的两步式流程里，邮箱已被占用时
-// 账号其实已落库，前端报"创建失败"后刷新列表会冒出幽灵用户；换邮箱重试又因用户名
-// 冲突再报错。此测试锁死：邮箱冲突 → 409 且用户数不变（无残号）。
+// DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：用户管理打磨——
+// ① POST /api/admin/users 建号入口下线（410，用户只能自助注册）；
+// ② 编辑弹窗数据：GET /api/admin/users/:username/steam-accounts 只读展示绑定账号；
+// ③ PATCH 角色变更 / 禁用启用落审计（admin.user_edit / admin.user_disabled）；
+// ④ 单条禁用立即踢会话（BK-1 复用，DT-3 保留验收）。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import { startApiServer } from '../src/server.js';
 import { ensureEmailSchema } from '../src/email-auth.js';
+import { ensureSteamSchema } from '../src/steam-login.js';
 
 process.env.CAPTCHA_ENABLED = '0';
 
@@ -15,12 +17,17 @@ async function setup() {
   const store = await openStore('pglite:', {});
   await db.migrate(store);
   await ensureEmailSchema(store); // users.email 列 + users_email_uniq 部分唯一索引（生产同款）
+  await ensureSteamSchema(store); // steam_accounts（DT-3 编辑弹窗绑定账号展示用）
   const q = (sql, p) => store.query(sql, p);
   await db.createUser(q, { username: 'admin', password: 'admin123456', role: 'admin' });
   await db.createUser(q, { username: 'alice', password: 'alice123456', role: 'user' });
-  await q("update users set email = 'taken@example.com', email_verified = true where username = 'alice'");
+  const alice = (await q("select id from users where username = 'alice'")).rows[0];
+  await q(
+    "insert into steam_accounts (steam_id, persona_name, alias, user_id) values ('76561198000000011', 'FF', null, $1), ('76561198000000012', 'Happy', '主号', $1)",
+    [alice.id],
+  );
   const srv = await startApiServer({ query: q, port: 0, host: '127.0.0.1' });
-  return { store, q, srv, base: `http://127.0.0.1:${srv.port}` };
+  return { store, q, srv, base: `http://127.0.0.1:${srv.port}`, alice };
 }
 
 const login = async (base, username, password) => {
@@ -32,103 +39,87 @@ const login = async (base, username, password) => {
   return { status: res.status, cookie: (res.headers.get('set-cookie') ?? '').split(';')[0] };
 };
 
-const create = (base, cookie, body) =>
-  fetch(`${base}/api/admin/users`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
-    body: JSON.stringify(body),
-  });
-
-test('建号带邮箱：一次写入成功，邮箱未验证', async () => {
-  const { store, q, srv, base } = await setup();
-  try {
-    const admin = await login(base, 'admin', 'admin123456');
-    const res = await create(base, admin.cookie, { username: 'bob', password: 'k7Qw!2mXp3nZ', role: 'user', email: 'bob@example.com' });
-    assert.equal(res.status, 201);
-    const body = await res.json();
-    assert.equal(body.user.email, 'bob@example.com');
-    assert.equal(body.user.email_verified, false);
-    const row = (await q("select email, email_verified from users where username = 'bob'")).rows[0];
-    assert.equal(row.email, 'bob@example.com', '邮箱随建号同一次落库');
-    assert.equal(row.email_verified, false);
-  } finally {
-    await srv.close();
-    await store.close();
-  }
-});
-
-test('邮箱已被占用：409 明确报错，且用户数不变（原子，不留残号）', async () => {
-  const { store, q, srv, base } = await setup();
-  try {
-    const admin = await login(base, 'admin', 'admin123456');
-    const before = (await q('select count(*)::int as n from users')).rows[0].n;
-    const res = await create(base, admin.cookie, { username: 'carol', password: 'k7Qw!2mXp3nZ', role: 'user', email: 'taken@example.com' });
-    assert.equal(res.status, 409);
-    const body = await res.json();
-    assert.match(body.error, /邮箱已被其他账号绑定/);
-    const after = (await q('select count(*)::int as n from users')).rows[0].n;
-    assert.equal(after, before, '邮箱冲突时不能留下 carol 这个残号');
-    assert.equal((await q("select count(*)::int as n from users where username = 'carol'")).rows[0].n, 0);
-  } finally {
-    await srv.close();
-    await store.close();
-  }
-});
-
-test('用户名重复：409 且用户数不变', async () => {
-  const { store, q, srv, base } = await setup();
-  try {
-    const admin = await login(base, 'admin', 'admin123456');
-    const before = (await q('select count(*)::int as n from users')).rows[0].n;
-    const res = await create(base, admin.cookie, { username: 'alice', password: 'k7Qw!2mXp3nZ', role: 'user', email: 'other@example.com' });
-    assert.equal(res.status, 409);
-    assert.match((await res.json()).error, /用户名已存在/);
-    assert.equal((await q('select count(*)::int as n from users')).rows[0].n, before);
-  } finally {
-    await srv.close();
-    await store.close();
-  }
-});
-
-test('邮箱格式非法：400 且不建号', async () => {
-  const { store, q, srv, base } = await setup();
-  try {
-    const admin = await login(base, 'admin', 'admin123456');
-    const before = (await q('select count(*)::int as n from users')).rows[0].n;
-    const res = await create(base, admin.cookie, { username: 'dave', password: 'k7Qw!2mXp3nZ', role: 'user', email: 'not-an-email' });
-    assert.equal(res.status, 400);
-    assert.match((await res.json()).error, /邮箱格式不正确/);
-    assert.equal((await q('select count(*)::int as n from users')).rows[0].n, before);
-  } finally {
-    await srv.close();
-    await store.close();
-  }
-});
-
-test('不带邮箱：向后兼容 201', async () => {
-  const { store, q, srv, base } = await setup();
-  try {
-    const admin = await login(base, 'admin', 'admin123456');
-    const res = await create(base, admin.cookie, { username: 'erin', password: 'k7Qw!2mXp3nZ', role: 'user' });
-    assert.equal(res.status, 201);
-    const row = (await q("select email from users where username = 'erin'")).rows[0];
-    assert.equal(row.email, null);
-  } finally {
-    await srv.close();
-    await store.close();
-  }
-});
-
-test('权限：匿名 401，普通用户 403，都不产生用户', async () => {
+test('DT-3：POST /api/admin/users 建号接口下线——匿名 401、普通用户 403、管理员 410 且不建号', async () => {
   const { store, q, srv, base } = await setup();
   try {
     const before = (await q('select count(*)::int as n from users')).rows[0].n;
-    const anon = await create(base, null, { username: 'frank', password: 'k7Qw!2mXp3nZ' });
-    assert.equal(anon.status, 401);
+    const post = (cookie) =>
+      fetch(`${base}/api/admin/users`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
+        body: JSON.stringify({ username: 'bob', password: 'k7Qw!2mXp3nZ', role: 'user', email: 'bob@example.com' }),
+      });
+    assert.equal((await post(null)).status, 401, '匿名 401');
     const alice = await login(base, 'alice', 'alice123456');
-    const forbidden = await create(base, alice.cookie, { username: 'frank', password: 'k7Qw!2mXp3nZ' });
-    assert.equal(forbidden.status, 403);
-    assert.equal((await q('select count(*)::int as n from users')).rows[0].n, before);
+    assert.equal((await post(alice.cookie)).status, 403, '普通用户 403');
+    const admin = await login(base, 'admin', 'admin123456');
+    const res = await post(admin.cookie);
+    // 反向自检：把 410 改回建号逻辑 → 这里变 201，断言变红（DT-3 验收「无新建入口/接口」）
+    assert.equal(res.status, 410, '管理员触发 → 410 Gone（接口下线）');
+    assert.match((await res.json()).error, /自助注册/);
+    const after = (await q('select count(*)::int as n from users')).rows[0].n;
+    assert.equal(after, before, '410 不产生任何用户');
+    assert.equal((await q("select count(*)::int as n from users where username = 'bob'")).rows[0].n, 0);
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('DT-3：编辑弹窗绑定账号只读数据——昵称 + SteamID，未绑定为空数组；权限 401/403/404', async () => {
+  const { store, srv, base } = await setup();
+  try {
+    const get = (cookie) => fetch(`${base}/api/admin/users/alice/steam-accounts`, { headers: cookie ? { cookie } : {} });
+    assert.equal((await get(null)).status, 401, '匿名 401');
+    const bob = await login(base, 'alice', 'alice123456');
+    assert.equal((await get(bob.cookie)).status, 403, '普通用户 403');
+    const admin = await login(base, 'admin', 'admin123456');
+    const res = await get(admin.cookie);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.accounts.length, 2);
+    assert.deepEqual(
+      body.accounts.map((a) => [a.steamId, a.alias, a.personaName]),
+      [
+        ['76561198000000011', null, 'FF'],
+        ['76561198000000012', '主号', 'Happy'],
+      ],
+      '昵称 + SteamID（别名优先展示由前端决定）',
+    );
+    assert.equal((await fetch(`${base}/api/admin/users/nobody/steam-accounts`, { headers: { cookie: admin.cookie } })).status, 404, '无此用户 404');
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('DT-3：PATCH 角色变更落审计 admin.user_edit；禁用落 admin.user_disabled 且会话立即失效（BK 复用）', async () => {
+  const { store, q, srv, base, alice } = await setup();
+  try {
+    const admin = await login(base, 'admin', 'admin123456');
+    const patch = (username, body) =>
+      fetch(`${base}/api/admin/users/${username}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie: admin.cookie },
+        body: JSON.stringify(body),
+      });
+    // 先给 alice 造一条会话（模拟已登录）
+    await q("insert into sessions (user_id, token, expires_at, ip) values ($1, 'dt3-token', now() + interval '1 day', '1.2.3.4')", [alice.id]);
+    // 角色变更
+    const role = await patch('alice', { role: 'admin' });
+    assert.equal(role.status, 200);
+    assert.equal((await q("select role from users where username = 'alice'")).rows[0].role, 'admin');
+    const audit1 = await q("select detail from audit_logs where action = 'admin.user_edit' and target = 'alice'");
+    assert.equal(audit1.rows.length, 1, '角色变更落 admin.user_edit 审计');
+    assert.deepEqual(audit1.rows[0].detail, { field: 'role', from: 'user', to: 'admin' });
+    // 禁用：会话立即失效（BK-1 复用）
+    const dis = await patch('alice', { disabled: true });
+    assert.equal(dis.status, 200);
+    const audit2 = await q("select detail from audit_logs where action = 'admin.user_disabled' and target = 'alice'");
+    assert.equal(audit2.rows.length, 1, '禁用落 admin.user_disabled 审计');
+    assert.deepEqual(audit2.rows[0].detail, { disabled: true });
+    const sessions = await q("select count(*)::int as n from sessions where user_id = $1", [alice.id]);
+    assert.equal(sessions.rows[0].n, 0, '禁用后会话立即清空（下一次请求即退出登录）——验收⑤');
   } finally {
     await srv.close();
     await store.close();

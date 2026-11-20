@@ -2648,6 +2648,24 @@ export function createApiServer({
           logger?.info('user.disabled_sessions_revoked', { username, removed, by: user.username });
         }
         logger?.info('api.user_updated', { username, by: user.username, ...body });
+        // DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：角色变更 / 禁用启用落审计
+        // （admin.user_edit / admin.user_disabled）；审计失败绝不阻塞主流程（CZ 批同口径）。
+        const auditUserChange = async (action, detail) => {
+          try {
+            await q(
+              'insert into audit_logs (actor_id, actor, action, target, detail, ip) values ($1, $2, $3, $4, $5::jsonb, $6)',
+              [user.id, user.username, action, username, JSON.stringify(detail), ip],
+            );
+          } catch {
+            /* 审计失败不影响主流程 */
+          }
+        };
+        if (body.role !== undefined && String(body.role) !== String(before.role ?? '')) {
+          await auditUserChange('admin.user_edit', { field: 'role', from: String(before.role ?? 'user'), to: String(body.role) });
+        }
+        if (body.disabled !== undefined && Boolean(body.disabled) !== Boolean(before.disabled)) {
+          await auditUserChange('admin.user_disabled', { disabled: Boolean(body.disabled) });
+        }
         // AJ 批：字段实际变化才发通知；一次请求最多一封，优先级 disabled > role > display_name
         // （docs/USER-LIFECYCLE.md §4.2）。快操作 await 发送，结果进响应；失败不影响已保存的修改。
         let action = null;
@@ -2676,6 +2694,26 @@ export function createApiServer({
           reply.notify = { status: notifyResult.status, error: notifyResult.error ?? null };
         }
         return json(res, 200, reply);
+      }
+
+      // DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：编辑弹窗只读展示绑定 Steam 账号（昵称 + SteamID）
+      const userSteamMatch = path.match(/^\/api\/admin\/users\/([^/]+)\/steam-accounts$/);
+      if (userSteamMatch && req.method === 'GET') {
+        if (!requireAdmin()) return;
+        const username = decodeURIComponent(userSteamMatch[1]);
+        const target = (await q('select id from users where username = $1', [username])).rows[0];
+        if (!target) return json(res, 404, { error: '没有该用户' });
+        const rows = await q(
+          'select steam_id, persona_name, alias from steam_accounts where user_id = $1 order by steam_id',
+          [target.id],
+        );
+        return json(res, 200, {
+          accounts: rows.rows.map((r) => ({
+            steamId: r.steam_id,
+            personaName: r.persona_name ?? null,
+            alias: r.alias ?? null,
+          })),
+        });
       }
 
       // ---- DT-4（docs/ADMIN-PERMISSIONS.md）：后台重置密码发码（purpose='admin_reset'）----
@@ -3094,54 +3132,12 @@ export function createApiServer({
       )
         return;
 
+      // DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：新建用户入口下线——管理员不再建号，
+      // 用户只能走自助注册（邮箱 OTP：POST /api/auth/register/request → verify）。
       if (path === '/api/admin/users' && req.method === 'POST') {
         if (!requireAdmin()) return;
-        const body = await readBody(req);
-        const username = String(body.username ?? '').trim();
-        const rawPassword = String(body.password ?? '');
-        if (!username) return json(res, 400, { error: '用户名必填' });
-        // 邮箱可选，但必须和账号在同一次写入里落库：先建号、再绑邮箱的两步式会让
-        // "邮箱已被占用"时账号已落库，前端报错刷新却冒出幽灵用户（2026-11-06 反馈的 bug）。
-        const auth = await import('./email-auth.js');
-        const rawEmail = String(body.email ?? '').trim();
-        const email = rawEmail ? auth.normalizeEmail(rawEmail) : null;
-        if (rawEmail && !email) return json(res, 400, { error: '邮箱格式不正确' });
-        // AK-3（docs/AUTH-REDESIGN.md §4.5）：密码可留空 → 生成 16 位随机临时密码（响应只回一次）；
-        // 填了必须过策略；后台建号一律 must_change_password=true
-        const generated = rawPassword ? null : passwordPolicy.generateTempPassword();
-        const password = rawPassword || generated;
-        const policyError = passwordPolicy.passwordPolicyError(password, { username, email: rawEmail });
-        if (policyError) return json(res, 400, { error: policyError });
-        const doCreate = () => db.createUser(q, { username, password, role: body.role === 'admin' ? 'admin' : 'user', email, mustChange: true });
-        let created;
-        try {
-          try {
-            created = await doCreate();
-          } catch (err) {
-            // 老库可能缺列：补建后重试一次（与绑邮箱路由同款兜底）
-            if (String(err.code) === '42703') {
-              await q('alter table users add column if not exists email text');
-              await q('alter table users add column if not exists email_verified boolean not null default false');
-              created = await doCreate();
-            } else {
-              throw err;
-            }
-          }
-        } catch (err) {
-          if (String(err.code) === '23505') {
-            const dupEmail = String(err.constraint ?? err.message ?? '').includes('email');
-            return json(res, 409, { error: dupEmail ? '这个邮箱已被其他账号绑定' : '用户名已存在' });
-          }
-          logger?.error('api.user_create_failed', {
-            username,
-            code: err.code ?? null,
-            message: String(err.message).slice(0, 200),
-            by: user.username,
-          });
-          return json(res, 500, { error: '创建失败：' + String(err.message).slice(0, 160) });
-        }
-        logger?.info('api.user_created', { username: created.username, role: created.role, emailBound: Boolean(email), tempGenerated: Boolean(generated) });
-        return json(res, 201, { user: created, ...(generated ? { tempPassword: generated } : {}) });
+        logger?.info('admin.user_create_rejected', { by: user.username });
+        return json(res, 410, { error: '管理员不再支持新建用户，请用户自助注册' });
       }
 
       // ---- 管理员：封面图本地缓存统计 ----
@@ -3783,6 +3779,8 @@ const BULK_ACTIONS = {
   'devices/ban': { max: 50, risk: 'high', keyType: 'fingerprint', run: bulkDeviceBan },
   'users/disable': { max: 50, risk: 'high', keyType: 'id', guard: bulkGuardUserDisable, run: bulkUserDisable },
   'users/enable': { max: 200, risk: 'low', keyType: 'id', run: bulkUserEnable },
+  // DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：批量操作只保留「批量踢会话」——禁用/启用/删除/重置密码不做批量
+  'users/kick': { max: 200, risk: 'high', keyType: 'id', run: bulkUserKick },
   // CY 批（docs/DATA-ISOLATION.md §3）：wishlists/delete 已从白名单移除——愿望单属用户私有数据，
   // 管理员只读，未登记组合一律 400（不提供任何写通道）。
 };
@@ -4025,6 +4023,14 @@ async function bulkUserDisable({ q, keys }) {
 async function bulkUserEnable({ q, keys }) {
   const done = await db.bulkSetUsersDisabled(q, { ids: keys, disabled: false });
   return { ok: done.length, results: bulkMissing(keys, done.map((row) => row.id), '用户不存在或已是启用状态') };
+}
+
+// DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：批量踢会话——按用户 id 删掉全部会话（下一次请求即退出登录）
+async function bulkUserKick({ q, keys }) {
+  const rows = await db.usersForBulk(q, keys);
+  const removed = await db.deleteSessionsOfUsers(q, rows.map((row) => row.id));
+  const doneIds = rows.map((row) => row.id);
+  return { ok: doneIds.length, removed, results: bulkMissing(keys, doneIds, '用户不存在') };
 }
 
 /** 基础安全响应头：防嗅探、防点击劫持、限制 referrer 与权限。 */

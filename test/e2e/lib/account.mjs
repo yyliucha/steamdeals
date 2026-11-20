@@ -59,10 +59,19 @@ export async function listUsers(base, adminCookie) {
   return body.users ?? [];
 }
 
-/** 后台新建 e2e 用户（POST /api/admin/users；密码留空会生成临时密码，这里显式给强密码）。 */
-export async function createUser(base, adminCookie, { username, password, email = null }) {
-  const body = { username, password, role: 'user', ...(email ? { email } : {}) };
-  const res = await postJson(`${base}/api/admin/users`, body, adminCookie);
+/**
+ * 新建 e2e 用户（DT-3 起：POST /api/admin/users 已下线，走自助注册——
+ * 测试侧可读库：先落一条 register 验证码再 POST /api/auth/register/verify）。
+ */
+export async function createUser(base, q, { username, password, email = null }) {
+  const mail = email ?? `${username}@e2e.local`;
+  const code = '654321';
+  const { hashCode } = await import('../../../src/email-auth.js');
+  await q(
+    "insert into email_codes (email, user_id, purpose, code_hash, expires_at) values ($1, null, 'register', $2, now() + interval '10 minutes')",
+    [mail, hashCode(mail, code)],
+  );
+  const res = await postJson(`${base}/api/auth/register/verify`, { email: mail, code, username, password });
   const r = await readJson(res);
   if (r.status !== 201) throw new Error(`创建用户失败（${username}）：HTTP ${r.status} ${r.body.error ?? ''}`);
   return r.body.user;

@@ -135,6 +135,11 @@ test('入口一致：后台建号 / 后台重置 / 自助重置 / 初始化 全�
   const store = await openStore('pglite:', {});
   await db.migrate(store);
   await ensureEmailSchema(store);
+  // DT-3 批：自助注册 verify 读 app_settings 的 auth.registrationEnabled（建号入口从后台迁到自助注册）
+  const settingsMod = await import('../src/settings.js');
+  await settingsMod.ensureSettingsSchema(store);
+  await settingsMod.initializeSettings({ store, env: {}, secretKey: settingsMod.secretKeyFor() });
+  settingsMod.resetSettingsCache();
   const q = (sql, p) => store.query(sql, p);
   await db.createUser(q, { username: 'admin', password: 'correct-horse-battery-staple', role: 'admin', email: 'admin@example.com' });
   const srv = await startApiServer({ query: q, port: 0, host: '127.0.0.1' });
@@ -151,18 +156,31 @@ test('入口一致：后台建号 / 后台重置 / 自助重置 / 初始化 全�
     const cookie = await login('admin', 'correct-horse-battery-staple');
     const post = (path, body, headers = {}) =>
       fetch(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
-    // 后台建号：弱密码拒绝（11 位 + 含身份）
+    // DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：后台建号接口已下线（410）——建号入口统一走自助注册
     let r = await post('/api/admin/users', { username: 'alice', password: 'alice1234', role: 'user' }, { cookie });
-    assert.equal(r.status, 400, '后台建号拒绝弱密码');
+    assert.equal(r.status, 410, '后台建号接口下线');
+    // 自助注册：弱密码拒绝（11 位 + 含身份）——与旧后台建号同一策略文案
+    const email = 'alice@example.com';
+    const regCode = '246801';
+    await q(
+      "insert into email_codes (email, user_id, purpose, code_hash, expires_at) values ($1, null, 'register', $2, now() + interval '5 minutes')",
+      [email, hashCode(email, regCode)],
+    );
+    r = await post('/api/auth/register/verify', { email, code: regCode, username: 'alice', password: 'alice1234' });
+    assert.equal(r.status, 400, '自助注册拒绝弱密码');
     assert.match((await r.json()).error, /密码不符合要求/, '统一策略文案');
-    // 后台建号：强密码通过（12 位随机）
-    r = await post('/api/admin/users', { username: 'alice', password: 'k7Qw!2mXp3nZ', role: 'user' }, { cookie });
-    assert.equal(r.status, 201, '强密码建号通过');
+    // 自助注册：强密码通过（12 位随机）
+    const okCode = '246802';
+    await q(
+      "insert into email_codes (email, user_id, purpose, code_hash, expires_at) values ($1, null, 'register', $2, now() + interval '5 minutes')",
+      [email, hashCode(email, okCode)],
+    );
+    r = await post('/api/auth/register/verify', { email, code: okCode, username: 'alice', password: 'k7Qw!2mXp3nZ' });
+    assert.equal(r.status, 201, '强密码注册通过');
     // 后台重置：弱密码拒绝
     r = await post('/api/admin/users/alice/password', { password: 'alice1234' }, { cookie });
     assert.equal(r.status, 400, '后台重置拒绝弱密码');
     // 自助重置：正确验证码 + 弱密码 → 400
-    const email = 'alice@example.com';
     await q("update users set email = $1, email_verified = true where username = 'alice'", [email]);
     const code = '654321';
     await q(

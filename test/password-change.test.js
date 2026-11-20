@@ -36,21 +36,24 @@ async function setup() {
   return { store, q, srv, base, login, post, get };
 }
 
-test('验收 7：后台建号留空密码 → 返回临时密码（16 位）且 must_change_password=true；填了必须过策略', async () => {
+test('验收 7（DT-3 修订）：后台建号接口下线 410；后台重置留空 → 临时密码且必须首登改密', async () => {
   const { store, q, srv, login, post } = await setup();
   try {
     const admin = await login('admin', 'correct-horse-battery-staple');
+    // DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：建号入口下线，弱密码/留空都不再走后台建号
     let r = await post('/api/admin/users', { username: 'tempuser', role: 'user' }, admin.cookie);
-    assert.equal(r.status, 201);
+    assert.equal(r.status, 410, '后台建号接口下线');
+    assert.match((await r.json()).error, /自助注册/);
+    assert.equal((await q("select count(*)::int as n from users where username = 'tempuser'")).rows[0].n, 0, '410 不建号');
+    // 临时密码机制保留在「后台重置」路径：先直接造号再重置
+    await q("insert into users (username, password_hash, role, must_change_password) values ('tempuser', (select password_hash from users where username = 'admin'), 'user', true)");
+    r = await post('/api/admin/users/tempuser/password', {}, admin.cookie);
+    assert.equal(r.status, 200);
     const body = await r.json();
     assert.match(body.tempPassword, /^[A-Za-z0-9_-]{16}$/, '16 位随机临时密码只回一次');
     const row = (await q("select must_change_password from users where username = 'tempuser'")).rows[0];
     assert.equal(row.must_change_password, true, '临时密码账号必须首登改密');
     assert.equal((await login('tempuser', body.tempPassword)).status, 200, '临时密码可直接登录');
-    r = await post('/api/admin/users', { username: 'another', password: 'weak1234', role: 'user' }, admin.cookie);
-    assert.equal(r.status, 400);
-    assert.match((await r.json()).error, /密码不符合要求/);
-    assert.equal((await q("select count(*)::int as n from users where username = 'another'")).rows[0].n, 0, '弱密码不建号');
   } finally {
     await srv.close();
     await store.close();

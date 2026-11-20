@@ -1,14 +1,14 @@
 <template>
   <div class="extra-wrap" :class="{ 'm-console': isMobile }">
     <template v-if="section==='users'">
-      <div class="module-card"><div class="card-heading"><div><h3>用户管理</h3><p>这里只留用户列表；新建用户从「＋ 新建用户」右侧抽屉完成（不跳页、列表不刷新）。</p></div><div class="steam-actions"><el-button type="primary" @click="openNewUserDrawer">＋ 新建用户</el-button><el-button @click="loadUsers">刷新列表</el-button><el-button text @click="goOpLogs('user-deletions')">最近删除 ↗</el-button></div></div></div>
-      <div v-if="!isMobile" class="module-card table-card"><BulkBar :count="sel.users.count" :actions="usersBulkActions" :running="bulkRunning" :hint="usersBulkHint" @run="(a)=>runBulk(a,sel.users,{refresh:loadUsers})" @clear="sel.users.clear()"/><el-table ref="usersTable" row-key="id" :data="pagedUsers" v-loading="loading" stripe @selection-change="sel.users.onSelectionChange"><el-table-column type="selection" width="44"/><el-table-column label="用户" min-width="150"><template #default="{row}"><span class="user-cell"><UserAvatar :user-id="row.id" :name="row.display_name||row.username" :size="22" /><span>{{ row.display_name||row.username }}</span></span></template></el-table-column><el-table-column label="邮箱" min-width="200"><template #default="{row}"><span>{{ row.email||'未绑定' }}</span><el-tag v-if="row.email" :type="row.email_verified?'success':'warning'" size="small" class="tag-gap">{{ row.email_verified?'已验证':'未验证' }}</el-tag></template></el-table-column><el-table-column label="角色" width="95"><template #default="{row}"><el-tag :type="row.role==='admin'?'danger':'info'" size="small">{{ row.role==='admin'?'管理员':'普通用户' }}</el-tag></template></el-table-column><el-table-column label="状态" width="215"><template #default="{row}"><el-tag :type="row.disabled?'info':'success'" size="small">{{ row.disabled?'已禁用':'正常' }}</el-tag><el-tag v-if="isLocked(row)" type="danger" size="small" class="tag-gap">已锁定</el-tag><el-tag v-if="row.weak_password" type="danger" size="small" class="tag-gap">弱密码</el-tag><el-tag v-if="row.must_change_password" type="warning" size="small" class="tag-gap">需改密</el-tag><el-button v-if="isLocked(row)" link type="primary" size="small" class="tag-gap" @click="unlockUser(row)">解锁</el-button></template></el-table-column><el-table-column label="最近登录" min-width="155"><template #default="{row}">{{ dateTime(row.last_login_at) }}</template></el-table-column><el-table-column label="管理操作" min-width="255" fixed="right"><template #default="{row}"><el-button link @click="editName(row)">改名</el-button><el-button link @click="editEmail(row)">邮箱</el-button><el-button v-if="row.email&&!row.email_verified" link @click="verifyEmail(row)">验证</el-button><el-button link @click="openResetPassword(row)">重置密码</el-button><el-button link type="warning" @click="kickAllSessions(row)">踢会话</el-button><el-button link :type="row.disabled?'success':'danger'" @click="toggleUser(row)">{{ row.disabled?'启用':'禁用' }}</el-button><el-button v-if="row.id !== me?.id" link type="danger" :disabled="!canDeleteUser(row)" :title="canDeleteUser(row) ? '' : '最后一个可用管理员不能删除'" @click="openDeleteUser(row)">删除</el-button></template></el-table-column></el-table><PaginationBar v-model:page="usersPage" v-model:page-size="usersPageSize" :total="users.length"/></div>
+      <div class="module-card"><div class="card-heading"><div><h3>用户管理</h3><p>管理账号与角色；用户只能自助注册，不提供新增入口。</p></div><div class="steam-actions"><el-button @click="loadUsers">刷新列表</el-button><el-button text @click="goOpLogs('user-deletions')">最近删除 ↗</el-button></div></div></div>
+      <div v-if="!isMobile" class="module-card table-card"><BulkBar :count="sel.users.count" :actions="usersBulkActions" :running="bulkRunning" :hint="usersBulkHint" @run="(a)=>runBulk(a,sel.users,{refresh:loadUsers})" @clear="sel.users.clear()"/><el-table ref="usersTable" row-key="id" :data="pagedUsers" v-loading="loading" stripe @selection-change="sel.users.onSelectionChange"><el-table-column type="selection" width="44"/><el-table-column label="用户" min-width="150"><template #default="{row}"><span class="user-cell"><UserAvatar :user-id="row.id" :name="row.display_name||row.username" :size="22" /><span>{{ row.display_name||row.username }}</span></span></template></el-table-column><el-table-column label="邮箱" min-width="200"><template #default="{row}"><span>{{ row.email||'未绑定' }}</span><el-tag v-if="row.email" :type="row.email_verified?'success':'warning'" size="small" class="tag-gap">{{ row.email_verified?'已验证':'未验证' }}</el-tag></template></el-table-column><el-table-column label="角色" width="95"><template #default="{row}"><el-tag :type="row.role==='admin'?'danger':'info'" size="small">{{ row.role==='admin'?'管理员':'普通用户' }}</el-tag></template></el-table-column><el-table-column label="状态" width="215"><template #default="{row}"><el-tag :type="row.disabled?'info':'success'" size="small">{{ row.disabled?'已禁用':'正常' }}</el-tag><el-tag v-if="isLocked(row)" type="danger" size="small" class="tag-gap">已锁定</el-tag><el-tag v-if="row.weak_password" type="danger" size="small" class="tag-gap">弱密码</el-tag><el-tag v-if="row.must_change_password" type="warning" size="small" class="tag-gap">需改密</el-tag><el-button v-if="isLocked(row)" link type="primary" size="small" class="tag-gap" @click="unlockUser(row)">解锁</el-button></template></el-table-column><el-table-column label="最近登录" min-width="155"><template #default="{row}">{{ dateTime(row.last_login_at) }}</template></el-table-column><el-table-column label="管理操作" min-width="255" fixed="right"><template #default="{row}"><el-button link type="primary" @click="openEditUser(row)">编辑</el-button><el-button link @click="openResetPassword(row)">重置密码</el-button><el-button link type="warning" @click="kickAllSessions(row)">踢会话</el-button><el-button link :type="row.disabled?'success':'danger'" @click="toggleUser(row)">{{ row.disabled?'启用':'禁用' }}</el-button><el-button v-if="row.id !== me?.id" link type="danger" :disabled="!canDeleteUser(row)" :title="canDeleteUser(row) ? '' : '最后一个可用管理员不能删除'" @click="openDeleteUser(row)">删除</el-button></template></el-table-column></el-table><PaginationBar v-model:page="usersPage" v-model:page-size="usersPageSize" :total="users.length"/></div>
       <template v-else>
         <BulkBar :count="sel.users.count" :actions="usersBulkActions" :running="bulkRunning" :hint="usersBulkHint" @run="(a)=>runBulk(a,sel.users,{refresh:loadUsers})" @clear="sel.users.clear()"/>
         <div class="game-card-list"><div v-for="u in pagedUsers" :key="u.id" class="admin-card">
           <div class="admin-card-pick"><el-checkbox :model-value="sel.users.has(u)" @change="sel.users.toggle(u)">选择</el-checkbox></div>
           <div class="admin-card-main"><strong><UserAvatar :user-id="u.id" :name="u.display_name||u.username" :size="20" class="card-avatar" /> {{ u.display_name||u.username }}</strong><small>{{ u.email||'未绑定' }}</small><small class="muted">{{ u.role==='admin'?'管理员':'普通用户' }} · 最近登录 {{ dateTime(u.last_login_at) }}</small><p class="admin-card-tags"><el-tag v-if="u.disabled" type="info" size="small">已禁用</el-tag><el-tag v-if="isLocked(u)" type="danger" size="small">已锁定</el-tag><el-tag v-if="u.weak_password" type="danger" size="small">弱密码</el-tag><el-tag v-if="u.must_change_password" type="warning" size="small">需改密</el-tag></p></div>
-          <div class="admin-card-actions"><el-button link @click="editName(u)">改名</el-button><el-button link @click="editEmail(u)">邮箱</el-button><el-button v-if="u.email&&!u.email_verified" link @click="verifyEmail(u)">验证</el-button><el-button link @click="openResetPassword(u)">重置密码</el-button><el-button link type="warning" @click="kickAllSessions(u)">踢会话</el-button><el-button link :type="u.disabled?'success':'danger'" @click="toggleUser(u)">{{ u.disabled?'启用':'禁用' }}</el-button><el-button v-if="u.id !== me?.id" link type="danger" :disabled="!canDeleteUser(u)" @click="openDeleteUser(u)">删除</el-button></div>
+          <div class="admin-card-actions"><el-button link type="primary" @click="openEditUser(u)">编辑</el-button><el-button link @click="openResetPassword(u)">重置密码</el-button><el-button link type="warning" @click="kickAllSessions(u)">踢会话</el-button><el-button link :type="u.disabled?'success':'danger'" @click="toggleUser(u)">{{ u.disabled?'启用':'禁用' }}</el-button><el-button v-if="u.id !== me?.id" link type="danger" :disabled="!canDeleteUser(u)" @click="openDeleteUser(u)">删除</el-button></div>
         </div><el-empty v-if="!pagedUsers.length" description="暂无用户"/></div>
         <PaginationBar v-model:page="usersPage" v-model:page-size="usersPageSize" :total="users.length"/>
       </template>
@@ -28,7 +28,8 @@
           <el-button type="primary" :loading="resetPwd.verifying" :disabled="!/^\d{6}$/.test(resetPwd.code.trim())" @click="confirmResetPwd">确认重置</el-button>
         </template>
       </el-dialog>
-      <UserCreateDrawer v-model:visible="newUserDrawer" @created="loadUsers" />
+      <!-- DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：编辑用户弹窗——仅可改角色；用户名/邮箱/绑定 Steam 账号只读 -->
+      <el-dialog v-model="editUserDialog.visible" title="编辑用户" width="min(440px, 92vw)"><p class="muted">{{ editUserDialog.row?.display_name || editUserDialog.row?.username }} · 仅可修改角色</p><div class="edit-user-field"><label>用户名（只读）</label><div class="val">{{ editUserDialog.row?.username }}</div></div><div class="edit-user-field"><label>邮箱（只读）</label><div class="val">{{ editUserDialog.row?.email || '未绑定' }}</div></div><div class="edit-user-field"><label>角色</label><div class="role-opts"><div class="role-opt" :class="{on:editUserDialog.role==='user'}" @click="editUserDialog.role='user'">普通用户</div><div class="role-opt" :class="{on:editUserDialog.role==='admin'}" @click="editUserDialog.role='admin'">管理员</div></div></div><div class="edit-user-field"><label>绑定的 Steam 账号（只读）</label><div class="bound"><template v-if="editUserDialog.accounts.length"><div v-for="a in editUserDialog.accounts" :key="a.steamId"><b>{{ a.alias || a.personaName || a.steamId }}</b> · {{ a.steamId }}</div></template><span v-else>未绑定</span></div></div><template #footer><el-button @click="editUserDialog.visible=false">取消</el-button><el-button type="primary" :loading="saving" @click="submitUserEdit">保存</el-button></template></el-dialog>
     </template>
     <template v-else-if="section==='recycle'">
       <div class="module-card recycle-summary"><div><span class="muted">回收站</span><strong>{{ recycleGames.length }}</strong><small>款游戏</small></div><p>这里只做逻辑删除。恢复后会重新出现在前台目录，价格与历史数据会保留。</p><el-button :disabled="!recycleGames.length" @click="selectAllRecycle">全选当前筛选（{{ recycleGames.length }} 条）</el-button><el-button @click="loadRecycle">刷新</el-button></div>
@@ -122,7 +123,6 @@ import PaginationBar from '../components/PaginationBar.vue';
 import MailSettingsForm from '../components/MailSettingsForm.vue';
 import BulkBar from '../components/BulkBar.vue';
 import BulkResultDialog from '../components/BulkResultDialog.vue';
-import UserCreateDrawer from '../components/UserCreateDrawer.vue';
 import GameDetailDialog from '../components/GameDetailDialog.vue';
 import UserAvatar from '../components/UserAvatar.vue';
 import CoverPlaceholder from '../components/CoverPlaceholder.vue';
@@ -142,13 +142,8 @@ const isMobile=ref(Boolean(mobileQuery&&mobileQuery.matches));
 function onMobileChange(e){isMobile.value=e.matches;}
 if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',onMobileChange);else mobileQuery.addListener(onMobileChange);}
 const loading=ref(false),saving=ref(false),users=ref([]),recycleGames=ref([]),steamAccounts=ref([]),unownedAccounts=ref([]),steamLimit=ref(5),steamError=ref(''),activeAccount=ref(null),libraryGames=ref([]),apiKeyDialog=ref({visible:false,row:null,value:''}),smtp=ref({}),mailMessage=ref(''),mailOk=ref(false),smtpTrace=ref(''),testEmail=ref(''),mailPageTab=ref('config');
-// AT 批（docs/ADMIN-CONSOLE-IA.md §3/§7）：新建用户改右侧抽屉；未保存守卫由 UserCreateDrawer 自己注册。
-const newUserDrawer=ref(false);
-function openNewUserDrawer(){newUserDrawer.value=true;const q={...route.query,drawer:'new'};router.replace({path:'/console',query:q}).catch(()=>{});}
-// 抽屉关闭：去掉 URL 里的 drawer（保留 section 与其它参数），刷新不会回到空白页
-function closeNewUserDrawer(){if(route.query.drawer){const q={...route.query};delete q.drawer;router.replace({path:'/console',query:q}).catch(()=>{});}}
-// ?section=users&drawer=new 直达；drawer 参数被外部清掉时同步关抽屉
-watch(()=>route.query.drawer,(d)=>{if(props.section==='users')newUserDrawer.value=String(d??'')==='new';});
+// DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：新建用户入口下线——用户只能自助注册；
+// 行内操作 = 编辑（仅角色）/ 重置密码 / 禁用·启用 / 踢会话 / 删除，批量只保留「批量踢会话」。
 function goOpLogs(tab){router.push({path:'/console',query:{section:'op-logs',tab}}).catch(()=>{});}
 const usersPager=useListPagination(users), recyclePager=useListPagination(recycleGames), steamPager=useListPagination(libraryGames);
 const pagedUsers=usersPager.items, usersPage=usersPager.page, usersPageSize=usersPager.pageSize;
@@ -163,17 +158,11 @@ const sel={
 };
 const bulkResult=reactive({visible:false,result:null}),bulkRunning=ref('');
 const recycleBulkActions=[{key:'restore',label:'恢复',target:'games',action:'restore'}];
-// 「禁用」要拦住两件事：勾到自己、勾掉全部可用管理员（服务端另有 409 兜底）
+// DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：批量只保留「批量踢会话」——禁用/启用/删除/重置密码不做批量
 const activeAdminIds=computed(()=>users.value.filter((u)=>u.role==='admin'&&!u.disabled).map((u)=>u.id));
-const disableBlocked=computed(()=>{
-  const keys=sel.users.selectedKeys;
-  if(!keys.length)return false;
-  if(props.me?.id&&keys.includes(props.me.id))return true;
-  const admins=activeAdminIds.value;
-  return admins.length>0&&admins.every((id)=>keys.includes(id));
-});
-const usersBulkHint=computed(()=>sel.users.selectedKeys.includes(props.me?.id)?'不能禁用自己的账号':(disableBlocked.value?'不能禁用全部可用管理员':''));
-const usersBulkActions=computed(()=>[{key:'disable',label:'禁用',target:'users',action:'disable',risk:'high',disabled:disableBlocked.value},{key:'enable',label:'启用',target:'users',action:'enable'}]);
+const usersBulkHint=computed(()=>sel.users.selectedKeys.length?'踢掉所选用户全部会话（各设备下一次请求即退出登录）':'');
+const usersBulkActions=computed(()=>[{key:'kick',label:'批量踢会话',target:'users',action:'kick',risk:'high'}]);
+// DT-4 批：api 抛错带 err.data（重置密码弹窗读 retryAfterSec/剩余次数）
 function api(path,opts={}){return fetch(path,{credentials:'same-origin',...opts,headers:{'content-type':'application/json',...(opts.headers||{})}}).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{}if(r.status===401){redirectToLogin();const err=new Error(d.error||'登录已过期');err.data=d;throw err;}if(!r.ok){const err=new Error(d.error||`HTTP ${r.status}`);err.data=d;throw err;}return d;});}
 function body(method,data){return {method,body:JSON.stringify(data)};}
 function notify(e){ElMessage.error(e?.message||String(e));}
@@ -219,9 +208,6 @@ const tempPwd=ref('');
 const tempPwdDialog=ref(false);
 function showTempPassword(pwd){tempPwd.value=pwd;tempPwdDialog.value=true;}
 async function copyTempPassword(){const ok=await copyText(tempPwd.value);ok?ElMessage.success('已复制'):ElMessage.warning('复制失败，请手动选择');}
-async function editName(row){try{const {value}=await ElMessageBox.prompt(`修改「${row.display_name || row.username}」的显示名；留空清除`,'修改显示名',{inputValue:row.display_name||''});const d=await api(`/api/admin/users/${encodeURIComponent(row.username)}`,body('PATCH',{display_name:value}));toastNotify(d);await loadUsers();}catch(e){if(e!=='cancel'&&e!=='close')notify(e);}}
-async function editEmail(row){try{const {value}=await ElMessageBox.prompt('输入登录邮箱；留空解绑','绑定邮箱',{inputValue:row.email||'',inputType:'email'});const d=await api(`/api/admin/users/${encodeURIComponent(row.username)}/email`,body('POST',{email:value.trim()}));if(value.trim()){ElMessage.success(d.notify==='queued'?'邮箱已绑定，需重新验证（变更通知邮件稍后发送）':'邮箱已绑定，需重新验证');}else{ElMessage.success('邮箱已解绑');}await loadUsers();}catch(e){if(e!=='cancel'&&e!=='close')notify(e);}}
-async function verifyEmail(row){await act(async()=>{const d=await api(`/api/admin/users/${encodeURIComponent(row.username)}/email/code`,body('POST',{}));const {value}=await ElMessageBox.prompt(`${d.hint||'验证码已发送'}，输入邮件中的 6 位验证码`,'验证邮箱',{inputPattern:/^\d{6}$/,inputErrorMessage:'请输入 6 位验证码'});await api(`/api/admin/users/${encodeURIComponent(row.username)}/email/verify`,body('POST',{code:value.trim()}));ElMessage.success('邮箱已验证');await loadUsers();});}
 // ---- DT-4（docs/ADMIN-PERMISSIONS.md）：重置密码弹窗（demo ③ admin-users-2026-11-19.html）----
 // 打开不发码；点「发送验证码」才发（purpose=admin_reset，不占前台额度）；三态按钮
 // （发送中/剩余秒数/可重发，过期后显示「重新发送」）；验证失败不关弹窗（显示「还剩 N 次机会」）。
@@ -268,6 +254,29 @@ async function confirmResetPwd(){
     if(e.data?.remainingAttempts!=null)resetPwd.error=`${e.message}（还剩 ${e.data.remainingAttempts} 次机会）——弹窗不关闭，可直接重试`;
     else resetPwd.error=e.message;
   }finally{resetPwd.verifying=false;}
+}
+// DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：编辑用户弹窗——仅可改角色；用户名/邮箱/绑定 Steam 账号只读展示
+const editUserDialog=reactive({visible:false,row:null,role:'user',accounts:[]});
+async function openEditUser(row){
+  editUserDialog.row=row;editUserDialog.role=row.role==='admin'?'admin':'user';editUserDialog.accounts=[];
+  editUserDialog.visible=true;
+  try{
+    const d=await api(`/api/admin/users/${encodeURIComponent(row.username)}/steam-accounts`);
+    editUserDialog.accounts=d.accounts||[];
+  }catch(e){notify(e);}
+}
+async function submitUserEdit(){
+  const row=editUserDialog.row;
+  if(!row)return;
+  if(editUserDialog.role===row.role){editUserDialog.visible=false;return;}
+  // 角色变更二次确认（DT-3 验收：角色变更、禁用、删除都要确认）
+  try{await ElMessageBox.confirm(`把「${row.display_name || row.username}」的角色改为${editUserDialog.role==='admin'?'管理员':'普通用户'}？`,'确认角色变更',{type:'warning',confirmButtonText:'确认变更',cancelButtonText:'取消'});}catch{return;}
+  await act(async()=>{
+    await api(`/api/admin/users/${encodeURIComponent(row.username)}`,body('PATCH',{role:editUserDialog.role}));
+    ElMessage.success('角色已变更');
+    editUserDialog.visible=false;
+    await loadUsers();
+  });
 }
 async function toggleUser(row){try{await ElMessageBox.confirm(`${row.disabled?'启用':'禁用'}账号「${row.display_name || row.username}」？`,'确认操作',{type:'warning'});const d=await api(`/api/admin/users/${encodeURIComponent(row.username)}`,body('PATCH',{disabled:!row.disabled}));toastNotify(d);await loadUsers();}catch(e){if(e!=='cancel'&&e!=='close')notify(e);}}
 // AK-2（docs/AUTH-REDESIGN.md §4.4）：锁定标记与管理员解锁
@@ -361,12 +370,11 @@ const deleteDialog=reactive({visible:false,username:'',sessions:0,steamAccounts:
 function canDeleteUser(row){if(row.role!=='admin'||row.disabled)return true;return !(activeAdminIds.value.length<=1&&activeAdminIds.value.includes(row.id));}
 function openDeleteUser(row){deleteDialog.visible=true;deleteDialog.username=row.username;deleteDialog.sessions=Number(row.sessions||0);deleteDialog.steamAccounts=Number(row.steam_accounts||0);deleteDialog.confirm='';deleteDialog.reason='';}
 async function submitDeleteUser(){if(deleteDialog.confirm!==deleteDialog.username)return;deleting.value=true;try{const username=deleteDialog.username;const d=await api(`/api/admin/users/${encodeURIComponent(username)}`,body('DELETE',{confirmUsername:deleteDialog.confirm,reason:deleteDialog.reason.trim()||undefined}));ElMessage.success(d.notify==='queued'?'已删除，通知邮件稍后发送':(d.notify==='skipped_no_email'?'已删除（该用户未绑定邮箱，未发送通知）':'已删除'));deleteDialog.visible=false;sel.users.clear();const wasLastOnPage=pagedUsers.value.length===1&&usersPage.value>1;if(wasLastOnPage)usersPage.value-=1;await loadUsers();}catch(e){notify(e);}finally{deleting.value=false;}}
-watch(()=>props.section,s=>{if(s==='users'){loadUsers();if(route.query.drawer==='new')newUserDrawer.value=true;}else if(s==='recycle')loadRecycle();else if(s==='steam'){consumeSteamQuery();loadSteam();}else if(s==='mail'){loadMail();loadTemplates();}else if(s==='sessions')loadSessions();});
+watch(()=>props.section,s=>{if(s==='users'){loadUsers();}else if(s==='recycle')loadRecycle();else if(s==='steam'){consumeSteamQuery();loadSteam();}else if(s==='mail'){loadMail();loadTemplates();}else if(s==='sessions')loadSessions();});
 // 翻页清空选择（常规列表只支持本页勾选）；回收站例外：可用「全选当前筛选」一次性选满
 watch(recyclePage,()=>sel.recycle.clear());watch(usersPage,()=>sel.users.clear());
 watch([sessPage,sessPageSize],()=>{sel.sessions.clear();loadSessions();});
-watch(newUserDrawer,(v)=>{if(!v)closeNewUserDrawer();});
-onMounted(()=>{if(props.section==='users'){loadUsers();if(route.query.drawer==='new')newUserDrawer.value=true;}else if(props.section==='recycle')loadRecycle();else if(props.section==='steam'){consumeSteamQuery();loadSteam();}else if(props.section==='mail'){loadMail();loadTemplates();}else if(props.section==='sessions')loadSessions();});
+onMounted(()=>{if(props.section==='users'){loadUsers();}else if(props.section==='recycle')loadRecycle();else if(props.section==='steam'){consumeSteamQuery();loadSteam();}else if(props.section==='mail'){loadMail();loadTemplates();}else if(props.section==='sessions')loadSessions();});
 onBeforeUnmount(()=>{if(mobileQuery){if(mobileQuery.removeEventListener)mobileQuery.removeEventListener('change',onMobileChange);else mobileQuery.removeListener(onMobileChange);}});
 </script>
 
@@ -385,6 +393,8 @@ onBeforeUnmount(()=>{if(mobileQuery){if(mobileQuery.removeEventListener)mobileQu
 /* AT 批：邮件服务 3 tab + 页头「查看发送记录」入口 */
 .mail-page-head{display:flex;justify-content:flex-end;gap:var(--space-8)}
 .mail-page-tabs :deep(.el-tabs__header){margin-bottom:var(--space-14)}
+/* DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：编辑用户弹窗（对齐 design/admin-users-2026-11-19.html ②） */
+.edit-user-field{margin-bottom:13px}.edit-user-field label{display:block;font-size:11.5px;color:var(--fg-muted);margin-bottom:6px}.edit-user-field .val{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:12.5px;color:var(--fg)}.role-opts{display:flex;gap:10px}.role-opt{flex:1;border:1px solid var(--border);border-radius:9px;padding:9px 12px;font-size:12.5px;color:var(--fg);background:var(--panel-2);cursor:pointer;text-align:center}.role-opt.on{border-color:var(--brand);background:var(--brand-soft);color:var(--brand);font-weight:700}.edit-user-field .bound{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:12px;color:var(--fg-muted);line-height:1.7}.edit-user-field .bound b{color:var(--fg)}
 .mail-page-tabs :deep(.el-tab-pane){display:flex;flex-direction:column;gap:var(--space-14)}
 @media(max-width:900px){.user-create{grid-template-columns:repeat(2,minmax(0,1fr))}.metric-grid{grid-template-columns:repeat(3,minmax(100px,1fr))}.log-entry{grid-template-columns:125px 55px minmax(100px,1fr)}}
 @media(max-width:560px){.user-create{grid-template-columns:1fr}.user-create>*,.steam-account .steam-actions{width:100%}.recycle-summary{align-items:flex-start;flex-wrap:wrap}.recycle-summary p{flex-basis:100%;margin:0}.steam-account .card-heading,.mail-test{flex-wrap:wrap}.mail-test>.el-input{flex-basis:100%}.log-filters>.el-select{flex:1;width:auto}.log-filters>.el-input{flex-basis:100%;min-width:0}.log-entry{grid-template-columns:1fr auto;gap:5px}.log-entry strong,.log-entry pre{grid-column:1/-1}}

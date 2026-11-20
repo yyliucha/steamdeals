@@ -314,6 +314,31 @@ test('用户批量禁用：不能禁用自己 / 不能禁用最后一个管理�
   }
 });
 
+// DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：批量只保留「批量踢会话」——users/kick 删掉所选用户全部会话
+test('DT-3：批量踢会话 users/kick——所选用户会话全部清空，混入不存在 id 记 skipped', async () => {
+  const { q, base, admin, close } = await boot();
+  try {
+    const cookie = await login(base, 'admin', 'admin123456');
+    const bob = await db.createUser(q, { username: 'bob', password: 'bob12345678', role: 'user' });
+    const bobCookie = await login(base, 'bob', 'bob12345678');
+    await (await fetch(base + '/api/me', { headers: { cookie: bobCookie, 'x-forwarded-for': ADMIN_IP } })).json();
+    // 高危动作：需要 confirmCount
+    const missing = await bulk(base, cookie, { target: 'users', action: 'kick', keys: [bob.id] });
+    assert.equal(missing.status, 400, '高危动作缺 confirmCount 拒绝');
+    const res = await bulk(base, cookie, { target: 'users', action: 'kick', keys: [bob.id, 999999], confirmCount: 2 });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.ok, 1, '只存在 bob 一个用户');
+    assert.equal(body.results.length, 1, 'skipped 明细只有不存在的 999999');
+    assert.equal(body.results[0].key, '999999');
+    assert.equal(body.results[0].status, 'skipped');
+    const meAfter = await (await fetch(base + '/api/me', { headers: { cookie: bobCookie, 'x-forwarded-for': ADMIN_IP } })).json();
+    assert.equal(meAfter.user, null, '批量踢会话后旧 cookie 立即失效');
+  } finally {
+    await close();
+  }
+});
+
 test('设备批量封禁/解封：列表出现 2 条，对应设备请求 403，解封后恢复', async () => {
   const { q, base, close } = await boot();
   try {

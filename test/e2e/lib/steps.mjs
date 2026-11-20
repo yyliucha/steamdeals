@@ -290,6 +290,20 @@ export async function executeRow(row, ctx) {
         if (s.saveAs) ctx[s.saveAs] = r;
         break;
       }
+      case 'registerCode': {
+        // DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：建号接口下线后，e2e 账号走自助注册——
+        // 测试侧可读库，直接落一条 register 目的验证码（10 分钟有效），再调 verify 建号。
+        const email = resolveTemplate(s.email, ctx);
+        const code = String(s.code ?? '654321');
+        const { hashCode } = await import('../../../src/email-auth.js');
+        await ctx.q(
+          "insert into email_codes (email, user_id, purpose, code_hash, expires_at) values ($1, null, 'register', $2, now() + interval '10 minutes')",
+          [email, hashCode(email, code)],
+        );
+        ctx.registerEmail = email;
+        ctx.registerCode = code;
+        break;
+      }
       case 'cleanupOrphans':
         ctx.orphanCleanup = await account.cleanupOrphans(ctx.base, ctx.adminCookie, ctx.q);
         break;
