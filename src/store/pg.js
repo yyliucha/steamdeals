@@ -170,6 +170,15 @@ export {
   markEmailCodeSent,
   markEmailCodeFailed,
 } from './admin-settings-repository.js';
+// CO-5/B4-2 第十一轮（docs/DESIGN-AUDIT.md B4）：admin-sessions 域（B4 #14：后台会话
+// 列表/踢下线）SQL 落 admin-sessions-repository.js——listSessions 只被本域路由使用随域
+// 搬走；deleteSessionById（#11 bulkSessionKick 共用）、deleteSessionsOfUser（auth-routes/
+// routes/auth.js/server.js kickAll、revoke-others、禁用踢会话共用）、deleteSessionsOfUsers
+// （#11 bulk）、touchSession/deleteSessionByToken（请求链中间件）一律留本文件；
+// 无 DDL 搬家——sessions 表 DDL 在本文件 migrate() 消费。
+// 这里 re-export 保持旧 db.* 导入签名不变（routes/admin-sessions.js、server.js 其它段
+// 与现有测试照旧走聚合壳）。
+export { listSessions } from './admin-sessions-repository.js';
 
 export const SCHEMA = `
 create table if not exists platforms (
@@ -2813,37 +2822,9 @@ export async function deleteSessionById(q, sessId) {
 }
 
 /** 后台会话列表：默认只列未过期；按 last_seen_at desc, created_at desc；绝不返回 token。 */
-export async function listSessions(q, { user = '', ip = '', includeExpired = false, limit = 20, offset = 0 } = {}) {
-  const where = [];
-  const params = [];
-  if (!includeExpired) where.push('s.expires_at > now()');
-  if (user) {
-    params.push(`%${user}%`);
-    where.push(`u.username ilike $${params.length}`);
-  }
-  if (ip) {
-    params.push(`%${ip}%`);
-    where.push(`coalesce(s.ip, '') ilike $${params.length}`);
-  }
-  const whereSql = where.length ? `where ${where.join(' and ')}` : '';
-  params.push(Math.min(Math.max(Number(limit) || 20, 1), 200));
-  const limitIdx = params.length;
-  params.push(Math.max(Number(offset) || 0, 0));
-  const r = await q(
-    `select s.id, s.user_id, u.username, nullif(btrim(u.display_name), '') as display_name, u.role, u.disabled,
-            s.ip, s.user_agent, s.device_id, s.created_at, s.last_seen_at, s.expires_at
-       from sessions s join users u on u.id = s.user_id
-       ${whereSql}
-      order by s.last_seen_at desc nulls last, s.created_at desc
-      limit $${limitIdx} offset $${limitIdx + 1}`,
-    params,
-  );
-  const c = await q(
-    `select count(*)::int as n from sessions s join users u on u.id = s.user_id ${whereSql}`,
-    params.slice(0, limitIdx - 1),
-  );
-  return { rows: r.rows, total: c.rows[0]?.n ?? 0 };
-}
+// CO-5/B4-2 第十一轮：listSessions 已随 admin-sessions 域搬到 admin-sessions-repository.js
+// （顶部 re-export，签名不变）。deleteSessionById / deleteSessionsOfUser / touchSession /
+// deleteSessionByToken 跨模块共用，留本文件。
 
 /** 按用户踢全部会话；exceptToken 传当前 token 时保留它（按用户踢自己 / 退出其它设备）。返回删除行数。 */
 export async function deleteSessionsOfUser(q, userId, { exceptToken = null } = {}) {

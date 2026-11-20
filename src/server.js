@@ -110,6 +110,14 @@ import { handleAdminSyncAdmin } from './routes/admin-sync.js';
 // 使用，随域移入模块级（先例：watchlist 域 watchUserFails）；/api/admin/settings*
 // （settings-routes.js 独立模块）与 /api/admin/users 邮件绑定等其它 admin 域路由留本文件。
 import { handleAdminSettingsAdmin } from './routes/admin-settings.js';
+// CO-5/B4-2 第十一轮：admin-sessions 域（B4 #14 后台会话：列表/单条踢下线）路由已抽到
+// src/routes/admin-sessions.js——handleAdminSessionsAdmin 在 requireAdmin 就绪之后的管理段
+// （本域 2 条路由，管理段形态先例=admin-settings 域）。调用位置不能动：取本域最早路由
+// /api/admin/sessions 的原位置（auth 主段接线之前）。token 经 ctx 传入（列表 current
+// 标记与踢下线审计用，只读）；/api/admin/users/:name/sessions（kickAll，B4 #11 users 区）
+// 与 /api/user/sessions/revoke-others（前台主段）留本文件；bulk 派发表 sessions/kick
+// 条目（B4 #11）留本文件。
+import { handleAdminSessionsAdmin } from './routes/admin-sessions.js';
 // DX 批（docs/SEARCH-FIX-PERF.md §DX）：前台列表/搜索短 TTL 内存缓存（纯逻辑，测试锁语义）。
 import { createListCache, stableHash } from './search-cache.js';
 
@@ -1387,49 +1395,28 @@ export function createApiServer({
       )
         return;
 
-      // ---- BK 批（docs/SESSION-MANAGEMENT.md §3.3/§3.4）：会话列表 / 踢下线 / 退出其它设备 ----
-      if (path === '/api/admin/sessions' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const list = await db.listSessions(q, {
-          user: String(url.searchParams.get('user') ?? '').trim(),
-          ip: String(url.searchParams.get('ip') ?? '').trim(),
-          includeExpired: url.searchParams.get('includeExpired') === '1',
-          limit: Number(url.searchParams.get('limit') ?? 20),
-          offset: Number(url.searchParams.get('offset') ?? 0),
-        });
-        // 绝不把 token 下发前端；region 只读缓存，不触发外部归属地查询
-        return json(res, 200, {
-          sessions: list.rows.map((r) => ({
-            id: Number(r.id),
-            username: r.username,
-            // EJ（docs/DISPLAY-NAME-RULE.md）：「用户」列按「昵称 → 用户名」显示；
-            // username 保留（踢下线/筛选等按账号标识走，登录仍用 username）。
-            // SQL 已把空白昵称归一为 null（nullif(btrim(...), '')），前端 `displayName || username` 回退用户名。
-            displayName: r.display_name ?? null,
-            role: r.role,
-            disabled: Boolean(r.disabled),
-            ip: r.ip ?? null,
-            region: r.ip ? visitors.cachedRegion(r.ip) : null,
-            userAgent: r.user_agent ?? null,
-            deviceId: r.device_id ?? null,
-            createdAt: r.created_at,
-            lastSeenAt: r.last_seen_at,
-            expiresAt: r.expires_at,
-            current: Boolean(token && user && Number(r.id) === Number(user.sess_id)),
-          })),
-          total: list.total,
-        });
-      }
+      // ---- CO-5/B4-2 第十一轮（docs/DESIGN-AUDIT.md B4）：admin-sessions 域管理段路由已抽到
+      // src/routes/admin-sessions.js。调用位置不能动：必须在 requireAdmin 就绪之后的管理段
+      // （401/403 语义依赖该位置；调用点取本域最早路由 /api/admin/sessions 的原位置）。
+      // 域内 2 条路由 path+method 互不重叠、与相邻其它路由无同 path 双匹配，
+      // 在管理段内集中到一处不改变匹配语义；token 只读传入（current 标记/踢下线审计）。
+      if (
+        await handleAdminSessionsAdmin({
+          path,
+          req,
+          res,
+          url,
+          q,
+          logger,
+          json,
+          user,
+          requireAdmin,
+          token,
+        })
+      )
+        return;
 
-      const sessKick = path.match(/^\/api\/admin\/sessions\/(\d+)$/);
-      if (sessKick && req.method === 'DELETE') {
-        if (!requireAdmin()) return;
-        const row = await db.deleteSessionById(q, Number(sessKick[1]));
-        if (!row) return json(res, 404, { error: '会话不存在或已过期' });
-        logger?.info('session.kicked', { id: row.id, username: row.username, by: user.username, current: token === row.token });
-        return json(res, 200, { removed: 1 });
-      }
-
+      // BK 批（docs/SESSION-MANAGEMENT.md §3.3）：按用户踢全部会话（users 区，B4 #11 留本文件）
       const kickAllMatch = path.match(/^\/api\/admin\/users\/([^/]+)\/sessions$/);
       if (kickAllMatch && req.method === 'DELETE') {
         if (!requireAdmin()) return;

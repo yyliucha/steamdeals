@@ -2,6 +2,8 @@
 // 用真 PGlite + 真 HTTP（与 admin-bulk.test.js 同一套 boot 写法），只锁行为不 mock 业务层。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import { startApiServer } from '../src/server.js';
@@ -346,7 +348,6 @@ test('EJ 验收 1/2：会话列表带 displayName——有昵称给昵称、清�
     await t.close();
   }
 });
-
 // ===== DT-2（docs/ADMIN-PERMISSIONS.md）：用户级会话数据 =====
 // GET /api/me/sessions 只返回当前用户会话；POST /api/me/sessions/:id/revoke 只能踢自己（非自己 404）；
 // 传入 userId/username 一律忽略；绝不返回 token。反向自检：把 repository 的 s.user_id = $1 条件删掉 →
@@ -410,4 +411,85 @@ test('DT-2 会话：踢自己生效（被踢会话 401、其它会话不受影�
   } finally {
     await t.close();
   }
+});
+
+// ============================================================ CO-5/B4-2 第十一轮静态锁
+// admin-sessions 域（B4 #14：后台会话列表/单条踢下线）从 server.js/pg.js 巨石拆出后，
+// 四组静态断言按新落点指向：
+//   · 路由分支 → src/routes/admin-sessions.js；
+//   · 域专属 SQL → src/store/admin-sessions-repository.js；pg.js 必须 re-export
+//     （旧 db.* 导入签名不变），无 DDL 搬家（sessions 表 DDL 在 pg.js migrate()）；
+//   · server.js 只留单入口接线（管理段），且必须真实调用——删掉调用即红（防死模块）；
+//   · 旧分支不得残留在 server.js（防双实现）。
+// 反向自检口径：删掉 routes/admin-sessions.js 任一路由分支 → 第 1 组断言红；
+// 删掉 server.js 的入口接线 → 第 2 组红；把分支抄回 server.js → 第 3 组红；
+// 删 pg.js re-export → 第 4 组红。
+
+const SS_ROUTES = readFileSync(fileURLToPath(new URL('../src/routes/admin-sessions.js', import.meta.url)), 'utf8');
+const SS_REPO = readFileSync(fileURLToPath(new URL('../src/store/admin-sessions-repository.js', import.meta.url)), 'utf8');
+const SS_SERVER = readFileSync(fileURLToPath(new URL('../src/server.js', import.meta.url)), 'utf8');
+const SS_PG = readFileSync(fileURLToPath(new URL('../src/store/pg.js', import.meta.url)), 'utf8');
+
+test('CO-5/B4-2 第十一轮：admin-sessions 路由分支全部在 src/routes/admin-sessions.js（管理段单入口，删任一支即红）', () => {
+  assert.match(SS_ROUTES, /path === '\/api\/admin\/sessions' && req\.method === 'GET'/, 'sessions 列表分支在新文件');
+  assert.match(SS_ROUTES, /path\.match\(\/\^\\\/api\\\/admin\\\/sessions\\\/\(\\d\+\)\$\/\)/, 'sessions/:id 踢下线分支在新文件');
+  // 单入口形态（§15.3 位置语义：管理段）
+  assert.match(SS_ROUTES, /export async function handleAdminSessionsAdmin\(ctx\)/, '管理段入口');
+  // 守卫与语义随路由
+  assert.match(SS_ROUTES, /if \(!requireAdmin\(\)\) return true/, '管理段守卫');
+  assert.match(SS_ROUTES, /current: Boolean\(token && user && Number\(r\.id\) === Number\(user\.sess_id\)\)/, 'current 标记语义随路由');
+  assert.match(SS_ROUTES, /displayName: r\.display_name \?\? null/, 'EJ 批昵称回退语义随路由');
+  assert.match(SS_ROUTES, /visitors\.cachedRegion\(r\.ip\)/, 'region 只读缓存语义随路由');
+  assert.match(SS_ROUTES, /error: '会话不存在或已过期'/, '踢下线 404 语义随路由');
+  assert.match(SS_ROUTES, /logger\?\.info\('session\.kicked'/, '踢下线审计语义随路由');
+  assert.match(SS_ROUTES, /await db\.listSessions\(q, \{/, '列表走 repository listSessions');
+  assert.match(SS_ROUTES, /await db\.deleteSessionById\(q, Number\(sessKick\[1\]\)\)/, '踢下线走 pg.js deleteSessionById');
+  // 路由模块只做编排：不许出现 SQL 字面量（全部走 repository）
+  assert.ok(!/select |insert |update |delete from /.test(SS_ROUTES), 'routes/admin-sessions.js 不写 SQL 字面量');
+  // 未命中返回 false，宿主继续
+  assert.match(SS_ROUTES, /return false;/, '未命中返回 false，宿主继续');
+});
+
+test('CO-5/B4-2 第十一轮：server.js 必须真实接线管理段入口（删掉调用即红，防死模块）', () => {
+  assert.match(SS_SERVER, /import \{ handleAdminSessionsAdmin \} from '\.\/routes\/admin-sessions\.js'/, 'server.js 必须导入域路由入口');
+  // 锁「完整调用形态」：必须是 if (await handleXxx(...)) return;——只断言字符串存在会被 if(false) 包一层绕过
+  assert.match(SS_SERVER, /if \(\s*await handleAdminSessionsAdmin\(\{[\s\S]{0,900}?path,[\s\S]{0,900}?req,[\s\S]{0,900}?res,[\s\S]{0,900}?token,[\s\S]{0,400}?\}\)\s*\)\s*return;/, '管理段接线（完整形态，且消费返回值）');
+  // 管理段 ctx 关键字段必须传齐：漏传 url 过滤参数丢失、漏传 requireAdmin 守卫失效、
+  // 漏传 user 审计落空、漏传 token current 标记与踢下线审计失真
+  assert.match(SS_SERVER, /await handleAdminSessionsAdmin\(\{[\s\S]{0,900}?url,/);
+  assert.match(SS_SERVER, /await handleAdminSessionsAdmin\(\{[\s\S]{0,900}?requireAdmin,/);
+  assert.match(SS_SERVER, /await handleAdminSessionsAdmin\(\{[\s\S]{0,900}?user,/);
+  assert.match(SS_SERVER, /await handleAdminSessionsAdmin\(\{[\s\S]{0,900}?token,/);
+  // 位置语义锁：调用必须在 requireAdmin 就绪之后的管理段——本域最早路由 sessions GET 的原位置
+  // （auth 主段接线之前、前台 revoke-others 之前）
+  assert.match(SS_SERVER, /await handleAdminSessionsAdmin\(\{[\s\S]*?await handleAuthRoutes\(\{/s, '接线在 auth 主段接线之前（本域原位置）');
+  assert.match(SS_SERVER, /await handleAdminSessionsAdmin\(\{[\s\S]*?path === '\/api\/user\/sessions\/revoke-others' && req\.method === 'POST'/s, '接线在 revoke-others 之前（本域原位置）');
+});
+
+test('CO-5/B4-2 第十一轮：admin-sessions 路由分支不得双实现（server.js 里保留旧分支即红，防拆分后两处漂移）', () => {
+  assert.ok(!/path === '\/api\/admin\/sessions' && req\.method/.test(SS_SERVER), 'sessions 列表分支不得残留在 server.js');
+  assert.ok(!/const sessKick = path\.match/.test(SS_SERVER), 'sessions/:id 踢下线分支不得残留在 server.js');
+  // 边界锁：users 区按用户踢全部与前台退出其它设备留宿主（非本域）
+  assert.match(SS_SERVER, /const kickAllMatch = path\.match\(\/\^\\\/api\\\/admin\\\/users\\\/\(\[\^\/\]\+\)\\\/sessions\$\/\)/, 'kickAll（users/:name/sessions）留 server.js（B4 #11 users 区）');
+  assert.match(SS_SERVER, /path === '\/api\/user\/sessions\/revoke-others' && req\.method === 'POST'/, 'revoke-others 留 server.js（前台主段）');
+  assert.match(SS_SERVER, /'sessions\/kick': \{ max: 200, risk: 'low', keyType: 'id', run: bulkSessionKick \}/, 'bulk 派发表 sessions/kick 留 server.js（B4 #11）');
+});
+
+test('CO-5/B4-2 第十一轮：admin-sessions-repository.js 签名不变 + pg.js re-export（删 re-export 即红）', () => {
+  // 搬家函数签名与拆分前一致（旧 db.* 导入签名不变）
+  assert.match(SS_REPO, /export async function listSessions\(q, \{ user = '', ip = '', includeExpired = false, limit = 20, offset = 0 \} = \{\}\)/, 'listSessions 签名与拆分前一致');
+  assert.match(SS_REPO, /nullif\(btrim\(u\.display_name\), ''\)/, 'EJ 批空白昵称归一 SQL 随函数搬家');
+  assert.match(SS_REPO, /order by s\.last_seen_at desc nulls last, s\.created_at desc/, '排序语义随函数搬家');
+  // pg.js 必须 re-export（旧 db.* 导入签名不变；routes/admin-sessions.js 与现有测试照旧走聚合壳）
+  assert.match(SS_PG, /export \{ listSessions \} from '\.\/admin-sessions-repository\.js'/, 'pg.js 必须 re-export listSessions');
+  // 旧定义不得残留在 pg.js（双实现会漂移）
+  assert.ok(!/export (async )?function listSessions/.test(SS_PG), 'pg.js 不允许保留旧函数定义（只许 re-export）');
+  // 边界判据锁：跨模块共用 SQL 留在 pg.js（#11 bulk / auth-routes / routes/auth.js / 中间件）
+  assert.match(SS_PG, /export async function deleteSessionById\(q, sessId\)/, 'deleteSessionById 留 pg.js（#11 bulkSessionKick 共用）');
+  assert.match(SS_PG, /export async function deleteSessionsOfUser\(q, userId, \{ exceptToken = null \} = \{\}\)/, 'deleteSessionsOfUser 留 pg.js（auth-routes/routes/auth.js/禁用共用）');
+  assert.match(SS_PG, /export async function touchSession\(q, token\)/, 'touchSession 留 pg.js（请求链中间件共用）');
+  assert.match(SS_PG, /export async function deleteSessionByToken\(q, token\)/, 'deleteSessionByToken 留 pg.js（空闲超时/绑定校验中间件共用）');
+  // sessions 表 DDL 留在 pg.js migrate()，repository 不搬家 DDL
+  assert.match(SS_PG, /create table if not exists sessions \(/, 'sessions 表 DDL 留 pg.js');
+  assert.ok(!/create table/.test(SS_REPO), 'admin-sessions-repository.js 不搬家 DDL');
 });
