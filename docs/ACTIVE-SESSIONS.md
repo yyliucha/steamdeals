@@ -16,8 +16,8 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| CO-4 B4 监工调度+批量构建（#9 起） | docs/B4-QUEUE、docs/ACTIVE-SESSIONS、docs/TODO、docs/DONE、docs/DELIVERY、docs/REQUIREMENTS-INDEX、docs/PROJECT-OVERVIEW、docs/CHANGELOG、docs/ARCHITECTURE、package.json、package-lock.json | 打 tag 构建（批末 1 次，v2.27.6） | 08:50 | 12:15 | 夜班监工 08:48 轮 |
 | EH + EI 同步区域配置化（P1，所有者指令） | src/settings.js、src/adapters/steam.js、src/adapters/steam-meta.js、src/steam-status.js、src/discovery.js、src/backfill.js、src/cli.js、src/scheduler.js、src/server.js（与 B4 #9 重叠：等其提交后动手）、frontend/src、test/（避开 #9 的 source-sync/sync-runs）、docs/{TODO,REQUIREMENTS-INDEX,PROJECT-OVERVIEW}（与监工/构建会话重叠：写前按 HANDOVER §10 探测锁） | 无 | 09:40 | 12:30 | EH+EI 开发会话（所有者指令，本会话） |
+| v2.27.7 站点构建 + app-v2.24.2 双发（EJ） | docs/{CHANGELOG,DONE,TODO,DELIVERY,REQUIREMENTS-INDEX,PROJECT-OVERVIEW,ACTIVE-SESSIONS,DISPLAY-NAME-RULE}、package.json、package-lock.json；App 仓库 app/build.gradle.kts | 打 tag 构建（站点 v2.27.7 + App app-v2.24.2，双发授权） | 11:20 | 12:30 | 构建会话（所有者「双发」指令） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 
