@@ -1,7 +1,7 @@
 # QA：B4 #15 admin 游戏目录域拆分（第 1 轮）
 
-> 基线 8683f75（worktree gp-wt-12 rebase origin/main 后）→ 工作区未提交改动
-> （server.js / pg.js / game-search-read-model.test.js 改 + routes/admin-games.js /
+> 基线 8683f75（worktree gp-wt-12 rebase origin/main 后）→ HEAD 42ee800（本域拆分提交，
+> 交付文件：server.js / pg.js / game-search-read-model.test.js 改 + routes/admin-games.js /
 > store/admin-games-repository.js / test/admin-games-split.test.js 新增）；
 > 判据 docs/ARCHITECTURE.md §15 + docs/B4-QUEUE.md #15 行；
 > 开发描述来源：监工续派 B4 #15 工人 prompt（自包含）。
@@ -56,4 +56,6 @@
 
 ## 复检记录
 
-- 第 1 轮（2026-11-20）：17 条核对全过、反向自检红证、门禁全绿 → ✅ 放行（待提交后确认提交哈希）。
+- 第 1 轮（2026-11-20/21）：17 条核对全过、反向自检红证、门禁全绿 → ✅ 放行；提交 42ee800
+  已推 main（rebase 冲突仅 server.js/pg.js 与 #11 admin-users 域重叠——server.js 冲突块双方
+  内容均随各自域拆走整体删除、pg.js re-export 两侧均保留；合并后关键测试复跑全绿）。
