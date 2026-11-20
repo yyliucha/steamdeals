@@ -1,6 +1,6 @@
 # QA：CO-5/B4-2 cli 同步类域拆分（B4 #18，第 1 轮）
 
-> 基线 7bce0b6 → HEAD <拆分提交哈希>；判据 B4-QUEUE #18 行 + 任务书（B4 夜班工人 B prompt）+ ARCHITECTURE §15。
+> 基线 7bce0b6 → HEAD 9bc710a（拆分提交）；判据 B4-QUEUE #18 行 + 任务书（B4 夜班工人 B prompt）+ ARCHITECTURE §15。
 > 结论：✅ 放行 —— 通过 15 / 缺失 0 / 偏差 0 / 需人工确认 2
 
 ## 功能清单（本批交付的全部功能，一条一行，不许合并/抽样）
