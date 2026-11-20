@@ -47,7 +47,6 @@ import * as accountNotify from './account-notify.js';
 import * as proxyPool from './proxy-pool.js';
 import * as passwordPolicy from './password-policy.js';
 import { maskEmail } from './auth-routes.js';
-import { auditJobs as auditSchedulerJobs, resetCircuit } from './scheduler.js';
 import { ipSessionKey, uaSessionKey } from './session-fingerprint.js';
 import { formatDateTime, yuanAmount } from './format.js';
 import * as appRateLimit from './app-ratelimit.js';
@@ -95,6 +94,15 @@ import { handleSitePreflight, handleSitePublic, handleSiteRoutes } from './route
 // 封禁拦截链/黑名单加载/限流计数等中间件仍是本文件职责（§15.4）；
 // /api/admin/users|images|reports 等其它 admin 域路由（B4 #11/#13/#12）留本文件。
 import { handleAdminAccessAdmin } from './routes/admin-access.js';
+// CO-5/B4-2 第九轮：admin-sync 域（B4 #9 后台手动同步任务：sync/heat/backfill/
+// rename/circuit）路由已抽到 src/routes/admin-sync.js——handleAdminSyncAdmin 在
+// requireAdmin 就绪之后的管理段（本域全部 13 条路由）。startSteamJob 宿主闭包、
+// syncState 进程级状态持有对象、syncStatusCache/invalidateSyncStatusCache 短缓存
+// 按引用传入（语义共享：任务启停与状态轮询跨请求共享同一子进程槽位）；
+// isLoggablePath 的 sync/status|runs 访问日志豁免仍是中间件、留本文件；
+// /api/admin/steam-logs（B4 #12）、/api/admin/wishlists（B4 #16）、
+// /api/admin/bulk 派发表（B4 #11）等其它 admin 域路由留本文件。
+import { handleAdminSyncAdmin } from './routes/admin-sync.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -507,12 +515,16 @@ export function createApiServer({
   };
   // AW 批（docs/IMAGE-FETCH.md §3.2）：图片负缓存也按实例隔离（测试多实例互不干扰）。
   const imgMissCache = new Map(); // appid/size -> { at, kind }
-  // 手动同步的进程内状态：同一时刻只允许一个同步任务
-  let syncChild = null;
-  let syncRun = null; // { id, mode, startedAt, params }
-  let syncOutput = ''; // 子进程输出尾巴，供前端轮询
-  let syncSettled = true;
-  let syncStopRequested = false; // 后台点了"停止"，子进程退出后记为 cancelled
+  // 手动同步的进程内状态：同一时刻只允许一个同步任务。
+  // CO-5/B4-2 第九轮：状态持有对象按引用传给 src/routes/admin-sync.js（语义共享）——
+  // startSteamJob 闭包在宿主、路由在域模块，两边必须读写同一份状态，勿改成拷贝。
+  const syncState = {
+    child: null,
+    run: null, // { id, mode, startedAt, params }
+    output: '', // 子进程输出尾巴，供前端轮询
+    settled: true,
+    stopRequested: false, // 后台点了"停止"，子进程退出后记为 cancelled
+  };
   // DR 批（docs/APP-INSTANT-UPDATE.md §3.1）：App 手动同步 single-flight——并发请求共享同一 Promise，
   // GitHub 只被请求一轮（验收 §4.1「并发两次只跑一次」）。
   // CO-4/B4：状态持有对象按引用传给 src/routes/app.js（该域路由读写 appSync.inFlight）。
@@ -527,10 +539,10 @@ export function createApiServer({
    * 记录到 sync_runs，输出尾巴供前端轮询；返回 { runId, pid }。
    */
   async function startSteamJob({ mode, args, params = null, by = null }) {
-    if (syncChild) {
+    if (syncState.child) {
       const err = new Error('已有任务在运行（同步/回填），请等它结束');
       err.code = 'BUSY';
-      err.run = syncRun;
+      err.run = syncState.run;
       throw err;
     }
     // 进程内没记录但库里有 running（服务重启残留）→ 先标失败，避免永远拒绝
@@ -550,13 +562,13 @@ export function createApiServer({
         ...(mode === 'backfill' || mode === 'heat' ? { STEAM_429_RETRIES: 'Infinity' } : {}),
       },
     });
-    syncChild = child;
-    syncRun = { id: run.id, mode, args: args.join(' '), startedAt: run.startedAt, params };
-    syncOutput = '';
-    syncSettled = false;
-    syncStopRequested = false;
+    syncState.child = child;
+    syncState.run = { id: run.id, mode, args: args.join(' '), startedAt: run.startedAt, params };
+    syncState.output = '';
+    syncState.settled = false;
+    syncState.stopRequested = false;
     const append = (chunk) => {
-      syncOutput = (syncOutput + chunk).slice(-8000);
+      syncState.output = (syncState.output + chunk).slice(-8000);
       try {
         fsMod.appendFileSync('logs/spawn.log', chunk);
       } catch {
@@ -564,13 +576,13 @@ export function createApiServer({
       }
     };
     const finish = async (status, exitCode, note) => {
-      if (syncSettled) return;
-      syncSettled = true;
-      syncChild = null;
-      if (syncStopRequested) status = 'cancelled';
+      if (syncState.settled) return;
+      syncState.settled = true;
+      syncState.child = null;
+      if (syncState.stopRequested) status = 'cancelled';
       if (note) append('\n' + note);
       try {
-        await db.finishSyncRun(q, run.id, { status, exitCode, output: syncOutput });
+        await db.finishSyncRun(q, run.id, { status, exitCode, output: syncState.output });
       } catch {
         /* 记录失败不影响主流程 */
       }
@@ -2675,250 +2687,33 @@ export function createApiServer({
         return json(res, 200, { game: row });
       }
 
-      // 一键同步：把动作丢给子进程，避免 HTTP 请求挂几分钟。
-      // 记录到 sync_runs（开始/结束/输出尾巴），前端轮询状态显示实时输出。
-      // 控制台只暴露 catalog / steam-prices（全量补元数据已由 /api/admin/backfill 承担，
-      // steamall 仍保留给 CLI 与老调用方，不再作为页面入口）。
-      if (path === '/api/admin/sync' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const body = await readBody(req);
-        // CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.4）：四源任务可后台立即运行（spawn `sync <mode>`）
-        const MODES = new Set(['catalog', 'steam-prices', 'steamall', 'itad', 'gog', 'humble', 'sonkwo']);
-        const mode = MODES.has(String(body.mode)) ? String(body.mode) : 'steam-prices';
-        const args = ['src/cli.js', 'sync', mode];
-        if (mode === 'steamall') {
-          const limit = Math.min(Math.max(Number(body.limit ?? 200) || 200, 1), 2000);
-          const sleep = Math.min(Math.max(Number(body.sleep ?? 2) || 2, 1), 30);
-          args.push('--limit', String(limit), '--sleep', String(sleep));
-        }
-        try {
-          const job = await startSteamJob({ mode, args, by: user.username });
-          invalidateSyncStatusCache();
-          return json(res, 202, { started: true, runId: job.runId, mode, pid: job.pid });
-        } catch (err) {
-          if (err.code === 'BUSY') return json(res, 409, { error: err.message, run: err.run });
-          throw err;
-        }
-      }
-
-      // （CO-4/B4：DR 批 /api/admin/app-sync、/api/admin/app-sync/status 已随 App 域抽到 src/routes/app.js）
-
-      if (path === '/api/admin/sync/status' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        // B2 批（docs/DESIGN-AUDIT.md B2）：短缓存（TTL 3s）；任务启停/熔断重置后立即失效
-        const syncStatusNow = Date.now();
-        if (syncStatusCache.value && syncStatusNow - syncStatusCache.at < syncStatusTtlMs) {
-          return json(res, 200, syncStatusCache.value);
-        }
-        const running = Boolean(syncChild);
-        const last = await db.listSyncRuns(q, { limit: 1 }).catch(() => []);
-        let schedule = null;
-        try {
-          const file = process.env.SCHEDULER_STATUS_FILE ?? 'data/scheduler-status.json';
-          schedule = JSON.parse(readFileSync(file, 'utf8'));
-        } catch {
-          schedule = null;
-        }
-        // BL-2（docs/BACKFILL-THROUGHPUT.md §3.4）：合并回填进度文件（只读文件，不加 DB 查询）
-        const { readBackfillProgress } = await import('./backfill.js');
-        // CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.4）：四源状态汇总（matched/nomatch/failed/pending）
-        const sourceStats = await db.sourceSyncStats(q).catch(() => null);
-        const syncStatusPayload = {
-          running,
-          run: running ? syncRun : null,
-          output: syncOutput.slice(-6000),
-          last: last[0] ?? null,
-          schedule,
-          backfillProgress: readBackfillProgress(),
-          sourceStats,
-          // AC1（docs/SYNC-FAILURE-MODES.md）：该有但没有的任务，后台显式提示（缺 Key / 被 *_ENABLED=0 关闭）
-          warnings: auditSchedulerJobs(process.env),
-        };
-        syncStatusCache.value = syncStatusPayload;
-        syncStatusCache.at = Date.now();
-        return json(res, 200, syncStatusPayload);
-      }
-
-      if (path === '/api/admin/sync/runs' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const limit = Number(url.searchParams.get('limit') ?? 20);
-        return json(res, 200, { runs: await db.listSyncRuns(q, { limit }) });
-      }
-
-      // AC-4/AC2（docs/SYNC-FAILURE-MODES.md AC2）：手动重置任务熔断（内存态，同进程 scheduler 生效）
-      if (path === '/api/admin/circuit/reset' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const body = await readBody(req);
-        const name = String(body.name ?? '').trim();
-        if (!name) return json(res, 400, { error: '缺少任务名' });
-        const handled = resetCircuit(name);
-        logger?.info('api.circuit_reset', { name, by: user.username, handled });
-        invalidateSyncStatusCache();
-        return json(res, 200, { ok: true, handled });
-      }
-
-      // ---- 管理员：数据回填（批量补全量元数据/价格，与同步共用子进程槽位）----
-      if (path === '/api/admin/backfill' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const body = await readBody(req);
-        const { normalizeBackfillParams, backfillArgs } = await import('./backfill.js');
-        const params = normalizeBackfillParams(body);
-        try {
-          const job = await startSteamJob({ mode: 'backfill', args: backfillArgs(params), params, by: user.username });
-          logger?.info('api.backfill_started', { runId: job.runId, by: user.username, ...params });
-          invalidateSyncStatusCache();
-          return json(res, 202, { started: true, runId: job.runId, pid: job.pid, params });
-        } catch (err) {
-          if (err.code === 'BUSY') return json(res, 409, { error: err.message, run: err.run });
-          throw err;
-        }
-      }
-
-      if (path === '/api/admin/backfill/stop' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        if (!syncChild) return json(res, 409, { error: '当前没有运行中的任务' });
-        const child = syncChild;
-        const runId = syncRun?.id ?? null;
-        syncStopRequested = true;
-        child.kill('SIGTERM');
-        // 10 秒还没退就强杀，避免卡死子进程一直占着槽位
-        const killTimer = setTimeout(() => {
-          try {
-            child.kill('SIGKILL');
-          } catch {
-            /* 已退出 */
-          }
-        }, 10000);
-        killTimer.unref?.();
-        logger?.warn('api.backfill_stop', { runId, pid: child.pid, by: user.username });
-        invalidateSyncStatusCache();
-        return json(res, 202, { stopping: true, runId, pid: child.pid });
-      }
-
-      if (path === '/api/admin/backfill/status' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const { parseBackfillProgress } = await import('./backfill.js');
-        const isBackfill = syncRun?.mode === 'backfill';
-        const runs = await db.listSyncRuns(q, { limit: 10 }).catch(() => []);
-        return json(res, 200, {
-          running: Boolean(syncChild) && isBackfill,
-          busy: Boolean(syncChild),
-          mode: syncRun?.mode ?? null,
-          run: syncRun,
-          output: syncOutput.slice(-6000),
-          progress: isBackfill ? parseBackfillProgress(syncOutput) : null,
-          last: runs.find((r) => r.mode === 'backfill') ?? null,
-        });
-      }
-
-      // ---- 管理员：热度回填（与同步/回填共用子进程槽位，天然互斥）----
-      if (path === '/api/admin/heat' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const body = await readBody(req);
-        const pickNum = (v, def, min, max) => Math.max(min, Math.min(Number(v ?? def) || def, max));
-        const params = {
-          limit: pickNum(body.limit, 200000, 1, 200000),
-          batch: pickNum(body.batch, 30, 1, 100),
-          sleep: pickNum(body.sleep, 1700, 0, 60000),
-        };
-        try {
-          const job = await startSteamJob({
-            mode: 'heat',
-            args: ['heat', '--limit', String(params.limit), '--batch', String(params.batch), '--sleep', String(params.sleep)],
-            params,
-            by: user.username,
-          });
-          logger?.info('api.heat_started', { runId: job.runId, by: user.username, ...params });
-          return json(res, 202, { started: true, runId: job.runId, pid: job.pid, params });
-        } catch (err) {
-          if (err.code === 'BUSY') return json(res, 409, { error: err.message, run: err.run });
-          throw err;
-        }
-      }
-
-      if (path === '/api/admin/heat/stop' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        if (!syncChild) return json(res, 409, { error: '当前没有运行中的任务' });
-        const child = syncChild;
-        const runId = syncRun?.id ?? null;
-        syncStopRequested = true;
-        child.kill('SIGTERM');
-        const killTimer = setTimeout(() => {
-          try {
-            child.kill('SIGKILL');
-          } catch {
-            /* 已退出 */
-          }
-        }, 10000);
-        killTimer.unref?.();
-        logger?.warn('api.heat_stop', { runId, pid: child.pid, by: user.username });
-        return json(res, 202, { stopping: true, runId, pid: child.pid });
-      }
-
-      if (path === '/api/admin/heat/status' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const isHeat = syncRun?.mode === 'heat';
-        return json(res, 200, {
-          running: Boolean(syncChild) && isHeat,
-          busy: Boolean(syncChild),
-          mode: syncRun?.mode ?? null,
-          run: syncRun,
-          output: syncOutput.slice(-6000),
-        });
-      }
-
-      // ---- 管理员：重写名字（把目录导入留下的机器英文名换成中文，与同步/回填共用槽位）----
-      if (path === '/api/admin/rename' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const body = await readBody(req);
-        const { normalizeBackfillParams, renameArgs } = await import('./backfill.js');
-        const params = normalizeBackfillParams(body);
-        // rename 默认间隔 1500ms（比回填轻），控制台未传时按 1500
-        if (body.sleep == null || body.sleep === '') params.sleep = 1500;
-        try {
-          const job = await startSteamJob({ mode: 'rename', args: renameArgs(params), params, by: user.username });
-          logger?.info('api.rename_started', { runId: job.runId, by: user.username, ...params });
-          return json(res, 202, { started: true, runId: job.runId, pid: job.pid, params });
-        } catch (err) {
-          if (err.code === 'BUSY') return json(res, 409, { error: err.message, run: err.run });
-          throw err;
-        }
-      }
-
-      if (path === '/api/admin/rename/stop' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        if (!syncChild) return json(res, 409, { error: '当前没有运行中的任务' });
-        const child = syncChild;
-        const runId = syncRun?.id ?? null;
-        syncStopRequested = true;
-        child.kill('SIGTERM');
-        const killTimer = setTimeout(() => {
-          try {
-            child.kill('SIGKILL');
-          } catch {
-            /* 已退出 */
-          }
-        }, 10000);
-        killTimer.unref?.();
-        logger?.warn('api.rename_stop', { runId, pid: child.pid, by: user.username });
-        return json(res, 202, { stopping: true, runId, pid: child.pid });
-      }
-
-      if (path === '/api/admin/rename/status' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const { parseRenameProgress } = await import('./backfill.js');
-        const isRename = syncRun?.mode === 'rename';
-        const runs = await db.listSyncRuns(q, { limit: 10 }).catch(() => []);
-        return json(res, 200, {
-          running: Boolean(syncChild) && isRename,
-          busy: Boolean(syncChild),
-          mode: syncRun?.mode ?? null,
-          run: syncRun,
-          output: syncOutput.slice(-6000),
-          progress: isRename ? parseRenameProgress(syncOutput) : null,
-          last: runs.find((r) => r.mode === 'rename') ?? null,
-        });
-      }
+      // ---- CO-5/B4-2 第九轮（docs/DESIGN-AUDIT.md B4）：admin-sync 域管理段路由已抽到
+      // src/routes/admin-sync.js。调用位置不能动：必须在 requireAdmin 就绪之后的管理段
+      // （401/403 语义依赖该位置；调用点取本域最早路由 /api/admin/sync 的原位置）。
+      // 域内 13 条路由 path+method 互不重叠、与相邻其它 admin 域路由无同 path 双匹配，
+      // 在管理段内集中到一处不改变匹配语义；startSteamJob 宿主闭包、syncState 状态
+      // 持有对象、syncStatusCache/invalidateSyncStatusCache 短缓存必须按引用传入
+      // （语义共享：任务启停/状态轮询与宿主共用同一子进程槽位与缓存），勿改成拷贝。
+      if (
+        await handleAdminSyncAdmin({
+          path,
+          req,
+          res,
+          url,
+          q,
+          logger,
+          json,
+          readBody,
+          user,
+          requireAdmin,
+          startSteamJob,
+          syncState,
+          syncStatusCache,
+          invalidateSyncStatusCache,
+          syncStatusTtlMs,
+        })
+      )
+        return;
 
       // ---- 管理员：邮箱（SMTP）配置与验证码发送记录 ----
       if (path === '/api/admin/smtp' && req.method === 'GET') {

@@ -140,6 +140,15 @@ export {
   updateSteamAccountAlias,
   steamAccountApiKeySet,
 } from './site-repository.js';
+// CO-5/B4-2 第九轮（docs/DESIGN-AUDIT.md B4）：admin-sync 域 SQL 落 admin-sync-repository.js
+// （B4 队列 #9：手动同步任务 sync/heat/backfill/rename/circuit）。只搬 listSyncRuns——它只被
+// 本域路由使用；sync_runs 其余函数（insertSyncRun/finishSyncRun/runningSyncRun/
+// markStaleSyncRuns/sourceSyncStats/observedSyncRunSeconds/lastFailedSyncRun/
+// lastSyncRunStartedByMode）被 cli.js / scheduler.js / server.js 启动清理跨模块共用，
+// 属通用 SQL 留本文件（§15.1）。无 DDL 搬家——sync_runs 表 DDL 在本文件 migrate() 消费。
+// 这里 re-export 保持旧 db.* 导入签名不变（routes/admin-sync.js、server.js 其它段
+// 与现有测试照旧走 pg.js 聚合壳）。
+export { listSyncRuns } from './admin-sync-repository.js';
 
 export const SCHEMA = `
 create table if not exists platforms (
@@ -3221,6 +3230,10 @@ export async function insertUserSearchLog(q, { userId, query, clickedGameId = nu
 
 // ---------------------------------------------------------------- 手动同步任务记录
 
+// listSyncRuns 只被本域（admin-sync）路由使用、已抽到 admin-sync-repository.js
+// （顶部 re-export 保持 db.* 签名不变）；sync_runs 其余函数跨模块共用（cli.js 同步命令
+// /scheduler.js 调度互斥与预算/server.js 启动清理），留本文件。
+
 export async function insertSyncRun(q, { mode, args = null }) {
   const r = await q('insert into sync_runs (mode, args) values ($1, $2) returning id, started_at', [mode, args]);
   return { id: Number(r.rows[0].id), startedAt: r.rows[0].started_at };
@@ -3231,27 +3244,6 @@ export async function finishSyncRun(q, id, { status = 'ok', exitCode = null, out
     'update sync_runs set status = $1, exit_code = $2, output = $3, finished_at = now() where id = $4',
     [status, exitCode, output ? String(output).slice(-8000) : null, id],
   );
-}
-
-export async function listSyncRuns(q, { limit = 20 } = {}) {
-  // 附带同一轮任务在 fetch_runs 里的汇总（按 mode + 时间窗口就近匹配，取不到为 null）
-  const r = await q(
-    `select sr.id, sr.mode, sr.args, sr.status, sr.exit_code, sr.output, sr.started_at, sr.finished_at,
-            fr.requests, fr.total, fr.ok, fr.skipped, fr.failed, fr.note as fetch_note
-       from sync_runs sr
-       left join lateral (
-         select requests, total, ok, skipped, failed, note
-           from fetch_runs
-          where platform_code = sr.mode
-            and started_at between sr.started_at - interval '3 minutes'
-                              and coalesce(sr.finished_at, now()) + interval '3 minutes'
-          order by abs(extract(epoch from (started_at - sr.started_at)))
-          limit 1
-       ) fr on true
-      order by sr.id desc limit $1`,
-    [Math.min(Math.max(Number(limit) || 20, 1), 100)],
-  );
-  return r.rows;
 }
 
 /** 正在跑的同步（进程内只有一条；服务重启后这行会残留，启动时清掉）。 */

@@ -125,7 +125,6 @@ test('CC-1：mark upsert——nomatch→matched 保留 external_id、fail_count 
 
 test('CC-2/3：静态契约——四源接入 CLI/后台/设置/日志，不新增定时任务', () => {
   const cli = readFileSync(ROOT + 'src/cli.js', 'utf8');
-  const server = readFileSync(ROOT + 'src/server.js', 'utf8');
   const admin = readFileSync(ROOT + 'frontend/src/pages/AdminModules.vue', 'utf8');
   const settings = readFileSync(ROOT + 'src/settings.js', 'utf8');
   const scheduler = readFileSync(ROOT + 'src/scheduler.js', 'utf8');
@@ -142,8 +141,10 @@ test('CC-2/3：静态契约——四源接入 CLI/后台/设置/日志，不新�
   assert.match(cli, /adapter\.fetchById/, 'GOG matched 按 id 刷新');
   assert.match(cli, /adapter\.fetchBySlug/, 'Humble matched 按 slug 刷新');
   // 后台：四源可立即运行（运行中 409 复用 startSteamJob 互斥）
-  assert.match(server, /new Set\(\['catalog', 'steam-prices', 'steamall', 'itad', 'gog', 'humble', 'sonkwo'\]\)/, 'MODES 支持四源');
-  assert.match(server, /sourceSyncStats/, '状态接口返回四源统计');
+  // CO-5/B4-2 第九轮：/api/admin/sync 已随 admin-sync 域抽到 src/routes/admin-sync.js，断言按新落点指向
+  const adminSync = readFileSync(ROOT + 'src/routes/admin-sync.js', 'utf8');
+  assert.match(adminSync, /new Set\(\['catalog', 'steam-prices', 'steamall', 'itad', 'gog', 'humble', 'sonkwo'\]\)/, 'MODES 支持四源');
+  assert.match(adminSync, /sourceSyncStats/, '状态接口返回四源统计');
   assert.match(admin, /TASK_ORDER=\['steam-prices','catalog','backfill','rename','heat','itad','gog','humble','sonkwo'\]/, '任务表 9 项（四源在内）');
   assert.match(admin, /\['steam-prices','catalog','itad','gog','humble','sonkwo'\]\.includes\(name\)/, '四源走 /api/admin/sync');
   assert.match(admin, /row\.stats\.matched/, '任务表显示匹配/剩余');
