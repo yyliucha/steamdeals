@@ -230,3 +230,18 @@ pm test（分段）+ rontend:build + scan 全绿）。
 - **不做**：调度频率、githubApkUrl 兜底、前端。
 - **验收**：见规格 §6（6 条；含代理/直连/反向自检/代理不可用场景 +
   `test/app-release.test.js` / `test/app-release-sync.test.js` / `test/settings.test.js` + `frontend:build` + `scan`）。
+
+## EL. 待开发（🐞 缺陷）：Steam 同步超时（愿望单/库同步被 15s 看门狗砍掉）
+
+**类型：** 🐞 缺陷（同步功能超时不可用）
+**状态：** 待开发（2026-11-20 所有者实测确认）
+**优先级：** P1 —— 后台同步愿望单/库直接报「请求超时」
+**依赖：** 无
+**解锁：** 无
+**规格**：[STEAM-SYNC-TIMEOUT.md](STEAM-SYNC-TIMEOUT.md)
+
+- **根因**：① 同步是阻塞接口（拉 Steam API+写库+对账）；② Steam API 单次超时 30s（steam-login.js:252）
+  > 看门狗 15s（server.js:447）且同步路由不豁免；③ 代理池切换存在但 30s 超时让切换来不及。
+- **方案**：EL-1 同步类请求单次超时 30s→**8s**（快速失败换下一条代理）；EL-2 愿望单/库同步改**后台任务 +
+  轮询状态**（触发即返回 202）；EL-3 后台同步按钮显示进行中/结果/失败原因。
+- **验收**：见规格 §3（代理切换可观测；同步不再超时；结果可见；npm test（分段）+ frontend:build + scan 全绿）。
