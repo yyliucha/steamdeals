@@ -1,8 +1,9 @@
 # QA：B4 #13 admin 图片域拆分（第 1 轮）
 
-> 基线 666f924（worktree gp-wt-12 rebase origin/main 后）→ 工作区未提交改动
-> （server.js / pg.js / reviews.test.js 改 + routes/admin-images.js / store/admin-images-repository.js /
-> test/admin-images.test.js 新增）；判据 docs/ARCHITECTURE.md §15 + docs/B4-QUEUE.md #13 行；
+> 基线 666f924（worktree gp-wt-12 rebase origin/main 后）→ HEAD 652e6f7（本域拆分提交，
+> 交付文件：server.js / pg.js / reviews.test.js 改 + routes/admin-images.js /
+> store/admin-images-repository.js / test/admin-images.test.js 新增）；
+> 判据 docs/ARCHITECTURE.md §15 + docs/B4-QUEUE.md #13 行；
 > 开发描述来源：监工续派 B4 #13 工人 prompt（自包含）。
 > 结论：✅ 放行 —— 通过 16 / 缺失 0 / 偏差 0 / 需人工确认 2
 
@@ -54,4 +55,5 @@
 
 ## 复检记录
 
-- 第 1 轮（2026-11-20）：16 条核对全过、反向自检红证、门禁全绿 → ✅ 放行（待提交后确认提交哈希）。
+- 第 1 轮（2026-11-20）：16 条核对全过、反向自检红证、门禁全绿 → ✅ 放行；提交 652e6f7
+  已推 main（rebase 无冲突，origin/main 未前进）。
