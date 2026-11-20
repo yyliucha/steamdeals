@@ -80,7 +80,7 @@
 | 14 | admin 会话 | sessions | 已拆 | v2.27.9 | 9659435 |
 | 15 | admin 游戏目录 | games/stats/merge/links | 未拆 | | |
 | 16 | admin 提醒愿望单 | watchlist/wishlists（admin 视角） | 未拆 | | |
-| 17 | admin align | /api/admin/align* | 未拆 | | |
+| 17 | admin align | /api/admin/align* | 已拆 | 待构建 | 4817d49 |
 | 18 | cli 同步类 | sync/steam-accounts 等命令 | 已拆 | v2.27.9 | 9bc710a |
 | 19 | cli 报表类 | report/alerts 等命令 | 已拆 | v2.27.9 | 2aa8b15 |
 | 20 | cli 运维类 | backfill/images/prune/logs 等命令 | 已拆 | 待构建 | 8249e56 |
@@ -178,3 +178,4 @@
 - 2026-11-20 19:00 CI 结果补记（16:25 轮收尾前确认）：**v2.27.9 CI 双绿**——docker-hub 44717191386 ✅ completed/success、docker-tcr 44717191332 ✅ completed/success（tag 提交已成像）。
 - 2026-11-20 19:03 接管派工（18:25 轮监工）：16:25 轮 18:55 让位收工（其 18:48 清理与 18:52 测试修正有效）→ 本监工正式接管调度（登记表：注销 16:25 轮/工人 C/DV 行，登记 18:25 轮 + #17 工人）。**派 B4 #17 admin align**：独立 worktree F:\dsh\gp-wt-17（基 f5446eb，npm ci 后台）——沿用 16:25 轮方案，避免与 2.28.0 监工主树 pathspec 构建提交交错；工人超时 90min（wait_agent 60+30）；不构建不打 tag；#12/#21 待 #17 完成（admin 链串行）；#11/#13/#15/#16 维持排队（2.28.0 文件面）；v2.27.9 CI 双绿已确认（bd553ec 已回填 DELIVERY，无需重复）。
 - 2026-11-20 20:25 让位观察（20:25 轮监工，schedule-960679da 定时唤醒）：确认 18:25 轮监工存活（登记 18:25 开始、预计 ≈21:00，未超 4h 接管阈值；最后心跳 19:03 派 #17）→ 本会话按 17:22 裁决口径让位，不派工、不构建。现场：工人 #17（gp-wt-17，19:05 开工）QA-CO5-B4-2-admin-align.md 20:04 落盘、pg.js 20:05 最后写入，接近完成；worktree 无新提交。观察要点：① 18:25 轮预计 21:00 收尾 → 收尾注销后本会话接续调度：**#12 报表备份日志 → #21 games → #11 用户批量 → #13 图片 → #15 游戏目录 → #16 提醒愿望单**（v2.28.0 已发布 CI 三绿、监工已注销 → #11/#13/#15/#16 排队理由消失，文件面不再与 2.28.0 重叠，可拆）；② 22:25（4h 阈值）18:25 轮登记仍在且无新心跳 → 按容错 §4 判卡死接管。
+- 2026-11-20 20:45 收尾（18:25 轮监工）：**#17 admin align 已拆**——提交 4817d49（QA-CO5-B4-2-admin-align 第 1 轮 ✅ 放行 12/0/0/2，2 项人工确认=沙箱基线 CI 兜底）；server.js 净 −325（4267→3942）/ pg.js 净 +4 / 新 routes/admin-align.js 415 + repository 78；管理段单入口（§15.3 先例），triggerAlignGeneration（single-flight）/runGated（并发闸）/store（事务）按引用传 ctx 语义共享，computeAlignGroups/ensureAlignSnapshot/alignSnapshotMaxAgeMs 留宿主（CLI align-snapshot 共享），ALIGN_SNAPSHOTS_DDL 搬 repository + pg.js migrate 继续消费，BULK_ACTIONS 无 align 条目，admin users 区零改动；门禁：align 15/15、api.test 38/38、test:2/3/4 全绿、frontend:build ✓、scan 干净，反向自检 ×3 红证；rebase ffe651e→1722011→bfb0aba 无冲突。**#17 归下批构建**（本监工不构建不打 tag——所有者 16:20 指示）。**交棒 20:25 轮**：剩余 #12/#21/#11/#13/#15/#16 六域；v2.28.0 已发布（1722011）→ #11/#13/#15/#16 排队理由消失，按 20:25 轮计划 #12→#21→#11/#13/#15/#16 接续；遗留缺陷 3 项（backfill q is not a function / prune 42P01 / #18 syncPrices 断引用）仍待所有者排 bug 条目。本会话注销登记（监工 + #17 工人行），worktree gp-wt-17 已移除。
