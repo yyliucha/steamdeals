@@ -16,7 +16,9 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| （空——18:25 轮监工 20:45 收尾注销；20:25 轮监工观察中就位，待其开工登记） | | | | | |
+| B4 夜班监工（20:25 轮接棒，schedule-960679da；18:25 轮 20:45 收尾交棒：只拆域不构建） | docs/B4-QUEUE.md、docs/ACTIVE-SESSIONS.md（发布文档/package.json 不碰——构建会话独占）；调度工人改 src/（域拆分） | 无（不构建、不打 tag） | 21:05 | ≈00:35 | 监工会话（定时唤醒，schedule-960679da） |
+| B4 #12 admin 报表备份日志（20:25 轮监工派工） | worktree F:\dsh\gp-wt-12（src/server.js、src/store/pg.js、新 src/routes/admin-reports.js + src/store/admin-reports-repository.js、test/（报表/备份/日志相关）、docs/QA-CO5-B4-2-admin-reports.md）——不碰 admin games 区、不碰发布文档 | 无 | 21:05 | ≈22:35 | 工人 A（subagent） |
+| B4 #21 games（20:25 轮监工派工） | worktree F:\dsh\gp-wt-21（src/server.js、src/store/pg.js、新 src/routes/games.js + src/store/games-repository.js、test/（games 相关）、docs/QA-CO5-B4-2-games.md）——不碰 admin 报表/备份/日志区块、不碰发布文档 | 无 | 21:05 | ≈22:35 | 工人 B（subagent） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 
