@@ -41,7 +41,25 @@
             </div>
           </div>
         </div>
-        <div class="header-actions"><el-button v-if="isMobile" text class="theme-btn m-bell" title="站点通知" @click="goAnnouncements">🔔</el-button><span v-if="user?.role==='admin'" class="header-version" :title="versionTitle" @click="loadVersion(true)">v{{ verInfo.current || '—' }}<em v-if="verInfo.updateAvailable && verInfo.latest"> ↑ 新版 v{{ String(verInfo.latest).replace(/^v/i, '') }} 可用</em></span><el-button text class="theme-btn" :title="themeMode === 'dark' ? '切换亮色' : '切换暗色'" @click="toggleTheme">{{ themeMode === 'dark' ? '🌞' : '🌙' }}</el-button></div>
+        <div class="header-actions">
+          <el-button v-if="isMobile" text class="theme-btn m-bell" title="站点通知" @click="goAnnouncements">🔔</el-button>
+          <span v-if="user?.role==='admin'" class="header-version" :title="versionTitle" @click="loadVersion(true)">v{{ verInfo.current || '—' }}<em v-if="verInfo.updateAvailable && verInfo.latest"> ↑ 新版 v{{ String(verInfo.latest).replace(/^v/i, '') }} 可用</em></span>
+          <el-button v-if="!isMobile" text class="header-back" @click="router.push('/')">返回网站 ↗</el-button>
+          <!-- DT-5（docs/ADMIN-PERMISSIONS.md）：Console 全局顶栏（所有 section 共用）——
+               返回网站 ↗ + 用户徽标；徽标下拉菜单树：个人资料/修改密码/返回网站/退出登录（普通用户同样可用） -->
+          <el-dropdown v-if="user" trigger="click" class="header-user-dropdown" @command="onUserCommand">
+            <button type="button" class="user-chip header-userchip" :title="user.displayName || user.username"><UserAvatar :user-id="user.id" :name="user.displayName || user.username" :size="22" /><span class="user-label">{{ user.displayName || user.username }}</span><span class="user-caret">▾</span></button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">个人资料</el-dropdown-item>
+                <el-dropdown-item command="password">修改密码</el-dropdown-item>
+                <el-dropdown-item command="site">返回网站 ↗</el-dropdown-item>
+                <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-button text class="theme-btn" :title="themeMode === 'dark' ? '切换亮色' : '切换暗色'" @click="toggleTheme">{{ themeMode === 'dark' ? '🌞' : '🌙' }}</el-button>
+        </div>
       </header>
       <AdminModules v-if="isAdminUser && nativeSections.includes(selected)" :section="selected" />
       <AdminLogs v-else-if="selected === 'op-logs'" />
@@ -68,6 +86,8 @@ import UserAvatar from '../components/UserAvatar.vue';
 import { useTheme } from '../composables/useTheme.js';
 import { fmtDateTime } from '../utils/siteTime.js';
 import { requestLeave, bypassNextGuard, hasDirtySources } from '../composables/useUnsavedGuard.js';
+// DT-5（docs/ADMIN-PERMISSIONS.md）：主动退出登录标记心跳基线（BM-4），避免心跳把主动退出误判成会话失效
+import { markSessionLoggedOut } from '../composables/useSessionHeartbeat.js';
 
 const router=useRouter(), route=useRoute(), filter=ref(''), user=ref(null);
 // BW 批（docs/MOBILE-REDESIGN.md §5.1）：≤768px 侧栏收进 ☰ 抽屉
@@ -234,11 +254,43 @@ async function loadMe(){
   user.value=data.user||null;
   return data;
 }
+
+// ---- DT-5（docs/ADMIN-PERMISSIONS.md）：全局顶栏用户菜单树（所有 section 共用）----
+async function onUserCommand(cmd){
+  if(cmd==='profile'){
+    const item=(isUserRole.value?USER_GROUPS:groups).flatMap((g)=>g.items).find((i)=>i.id==='profile');
+    if(item)await select(item);
+  }else if(cmd==='password'){
+    bypassNextGuard();
+    router.push('/change-password').catch(()=>{});
+  }else if(cmd==='site'){
+    bypassNextGuard();
+    router.push('/').catch(()=>{});
+  }else if(cmd==='logout'){
+    await doLogout();
+  }
+}
+async function doLogout(){
+  try{
+    await fetch('/api/logout',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:'{}'});
+  }catch{/* 网络失败也照走退出流程（本地态清空） */}
+  markSessionLoggedOut(); // BM-4：主动退出标记心跳基线——心跳不会把「主动退出」误判成会话失效
+  user.value=null;
+  bypassNextGuard();
+  router.replace('/').catch(()=>{});
+}
 </script>
 
 <style scoped>
 .theme-btn{font-size:17px}
 .tag-avatar{vertical-align:middle;margin-right:5px}
+/* DT-5（docs/ADMIN-PERMISSIONS.md）：全局顶栏「返回网站 ↗ + 用户徽标」下拉菜单树 */
+.header-back{font-size:13px;font-weight:600}
+.header-userchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-2);background:var(--panel-2);border-radius:999px;padding:4px 10px 4px 5px;color:var(--fg);font-size:12px;cursor:pointer;min-height:30px}
+.header-userchip:hover{border-color:var(--brand)}
+.user-label{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-caret{font-size:10px;color:var(--fg-muted)}
+@media (max-width:768px){.header-userchip{min-height:44px;padding:6px 12px 6px 6px}}
 .nav-dirty{color:var(--warn);font-size:9px;margin-left:auto;line-height:1}
 .nav-count{min-width:18px;margin-left:auto;padding:0 5px;border-radius:999px;background:var(--warn);color:#fff;font-size:10px;line-height:17px;text-align:center;font-weight:700}
 .header-actions{display:flex;align-items:center;gap:12px;min-width:0}

@@ -80,8 +80,12 @@ test('BM-4：心跳——5 分钟 + 切回前台探测 /api/me，全局单例，
   assert.ok(!/expires/i.test(heartbeat), '心跳不碰 expires（不续期）');
   assert.match(mainJs, /import \{ startSessionHeartbeat \} from '\.\/composables\/useSessionHeartbeat\.js'/, 'main.js 引入');
   assert.match(mainJs, /startSessionHeartbeat\(\)/, 'main.js 挂一次');
-  // 主动退出登录要标记基线，避免心跳把"主动退出"误判成"会话失效"
-  assert.match(home, /markSessionLoggedOut\(\)/, 'logout 标记基线');
+  // 主动退出登录要标记基线，避免心跳把"主动退出"误判成"会话失效"。
+  // DT-5（docs/ADMIN-PERMISSIONS.md）起退出入口统一在控制台顶栏用户菜单树（Console.vue doLogout），
+  // 前台 Home 不再有退出按钮——断言落点随入口迁移（旧锁 Home.logout 已被 DT-5 规格取代）。
+  const consoleVue = read('../frontend/src/pages/Console.vue');
+  assert.match(consoleVue, /import \{ markSessionLoggedOut \} from '\.\.\/composables\/useSessionHeartbeat\.js'/, 'Console 引入基线标记');
+  assert.match(consoleVue, /markSessionLoggedOut\(\); \/\/ BM-4/, 'doLogout 标记基线（退出后回到未登录态，心跳基线正确）');
 });
 
 test('BM-4：前端静态断言已接入 npm test 主链', () => {

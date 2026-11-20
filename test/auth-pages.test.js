@@ -27,12 +27,18 @@ test('三条路由与标题（§5.1）', () => {
   }
 });
 
-test('首页：登录跳 /login?next=…，不再弹登录框；用户菜单有修改密码入口；401 跳登录；mustChange 跳改密页', () => {
+test('首页：登录跳 /login?next=…，不再弹登录框；DT-5 起登录后前台无退出/修改密码入口；401 跳登录；mustChange 跳改密页', () => {
   assert.match(home, /function goLogin\(\)\{openLogin\(\);?\}/, 'goLogin 走统一硬跳 openLogin（BT 批）');
   assert.match(home, /import \{ openLogin \} from '\.\.\/utils\/login-entry\.js'/, 'Home 引入 login-entry helper');
   assert.ok(!home.includes('loginVisible'), '首页登录弹窗已移除');
   assert.ok(!home.includes('<el-dialog v-model="loginVisible"'), '无登录弹窗模板');
-  assert.match(home, /router\.push\('\/change-password'\)/, '用户菜单修改密码入口');
+  // DT-5（docs/ADMIN-PERMISSIONS.md）：登录后前台不显示「退出登录 / 修改密码」
+  // （退出/改密统一在控制台顶栏用户菜单树）——旧「用户菜单修改密码入口」被规格取代。
+  assert.ok(!home.includes("router.push('/change-password')"), '前台不再有修改密码入口（DT-5）');
+  assert.ok(!/退出（\{\{ user\.displayName/.test(home), '移动抽屉不再有退出按钮（DT-5）');
+  assert.ok(!home.includes('@click="logout"'), '前台不再有退出按钮（DT-5）');
+  assert.match(home, /<el-button v-if="!user" plain @click="goLogin">登录<\/el-button>/, '未登录显示「登录」按钮（跳 /login）');
+  assert.match(home, /class="user-chip"/, '登录后显示用户徽标（点进个人资料）');
   assert.match(home, /res\.status===401&&path!=='\/api\/me'&&path!=='\/api\/login'/, '401 跳登录（游客 /api/me 除外）');
   assert.match(home, /redirectToLogin\('expired'\)/, '前台 401 统一走 redirectToLogin（BT 批硬跳）');
   assert.match(home, /d\.user\?\.mustChangePassword\)\{router\.replace\('\/change-password\?forced=1'\)/, 'mustChange 跳改密页');

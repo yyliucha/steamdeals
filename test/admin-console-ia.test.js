@@ -453,3 +453,46 @@ test('DT-2 前端接线：会话页 /api/me/sessions*、到价提醒 /api/watchl
   // 个人资料不变：Console 里 profile 仍渲染 ProfilePage（/api/me*，CX 批口径）
   assert.match(c, /<ProfilePage v-else-if="selected === 'profile'"/, '个人资料仍渲染 ProfilePage（接口不变）');
 });
+
+// ===== DT-5（docs/ADMIN-PERMISSIONS.md）：前后台入口 =====
+// demo 状态 ↔ 断言（design/admin-menu-permissions-2026-11-19.html「前台顶栏」+
+// design/admin-users-2026-11-19.html ④「全局顶栏」）：
+//   ① 前台未登录只显示「登录」；已登录不显示退出/改密 → auth-pages.test.js DT-5 断言；
+//   ② Console 全局顶栏（所有 section 共用）：返回网站 ↗ + 用户徽标 → 用例 1；
+//   ③ 徽标下拉菜单树：个人资料/修改密码/返回网站/退出登录（普通用户同样可用）→ 用例 2；
+//   ④ 退出后回到未登录态且心跳基线正确 → 用例 3（session-heartbeat.test.js 同步锁）。
+// 反向自检：删掉 header-actions 里任一 el-dropdown-item 或把 doLogout 的 markSessionLoggedOut
+// 删掉 → 对应断言红；把 user-chip 换成只读文字（无下拉）→ 用例 1 红。
+test('DT-5 验收 1：Console 全局顶栏（所有 section 共用）右上「返回网站 ↗ + 用户徽标」', () => {
+  const c = read('../frontend/src/pages/Console.vue');
+  // 顶栏在 admin-header（每个 section 共用的外壳），不在任何具体 section 组件内
+  assert.match(c, /class="header-actions"[\s\S]{0,1200}header-back/, '顶栏有「返回网站」入口');
+  assert.match(c, /<el-button v-if="!isMobile" text class="header-back" @click="router\.push\('\/'\)">返回网站 ↗<\/el-button>/, '返回网站按钮（点击回前台 /）');
+  assert.match(c, /class="user-chip header-userchip"/, '用户徽标');
+  assert.match(c, /<UserAvatar :user-id="user\.id" :name="user\.displayName \|\| user\.username" :size="22"/, '徽标显示头像+昵称（EJ 口径）');
+  assert.match(c, /<el-dropdown v-if="user" trigger="click"/, '徽标可点开下拉（登录用户）');
+});
+
+test('DT-5 验收 2：徽标下拉菜单树——个人资料/修改密码/返回网站/退出登录（普通用户同样可用）', () => {
+  const c = read('../frontend/src/pages/Console.vue');
+  for (const item of ['command="profile"', 'command="password"', 'command="site"', 'command="logout"']) {
+    assert.ok(c.includes(item), `菜单树含 ${item}`);
+  }
+  for (const label of ['个人资料', '修改密码', '返回网站 ↗', '退出登录']) {
+    assert.ok(c.includes(`>${label}<`), `菜单文案 ${label}`);
+  }
+  // 菜单树在全局顶栏（不区分 admin/user 角色条件）——普通用户同样可用
+  assert.ok(!/el-dropdown[^>]*user\?\.role/.test(c), '菜单树不受角色条件限制（普通用户同样可用）');
+  assert.match(c, /async function onUserCommand\(cmd\)/, '菜单命令分发');
+  assert.match(c, /cmd==='password'[\s\S]{0,120}router\.push\('\/change-password'\)/, '修改密码 → /change-password');
+  assert.match(c, /cmd==='logout'[\s\S]{0,80}doLogout\(\)/, '退出登录 → doLogout');
+});
+
+test('DT-5 验收 3：退出后回到未登录态且心跳基线正确', () => {
+  const c = read('../frontend/src/pages/Console.vue');
+  assert.match(c, /async function doLogout\(\)/, 'doLogout');
+  assert.match(c, /fetch\('\/api\/logout'/, 'POST /api/logout 撤销会话');
+  assert.match(c, /markSessionLoggedOut\(\);/, '主动退出标记心跳基线（BM-4，防心跳误判会话失效）');
+  assert.match(c, /user\.value=null;/, '本地用户态清空（回到未登录态）');
+  assert.match(c, /router\.replace\('\/'\)/, '退出后回前台首页');
+});

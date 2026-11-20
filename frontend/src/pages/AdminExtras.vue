@@ -174,7 +174,7 @@ const disableBlocked=computed(()=>{
 });
 const usersBulkHint=computed(()=>sel.users.selectedKeys.includes(props.me?.id)?'不能禁用自己的账号':(disableBlocked.value?'不能禁用全部可用管理员':''));
 const usersBulkActions=computed(()=>[{key:'disable',label:'禁用',target:'users',action:'disable',risk:'high',disabled:disableBlocked.value},{key:'enable',label:'启用',target:'users',action:'enable'}]);
-function api(path,opts={}){return fetch(path,{credentials:'same-origin',...opts,headers:{'content-type':'application/json',...(opts.headers||{})}}).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{}if(r.status===401){const err=new Error(d.error||'登录已过期');err.data=d;redirectToLogin();throw err;}if(!r.ok){const err=new Error(d.error||`HTTP ${r.status}`);err.data=d;throw err;}return d;});}
+function api(path,opts={}){return fetch(path,{credentials:'same-origin',...opts,headers:{'content-type':'application/json',...(opts.headers||{})}}).then(async r=>{const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch{}if(r.status===401){redirectToLogin();const err=new Error(d.error||'登录已过期');err.data=d;throw err;}if(!r.ok){const err=new Error(d.error||`HTTP ${r.status}`);err.data=d;throw err;}return d;});}
 function body(method,data){return {method,body:JSON.stringify(data)};}
 function notify(e){ElMessage.error(e?.message||String(e));}
 // AJ 批：账号变更通知回执（docs/USER-LIFECYCLE.md 验收 6/7）——删除/改邮箱是字符串，
