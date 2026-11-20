@@ -7,6 +7,25 @@
 
 ---
 
+## EJ. ~~昵称显示规则统一——有昵称显示昵称，无昵称显示用户名~~ → 已发布 v2.27.7
+
+**类型：** ⚙️ 调整（展示口径统一，Web + App）
+**状态：** 已发布 v2.27.7（2026-11-20，站点 f340d78 + 8d72320，release 提交见 git log；App 仓库 6254978 随 app-v2.24.2（22402）；QA docs/QA-EJ.md 第 1 轮 ✅ 通过 5/缺失 0/偏差 0/需人工确认 0）
+**优先级：** P2 —— 显示一致性
+**依赖：** 无
+**解锁：** 无
+**规格**：[DISPLAY-NAME-RULE.md](DISPLAY-NAME-RULE.md)
+**涉及 App 仓库：** 是（App 提交 6254978，随 `app-v2.24.2` 发布）
+
+- **规则**：显示名 = `displayName`（昵称非空）? 昵称 : `username`；前端与手机端所有用户可见位置统一。
+- **现状问题**：① App `MeScreen.kt:154` 只显示用户名（有昵称也不显示）；② Web 后台用户管理列表列 `username`
+  （接口已返回 `display_name`）；③ AdminExtras 用户卡片已合规（推广）；④ 会话/提醒/愿望单/前台用户菜单待核。
+- **范围**：App MeScreen 显示名改 `displayName ?: username`（ProfileEdit 同步）；Web 后台各用户列改
+  `display_name || username`（接口缺字段则服务端补 SELECT）；前台「我的」昵称优先。
+- **验收**：见规格 §4（有昵称显示昵称/空则用户名；两端一致；认证仍用 username；App 构建 +
+  `npm test`（分段）+ `frontend:build` + `scan` 全绿）。
+- **实现备注**：另外修掉两处既有偏差——前台 Home/Console 读 `user.display_name` 而 `/api/me` 返回 `displayName`；
+  App 头像首字对空白昵称不判空。两端截图与逐条证据见 [QA-EJ.md](QA-EJ.md)。
 ## A. ~~立即待办（v1.4.6 时代）~~ → **已过时，保留供追溯**
 
 | # | 事项 | 现状 | 下一步 | 备注 |

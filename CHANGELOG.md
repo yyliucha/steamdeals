@@ -1,5 +1,21 @@
 # 变更日志
 
+## [2.27.7] - 2026-11-20
+
+EJ 昵称显示规则统一（Web + App）（显示口径调整，无新功能面 → 小版本，2.27.6 → 2.27.7 连续递增）。App 仓库同步发布 **app-v2.24.2（22402）**。
+
+### 修复
+
+- **昵称显示规则统一（EJ，站点 f340d78 + 8d72320；App 6254978）**：全站「用户」展示统一为 **显示名 = 昵称（trim 后非空）? 昵称 : 用户名**——后台用户管理列表/卡片、登录会话、到价提醒（含「Steam 愿望单候选」提示与「迁移给用户」下拉）、愿望单、Steam 操作日志「归属用户」、异常审核「审阅记录」操作人，以及前台「我的」用户菜单与 App「我的」账号卡；昵称清空后两端即时回退用户名；用户管理去掉并列的「显示名」列（不做昵称与用户名并列）；登录/账号安全与所有按账号操作的接口仍用 `username`，审计「操作者」保留账号标识。服务端 `listSessions`/`listAllWatchesAdmin`（含 `claimable_users`）/`listWishlists`/`listSteamLogs`/align 查询补 `display_name`（`nullif(btrim(...), '')` 归一，空白昵称不作数），`/api/admin/sessions` 响应带 `displayName`。规格见 [docs/DISPLAY-NAME-RULE.md](docs/DISPLAY-NAME-RULE.md)。
+- **巡检修掉两处既有偏差（同批）**：① 前台 `Home.vue`/`Console.vue` 用户 chip 读 `user.display_name`，而 `/api/me` 返回 `displayName` —— 有昵称也永远回退用户名，已改读 `displayName`；② App `initialOf(displayName ?: username)` 对空白昵称不判空，会显示 `S` 而不是用户名首字，改走 `displayNameOrNull`。
+- **App（App 仓库 6254978，随 app-v2.24.2）**：新增 `ui/components/DisplayName.kt`（`displayNameOrNull`/`displayNameOf`）；`MeScreen` 账号卡显示名 + 头像首字、`ProfileEditScreen` 头像首字同口径；`username` 只用于登录与账号标识。
+
+### 测试
+
+- 站点：`test/sessions.test.js`（会话列表 `displayName` 有昵称/清空回退）、`test/watchlist-user.test.js`（到价提醒 `display_name`）、`test/wishlist-site-only.test.js`（愿望单 `display_name`）、`test/admin-console-ia.test.js`（Steam 日志 `user_display_name`，用户删后回退 username）、`test/profile.test.js`（前端静态锁：各用户列 `display_name || username`、无并列展示、`/api/me` 用 `displayName`）。
+- App：`DisplayNameTest` 5 项（有昵称 / trim / 空白回退 / 双空占位 / 不并列）。
+- 验证：相关测试与 `node test/api.test.js` 38/38 全绿、`npm run frontend:build` ✅、`npm run scan` ✅、App `assembleRelease` ✅ + 单测 88/88。QA：docs/QA-EJ.md 第 1 轮 ✅ 通过 5/缺失 0/偏差 0/需人工确认 0（两端截图：Web 用户管理/会话/首页 + App「我的」昵称与回退）。
+
 ## [2.27.6] - 2026-11-20
 
 CO-5/B4-2 巨石拆分第九轮交付（admin 同步任务域，契约零变化）（技术债重构，无新功能面 → 小版本，2.27.5 → 2.27.6 连续递增）。

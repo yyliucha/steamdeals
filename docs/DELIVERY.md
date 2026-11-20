@@ -195,9 +195,13 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
-### 当前状态（2026-11-20 更新，v2.27.6 已发布：CO-5/B4-2 第九轮 admin 同步任务域拆分（技术债重构，契约零变化）；v2.27.5 已发布：EF 18R 数据同步与筛选修复 + EG 公告角标已读修复，App 同步发布 app-v2.24.0；app-v2.23.0 已发布：DY + DZ + EA-1~6 + EB（站点零改动）；v2.27.4 已发布：CO-5/B4-2 两域拆分（site/steam/ban 杂项 + admin 访问安全）；v2.27.3 已发布：CO-5/B4-2 三域拆分（watchlist/announcements/me）；v2.27.2 已发布：CO-5/B4-2 认证域拆分；v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
+### 当前状态（2026-11-20 更新，v2.27.7 已发布：EJ 昵称显示规则统一（Web + App，App 同步发布 app-v2.24.2）；v2.27.6 已发布：CO-5/B4-2 第九轮 admin 同步任务域拆分（技术债重构，契约零变化）；v2.27.5 已发布：EF 18R 数据同步与筛选修复 + EG 公告角标已读修复，App 同步发布 app-v2.24.0；app-v2.23.0 已发布：DY + DZ + EA-1~6 + EB（站点零改动）；v2.27.4 已发布：CO-5/B4-2 两域拆分（site/steam/ban 杂项 + admin 访问安全）；v2.27.3 已发布：CO-5/B4-2 三域拆分（watchlist/announcements/me）；v2.27.2 已发布：CO-5/B4-2 认证域拆分；v2.27.1 已发布：CO-4/B4 两域拆分 + DW 搜索修复；v2.27.0 已发布：DP + DQ + DN + DR + DS + DL，App 同步发布 app-v2.22.0；v2.26.0 已发布：CU 四项 + DF + CO-4/D4 + CO-4/D6 + CO-4/E4；v2.25.0 已发布：CO-1/A3 + CO-2/B3 + CQ + CW + CX + CY + CZ + DA + DC + DH + DK；App 同步发布 app-v2.21.0）
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
+- **v2.27.7 已发布**（tag `v2.27.7`，release 提交见 git log）：EJ 昵称显示规则统一（Web + App）（显示口径调整，无新功能面 → 小版本，2.27.6 → 2.27.7 连续递增）。
+  全站「用户」展示统一为「昵称（trim 非空）? 昵称 : 用户名」：后台用户管理列表/卡片、登录会话、到价提醒（含候选/迁移下拉）、愿望单、Steam 操作日志「归属用户」、异常审核审阅人、前台「我的」菜单与 App「我的」账号卡；昵称清空回退用户名；用户管理去掉并列「显示名」列；认证与审计「操作者」仍用 username。
+  同批修掉两处既有偏差：前台 Home/Console 误读 `user.display_name`（`/api/me` 返回 `displayName`）、App 头像首字对空白昵称不判空。
+  QA：docs/QA-EJ.md 第 1 轮 ✅（5/0/0/0，两端截图 `F:\dsh\ej-shots`）。App 仓库同步发布 **app-v2.24.2（22402）**（Release 三资产 + 站点 app-sync 待「立即同步」）。验证：相关测试全绿 + api.test.js 38/38 + frontend:build ✅ + scan ✅ + App assembleRelease ✅ + 单测 88/88。**服务器部署待执行**（按本文第 4 节升级到 2.27.7）。
 - **v2.27.6 已发布**（tag `v2.27.6`，release 提交见 git log）：CO-5/B4-2 巨石拆分第九轮（admin 同步任务域，契约零变化）（技术债重构，无新功能面 → 小版本，2.27.5 → 2.27.6 连续递增）。
   第九轮 admin-sync（3997083）`src/routes/admin-sync.js`（管理段单入口 13 条路由——sync 3 / circuit 1 / backfill 3 / heat 3 / rename 3）+ `src/store/admin-sync-repository.js`（`listSyncRuns` 唯一专属 SQL 搬家；`insertSyncRun`/`finishSyncRun`/`runningSyncRun`/`markStaleSyncRuns`/`sourceSyncStats` 等跨域共用 SQL 留 `pg.js` + re-export 兼容壳）；`syncState` 持有对象与 `startSteamJob` 闭包按引用共享（「语义共享，勿改成拷贝」注释）；`src/server.js` 净 −205、`src/store/pg.js` 净 −8；**外部契约零变化**（路径/参数/响应/错误码不变）。已交付九域（app/appeal/auth/watchlist/announcements/me/site/admin-access/admin-sync），剩余域继续按 [B4-QUEUE.md](B4-QUEUE.md) 队列推进（下一域 #10 admin 系统设置）。
   QA：B4-2 第九轮 ✅ [QA-CO5-B4-2-admin-sync.md](QA-CO5-B4-2-admin-sync.md) 第 1 轮（14/0/0/1）；需人工确认项为本机沙箱环境限制（`frontend:build` 默认命令被拦，改用 native loader 变体），CI 兜底。
