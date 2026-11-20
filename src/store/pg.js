@@ -229,6 +229,15 @@ export {
   setGameDeleted,
   setUserGameFlag,
 } from './games-repository.js';
+// CO-5/B4-2 第十六轮（docs/DESIGN-AUDIT.md B4）：admin-images 域（B4 #13：后台图片
+// /api/admin/images）SQL 落 admin-images-repository.js——imageCoverageRows 只被本域路由
+// 使用（EC 批覆盖看板）随域搬走，域内联 SQL（看板缺图分页列表）抽新函数
+// imageCoverageMissingRows；fillHeaderImage（image-backfill.js 回填与 steam-status.js 共用）、
+// missingHeaderImageAppids（image-backfill.js 回填候选）、backfillCandidateWhere（CLI 与统计
+// 共用候选谓词）属跨模块共用 SQL 留本文件；games 表 DDL 在本文件 SCHEMA 不搬。
+// 这里 re-export 保持旧 db.* 导入签名不变（routes/admin-images.js、server.js 其它段
+// 与现有测试照旧走 pg.js 聚合壳）。
+export { imageCoverageRows, imageCoverageMissingRows } from './admin-images-repository.js';
 
 export const SCHEMA = `
 create table if not exists platforms (
@@ -3335,15 +3344,6 @@ export async function listSteamStatusCandidates(q, { limit = 30 } = {}) {
 export async function fillHeaderImage(q, { steamAppid, url }) {
   if (!steamAppid || !url) return { rowCount: 0 };
   return q('update games set header_image = $2 where steam_appid = $1 and header_image is null', [steamAppid, url]);
-}
-
-/**
- * EC 批（docs/IMAGE-COVERAGE.md §8 EC-1）：图片覆盖看板数据行——只取 steam_appid/header_image 两列
- * （缺图原因判定与本地缓存比对在 server 路由层做，避免 SQL 与文件系统耦合）。
- */
-export async function imageCoverageRows(q) {
-  const r = await q('select g.steam_appid, g.header_image from games g where g.steam_appid is not null and not g.deleted');
-  return r.rows.map((row) => ({ steamAppid: Number(row.steam_appid), headerImage: row.header_image ?? null }));
 }
 
 /**

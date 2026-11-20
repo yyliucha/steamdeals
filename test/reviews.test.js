@@ -949,11 +949,12 @@ test('CO-5/B4-2 第八轮：admin-access 路由分支不得双实现（server.js
   assert.ok(!/path === '\/api\/admin\/reviews\/reject' && req\.method/.test(AA_SERVER), 'reviews/reject 分支不得残留在 server.js');
   assert.ok(!/path === '\/api\/admin\/reviews\/act' && req\.method/.test(AA_SERVER), 'reviews/act 分支不得残留在 server.js');
   assert.ok(!/error: '临时封时长必须是 10 \/ 60 \/ 1440 分钟'/.test(AA_SERVER), 'act 校验文案不得残留在 server.js');
-  // 边界锁：其它 admin 域路由留宿主（#11 users 批量、#13 images）；#10 mail/proxies 已拆到
-  // routes/admin-settings.js、#12 reports/backups/logs 已拆到 routes/admin-reports.js
+  // 边界锁：其它 admin 域路由留宿主（#11 users 批量）；#10 mail/proxies 已拆到
+  // routes/admin-settings.js、#12 reports/backups/logs 已拆到 routes/admin-reports.js、
+  // #13 images 已拆到 routes/admin-images.js
   assert.match(AA_SERVER, /path === '\/api\/admin\/users' && req\.method === 'POST'/, 'admin users 段留 server.js（B4 #11）');
-  assert.match(AA_SERVER, /path === '\/api\/admin\/images' && req\.method === 'GET'/, 'admin images 段留 server.js（B4 #13）');
   assert.match(AA_SERVER, /await handleAdminReportsAdmin\(\{/, 'admin reports 段已拆到 routes/admin-reports.js（B4 #12）');
+  assert.match(AA_SERVER, /await handleAdminImagesAdmin\(\{/, 'admin images 段已拆到 routes/admin-images.js（B4 #13）');
   assert.match(AA_SERVER, /await handleAdminSettingsAdmin\(\{/, 'admin mail/proxies 段已拆到 routes/admin-settings.js（B4 #10）');
   // 中间件判据锁：banIpExclusiveSql 本体留 server.js（#11 批量操作共用，不随域搬走）
   assert.match(AA_SERVER, /async function banIpExclusiveSql\(q, ip, note, kind/, 'banIpExclusiveSql 留 server.js（#11 共用）');

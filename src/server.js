@@ -136,6 +136,14 @@ import { handleGamesRoutes } from './routes/games.js';
 // 留 steam-log.js、createBackup/listBackups 留 backup.js，判定见 admin-reports-repository.js）。
 // isTimeoutExemptPath 的 '/api/admin/backup' 超时豁免仍是中间件、留本文件（§15.4）。
 import { handleAdminReportsAdmin } from './routes/admin-reports.js';
+// CO-5/B4-2 第十六轮：admin-images 域（B4 #13 后台图片：/api/admin/images）路由已抽到
+// src/routes/admin-images.js——handleAdminImagesAdmin 在 requireAdmin 就绪之后的管理段
+// （本域全部 4 条路由，管理段形态先例=admin-settings 域）。调用位置不能动：取本域最早路由
+// /api/admin/images 的原位置（DT-3 users POST 之后）。imgMissCache（负缓存 Map，/img/ 代理
+// 路由写、本域读/清空）、startSteamJob（同步子进程槽位 single-flight，与 admin-sync 域共用）、
+// startSteamJobImpl（EC 批测试注入替身）经 ctx 按引用传入（语义共享，勿改成拷贝）；
+// images.js 是共享业务模块（/img/ 代理与 cli/ops.js images 命令也走），保留 import 不动。
+import { handleAdminImagesAdmin } from './routes/admin-images.js';
 // DX 批（docs/SEARCH-FIX-PERF.md §DX）：前台列表/搜索短 TTL 内存缓存（纯逻辑，测试锁语义）。
 import { createListCache } from './search-cache.js';
 
@@ -2644,95 +2652,30 @@ export function createApiServer({
         return json(res, 410, { error: '管理员不再支持新建用户，请用户自助注册' });
       }
 
-      // ---- 管理员：封面图本地缓存统计 ----
-      if (path === '/api/admin/images' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        return json(res, 200, { images: images.imageStats() });
-      }
-
-      // BC 批（docs/IMAGE-COVERAGE.md §3.3）：清空进程内「缺图」负缓存——补了 header_image 后不必等 24h
-      if (path === '/api/admin/images/reset-miss' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const cleared = imgMissCache.size;
-        imgMissCache.clear();
-        logger?.info('steam.img_miss_cleared', { cleared });
-        return json(res, 200, { cleared });
-      }
-
-      // EC 批（docs/IMAGE-COVERAGE.md §8 EC-1）：图片覆盖看板——
-      // 缺图集合 = header_image 为 null 的游戏 ∪ 负缓存（header 尺寸）里有记录的游戏；
-      // 列表原因三种：header_image 空 / CDN 404（负缓存 notfound）/ 抓取失败（负缓存 error）。
-      if (path === '/api/admin/images/coverage' && req.method === 'GET') {
-        if (!requireAdmin()) return;
-        const page = Math.max(Number(url.searchParams.get('page') ?? 1) || 1, 1);
-        const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize') ?? 50) || 50, 1), 200);
-        const rows = await db.imageCoverageRows(q);
-        const byAppid = new Map(rows.map((r) => [r.steamAppid, r]));
-        const totalGames = rows.length;
-        const withHeader = rows.filter((r) => r.headerImage).length;
-        const noHeader = totalGames - withHeader;
-        // 负缓存 key 形如 `<appid>/header`；只看 header 尺寸，且库里有该游戏才算看板缺图
-        const missByAppid = new Map();
-        for (const [key, miss] of imgMissCache) {
-          if (!key.endsWith('/header')) continue;
-          const appid = Number(key.slice(0, -'/header'.length));
-          if (!Number.isFinite(appid) || !byAppid.has(appid)) continue;
-          missByAppid.set(appid, miss);
-        }
-        let cdn404 = 0;
-        let fetchFailed = 0;
-        for (const [appid, miss] of missByAppid) {
-          if (!byAppid.get(appid)?.headerImage) continue; // header_image 空优先级更高，计入 noHeader
-          if (miss?.kind === 'notfound') cdn404 += 1;
-          else fetchFailed += 1;
-        }
-        const missing = noHeader + cdn404 + fetchFailed;
-        const cache = images.imageStats();
-        const missAppids = [...missByAppid.keys()];
-        const missingList = await q(
-          'select g.id, g.steam_appid, coalesce(nullif(g.name, \'\'), nullif(g.name_en, \'\'), \'appid:\' || g.steam_appid) as name, g.header_image, g.updated_at ' +
-            'from games g where g.steam_appid is not null and not g.deleted ' +
-            'and (g.header_image is null or g.steam_appid::text = any($1::text[])) ' +
-            'order by (g.header_image is null) desc, g.updated_at desc nulls last, g.id desc limit $2 offset $3',
-          [missAppids.map(String), pageSize, (page - 1) * pageSize],
-        );
-        const items = missingList.rows.map((r) => ({
-          id: Number(r.id),
-          steam_appid: Number(r.steam_appid),
-          name: r.name,
-          reason: !r.header_image ? 'header_image 空' : missByAppid.get(Number(r.steam_appid))?.kind === 'notfound' ? 'CDN 404' : '抓取失败',
-        }));
-        return json(res, 200, {
-          stats: {
-            totalGames,
-            withHeaderImage: withHeader,
-            cachedGames: cache.games,
-            cachedImages: cache.images,
-            cachedBytes: cache.bytes,
-            missing,
-            missingByReason: { noHeader, cdn404, fetchFailed },
-          },
-          list: { items, page, pageSize, total: missing },
-        });
-      }
-
-      // EC 批（docs/IMAGE-COVERAGE.md §8 EC-2）：手动触发缺图回填——复用同步子进程槽位（single-flight），
-      // 已有任务在跑时 409；子进程跑 CLI `images backfill`，限速防 429。
-      if (path === '/api/admin/images/backfill' && req.method === 'POST') {
-        if (!requireAdmin()) return;
-        const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 100) || 100, 1), 500);
-        try {
-          const job = await (startSteamJobImpl ?? startSteamJob)({
-            mode: 'images-backfill',
-            args: ['src/cli.js', 'images', 'backfill', '--limit', String(limit)],
-            by: user.username,
-          });
-          return json(res, 202, { started: true, runId: job.runId, mode: 'images-backfill' });
-        } catch (err) {
-          if (err?.code === 'BUSY') return json(res, 409, { error: '已有任务在运行（同步/回填），请等它结束' });
-          throw err;
-        }
-      }
+      // ---- CO-5/B4-2 第十六轮（docs/DESIGN-AUDIT.md B4）：admin-images 域管理段路由已抽到
+      // src/routes/admin-images.js。调用位置不能动：必须在 requireAdmin 就绪之后的管理段
+      // （401/403 语义依赖该位置；调用点取本域最早路由 /api/admin/images 的原位置）。
+      // 域内 4 条路由 path+method 互不重叠、与相邻其它 admin 域路由无同 path 双匹配，
+      // 在管理段内集中到一处不改变匹配语义；imgMissCache（负缓存 Map，/img/ 代理路由写、
+      // 本域读/清空）、startSteamJob（同步子进程槽位，与 admin-sync 域共用 single-flight）、
+      // startSteamJobImpl（EC 批测试注入替身）按引用传入（语义共享），勿改成拷贝。
+      if (
+        await handleAdminImagesAdmin({
+          path,
+          req,
+          res,
+          url,
+          q,
+          logger,
+          json,
+          user,
+          requireAdmin,
+          imgMissCache,
+          startSteamJob,
+          startSteamJobImpl,
+        })
+      )
+        return;
 
       // ---- CO-5/B4-2 第五轮（docs/DESIGN-AUDIT.md B4）：公告管理路由已抽到 src/routes/announcements.js ----
       // 管理段调用位置不能动：必须在 requireAdmin 就绪之后（401/403 语义依赖该位置）；
