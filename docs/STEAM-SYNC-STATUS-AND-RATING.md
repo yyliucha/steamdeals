@@ -390,3 +390,32 @@ export async function applySteamDetails(q, { appid, cnEntry, hkEntry = null, met
 **验收**：① steam-status 采集一轮后 `adult_flag`/`mature_flag` 覆盖提升（与 rating-backfill 交叉验证）；
 ② discovery 候选集包含国区不显示的游戏；③ **价格链路零改动**（`cc=cn` 保持不变，抽查价格仍国区）；
 ④ `npm test`（分段）+ `scan` 全绿；⑤ 日志注明区域。
+
+## 11. EI 同步双区域配置（内容统一美国 + 本位币可配置，2026-11-20 立项，待开发）
+
+**所有者需求（2026-11-20）**：「针对锁区的国家做设定——同步统一用美国，默认本位币是同步的金额；
+这样可以把数据都同步，还能把对应区域的价格也同步过来。」
+
+**设计：两套区域配置，各管各的**
+| 配置项 | 默认 | 作用 |
+|---|---|---|
+| `sync.contentRegion` | **us** | 内容采集区域（元数据/状态/分级/发现/图片），**固定美国**——绕过锁区拿全量数据 |
+| `site.baseRegion` | **cn** | 本位币/报价区域（价格同步、前台查询默认 region、比价口径） |
+| `site.baseCurrency` | **CNY** | 展示/入库货币（随 region 映射；多币种时用） |
+
+**改造点**：
+1. **内容链路**（`steam-meta.js` / `steam-status.js` / `discovery.js`）：`cc=cn` 全部改为读
+   `sync.contentRegion`（默认 us）；EF 已改的 steam-meta 保留并接入配置；
+2. **价格链路**（`steam.js` / `sync steam-prices` / `backfill`）：硬编码 `'cn'` 改为读
+   `site.baseRegion`（默认 cn）+ `site.baseCurrency`（默认 CNY）；
+3. 前台查询默认 region（server.js 多处 `?? 'cn'`）改读 `site.baseRegion`；
+4. settings 页面暴露这三个配置（系统设置 → 同步区域），变更后价格下一轮同步生效、前台立即生效；
+5. 日志/任务记录输出两区域（content=us / base=cn）。
+
+**国际化路径（后续）**：区域值扩展 `us/eu/jp` 等 + 多 currency（offers 表已有 region/currency 维度，**
+不改表结构**）；`baseRegion` 切换即切换比价口径。
+
+**验收**：① 默认配置下内容采集走 us（appdetails 请求带 cc=us）、价格采集走 cn（cc=cn、CNY）；
+② 改 `site.baseRegion=us` + `baseCurrency=USD` → 价格同步美区且 offers.currency=USD（可用测试 env 验证）；
+③ 前台默认 region 跟随配置；④ 锁区/成人内容在内容采集侧可获取（分级覆盖率提升）；
+⑤ `npm test`（分段）+ `scan` 全绿；⑥ 日志可区分两区域。

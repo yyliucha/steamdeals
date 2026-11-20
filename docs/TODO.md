@@ -22,7 +22,7 @@
 |---|---|---|
 | 🐞 缺陷 | 1 | DU |
 | ✨ 功能 | 1 | DT-2 |
-| ⚙️ 调整 | 7 | DT-1 / DT-3 / DT-4 / DT-5 / DV / EC / EH |
+| ⚙️ 调整 | 8 | DT-1 / DT-3 / DT-4 / DT-5 / DV / EC / EH / EI |
 | 🧹 技术债 | 1 | DX |
 | 🧪 测试基建 | 1 | ED |
 | 📝 文档流程 | 0 | — |
@@ -179,3 +179,19 @@ pm test（分段）+ rontend:build + scan 全绿）。
   ② `src/discovery.js:38/86` 搜索 `cc=cn`→`cc=us`；③ 注释/文档同步；
   **价格链路（steam.js/backfill/sync steam-prices）保持 cc=cn 不动**（国区报价是业务核心）。
 - **验收**：见规格 §10（分级覆盖提升；候选集含国区不显示游戏；价格仍国区口径不变；`npm test`（分段）+ `scan` 全绿）。
+
+## EI. 待开发（⚙️ 调整）：同步双区域配置（内容统一美国 + 本位币可配置默认中国）
+
+**类型：** ⚙️ 调整（同步区域/货币配置化）
+**状态：** 待开发（2026-11-20 所有者确认设计）
+**优先级：** P1 —— 数据完整性 + 未来国际化
+**依赖：** EF（元数据 cc=us）、EH（状态/发现去 cn）——本条目把区域统一配置化
+**解锁：** 无
+**规格**：[STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §11
+
+- **设计**：两套区域——`sync.contentRegion`（默认 **us**，内容采集/绕过锁区）+ `site.baseRegion`（默认 **cn**，
+  价格/比价口径）+ `site.baseCurrency`（默认 **CNY**）；内容拿全量、价格拿本位币区域金额。
+- **范围**：① 内容链路（steam-meta/steam-status/discovery）读 contentRegion；② 价格链路（steam.js/sync/backfill）
+  读 baseRegion+baseCurrency；③ 前台默认 region 读配置；④ settings 暴露三项配置；⑤ 日志双区域。
+- **验收**：见规格 §11（默认内容 us/价格 cn；切 baseRegion=us+USD 生效；前台跟随；分级覆盖提升；
+  `npm test`（分段）+ `scan` 全绿）。
