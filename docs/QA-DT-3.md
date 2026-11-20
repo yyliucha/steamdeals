@@ -47,6 +47,7 @@
 - 第 1 轮（2026-11-20）：开发自测多轮（audit bulkMissing 语义、password-policy verify 需 settings schema、测试断言适配），全绿后质检。
 - 提交前 rebase 合并 DT-4（重置密码弹窗）/DT-5（全局顶栏）/v2.27.9（B4 拆分）：AdminExtras.vue 行内操作与 DT-4 弹窗共存（重置密码行内按钮=openResetPassword）；server.js 的 DT-3 steam-accounts 路由与 DT-4 reset-code 路由并存；AdminExtras.vue api() 401 以 main 版为基础（先 redirectToLogin 再 throw）且保留 err.data 语义；合并后全部相关测试重跑绿。
 - worker-dt3 收尾复核（2026-11-20 18:31–19:05）：接手工地时处于 stash-pop 冲突残留状态（2 个 autostash + unmerged 2 文件 + 冲突标记）；期间工人 2 会话完成 rebase 提交并推送 4a40737（12 文件：11 代码/测试 + 本报告初稿）。复核：4a40737 与规格/demo 双层核对通过（逐 hunk 过目，无 scope creep）、身份 yyliucha ✓、无新增 tag、已在 origin/main 历史中（f5446eb 之下）；随后在 f5446eb 上重跑全套验证（下方输出）。stash@{0}/stash@{1} 两个 autostash 内容已备份到仓库外（F:\dsh\tmp-dt3-backup\*.patch）并确认均已落入 main/DT-3 提交，遗留 stash 未 drop（保守，供监工决策）。
+- 第 2 轮（构建门禁打回修复，2026-11-20 19:29 监工要求）：GET steam-accounts 接口的绑定账号 SQL 内联在 server.js 触发 B4 #6 边界锁（profile.test「steamBound 内联 SQL 不得残留」红）——SQL 抽到 src/store/me-repository.js 新函数 listBoundSteamAccounts（server.js 只调用、pg.js re-export），profile.test 加反向锁；修复后 profile 15/15、admin-users 3/3、api 38/38 全绿。
 
 ## 备注
 

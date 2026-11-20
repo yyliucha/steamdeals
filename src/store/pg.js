@@ -121,6 +121,7 @@ export {
   savePrefs,
   countBoundSteamAccounts,
   boundAtOfSteamAccount,
+  listBoundSteamAccounts,
   listMySessions,
   revokeMySession,
 } from './me-repository.js';

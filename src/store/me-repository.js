@@ -179,6 +179,22 @@ export async function countBoundSteamAccounts(q, userId) {
   return Number(r.rows[0]?.n ?? 0);
 }
 
+/**
+ * DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：用户绑定 Steam 账号清单（管理员编辑弹窗只读展示）——
+ * 昵称 + SteamID（别名优先由前端决定），按 steam_id 稳定排序；与 /api/me 的 steamBound 同源 SQL。
+ */
+export async function listBoundSteamAccounts(q, userId) {
+  const r = await q(
+    'select steam_id, persona_name, alias from steam_accounts where user_id = $1 order by steam_id',
+    [userId],
+  );
+  return r.rows.map((row) => ({
+    steamId: row.steam_id,
+    personaName: row.persona_name ?? null,
+    alias: row.alias ?? null,
+  }));
+}
+
 /** 某 Steam 账号的绑定时间（steam_account_logs 最早一条 action='bind'），无记录 null。 */
 export async function boundAtOfSteamAccount(q, steamId) {
   const r = await q(

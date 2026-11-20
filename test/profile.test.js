@@ -523,6 +523,10 @@ test('CO-5/B4-2 第六轮：me-repository.js 签名不变 + pg.js re-export（�
   // 域内联 SQL 抽出的两个新函数（/api/me steamBound、/api/me/library bindTimes）
   assert.match(ME_REPO, /export async function countBoundSteamAccounts\(q, userId\)/, 'steamBound 内联 SQL 已抽 countBoundSteamAccounts');
   assert.match(ME_REPO, /export async function boundAtOfSteamAccount\(q, steamId\)/, 'bindTimes 内联 SQL 已抽 boundAtOfSteamAccount');
+  // DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：编辑弹窗绑定账号清单 SQL 同样落 me-repository
+  // （反向自检：把 SQL 抄回 server.js 内联 → 508 行「steamBound 内联 SQL 不得残留」变红）
+  assert.match(ME_REPO, /export async function listBoundSteamAccounts\(q, userId\)/, 'DT-3 绑定账号清单 SQL 已抽 listBoundSteamAccounts');
+  assert.ok(!/export (async )?function listBoundSteamAccounts/.test(ME_PG), 'pg.js 不允许保留 listBoundSteamAccounts 旧定义（只许 re-export）');
   // DT-2（docs/ADMIN-PERMISSIONS.md）：用户级会话 SQL 落 me-repository（路由层不写 SQL）
   assert.match(ME_REPO, /export async function listMySessions\(q, \{ userId, includeExpired = false, limit = 20, offset = 0 \} = \{\}\)/, 'DT-2 listMySessions 落 me-repository');
   assert.match(ME_REPO, /export async function revokeMySession\(q, \{ sessId, userId \}\)/, 'DT-2 revokeMySession 落 me-repository');

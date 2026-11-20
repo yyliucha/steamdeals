@@ -2697,23 +2697,14 @@ export function createApiServer({
       }
 
       // DT-3（docs/ADMIN-PERMISSIONS.md DT-3）：编辑弹窗只读展示绑定 Steam 账号（昵称 + SteamID）
+      // SQL 落 me-repository（B4 #6 域拆分边界：steam_accounts 绑定查询不在 server.js 内联）
       const userSteamMatch = path.match(/^\/api\/admin\/users\/([^/]+)\/steam-accounts$/);
       if (userSteamMatch && req.method === 'GET') {
         if (!requireAdmin()) return;
         const username = decodeURIComponent(userSteamMatch[1]);
         const target = (await q('select id from users where username = $1', [username])).rows[0];
         if (!target) return json(res, 404, { error: '没有该用户' });
-        const rows = await q(
-          'select steam_id, persona_name, alias from steam_accounts where user_id = $1 order by steam_id',
-          [target.id],
-        );
-        return json(res, 200, {
-          accounts: rows.rows.map((r) => ({
-            steamId: r.steam_id,
-            personaName: r.persona_name ?? null,
-            alias: r.alias ?? null,
-          })),
-        });
+        return json(res, 200, { accounts: await db.listBoundSteamAccounts(q, target.id) });
       }
 
       // ---- DT-4（docs/ADMIN-PERMISSIONS.md）：后台重置密码发码（purpose='admin_reset'）----
