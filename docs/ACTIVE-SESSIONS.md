@@ -17,7 +17,6 @@
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
 | EH + EI 同步区域配置化（P1，所有者指令） | src/settings.js、src/adapters/steam.js、src/adapters/steam-meta.js、src/steam-status.js、src/discovery.js、src/backfill.js、src/cli.js、src/scheduler.js、src/server.js（与 B4 #9 重叠：等其提交后动手）、frontend/src、test/（避开 #9 的 source-sync/sync-runs）、docs/{TODO,REQUIREMENTS-INDEX,PROJECT-OVERVIEW}（与监工/构建会话重叠：写前按 HANDOVER §10 探测锁） | 无 | 09:40 | 12:30 | EH+EI 开发会话（所有者指令，本会话） |
-| EL 后台「添加/编辑」统一弹窗（P2，所有者指令） | frontend/src/pages/AdminModules.vue、frontend/src/components/{AnnouncementDrawer,AppealsAdmin}.vue、test/admin-edit-dialog.test.js（新增）+ proxy-pool-ui/admin-console-ia 断言更新 + package.json（test:3 注册）、docs/{TODO,REQUIREMENTS-INDEX,PROJECT-OVERVIEW,DELIVERY}（写前探测锁） | 无 | 13:25 | 15:00 | EL 开发会话（所有者指令，本会话；与 EH+EI 登记的 frontend/src 重叠由所有者裁决派单：EL 只动上述 3 组件、不碰 src/ 后端） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 
