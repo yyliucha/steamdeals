@@ -72,7 +72,7 @@
 | 6 | me | /api/me/* | 已拆 | v2.27.3 | 4ed78db |
 | 7 | 杂项（site/steam/ban） | /api/site、/api/steam/*、/api/ban/state | 已拆 | v2.27.4 | 552fb40 |
 | 8 | admin 访问安全 | visitors/views/devices/blacklist/whitelist/abuse/reviews | 已拆 | v2.27.4 | b3ebd8a |
-| 9 | admin 同步任务 | sync/heat/backfill/rename/circuit | 未拆 | | |
+| 9 | admin 同步任务 | sync/heat/backfill/rename/circuit | 已拆 | 待发（v2.27.6） | 3997083 |
 | 10 | admin 系统设置 | smtp/mail/emails/announcements/proxies/version | 未拆 | | |
 | 11 | admin 用户批量 | users/bulk/bulk-ops | 未拆 | | |
 | 12 | admin 报表备份日志 | reports/backup/backups/logs/steam-logs | 未拆 | | |
@@ -136,3 +136,6 @@
   并行度 1（#9–#17 admin 域共享 src/server.js + src/store/pg.js 文件面，无互不重叠配对；到 cli 域（#18–#20）时再评估与 admin 域的并行配对）。
 - 2026-11-20 08:50 接管检查：ACTIVE-SESSIONS 无登记（EG 遗留登记已清理，无卡死会话）；最后心跳 08:40 收尾（v2.27.4 CI 双绿已回填 DELIVERY 4682107）；tag v2.27.4 存在、HEAD 4a1b2e8、工作区无发布文档未提交改动 → 无需接管。EF（7a3ac2b/938c4f6）+ EG（7eb5d4a/c6ac3c5/b9e111e）代码已在 main、QA 通过待发 → 本批构建随版本带上（版本连续递增）。
 - 2026-11-20 08:51 开工：注册 ACTIVE-SESSIONS（夜班监工 08:48 轮 + 工人 #9 行由监工代登，共用文档单一写者），进入开发循环，启动工人 B4 #9 admin 同步任务（sync/heat/backfill/rename/circuit）。
+- 2026-11-20 09:52 工人完成 B4 #9 admin 同步任务：提交 3997083（server.js −205 / pg.js −8 / 新 routes/admin-sync.js 356 + store/admin-sync-repository.js 38 / test/sync-runs.test.js +123 四组静态锁 + source-sync 断言指新文件）；QA-CO5-B4-2-admin-sync 第 1 轮 ✅ 放行（14/0/0/1，人工确认=frontend:build 沙箱拦截改用 native 变体，CI 兜底）；13 条路由（sync/circuit/backfill/heat/rename 各 POST/stop/status + sync runs 三段）全拆，syncState 持有对象按引用语义共享；边界判定：listSyncRuns 唯一专属搬家，insertSyncRun/finishSyncRun/runningSyncRun/markStaleSyncRuns/sourceSyncStats 跨模块共用留 pg.js；实测单域耗时 ≈55min（08:57→09:52）。
+- 2026-11-20 09:53 环境变化：构建会话（所有者指令）已发布 v2.27.5（EF+EG 批，tag 最终指向 8b53782，**不含 #9**；docker-hub 44656117747 / docker-tcr 44656117688 已排队）→ #9 归属下一版 **v2.27.6**（版本连续递增不变）；EF/EG 已由该会话带上，本批构建无需再带。
+- 2026-11-20 09:53 阻塞观察：ACTIVE-SESSIONS 有「EH+EI 开发会话」（所有者指令，09:40–12:30，文件面含 src/server.js、src/cli.js、src/scheduler.js 等）——B4 剩余域 #10–#21 文件面全部与其重叠，按登记表规则后到排队，暂不派工；等所有者协调或该会话完成。
