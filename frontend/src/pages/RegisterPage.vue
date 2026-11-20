@@ -15,7 +15,8 @@
         </label>
         <div class="email-code-row">
           <el-input v-model="code" placeholder="邮箱验证码（6 位）" maxlength="6" />
-          <el-button :disabled="codeCooldown > 0" @click="requestCode">{{ codeCooldown > 0 ? `${codeCooldown}s 后重发` : '发送验证码' }}</el-button>
+          <!-- DT-4（docs/ADMIN-PERMISSIONS.md）：验证码按钮统一三态——发送中/剩余秒数/可重发 -->
+          <el-button :disabled="codeSending || codeCooldown > 0" @click="requestCode">{{ codeSending ? '发送中…' : codeCooldown > 0 ? `${codeCooldown}s 后重发` : '发送验证码' }}</el-button>
         </div>
         <label class="auth-field">
           <span>密码（≥12 位）</span>
@@ -53,6 +54,7 @@ const router = useRouter();
 const route = useRoute();
 const username = ref(''), email = ref(''), code = ref(''), password = ref(''), confirm = ref('');
 const codeCooldown = ref(0);
+const codeSending = ref(false);
 const fieldError = ref({});
 const topError = ref('');
 const loading = ref(false);
@@ -97,12 +99,16 @@ function scheduleStrength() {
 
 async function requestCode() {
   fieldError.value = {};
+  if (codeSending.value) return;
   if (!username.value.trim()) { fieldError.value = { username: '请先填写用户名' }; return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim())) { fieldError.value = { email: '邮箱格式不正确' }; return; }
+  codeSending.value = true;
   try {
-    await api('/api/auth/register/request', { method: 'POST', body: JSON.stringify({ username: username.value.trim(), email: email.value.trim() }) });
+    const d = await api('/api/auth/register/request', { method: 'POST', body: JSON.stringify({ username: username.value.trim(), email: email.value.trim() }) });
     ElMessage.info('验证码已发送到邮箱，请查收');
-    codeCooldown.value = 60;
+    // DT-4：优先用后端返回的 retryAfterSec，兜底 60s
+    const waitSec = Math.max(1, Number(d.retryAfterSec) || 60);
+    codeCooldown.value = waitSec;
     clearInterval(cooldownTimer);
     cooldownTimer = setInterval(() => { codeCooldown.value -= 1; if (codeCooldown.value <= 0) clearInterval(cooldownTimer); }, 1000);
   } catch (e) {
@@ -115,6 +121,8 @@ async function requestCode() {
     } else {
       topError.value = e.message;
     }
+  } finally {
+    codeSending.value = false;
   }
 }
 

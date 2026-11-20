@@ -2678,14 +2678,129 @@ export function createApiServer({
         return json(res, 200, reply);
       }
 
+      // ---- DT-4（docs/ADMIN-PERMISSIONS.md）：后台重置密码发码（purpose='admin_reset'）----
+      // 冷却按场景分桶：只与 admin_reset 互斥，不占用前台登录/注册/重置发码额度（反之亦然）；
+      // 成功/429 都返回 retryAfterSec 供前端倒计时（三态：发送中/剩余秒数/可重发）。
+      const resetCodeMatch = path.match(/^\/api\/admin\/users\/([^/]+)\/reset-code$/);
+      if (resetCodeMatch && req.method === 'POST') {
+        if (!requireAdmin()) return;
+        const auth = await import('./email-auth.js');
+        const { sendMail } = await import('./notify.js');
+        const username = decodeURIComponent(resetCodeMatch[1]);
+        const target = (await q('select id, username, email from users where username = $1', [username])).rows[0];
+        if (!target) return json(res, 404, { error: '没有该用户' });
+        if (!target.email) return json(res, 400, { error: '该用户还没有绑定邮箱' });
+        const recent = await q(
+          "select created_at, sent_ok from email_codes where email = $1 and purpose = 'admin_reset' order by created_at desc limit 20",
+          [target.email],
+        );
+        const limit = auth.checkRateLimit(recent.rows);
+        if (!limit.ok) {
+          logger?.warn('auth.otp_failed', { email: maskEmail(target.email), purpose: 'admin_reset', reason: limit.reason, retryAfterSec: limit.retryAfterSec });
+          return json(res, 429, {
+            error: limit.reason === 'cooldown' ? `请 ${limit.retryAfterSec} 秒后再试` : '发送过于频繁，请稍后再试',
+            retryAfterSec: limit.retryAfterSec,
+          });
+        }
+        const cfg = await auth.smtpConfig(q);
+        if (!auth.isSmtpConfigured(cfg)) return json(res, 503, { error: 'SMTP 未配置，无法发送验证邮件' });
+        const code = auth.generateCode();
+        const ins = await q(
+          "insert into email_codes (email, user_id, purpose, code_hash, subject, body, expires_at) " +
+          "values ($1, $2, 'admin_reset', $3, $4, $5, now() + interval '10 minutes') returning id",
+          [target.email, target.id, auth.hashCode(target.email, code), 'SteamDeals 重置密码验证码', '验证码邮件正文未保存。'],
+        );
+        try {
+          // AI 批：验证码同样套用 verify_code 模板（停用时回退纯文本）
+          const tpl = await mailTemplates.resolveTemplate(q, 'verify_code').catch(() => null);
+          const expiryAt = new Date(Date.now() + 10 * 60 * 1000);
+          let mail = { subject: 'SteamDeals 重置密码验证码', text: '验证码：' + code + '\n有效期 10 分钟。', html: null };
+          if (tpl?.enabled) {
+            mail = mailTemplates.renderTemplate({
+              subject: tpl.subject,
+              bodyHtml: tpl.bodyHtml,
+              bodyText: tpl.bodyText ?? '',
+              vars: {
+                username: target.username,
+                action: '重置密码',
+                time: formatDateTime(expiryAt),
+                code,
+                siteUrl: baseUrl(req),
+                contactEmail: appealEmail(),
+              },
+            });
+          }
+          await sendMail(
+            { host: cfg.host, port: cfg.port, secure: cfg.secure, user: cfg.user, pass: cfg.pass, from: cfg.from, to: target.email,
+              subject: mail.subject, text: mail.text, html: mail.html },
+            { logger },
+          );
+          await q('update email_codes set sent_ok = true where id = $1', [ins.rows[0].id]);
+          logger?.info('auth.otp_requested', { email: maskEmail(target.email), purpose: 'admin_reset', sent: true, by: user.username });
+          return json(res, 200, { ok: true, hint: '验证码已发送到 ' + target.email, retryAfterSec: auth.SEND_COOLDOWN_SEC });
+        } catch (err) {
+          await q('update email_codes set sent_ok = false, error = $1 where id = $2', [String(err.message).slice(0, 200), ins.rows[0].id]);
+          logger?.error('auth.otp_failed', { email: maskEmail(target.email), purpose: 'admin_reset', reason: 'send_error', message: String(err.message).slice(0, 200) });
+          return json(res, 502, { error: '发送失败：' + String(err.message).slice(0, 160) });
+        }
+      }
+
       const pwdMatch = path.match(/^\/api\/admin\/users\/([^/]+)\/password$/);
       if (pwdMatch && req.method === 'POST') {
         if (!requireAdmin()) return;
         const body = await readBody(req);
         const rawPassword = String(body.password ?? '');
         const username = decodeURIComponent(pwdMatch[1]);
-        const before = (await q('select email from users where username = $1', [username])).rows[0];
+        const before = (await q('select id, email from users where username = $1', [username])).rows[0];
         if (!before) return json(res, 404, { error: '没有该用户' });
+        // DT-4（docs/ADMIN-PERMISSIONS.md）：验证码模式——重置密码弹窗「确认重置」。
+        // 校验管理员在弹窗里输入的验证码（purpose='admin_reset'）：失败不重置、返回剩余次数
+        // （前端弹窗不关、显示「还剩 N 次机会」）；过期/无码给出可重发提示（前端显示「重新发送」）。
+        const code = String(body.code ?? '').trim();
+        if (code) {
+          if (!before.email) return json(res, 400, { error: '该用户还没有绑定邮箱' });
+          const auth = await import('./email-auth.js');
+          if (!/^\d{6}$/.test(code)) return json(res, 400, { error: '验证码格式不正确' });
+          const found = await q(
+            "select id, code_hash, attempts, expires_at from email_codes where email = $1 and purpose = 'admin_reset' and used_at is null order by created_at desc limit 1",
+            [before.email],
+          );
+          const row = found.rows[0];
+          if (!row) {
+            logger?.warn('auth.otp_rejected', { email: maskEmail(before.email), purpose: 'admin_reset', reason: 'no_code', by: user.username });
+            return json(res, 400, { error: '没有可用的验证码，请先发送', code: 'no_code' });
+          }
+          if (new Date(row.expires_at).getTime() < Date.now()) {
+            logger?.warn('auth.otp_rejected', { email: maskEmail(before.email), purpose: 'admin_reset', reason: 'expired', by: user.username });
+            return json(res, 400, { error: '验证码已过期，请重新发送', code: 'expired' });
+          }
+          if (row.attempts >= auth.CODE_MAX_ATTEMPTS) {
+            logger?.warn('auth.otp_rejected', { email: maskEmail(before.email), purpose: 'admin_reset', reason: 'too_many_attempts', by: user.username });
+            return json(res, 429, { error: '尝试次数过多，请重新发送验证码', code: 'too_many' });
+          }
+          if (!auth.verifyCodeHash(before.email, code, row.code_hash)) {
+            await q('update email_codes set attempts = attempts + 1 where id = $1', [row.id]);
+            const remaining = Math.max(0, auth.CODE_MAX_ATTEMPTS - (row.attempts + 1));
+            logger?.warn('auth.otp_rejected', { email: maskEmail(before.email), purpose: 'admin_reset', reason: 'wrong_code', attempts: row.attempts + 1, remaining, by: user.username });
+            return json(res, 400, { error: '验证码不正确', remainingAttempts: remaining });
+          }
+          await q('update email_codes set used_at = now() where id = $1', [row.id]);
+          // 验证码通过：生成临时密码重置（只回一次），强制首登改密 + 踢全部会话（与直设密码同口径）
+          const generated = passwordPolicy.generateTempPassword();
+          const rowU = await db.setUserPassword(q, { username, password: generated, mustChange: true });
+          if (!rowU) return json(res, 404, { error: '没有该用户' });
+          await db.deleteSessionsOfUser(q, before.id).catch(() => 0);
+          logger?.info('api.user_password_reset_by_code', { username, by: user.username });
+          await db.writeAuditLog(q, {
+            actorId: user.id,
+            actor: user.username,
+            action: 'admin.password_reset_code',
+            target: `user:${username}`,
+            detail: { method: 'email_code' },
+            ip,
+          }).catch(() => {});
+          return json(res, 200, { ok: true, tempPassword: generated, message: '密码已重置，请把临时密码交给用户（首次登录需修改）' });
+        }
         // AK-3（docs/AUTH-REDESIGN.md §4.5）：密码可留空 → 生成临时密码（响应只回一次）；
         // 重置一律 must_change_password=true；不再顺带启用账号（启用/禁用是独立动作）
         const generated = rawPassword ? null : passwordPolicy.generateTempPassword();

@@ -16,6 +16,7 @@ import {
   checkIpRateLimit,
   checkGlobalDailyLimit,
   SEND_DAILY_GLOBAL_LIMIT,
+  SEND_COOLDOWN_SEC,
   smtpConfig,
   isSmtpConfigured,
   CODE_TTL_SEC,
@@ -105,9 +106,11 @@ export async function handleEmailAuth({ path, req, res, q, logger, json, readBod
       return true;
     }
 
+    // DT-4（docs/ADMIN-PERMISSIONS.md）：冷却按场景分桶——同邮箱同 purpose 才互斥
+    // （登录/重置/注册/换邮箱/后台重置各算各的额度；后台发码不占前台额度，反之亦然）。
     const recent = await q(
-      'select created_at, sent_ok from email_codes where email = $1 order by created_at desc limit 20',
-      [email],
+      'select created_at, sent_ok from email_codes where email = $1 and purpose = $2 order by created_at desc limit 20',
+      [email, purpose],
     );
     const limit = checkRateLimit(recent.rows);
     if (!limit.ok) {
@@ -220,7 +223,8 @@ export async function handleEmailAuth({ path, req, res, q, logger, json, readBod
       );
       await q('update email_codes set sent_ok = true where id = $1', [id]);
       logger?.info('auth.otp_requested', { email: maskEmail(email), purpose, sent: true });
-      json(res, 200, { ok: true, hint: '如果邮箱已绑定且可用，验证码将发送到该邮箱' });
+      // DT-4：成功也回 retryAfterSec（60s），前端统一用它倒计时（三态：发送中/剩余秒数/可重发）
+      json(res, 200, { ok: true, hint: '如果邮箱已绑定且可用，验证码将发送到该邮箱', retryAfterSec: SEND_COOLDOWN_SEC });
     } catch (err) {
       const message = String(err.message).slice(0, 200);
       await q('update email_codes set sent_ok = false, error = $1 where id = $2', [message, id]);
@@ -360,8 +364,10 @@ export async function handleEmailAuth({ path, req, res, q, logger, json, readBod
       json(res, 409, { error: '邮箱已被注册' });
       return true;
     }
-    // 发码频率：复用 email-auth 的三级限流（同邮箱冷却/小时上限、同 IP 小时上限、全站每日上限）
-    const recent = await q('select created_at, sent_ok from email_codes where email = $1 order by created_at desc limit 20', [email]);
+    // 发码频率：复用 email-auth 的三级限流（同邮箱冷却/小时上限、同 IP 小时上限、全站每日上限）。
+    // DT-4（docs/ADMIN-PERMISSIONS.md）：冷却按场景分桶——注册发码只与注册发码互斥，
+    // 不占用登录/重置/后台重置发码额度。
+    const recent = await q("select created_at, sent_ok from email_codes where email = $1 and purpose = 'register' order by created_at desc limit 20", [email]);
     const limit = checkRateLimit(recent.rows);
     if (!limit.ok) {
       json(res, 429, {
@@ -427,7 +433,8 @@ export async function handleEmailAuth({ path, req, res, q, logger, json, readBod
       if (!sent?.ok) throw new Error(sent?.error ?? '发送失败');
       await q('update email_codes set sent_ok = true where id = $1', [id]);
       logger?.info('auth.otp_requested', { email: maskEmail(email), purpose: 'register', sent: true });
-      json(res, 200, { ok: true, hint: '验证码已发送到邮箱，请查收' });
+      // DT-4：成功也回 retryAfterSec，前端统一用它倒计时
+      json(res, 200, { ok: true, hint: '验证码已发送到邮箱，请查收', retryAfterSec: SEND_COOLDOWN_SEC });
     } catch (err) {
       const message = String(err.message).slice(0, 200);
       await q('update email_codes set sent_ok = false, error = $1 where id = $2', [message, id]);
@@ -552,9 +559,10 @@ export async function handleEmailAuth({ path, req, res, q, logger, json, readBod
         return true;
       }
     }
-    // 发码频率复用现有三级限流：同邮箱冷却/小时上限、同 IP 小时上限、全站每日上限
+    // 发码频率复用现有三级限流：同邮箱冷却/小时上限、同 IP 小时上限、全站每日上限。
+    // DT-4（docs/ADMIN-PERMISSIONS.md）：冷却按场景分桶——换邮箱只与换邮箱发码互斥。
     const recent = await q(
-      'select created_at, sent_ok from email_codes where email = $1 order by created_at desc limit 20',
+      "select created_at, sent_ok from email_codes where email = $1 and purpose = 'change_email' order by created_at desc limit 20",
       [email],
     );
     const limit = checkRateLimit(recent.rows);
@@ -655,7 +663,8 @@ export async function handleEmailAuth({ path, req, res, q, logger, json, readBod
       if (!sent?.ok) throw new Error(sent?.error ?? '发送失败');
       await q('update email_codes set sent_ok = true where id = $1', [id]);
       logger?.info('auth.otp_requested', { email: maskEmail(email), purpose: 'change_email', sent: true });
-      json(res, 200, { ok: true, hint: '如果邮箱可用，验证码将发送到该邮箱' });
+      // DT-4：成功也回 retryAfterSec，前端统一用它倒计时
+      json(res, 200, { ok: true, hint: '如果邮箱可用，验证码将发送到该邮箱', retryAfterSec: SEND_COOLDOWN_SEC });
     } catch (err) {
       const message = String(err.message).slice(0, 200);
       await q('update email_codes set sent_ok = false, error = $1 where id = $2', [message, id]);

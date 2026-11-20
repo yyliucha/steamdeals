@@ -48,7 +48,8 @@
           </label>
           <div class="email-code-row">
             <el-input v-model="emailCode" placeholder="6 位验证码" maxlength="6" />
-            <el-button :disabled="codeCooldown > 0" @click="requestEmailCode">{{ codeCooldown > 0 ? `${codeCooldown}s 后重发` : '发送验证码' }}</el-button>
+            <!-- DT-4（docs/ADMIN-PERMISSIONS.md）：验证码按钮统一三态——发送中/剩余秒数/可重发 -->
+            <el-button :disabled="codeSending || codeCooldown > 0" @click="requestEmailCode">{{ codeSending ? '发送中…' : codeCooldown > 0 ? `${codeCooldown}s 后重发` : '发送验证码' }}</el-button>
           </div>
           <label v-if="mode === 'reset'" class="auth-field">
             <span>新密码（≥12 位）</span>
@@ -90,6 +91,7 @@ const fieldError = ref({});
 const loading = ref(false);
 const capsOn = ref(false);
 const codeCooldown = ref(0);
+const codeSending = ref(false);
 let cooldownTimer = null;
 const catalogCount = ref(0), pricedCount = ref(0);
 
@@ -126,14 +128,19 @@ function onCapsKey(e) { capsOn.value = e.getModifierState?.('CapsLock') ?? false
 
 async function requestEmailCode() {
   fieldError.value = {};
+  if (codeSending.value) return;
+  codeSending.value = true;
   try {
     const d = await api('/api/auth/email/request', { method: 'POST', body: JSON.stringify({ email: email.value.trim(), purpose: mode.value === 'reset' ? 'reset' : 'login' }) });
     topError.value = '';
     ElMessage.info(d.hint || '如果邮箱已绑定且可用，验证码将发送到该邮箱');
-    codeCooldown.value = 60;
+    // DT-4：优先用后端返回的 retryAfterSec，兜底 60s
+    const waitSec = Math.max(1, Number(d.retryAfterSec) || 60);
+    codeCooldown.value = waitSec;
     clearInterval(cooldownTimer);
     cooldownTimer = setInterval(() => { codeCooldown.value -= 1; if (codeCooldown.value <= 0) clearInterval(cooldownTimer); }, 1000);
   } catch (e) { topError.value = e.message; }
+  finally { codeSending.value = false; }
 }
 
 async function onSubmit() {
