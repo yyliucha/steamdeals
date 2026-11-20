@@ -16,7 +16,7 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| EG（🐞 P1 通知角标已读不消失） | App 仓库 ui/notifications/、ui/home/、app/src/test/；站点 docs/{TODO,REQUIREMENTS-INDEX,PROJECT-OVERVIEW,ANDROID-POLISH}.md（EG 回写） | Android 模拟器 steamdeals35 | 2026-11-20 06:55 | 2026-11-20 11:30 | EG 开发会话（本会话） |
+| EG（🐞 P1 通知角标已读不消失） | App 仓库 ui/notifications/、ui/home/、app/src/test/；站点 src/routes/announcements.js、test/announcements.test.js、docs/{TODO,REQUIREMENTS-INDEX,PROJECT-OVERVIEW,ANDROID-POLISH}.md（EG 回写）+ docs/QA-EG.md（质检） | Android 模拟器 steamdeals35 | 2026-11-20 06:55 | 2026-11-20 11:30 | EG 开发会话（本会话） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 
