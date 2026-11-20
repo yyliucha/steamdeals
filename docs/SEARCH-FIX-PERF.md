@@ -1,9 +1,13 @@
-# 搜索参数错位修复 + 列表/接口性能优化（DW / DX，待开发）
+# 搜索参数错位修复 + 列表/接口性能优化（DW / DX）
 
-> 状态：**已确认待开发（2026-11-19 线上实测定位）**。
+> 状态：**DW 已发布 v2.27.1；DX 已实现待发版（2026-11-20）**。
 > 实测基线（v2.27.0，串行 3–4 次）：列表平均 582ms（345–749）、搜索 389–478ms、详情 46ms、公告 37ms、
 > `/api/site` 257ms、首页 32ms。
-> 关联：`src/store/pg.js` `gameSearch` / `gameKeywordSql`、`src/search-derive.js`、`src/server.js` `/api/site`。
+> **DX 本机线上只读压测（2026-11-20，部署前 v2.27.7，N=30）**：列表 P50 327ms / P95 349ms（min 313 / max 695）；
+> 搜索「侠盗猎车手」P50 586ms / P95 644ms（total=0，DW 线上复验待所有者执行）；搜索「portal」P50 535ms / P95 599ms
+> （total=64）；`/api/site` P50 60ms / P95 68ms。部署后同条件复测（DX 目标：列表/搜索 P95 ≤150ms、`/api/site` ≤50ms）。
+> 关联：`src/store/pg.js` `gameSearch` / `gameKeywordSql`、`src/search-derive.js`、`src/search-cache.js`、
+> `src/server.js` `/api/site` 与 `/api/games`。
 
 ## DW. 🐞 缺陷：搜索关键词参数错位（精确名匹配实际在匹配 region）
 
@@ -28,6 +32,18 @@
   `npm test`（分段）+ `frontend:build` + `scan` 全绿。
 
 ## DX. 🧹 技术债：列表/站点接口性能优化
+
+> **实现状态（2026-11-20，提交 090af4c）**：已实现待发版（DX 批）。
+> ① count 合并：`gameSearch` 四个分支（读模型 compact/非 compact + legacy compact/非 compact）的 rows 查询
+> 全部加 `count(*) over() as total_rows`——无关键词列表 count+rows 从 2 条 SQL 合并为 1 条；空页（offset 越界）
+> 回落独立 count 查询；窗口列不随行返回（响应契约不变）。
+> ② 列表 45s 短缓存：`src/search-cache.js` `createListCache`（TTL/容量/世代校验）+ `/api/games` 接入
+> （key=归一化筛选参数+region+userId+guestFlags 哈希；命中日志 `search.cache_hit`；gen=sync_runs max(id) 感知
+> 调度器跨进程同步）；失效点=手动同步子进程结束/合并/删除恢复/屏蔽/兴趣/拥有/个人标记/bulk/Steam 库与愿望单同步。
+> ③ `/api/site` 60s 缓存（`src/routes/site.js` `handleSitePublic`，设置保存/SMTP 保存失效，重启自然清空）。
+> ④ 测试：`test/search-perf.test.js` 5 项进主链 test:3（缓存语义/count 合并与 total 一致性/HTTP 命中 P95 ≤150ms
+> （慢查询注入）/gen 与主动失效回源//api/site 缓存 TTL 与配置失效）；`test/game-search-read-model.test.js`
+> 的 count 计数断言随合并更新。线上压测结果见本文档头部。
 
 - **目标**（v2.27.0 基线 → 目标）：
   - 列表/搜索 P95：**≤150ms**（基线 340–580ms）；
