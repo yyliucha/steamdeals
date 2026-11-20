@@ -13,9 +13,12 @@ import { readFileSync } from 'node:fs';
 // dispatchSync 接线 → 测试 4 红；把 cmdSyncSteamAll 抄回 cli.js → 测试 3/5 红。
 // B4 #19（第十一轮）：cli 报表类域拆到 src/cli/report.js，同样三条锁 + 反向自检
 // （删 cli.js 的 reportDomain.trackedCommands 展开 → 测试 9 红；删 report.js 的 cmdHistory → 测试 6 红）。
+// B4 #20（第十二轮）：cli 运维类域拆到 src/cli/ops.js，同样三条锁 + 反向自检
+// （删 cli.js 的 opsDomain.trackedCommands 展开 → 测试 13 红；删 ops.js 的 cmdProbe → 测试 10 红）。
 const cli = readFileSync(new URL('../src/cli.js', import.meta.url), 'utf8');
 const syncMod = readFileSync(new URL('../src/cli/sync.js', import.meta.url), 'utf8');
 const reportMod = readFileSync(new URL('../src/cli/report.js', import.meta.url), 'utf8');
+const opsMod = readFileSync(new URL('../src/cli/ops.js', import.meta.url), 'utf8');
 const scheduler = readFileSync(new URL('../src/scheduler.js', import.meta.url), 'utf8');
 
 function schedulerSyncTargets() {
@@ -119,4 +122,50 @@ test('cli.js 真实接线：import 报表域模块 + TRACKED_COMMANDS 展开 ale
 test('sparkline/BLOCKS 仅随报表域移出，cli.js 不再残留', () => {
   assert.ok(reportMod.includes('const sparkline'), 'sparkline 在报表域（history 使用）');
   assert.ok(!cli.includes('const sparkline') && !cli.includes("const BLOCKS"), 'cli.js 不再残留 sparkline/BLOCKS（history 唯一使用者已拆走）');
+});
+
+// ── B4 #20（CO-5/B4-2 第十二轮）：cli 运维类域三条锁 ──
+
+const OPS_IMPLS = [
+  'cmdBackfill',
+  'cmdRename',
+  'cmdHeat',
+  'cmdRatingBackfill',
+  'cmdSearchTokens',
+  'cmdImages',
+  'cmdPrune',
+  'cmdLogs',
+  'cmdBackup',
+  'cmdDiagnose',
+  'cmdProxyCheck',
+  'cmdProbe',
+  'cmdReadModel',
+  'cmdServe',
+  'cmdAll',
+];
+const OPS_COMMAND_KEYS = ['backfill', 'rename', 'heat', 'rating-backfill', 'search-tokens', 'images', 'prune', 'logs', 'backup', 'diagnose', 'proxy-check', 'probe', 'readmodel', 'serve', 'all'];
+const OPS_TRACKED_KEYS = ['heat', 'rename', 'rating-backfill', 'search-tokens', 'backfill', 'images', 'backup', 'prune', 'readmodel'];
+
+test('运维类命令实现全部在 src/cli/ops.js，cli.js 不残留实现（防双实现）', () => {
+  for (const name of OPS_IMPLS) {
+    assert.ok(opsMod.includes(`async function ${name}`) || opsMod.includes(`function ${name}`), `src/cli/ops.js 缺少实现 ${name}`);
+    assert.ok(!cli.includes(`async function ${name}`) && !cli.includes(`function ${name}`), `cli.js 残留实现 ${name}（防双实现）`);
+  }
+  assert.ok(!cli.includes('setupAccessForRun') && !cli.includes('printSetupToken'), 'setup 口令工具随 serve/all 域移出（cli.js 不再残留）');
+});
+
+test('运维类命令注册表条目指域模块（注册表语义保持，防死模块）', () => {
+  for (const key of OPS_COMMAND_KEYS) {
+    assert.match(cli, new RegExp(`'?${key}'?: opsDomain\\.commands\\.?\\[?'?${key}`), `cli.js 的 commands.${key} 未指向域模块（防死模块）`);
+  }
+});
+
+test('cli.js 真实接线：import 运维域模块 + TRACKED_COMMANDS 展开 9 条（写 sync_runs 语义保持）', () => {
+  assert.match(cli, /import \{ createCliOps \} from '\.\/cli\/ops\.js'/, 'cli.js import 运维域模块');
+  assert.match(cli, /const opsDomain = createCliOps\(\{/, 'cli.js 组装运维域 ctx');
+  assert.match(cli, /\.\.\.opsDomain\.trackedCommands/, 'TRACKED_COMMANDS 展开运维域 trackedCommands（写 sync_runs 语义保持）');
+  assert.match(cli, /runSyncTracked\('logs', opsDomain\.commands\.logs\)/, 'logs prune 分发走域模块（调度器留痕语义保持）');
+  for (const key of OPS_TRACKED_KEYS) {
+    assert.ok(!cli.includes(`${key}: cmd`), `cli.js 不再直接引用运维命令实现 ${key}（防双实现）`);
+  }
 });

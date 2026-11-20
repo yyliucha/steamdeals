@@ -559,7 +559,9 @@ test('B3：writeStatusFile 带 estimate 字段，前端任务卡显示实际/估
 
 test('AC-9/BL-1：回填候选新游戏优先 + 四态排除 + 默认每天 5000（静态断言）', () => {
   const cli = readFileSync(new URL('../src/cli.js', import.meta.url), 'utf8');
-  assert.match(cli, /listBackfillCandidates/, '回填候选走共享谓词 db.listBackfillCandidates');
+  // CO-5/B4-2 第十二轮：cmdBackfill 已随 cli 运维类域拆到 src/cli/ops.js，断言按新落点指向
+  const cliOps = readFileSync(new URL('../src/cli/ops.js', import.meta.url), 'utf8');
+  assert.match(cliOps, /listBackfillCandidates/, '回填候选走共享谓词 db.listBackfillCandidates');
   // CO-5/B4-2 第十轮：sync steamall 已随 cli 同步类域拆走——该排序 SQL 在 cli.js 归零、
   // 只存在于 src/store/cli-sync-repository.js（steamall 一处，防双实现）。
   assert.equal((cli.match(/order by g\.created_at desc nulls last, g\.id desc limit/g) || []).length, 0, 'cli.js 不再有 steamall 排序（已拆到 cli 同步域）');

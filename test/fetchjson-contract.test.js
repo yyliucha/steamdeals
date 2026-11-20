@@ -7,16 +7,17 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const read = (p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), 'utf8');
-const cli = read('../src/cli.js');
+// CO-5/B4-2 第十二轮：cmdHeat 已随 cli 运维类域拆到 src/cli/ops.js，断言按新落点指向
+const cliOps = read('../src/cli/ops.js');
 const catalog = read('../src/adapters/steam-catalog.js');
 const steamMeta = read('../src/adapters/steam-meta.js');
 const steamPrices = read('../src/adapters/steam.js');
 const regions = read('../src/sync-regions.js');
 
 test('heat：appdetails 必须经 .json 再按 appid 解包（旧写法取不到 → 全量无效跳过）', () => {
-  assert.match(cli, /const entry = data\?\.json\?\.\[String\(appid\)\];/, 'heat 必须 data.json[appid]');
-  assert.ok(!cli.includes('const entry = data?.[String(appid)];'), '旧契约写法不得残留');
-  assert.match(cli, /filters=recommendations,release_date&cc=cn&l=schinese/, 'heat 请求参数保持（单 appid 才支持 recommendations）');
+  assert.match(cliOps, /const entry = data\?\.json\?\.\[String\(appid\)\];/, 'heat 必须 data.json[appid]');
+  assert.ok(!cliOps.includes('const entry = data?.[String(appid)];'), '旧契约写法不得残留');
+  assert.match(cliOps, /filters=recommendations,release_date&cc=cn&l=schinese/, 'heat 请求参数保持（单 appid 才支持 recommendations）');
 });
 
 test('catalog：apps 数组必须经 .json 解包（旧写法 findAppArray(data) 空跑）', () => {

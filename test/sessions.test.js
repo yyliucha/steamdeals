@@ -137,8 +137,9 @@ test('BK-1 验收 5：prune 清过期会话、幂等；未过期不受影响；C
     const r2 = await db.purgeOldRows(t.q, {});
     assert.equal(r2.sessions, 0, '连跑幂等');
     const { readFileSync } = await import('node:fs');
-    const cliSrc = readFileSync(new URL('../src/cli.js', import.meta.url), 'utf8');
-    assert.match(cliSrc, /登录会话 \$\{result\.sessions\} 条/, 'CLI prune 输出带会话计数');
+    // CO-5/B4-2 第十二轮：cmdPrune 已随 cli 运维类域拆到 src/cli/ops.js，断言按新落点指向
+    const cliOps = readFileSync(new URL('../src/cli/ops.js', import.meta.url), 'utf8');
+    assert.match(cliOps, /登录会话 \$\{result\.sessions\} 条/, 'CLI prune 输出带会话计数');
   } finally {
     await t.close();
   }
