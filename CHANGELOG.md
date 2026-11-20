@@ -1,5 +1,22 @@
 # 变更日志
 
+## [2.27.9] - 2026-11-20
+
+CO-5/B4-2 巨石拆分第十/十一/十二/十三轮交付（admin 系统设置域 + cli 同步类域 + cli 报表类域 + admin 会话域，契约零变化）（🧹 技术债重构，无新功能面 → 小版本，2.27.8 → 2.27.9 连续递增）。本批不涉及 App 仓库。
+
+### 技术债
+
+- **巨石拆分第十轮（CO-5/B4-2 admin 系统设置域，B4 队列 #10，站点 5ce2e50）**：`src/routes/admin-settings.js`（管理段单入口 11 条路由——`GET /api/admin/version`、`GET|POST /api/admin/smtp`、`POST /api/admin/smtp/test`、`GET /api/admin/emails`、`GET /api/admin/mail/templates`、`POST /api/admin/mail/templates/:event/(reset|preview|test)`、`PUT /api/admin/mail/templates/:event`、`GET /api/admin/mail/log`、`GET /api/admin/proxies`、`POST /api/admin/proxies/probe`）+ `src/store/admin-settings-repository.js`（`listMailTemplates`/`upsertMailTemplate`/`resetMailTemplate`/`listMailLog` 4 函数搬家 + 域内联 SQL 抽 5 新函数）；`insertMailLog` 跨模块共用留 `pg.js`、DDL 留 `email-auth.js`；DX 批 smtp 的 `invalidateSiteCache` 失效并入（语义随路由）；`src/server.js` 净 −225、`src/store/pg.js` 净 −5；**外部契约零变化**。
+- **巨石拆分第十一轮（CO-5/B4-2 cli 同步类域，B4 队列 #18，站点 9bc710a）**：`src/cli/sync.js` 924 行 + `src/store/cli-sync-repository.js` 84 行；`src/cli.js` 3026→2128 **净减 898 行**；拆走 17 个命令入口（`sync` 9 target——all/steam/steam-prices/steamall/catalog/sonkwo/itad/gog/humble，加 `steam-accounts`/`steam-claim`/`app-sync`/`steam-discovery`/`steam-status`/`discover sonkwo`）；命令名/参数/输出/退出码零变化；`pg.js`/`server.js`/`routes` 零 diff（域内联 SQL 抽 9 个 repository 新函数）；`runSyncTracked`/`syncNote` 等跨域共享按引用传参。
+- **巨石拆分第十二轮（CO-5/B4-2 cli 报表类域，B4 队列 #19，站点 2aa8b15）**：`src/cli/report.js` 333 行 + `src/store/cli-report-repository.js` 9 行；`src/cli.js` 2128→1831 **净减 297 行**；拆走 7 个命令（`report`/`alerts`/`stats`/`history`/`list`/`chart`/`compare`）；命令名/参数/输出/退出码零变化；`pg.js`/`server.js`/`routes` 零 diff（`compareGameBySteamAppid` 唯一内联 SQL 抽 repository）；`yuan`/`width`/`pad` 跨域共享按引用传参、`sparkline`/`BLOCKS` 唯一使用者是 history 随域移出。
+- **巨石拆分第十三轮（CO-5/B4-2 admin 会话域，B4 队列 #14，站点 9659435）**：`src/routes/admin-sessions.js` 89 行 + `src/store/admin-sessions-repository.js` 50 行；管理段单入口 2 条路由（`GET /api/admin/sessions` 列表 + `DELETE /api/admin/sessions/:id` 踢下线）；`listSessions` 唯一专属 SQL 搬家（签名照抄），`deleteSessionById`（#11 bulk 共用）/`deleteSessionsOfUser`（禁用共用）/`deleteSessionsOfUsers`/`touchSession`/`deleteSessionByToken`（中间件）留 `pg.js`，sessions 表 DDL 留 migrate()；kickAll/revoke-others/bulk 派发条目留宿主（#11/主段）；`src/server.js` 净 −13、`src/store/pg.js` 净 −19；**外部契约零变化**。
+- 拆分模式见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §15；已交付 13 域（app/appeal/auth/watchlist/announcements/me/site/admin-access/admin-sync/admin-settings/admin-sessions/cli-sync/cli-report），剩余 B4 队列 #11–#13/#15–#17/#20–#21 继续按 [docs/B4-QUEUE.md](docs/B4-QUEUE.md) 推进。
+
+### 测试
+
+- QA（本批 4 块全部放行）：#10 ✅ docs/QA-CO5-B4-2-admin-settings.md 第 1 轮（17/0/0/2）；#14 ✅ docs/QA-CO5-B4-2-admin-sessions.md 第 1 轮（12/0/0/2）；#18 ✅ docs/QA-CO5-B4-2-cli-sync.md 第 1 轮（15/0/0/2）；#19 ✅ docs/QA-CO5-B4-2-cli-report.md 第 1 轮（13/0/0/2）。需人工确认项均为本机沙箱环境限制（commit-own spawn EPERM 基线 / frontend:build 默认命令被拦改用 `--configLoader native` 变体），CI 兜底。
+- 站点：域拆分静态锁（分支在新文件/宿主真实接线/旧分支不残留防双实现）+ 反向自检（真删分支实测必红）；mail-templates 17/17、email-auth 9/9、sync-runs 9/9、proxy-pool 8/8、version 11/11、sessions 17/17、isolation 7/7、cli-dispatch 5/5→9/9（#18 三条新锁 + 反向自检 ×2；#19 报表类 4 项锁 + 反向自检 ×2）、app-release-sync 7/7、scheduler 38/38、alerts-html 3/3、price-report-html 4/4、compare 7/7、report 14/14、alerts 8/8、notify 14/14；`node test/api.test.js` 38/38、`npm run frontend:build`（native 变体）✓、`npm run scan` 干净；主链 test:1–4 全绿（test:1 仅 commit-own 4 项沙箱基线红，与改动无关）。
+
 ## [2.27.8] - 2026-11-20
 
 ED + EH + EI + EL + EK + DX 合并发版（🧪 测试基建 1 条 + ⚙️ 调整 3 条 + 🐞 缺陷 1 条 + 🧹 技术债 1 条，均无新功能面 → 小版本，2.27.7 → 2.27.8 连续递增）。本批不涉及 App 仓库（六条均为站点侧）。
