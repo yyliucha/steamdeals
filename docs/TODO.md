@@ -20,7 +20,7 @@
 
 | 类型 | 数量 | 编号 |
 |---|---|---|
-| 🐞 缺陷 | 3 | DU / EF / EG |
+| 🐞 缺陷 | 1 | DU |
 | ✨ 功能 | 1 | DT-2 |
 | ⚙️ 调整 | 6 | DT-1 / DT-3 / DT-4 / DT-5 / DV / EC |
 | 🧹 技术债 | 1 | DX |
@@ -166,43 +166,16 @@ pm test（分段）+ rontend:build + scan 全绿）。
 - **验收**：① 只改 docs 的提交不触发 test-main（gh run list 确认）；② 改 src/package.json 仍触发；
   ③ workflow 语法有效（push 后 Actions 正常解析）；④ 连续文档提交不再产生 cancelled run。
 
-## EF. 质检通过（🐞 缺陷）：18R 数据同步与筛选修复（元数据 cc=cn 锁国区 → 成人内容采不到）
+## EH. 待开发（⚙️ 调整）：同步逻辑去 cn（内容类链路：steam-status + discovery）
 
-**类型：** 🐞 缺陷（数据同步 + 筛选）
-**状态：** 质检通过（2026-11-20 开发会话站点 7a3ac2b + App 仓库 358ebc5；QA docs/QA-EF.md 第 1 轮 ✅ 放行 通过 13/缺失 0/偏差 0/需人工确认 3；**涉及 App 仓库**：是（app-vX.Y.Z 随本批））
-**优先级：** P1 —— 18R 数据缺失 + App 筛选语义错误
-**依赖：** 无
+**类型：** ⚙️ 调整（同步区域口径）
+**状态：** 待开发（2026-11-20 所有者要求：同步逻辑不要加 cn）
+**优先级：** P1 —— 内容数据完整性（成人/锁区内容被国区过滤）
+**依赖：** EF（元数据已去 cn，本条目补状态/发现链路）
 **解锁：** 无
-**规格**：[STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §9
+**规格**：[STEAM-SYNC-STATUS-AND-RATING.md](STEAM-SYNC-STATUS-AND-RATING.md) §10
 
-- **根因**：`src/adapters/steam-meta.js:209` appdetails 请求带 `&cc=cn`——国区商店隐藏成人内容 →
-  `content_descriptors` 采不到 → 全库 adult_flag 仅约 20 个（hide 109352 vs badge 109372）。
-- **修复**：① 元数据采集 `cc=cn` → `cc=us`（保留 l=schinese；价格接口仍 cc=cn 不动）；
-  ② 全量回填 content_descriptors（新回填命令/复用 rename，限速防 429）；③ 前台 `/api/games` 支持
-  `rating=adult|mature|none`；④ Web 前台加 18R 筛选；⑤ App 18R chip 改筛选（adult=badge&rating=adult）。
-- **实现**：① `fetchMetadata` cc 参数化（默认 us，价格口径调用点显式 cn）；② 新增 `rating-backfill`
-  命令（cc=us 重采三字段、只写分级不写价、限速 ≥1s、429 收轮 exit 75、前后 adult 计数日志、断点续跑）
-  + 并入调度器（STEAM_HEAVY/预算）；③ `gameSearch` 加 `rating`（与后台 admin 同口径）；④ Home.vue
-  18R 开关（桌面+移动抽屉，选中 adult=badge&rating=adult，取消恢复全部，角标 18+）；⑤ App
-  HomeScreen/SearchScreen 开=badge&rating=adult / 关=hide（App 358ebc5）。
-- **验收**：见规格 §9（回填后 adult 数显著增加且有计数日志；Web/App 筛选只显示 18R + 角标；价格国区口径不变；
-  `npm test`（分段）+ `frontend:build` + `scan` 全绿）。
-
-## EG. 已实现待发版（🐞 缺陷）：通知角标已读后不消失（ABC 三场景）
-
-**类型：** 🐞 缺陷（App 公告角标）
-**状态：** 质检通过（2026-11-20；App 仓库 3458bce + 站点 7eb5d4a；QA docs/QA-EG.md 第 1 轮 ✅）
-**优先级：** P1 —— 角标常驻误导
-**依赖：** 无
-**解锁：** 无
-**涉及 App 仓库**：是（app-vX.Y.Z 随本批）
-**规格**：[ANDROID-POLISH.md](ANDROID-POLISH.md) §EG
-
-- **现象**：A 打开公告列表 / B 点开公告详情 / C 点「全部已读」——三种操作后首页铃铛角标仍显示 1。
-- **排查**：服务端 `/api/announcements/read` 是否保存；`refresh()` 覆盖竞态（markInFlight 闩）；
-  角标与弹层未读是否同源；游客本地 DataStore 写入；ABC 分别复现定位。
-- **修复**：① 站点 `GET /api/announcements` 公开段补 Bearer 解析（此前只认 Cookie 会话，App 登录用户
-  恒拿空 readIds → 刷新即回跳的根因）；② App `AnnouncementsState` 标记纪元守卫（陈旧快照只并集不覆盖、
-  会话切换快照作废，取代 markInFlight 闩）+ 网关缝解耦 + `AnnouncementsStateTest` 5 项锁竞态。
-- **验收**：ABC 三场景角标正确（B 递减 / C 立即归零 / A 按口径）；下拉刷新/重进首页/重启 App 不复现；
-  App 构建通过——模拟器（10s 延迟代理放大竞态）+ 单测 83 项 + 站点测试全绿。
+- **范围**：① `src/steam-status.js:173` 状态/分级 appdetails `cc=cn`→`cc=us`（失败兜底 cc=hk 判锁区保留）；
+  ② `src/discovery.js:38/86` 搜索 `cc=cn`→`cc=us`；③ 注释/文档同步；
+  **价格链路（steam.js/backfill/sync steam-prices）保持 cc=cn 不动**（国区报价是业务核心）。
+- **验收**：见规格 §10（分级覆盖提升；候选集含国区不显示游戏；价格仍国区口径不变；`npm test`（分段）+ `scan` 全绿）。

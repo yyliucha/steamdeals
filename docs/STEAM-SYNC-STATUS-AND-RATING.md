@@ -354,7 +354,7 @@ export async function applySteamDetails(q, { appid, cnEntry, hkEntry = null, met
 - 想要**定期推送**：在 `steam-status.done` 里附带 `adult/mature` 计数，复用现有 `notify.js`
   通道发一条周报即可（属于可选增强，不改变采集链路）。
 
-## 9. EF 18R 数据同步与筛选修复（2026-11-20 立项，质检通过）
+## 9. EF 18R 数据同步与筛选修复（2026-11-20 立项，已发布 v2.27.5 + app-v2.24.0）
 
 **根因（代码证据）**：`src/adapters/steam-meta.js:209` 的 appdetails 请求带 **`&cc=cn`**——
 蒸汽国区商店**隐藏成人内容**，`content_descriptors` 采不到 → `classifyContentRating` 判定不到
@@ -374,3 +374,19 @@ export async function applySteamDetails(q, { appid, cnEntry, hkEntry = null, met
 **验收**：① 回填后 `adult_flag` 游戏数显著增加（前后计数对比，日志留档）；② Web/App 点 18R 只显示 18R 游戏
 且带 18+ 角标，取消恢复全部；③ 价格仍为国区口径（不变）；④ `npm test`（分段）+ `frontend:build` + `scan` 全绿；
 ⑤ 回填限速、可断点续跑。
+
+## 10. EH 同步逻辑去 cn（内容类链路，2026-11-20 立项，待开发）
+
+**背景**：所有者 2026-11-20：「后续我们的同步逻辑，不要加 cn」。审计结论：
+- **必须保留 cn**：价格链路（`steam.js` 价格接口、`backfill` 价格、`sync steam-prices`）——国区报价是业务核心，
+  改美区会把美元价写进国区 offer；
+- **必须去 cn（本条目范围）**：
+  1. `src/steam-status.js:173` 状态/分级采集的 `appdetails?...&cc=cn&l=schinese` → **`cc=us`**
+     （国区商店隐藏成人/锁区内容，分级采不到；失败兜底仍可补 cc=hk 判定锁区）；
+  2. `src/discovery.js:38/86` 的 Steam 搜索 `cc=cn` → **`cc=us`**（Deck 认证/好评率/为你能的候选集不被国区限制）；
+  3. 相关注释/文档（cli.js 的 steam-status 说明）同步更新。
+- **已去 cn 的**：`steam-meta.js`（EF 已改 cc=us，含 header_image 来源）。
+
+**验收**：① steam-status 采集一轮后 `adult_flag`/`mature_flag` 覆盖提升（与 rating-backfill 交叉验证）；
+② discovery 候选集包含国区不显示的游戏；③ **价格链路零改动**（`cc=cn` 保持不变，抽查价格仍国区）；
+④ `npm test`（分段）+ `scan` 全绿；⑤ 日志注明区域。
