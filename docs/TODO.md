@@ -166,7 +166,7 @@ pm test（分段）+ rontend:build + scan 全绿）。
 - **验收**：① 只改 docs 的提交不触发 test-main（gh run list 确认）；② 改 src/package.json 仍触发；
   ③ workflow 语法有效（push 后 Actions 正常解析）；④ 连续文档提交不再产生 cancelled run。
 
-## EH. 待开发（⚙️ 调整）：同步逻辑去 cn（内容类链路：steam-status + discovery）
+## EH. 质检通过（⚙️ 调整）：同步逻辑去 cn（内容类链路：steam-status + discovery）
 
 **类型：** ⚙️ 调整（同步区域口径）
 **状态：** 质检通过（2026-11-20，实现 897476c；QA docs/QA-EH-EI.md 第 1 轮 ✅ 放行 9/0/0/2）
@@ -180,7 +180,7 @@ pm test（分段）+ rontend:build + scan 全绿）。
   **价格链路（steam.js/backfill/sync steam-prices）保持 cc=cn 不动**（国区报价是业务核心）。
 - **验收**：见规格 §10（分级覆盖提升；候选集含国区不显示游戏；价格仍国区口径不变；`npm test`（分段）+ `scan` 全绿）。
 
-## EI. 待开发（⚙️ 调整）：同步双区域配置（内容统一美国 + 本位币可配置默认中国）
+## EI. 质检通过（⚙️ 调整）：同步双区域配置（内容统一美国 + 本位币可配置默认中国）
 
 **类型：** ⚙️ 调整（同步区域/货币配置化）
 **状态：** 质检通过（2026-11-20，实现 897476c；QA docs/QA-EH-EI.md 第 1 轮 ✅ 放行 9/0/0/2）
