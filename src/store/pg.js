@@ -149,6 +149,25 @@ export {
 // 这里 re-export 保持旧 db.* 导入签名不变（routes/admin-sync.js、server.js 其它段
 // 与现有测试照旧走 pg.js 聚合壳）。
 export { listSyncRuns } from './admin-sync-repository.js';
+// CO-5/B4-2 第十轮（docs/DESIGN-AUDIT.md B4）：admin-settings 域（B4 #10：smtp/mail/emails/
+// proxies/version）SQL 落 admin-settings-repository.js——邮件模板 CRUD（listMailTemplates/
+// upsertMailTemplate/resetMailTemplate）与发送记录列表（listMailLog）只被本域路由使用随域搬走，
+// 域内联 SQL（SMTP upsert/email_codes 列表/测试邮件记录）抽成 5 个新函数；
+// insertMailLog 被 account-notify.js / routes/appeal.js / 本域 mail test 跨模块共用留本文件；
+// 无 DDL 搬家——smtp_settings/mail_templates/mail_log/email_codes 表 DDL 在 email-auth.js。
+// 这里 re-export 保持旧 db.* 导入签名不变（routes/admin-settings.js、server.js 其它段
+// 与现有测试照旧走聚合壳）。
+export {
+  listMailTemplates,
+  upsertMailTemplate,
+  resetMailTemplate,
+  listMailLog,
+  saveSmtpSettings,
+  listEmailCodes,
+  insertTestEmailCode,
+  markEmailCodeSent,
+  markEmailCodeFailed,
+} from './admin-settings-repository.js';
 
 export const SCHEMA = `
 create table if not exists platforms (
@@ -2711,26 +2730,9 @@ export async function listUserDeletions(q, { search = '', limit = 50 } = {}) {
 }
 
 // ---------------------------------------------------------------- 邮件模板与发送记录（docs/USER-LIFECYCLE.md §3.1/§3.3/§4.3）
-
-/** 读出所有已保存的模板行（event → 行）。 */
-export async function listMailTemplates(q) {
-  const r = await q('select event, subject, body_html, body_text, enabled, updated_at, updated_by from mail_templates');
-  return new Map(r.rows.map((row) => [row.event, row]));
-}
-
-/** 保存/更新一个模板；event 白名单由调用方校验。 */
-export async function upsertMailTemplate(q, { event, subject, bodyHtml, bodyText = null, enabled = true, updatedBy = null }) {
-  await q(
-    'insert into mail_templates (event, subject, body_html, body_text, enabled, updated_by) values ($1,$2,$3,$4,$5,$6) ' +
-      'on conflict (event) do update set subject = excluded.subject, body_html = excluded.body_html, body_text = excluded.body_text, enabled = excluded.enabled, updated_by = excluded.updated_by, updated_at = now()',
-    [event, subject, bodyHtml, bodyText, Boolean(enabled), updatedBy],
-  );
-}
-
-/** 恢复默认 = 删表行（渲染时回落到代码默认值）。 */
-export async function resetMailTemplate(q, event) {
-  await q('delete from mail_templates where event = $1', [event]);
-}
+// CO-5/B4-2 第十轮：listMailTemplates / upsertMailTemplate / resetMailTemplate / listMailLog
+// 已随 admin-settings 域搬到 admin-settings-repository.js（顶部 re-export）。insertMailLog
+// 被 account-notify.js / routes/appeal.js / admin-settings 域 mail test 跨模块共用，留本文件。
 
 /** 通知类邮件发送记录（§3.3）：成功/失败各一行；验证码邮件不写这张表。 */
 export async function insertMailLog(q, { event, toEmail, subject = null, ok = false, error = null, actor = null }) {
@@ -2742,13 +2744,6 @@ export async function insertMailLog(q, { event, toEmail, subject = null, ok = fa
     error ? String(error).slice(0, 500) : null,
     actor,
   ]);
-}
-
-/** 最近发送记录（通知 tab）：倒序，limit ≤ 500。 */
-export async function listMailLog(q, { limit = 200 } = {}) {
-  const cap = Math.min(Math.max(Number(limit) || 200, 1), 500);
-  const r = await q('select id, created_at, event, to_email, subject, ok, error, actor from mail_log order by id desc limit $1', [cap]);
-  return r.rows;
 }
 
 /** 禁用游戏：不出现在列表，但继续采集与统计。 */

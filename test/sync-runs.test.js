@@ -250,9 +250,9 @@ test('CO-5/B4-2 第九轮：server.js 必须真实接线管理段入口（删掉
   assert.match(AS_SERVER, /await handleAdminSyncAdmin\(\{[\s\S]{0,1200}?invalidateSyncStatusCache,/);
   assert.match(AS_SERVER, /await handleAdminSyncAdmin\(\{[\s\S]{0,1200}?syncStatusTtlMs,/);
   // 位置语义锁：调用必须在 requireAdmin 就绪之后的管理段——本域最早路由 sync POST 的原位置
-  // （games 段描述写入之后、smtp 之前）
+  // （games 段描述写入之后、#10 admin-settings 接线之前）
   assert.match(AS_SERVER, /descMatch[\s\S]*?await handleAdminSyncAdmin\(\{/s, '接线在 games/description 之后（本域原位置）');
-  assert.match(AS_SERVER, /await handleAdminSyncAdmin\(\{[\s\S]*?path === '\/api\/admin\/smtp' && req\.method === 'GET'/s, '接线在 smtp 之前（本域原位置）');
+  assert.match(AS_SERVER, /await handleAdminSyncAdmin\(\{[\s\S]*?管理员：给用户绑定\/解绑登录邮箱/s, '接线在 users 邮箱绑定段之前（本域原位置，原 smtp 段已随 B4 #10 拆走）');
 });
 
 test('CO-5/B4-2 第九轮：admin-sync 路由分支不得双实现（server.js 里保留旧分支即红，防拆分后两处漂移）', () => {
@@ -269,8 +269,7 @@ test('CO-5/B4-2 第九轮：admin-sync 路由分支不得双实现（server.js �
   assert.ok(!/path === '\/api\/admin\/rename' && req\.method/.test(AS_SERVER), 'rename 分支不得残留在 server.js');
   assert.ok(!/path === '\/api\/admin\/rename\/stop' && req\.method/.test(AS_SERVER), 'rename/stop 分支不得残留在 server.js');
   assert.ok(!/path === '\/api\/admin\/rename\/status' && req\.method/.test(AS_SERVER), 'rename/status 分支不得残留在 server.js');
-  // 边界锁：其它 admin 域路由留宿主（#10 smtp/emails、#11 bulk、#12 steam-logs、#16 wishlists）
-  assert.match(AS_SERVER, /path === '\/api\/admin\/smtp' && req\.method === 'GET'/, 'admin smtp 段留 server.js（B4 #10）');
+  // 边界锁：其它 admin 域路由留宿主（#10 smtp/emails 已拆到 routes/admin-settings.js、#11 bulk、#12 steam-logs、#16 wishlists）
   assert.match(AS_SERVER, /path === '\/api\/admin\/bulk' && req\.method === 'POST'/, 'admin bulk 段留 server.js（B4 #11）');
   assert.match(AS_SERVER, /path === '\/api\/admin\/steam-logs' && req\.method === 'GET'/, 'admin steam-logs 段留 server.js（B4 #12）');
   assert.match(AS_SERVER, /path === '\/api\/admin\/wishlists' && req\.method === 'GET'/, 'admin wishlists 段留 server.js（B4 #16）');
