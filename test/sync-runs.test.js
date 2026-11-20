@@ -250,8 +250,9 @@ test('CO-5/B4-2 第九轮：server.js 必须真实接线管理段入口（删掉
   assert.match(AS_SERVER, /await handleAdminSyncAdmin\(\{[\s\S]{0,1200}?invalidateSyncStatusCache,/);
   assert.match(AS_SERVER, /await handleAdminSyncAdmin\(\{[\s\S]{0,1200}?syncStatusTtlMs,/);
   // 位置语义锁：调用必须在 requireAdmin 就绪之后的管理段——本域最早路由 sync POST 的原位置
-  // （games 段描述写入之后、#10 admin-settings 接线之前）
-  assert.match(AS_SERVER, /descMatch[\s\S]*?await handleAdminSyncAdmin\(\{/s, '接线在 games/description 之后（本域原位置）');
+  // （games 域主段接线之后、#10 admin-settings 接线之前；games/description 已随 B4 #21 抽走，
+  // 锚点改为 games 域接线 handleGamesRoutes）
+  assert.match(AS_SERVER, /await handleGamesRoutes\(\{[\s\S]*?await handleAdminSyncAdmin\(\{/s, '接线在 games 域主段接线之后（本域原位置）');
   assert.match(AS_SERVER, /await handleAdminSyncAdmin\(\{[\s\S]*?管理员：给用户绑定\/解绑登录邮箱/s, '接线在 users 邮箱绑定段之前（本域原位置，原 smtp 段已随 B4 #10 拆走）');
 });
 

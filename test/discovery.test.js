@@ -73,6 +73,7 @@ test('CH 接线：调度任务/STEAM_HEAVY/设置/接口/前端 静态契约', (
   const sched = readFileSync(join(process.cwd(), 'src', 'scheduler.js'), 'utf8');
   const settings = readFileSync(join(process.cwd(), 'src', 'settings.js'), 'utf8');
   const server = readFileSync(join(process.cwd(), 'src', 'server.js'), 'utf8');
+  const gamesRoutes = readFileSync(join(process.cwd(), 'src', 'routes', 'games.js'), 'utf8');
   const home = readFileSync(join(process.cwd(), 'frontend', 'src', 'pages', 'Home.vue'), 'utf8');
   const pg = readFileSync(join(process.cwd(), 'src', 'store', 'pg.js'), 'utf8');
 
@@ -82,8 +83,10 @@ test('CH 接线：调度任务/STEAM_HEAVY/设置/接口/前端 静态契约', (
   for (const k of ['discovery.pages', 'discovery.fallbackLimit', 'discovery.intervalMin', 'personal.tasteWeight', 'personal.scoreDiscountWeight', 'personal.scoreReviewWeight', 'personal.scoreHeatWeight', 'personal.behaviorLogEnabled']) {
     assert.ok(settings.includes(`'${k}'`), `设置 ${k}`);
   }
-  assert.match(server, /\/api\/games\/for-you' && req\.method === 'POST'/, '为你推荐接口');
-  assert.match(server, /\/api\/behavior' && req\.method === 'POST'/, '行为上报接口');
+  // CO-5/B4-2 第十五轮：/api/games/for-you 已随 games 域抽到 src/routes/games.js，断言指向新落点
+  assert.match(gamesRoutes, /\/api\/games\/for-you' && req\.method === 'POST'/, '为你推荐接口在 games 域路由模块');
+  assert.ok(!/\/api\/games\/for-you' && req\.method === 'POST'/.test(server), '为你推荐接口分支不得残留在 server.js（防双实现）');
+  assert.match(server, /\/api\/behavior' && req\.method === 'POST'/, '行为上报接口留 server.js');
   assert.match(server, /PERSONAL_BEHAVIOR_LOG_ENABLED[\s\S]{0,120}202/, '开关关闭 202 不落库');
   assert.match(home, /综合评分/, '排序项');
   assert.match(home, /好评率不限/, '好评率筛选');

@@ -6,6 +6,8 @@
 //   4) 抽样对账 0 差异；--fix 与 rebuild 能修复；READ_MODEL=legacy 回滚开关生效。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
 import { ingestOffers } from '../src/ingest.js';
@@ -452,4 +454,175 @@ test('AY：关键词先走候选 ID——零命中不跑 count/列表；名称/�
   } finally {
     await store.close();
   }
+});
+
+// ============================================================ CO-5/B4-2 第十五轮静态锁
+// games 域（B4 #21：公开 /api/games/*）从 server.js/pg.js 巨石拆出后，四组静态断言按新落点指向：
+//   · 路由分支 → src/routes/games.js（主段单入口，16 组路由）；
+//   · 域专属 SQL → src/store/games-repository.js；pg.js 必须 re-export（旧 db.* 导入签名不变），
+//     无 DDL 搬家（games/daily_prices/offers 等表 DDL 在 pg.js SCHEMA，跨模块共用）；
+//   · server.js 只留单入口接线（主段），且必须真实调用——删掉调用即红（防死模块）；
+//   · 旧分支不得残留在 server.js（防双实现）。
+// 反向自检口径：删掉 routes/games.js 任一路由分支 → 第 1 组断言红；删掉 server.js 的入口
+// 接线 → 第 2 组红；把分支抄回 server.js → 第 3 组红；删 pg.js re-export → 第 4 组红。
+// 边界判定：只拆公开 /api/games/*——/api/admin/games*（列表/stats/merge/links/deleted，
+// B4 #15）与 /api/behavior 留 server.js；/img/steam/* 图片代理不是 API 路由、留 server.js；
+// isLoggablePath 的 stamp/search 访问记录豁免是中间件、留 server.js。
+
+const GM_ROUTES = readFileSync(fileURLToPath(new URL('../src/routes/games.js', import.meta.url)), 'utf8');
+const GM_REPO = readFileSync(fileURLToPath(new URL('../src/store/games-repository.js', import.meta.url)), 'utf8');
+const GM_SERVER = readFileSync(fileURLToPath(new URL('../src/server.js', import.meta.url)), 'utf8');
+const GM_PG = readFileSync(fileURLToPath(new URL('../src/store/pg.js', import.meta.url)), 'utf8');
+
+test('CO-5/B4-2 第十五轮：games 路由分支全部在 src/routes/games.js（主段单入口，删任一支即红）', () => {
+  // 公开只读六组
+  assert.match(GM_ROUTES, /path === '\/api\/games\/for-you' && req\.method === 'POST'/, 'for-you 分支在新文件');
+  assert.match(GM_ROUTES, /path === '\/api\/games\/count' && req\.method === 'GET'/, 'count 分支在新文件');
+  assert.match(GM_ROUTES, /path === '\/api\/games\/stamp' && req\.method === 'GET'/, 'stamp 分支在新文件');
+  assert.match(GM_ROUTES, /path === '\/api\/games' && req\.method === 'GET'/, '列表 GET 分支在新文件');
+  assert.match(GM_ROUTES, /path === '\/api\/games\/search' && req\.method === 'POST'/, 'search POST 分支在新文件');
+  assert.match(GM_ROUTES, /path\.match\(\/\^\\\/api\\\/games\\\/by-id\\\/\(\\d\+\)\$\/\)/, 'by-id 分支在新文件');
+  assert.match(GM_ROUTES, /path\.match\(\/\^\\\/api\\\/games\\\/\(\\d\+\)\$\/\)/, 'gameMatch 分支在新文件');
+  assert.match(GM_ROUTES, /path\.match\(\/\^\\\/api\\\/games\\\/\(\\d\+\)\\\/dlc\$\/\)/, 'dlc 分支在新文件');
+  assert.match(GM_ROUTES, /path\.match\(\/\^\\\/api\\\/games\\\/\(\\d\+\)\\\/history\\\.csv\$\/\)/, 'history.csv 分支在新文件');
+  // 登录用户与管理员写操作
+  assert.match(GM_ROUTES, /path\.match\(\/\^\\\/api\\\/games\\\/\(\\d\+\)\\\/flags\$\/\)/, 'flags 分支在新文件');
+  assert.match(GM_ROUTES, /path\.match\(\/\^\\\/api\\\/games\\\/id\\\/\(\\d\+\)\\\/flags\$\/\)/, 'flags by-id 分支在新文件');
+  assert.match(GM_ROUTES, /path\.match\(\/\^\\\/api\\\/games\\\/\(\\d\+\)\\\/interest\$\/\)/, 'interest 分支在新文件');
+  assert.match(GM_ROUTES, /path\.match\(\/\^\\\/api\\\/games\\\/\(\\d\+\)\\\/owned\$\/\)/, 'owned 分支在新文件');
+  assert.match(GM_ROUTES, /path\.match\(\/\^\\\/api\\\/games\\\/id\\\/\(\\d\+\)\\\/interest\$\/\)/, 'interest by-id 分支在新文件');
+  assert.match(GM_ROUTES, /path\.match\(\/\^\\\/api\\\/games\\\/id\\\/\(\\d\+\)\\\/owned\$\/\)/, 'owned by-id 分支在新文件');
+  assert.match(GM_ROUTES, /path\.match\(\/\^\\\/api\\\/games\\\/\(\\d\+\)\\\/deleted\$\/\)/, 'deleted 分支在新文件');
+  assert.match(GM_ROUTES, /path\.match\(\/\^\\\/api\\\/games\\\/id\\\/\(\\d\+\)\\\/deleted\$\/\)/, 'deleted by-id 分支在新文件');
+  assert.match(GM_ROUTES, /path\.match\(\/\^\\\/api\\\/games\\\/\(\\d\+\)\\\/blocked\$\/\)/, 'blocked 分支在新文件');
+  assert.match(GM_ROUTES, /path\.match\(\/\^\\\/api\\\/games\\\/\(\\d\+\)\\\/description\$\/\)/, 'description 分支在新文件');
+  // 单入口形态（§15.3 位置语义：主段）
+  assert.match(GM_ROUTES, /export async function handleGamesRoutes\(ctx\)/, '主段入口');
+  // 守卫与语义随路由
+  assert.match(GM_ROUTES, /if \(!requireUser\(\)\) return true/, '登录守卫');
+  assert.match(GM_ROUTES, /if \(!requireAdmin\(\)\) return true/, '管理员守卫');
+  assert.match(GM_ROUTES, /if \(!historyCsvEnabled\(\)\) return \(json\(res, 404, \{ error: 'not found' \}\), true\);/, 'CSV 开关关闭 404 语义随路由');
+  assert.match(GM_ROUTES, /runGated\('games-search', 2, async \(\) => \{/, 'games-search 并发闸语义随路由');
+  assert.match(GM_ROUTES, /listCache\.get\(cacheKey, gen\)/, 'DX 批列表缓存命中语义随路由');
+  assert.match(GM_ROUTES, /invalidateListCache\(\); \/\/ DX 批：个人标记直接影响/, 'flags 写后失效列表缓存语义随路由');
+  assert.match(GM_ROUTES, /invalidateAdminGamesCache\(\);\n    invalidateListCache\(\); \/\/ DX 批：删除\/恢复改变列表内容/, 'deleted 写后双缓存失效语义随路由');
+  assert.match(GM_ROUTES, /const forYouCache = new Map\(\);/, 'forYouCache 随域移入模块级（只被本域使用）');
+  assert.match(GM_ROUTES, /const historyCsvEnabled = \(\) => process\.env\.HISTORY_CSV_ENABLED === '1';/, 'historyCsvEnabled 随域移入模块级');
+  assert.match(GM_ROUTES, /await import\('\.\.\/discovery\.js'\)/, 'discovery 动态导入路径已修正为 ../discovery.js');
+  // 路由模块只做编排：不许出现 SQL 字面量（全部走 repository）
+  assert.ok(!/select |insert |update |delete from /.test(GM_ROUTES), 'routes/games.js 不写 SQL 字面量');
+  // 未命中返回 false，宿主继续
+  assert.match(GM_ROUTES, /return false;/, '未命中返回 false，宿主继续');
+});
+
+test('CO-5/B4-2 第十五轮：server.js 必须真实接线主段入口（删掉调用即红，防死模块）', () => {
+  assert.match(GM_SERVER, /import \{ handleGamesRoutes \} from '\.\/routes\/games\.js'/, 'server.js 必须导入域路由入口');
+  // 锁「完整调用形态」：必须是 if (await handleGamesRoutes(...)) return;——只断言字符串存在会被 if(false) 包一层绕过
+  assert.match(GM_SERVER, /if \(\s*await handleGamesRoutes\(\{[\s\S]{0,1400}?path,[\s\S]{0,1400}?req,[\s\S]{0,1400}?res,[\s\S]{0,1400}?dlcFetchImpl,[\s\S]{0,400}?\}\)\s*\)\s*return;/, '主段接线（完整形态，且消费返回值）');
+  // ctx 关键字段必须传齐：漏传 url 查询参数丢失、漏传 requireUser/requireAdmin 守卫失效、
+  // 漏传 user 审计落空、漏传 runGated 并发闸语义丢失、漏传 listCache/invalidateListCache 缓存分家、
+  // 漏传 invalidateAdminGamesCache 后台短缓存漂移、漏传 gameCountCache count 缓存隔离破坏、
+  // 漏传 maybeFillDlcOnRead DLC 回源节流失效
+  assert.match(GM_SERVER, /await handleGamesRoutes\(\{[\s\S]{0,1400}?url,/);
+  assert.match(GM_SERVER, /await handleGamesRoutes\(\{[\s\S]{0,1400}?requireUser,/);
+  assert.match(GM_SERVER, /await handleGamesRoutes\(\{[\s\S]{0,1400}?requireAdmin,/);
+  assert.match(GM_SERVER, /await handleGamesRoutes\(\{[\s\S]{0,1400}?user,/);
+  assert.match(GM_SERVER, /await handleGamesRoutes\(\{[\s\S]{0,1400}?runGated,/);
+  assert.match(GM_SERVER, /await handleGamesRoutes\(\{[\s\S]{0,1400}?listCache,/);
+  assert.match(GM_SERVER, /await handleGamesRoutes\(\{[\s\S]{0,1400}?invalidateListCache,/);
+  assert.match(GM_SERVER, /await handleGamesRoutes\(\{[\s\S]{0,1400}?invalidateAdminGamesCache,/);
+  assert.match(GM_SERVER, /await handleGamesRoutes\(\{[\s\S]{0,1400}?gameCountCache,/);
+  assert.match(GM_SERVER, /await handleGamesRoutes\(\{[\s\S]{0,1400}?maybeFillDlcOnRead,/);
+  // 位置语义锁：调用必须在认证上下文就绪后的主段——本域最早路由 for-you 的原位置
+  // （handleAuthRoutes 之后、handleMeRoutes 之前）
+  assert.match(GM_SERVER, /await handleAuthRoutes\(\{[\s\S]*?await handleGamesRoutes\(\{/s, '接线在 auth 主段接线之后（本域原位置）');
+  assert.match(GM_SERVER, /await handleGamesRoutes\(\{[\s\S]*?await handleMeRoutes\(\{/s, '接线在 me 主段接线之前（本域原位置）');
+  // 边界锁：其它域路由与中间件留宿主
+  assert.match(GM_SERVER, /path === '\/api\/admin\/games' && req\.method === 'GET'/, 'admin games 列表段留 server.js（B4 #15）');
+  assert.match(GM_SERVER, /path === '\/api\/admin\/games\/stats' && req\.method === 'GET'/, 'admin games/stats 段留 server.js（B4 #15）');
+  assert.match(GM_SERVER, /path === '\/api\/admin\/games\/merge' && req\.method === 'POST'/, 'admin games/merge 段留 server.js（B4 #15）');
+  assert.match(GM_SERVER, /const linkMatch = path\.match\(\/\^\\\/api\\\/admin\\\/games\\\/\(\\d\+\)\\\/links\$\/\)/, 'admin games/:id/links 段留 server.js（B4 #15）');
+  assert.match(GM_SERVER, /path === '\/api\/admin\/games\/deleted' && req\.method === 'GET'/, 'admin games/deleted 段留 server.js（B4 #15）');
+  assert.match(GM_SERVER, /path === '\/api\/behavior' && req\.method === 'POST'/, 'behavior 路由留 server.js（不属 /api/games/* 前缀）');
+  assert.match(GM_SERVER, /const behaviorBuckets = new Map\(\);/, 'behaviorBuckets 留 server.js（behavior 路由留宿主）');
+  assert.match(GM_SERVER, /path\.match\(\/\^\\\/img\\\/steam\\\/\(\\d\+\)\\\/\(\[a-z0-9_\]\+\)\$\/\)/, 'Steam 图片代理路由留 server.js（非 API 路由）');
+  assert.match(GM_SERVER, /path === '\/api\/games\/stamp'\) return false;/, 'isLoggablePath 的 stamp 访问日志豁免留 server.js（中间件）');
+  assert.match(GM_SERVER, /req\.method === 'POST' && path === '\/api\/games\/search'\) && res\.statusCode < 400/, 'search POST 访问记录豁免留 server.js（中间件）');
+  assert.match(GM_SERVER, /'games-search': 2,/, 'HEAVY_GATE_CONFIG 键留 server.js');
+});
+
+test('CO-5/B4-2 第十五轮：games 路由分支不得双实现（server.js 里保留旧分支即红，防拆分后两处漂移）', () => {
+  assert.ok(!/path === '\/api\/games\/for-you' && req\.method/.test(GM_SERVER), 'for-you 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/games\/count' && req\.method/.test(GM_SERVER), 'count 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/games\/stamp' && req\.method/.test(GM_SERVER), 'stamp 分支不得残留在 server.js');
+  assert.ok(!/path === '\/api\/games' && req\.method/.test(GM_SERVER), '列表 GET 分支不得残留在 server.js');
+  assert.ok(!/const guestSearchPost = path\.match/.test(GM_SERVER) && !/const guestSearchPost = path ===/.test(GM_SERVER), 'search POST 分支不得残留在 server.js');
+  assert.ok(!/const byIdMatch = path\.match/.test(GM_SERVER), 'by-id 分支不得残留在 server.js');
+  assert.ok(!/const gameMatch = path\.match/.test(GM_SERVER), 'gameMatch 分支不得残留在 server.js');
+  assert.ok(!/const dlcMatch = path\.match/.test(GM_SERVER), 'dlc 分支不得残留在 server.js');
+  assert.ok(!/const historyCsv = path\.match/.test(GM_SERVER), 'history.csv 分支不得残留在 server.js');
+  assert.ok(!/const flagsByAppid = path\.match/.test(GM_SERVER), 'flags 分支不得残留在 server.js');
+  assert.ok(!/const interestMatch = path\.match/.test(GM_SERVER), 'interest 分支不得残留在 server.js');
+  assert.ok(!/const ownedMatch = path\.match/.test(GM_SERVER), 'owned 分支不得残留在 server.js');
+  assert.ok(!/const byIdInterest = path\.match/.test(GM_SERVER), 'interest by-id 分支不得残留在 server.js');
+  assert.ok(!/const byIdOwned = path\.match/.test(GM_SERVER), 'owned by-id 分支不得残留在 server.js');
+  assert.ok(!/const delByAppid = path\.match/.test(GM_SERVER), 'deleted 分支不得残留在 server.js');
+  assert.ok(!/const blockMatch = path\.match/.test(GM_SERVER), 'blocked 分支不得残留在 server.js');
+  assert.ok(!/const descMatch = path\.match/.test(GM_SERVER), 'description 分支不得残留在 server.js');
+  assert.ok(!/const forYouCache = new Map/.test(GM_SERVER), 'forYouCache 不得残留在 server.js（随域移入）');
+  assert.ok(!/const historyCsvEnabled =/.test(GM_SERVER), 'historyCsvEnabled 不得残留在 server.js（随域移入）');
+  // 域内联 SQL 不得残留在 server.js（已抽 games-repository.js）
+  assert.ok(!/select count\(\*\)::int as n from games where not deleted/.test(GM_SERVER), 'count 域内联 SQL 不得残留在 server.js');
+  assert.ok(!/select \(select count\(\*\)::int from games\) as games/.test(GM_SERVER), 'stamp 域内联 SQL 不得残留在 server.js');
+});
+
+test('CO-5/B4-2 第十五轮：games-repository.js 签名不变 + pg.js re-export（删 re-export 即红）', () => {
+  // 搬家函数签名与拆分前一致（旧 db.* 导入签名不变）
+  assert.match(GM_REPO, /export async function gameSearch\(\n  q,\n  \{ region = 'cn', page = 1, pageSize = 20, keyword = '', sort = 'discount', interest = 'all', owned = 'exclude', blocked = 'exclude', userId = null, typeFilter = 'all', released = 'all', marks = 'any', compact = false, guestFlags = null, wishlist = false, adult = 'hide', rating = '', reviewMin = null, deck = 'all', discountOnly = false, histLowOnly = false, freeOnly = false, unreleased = false \} = \{\},/, 'gameSearch 签名与拆分前一致');
+  assert.match(GM_REPO, /export async function getUserWatch\(q, \{ userId, gameId, region = 'cn' \}\)/, 'getUserWatch 签名与拆分前一致');
+  assert.match(GM_REPO, /export async function recordView\(q, \{ userId = null, path, appid = null \}\)/, 'recordView 签名与拆分前一致');
+  assert.match(GM_REPO, /export async function dataGen\(q\)/, 'dataGen 签名与拆分前一致');
+  assert.match(GM_REPO, /export async function listGameDlc\(q, \{ gameId, page = 1, pageSize = 10 \}\)/, 'listGameDlc 签名与拆分前一致');
+  assert.match(GM_REPO, /export async function countGameDlc\(q, \{ gameId \}\)/, 'countGameDlc 签名与拆分前一致');
+  assert.match(GM_REPO, /export async function countDlcMissing\(q, \{ gameId \}\)/, 'countDlcMissing 签名与拆分前一致');
+  assert.match(GM_REPO, /export async function dlcSummary\(q, \{ steamAppid \}\)/, 'dlcSummary 签名与拆分前一致');
+  assert.match(GM_REPO, /export async function setGameBlocked\(q, \{ steamAppid, gameId = null, blocked \}\)/, 'setGameBlocked 签名与拆分前一致');
+  assert.match(GM_REPO, /export async function setGameDeleted\(q, \{ steamAppid = null, gameId = null, deleted \}\)/, 'setGameDeleted 签名与拆分前一致');
+  assert.match(GM_REPO, /export async function setUserGameFlag\(q, \{ userId, gameId, interested = null, owned = null \}\)/, 'setUserGameFlag 签名与拆分前一致');
+  // 域内联 SQL 新函数
+  assert.match(GM_REPO, /export async function countGamesForApi\(q\)/, 'countGamesForApi 域内联 SQL 抽成新函数');
+  assert.match(GM_REPO, /process\.env\.READ_MODEL === 'legacy'/, 'countGamesForApi 保留 READ_MODEL=legacy 回滚口径');
+  assert.match(GM_REPO, /export async function gamesStamp\(q\)/, 'gamesStamp 域内联 SQL 抽成新函数');
+  // 跨模块共享 SQL 片段留 pg.js，repository 导入不复制（防两处漂移）
+  assert.match(GM_REPO, /import \{\n  OFFICIAL_KINDS,\n  GAME_SELECT,\n  GAME_SELECT_RM,\n  EFFECTIVE_OWNED_SQL,/, 'games-repository 从 pg.js 导入共享片段');
+  assert.match(GM_REPO, /gameKeywordSql,/, 'games-repository 从 pg.js 导入 gameKeywordSql（#15 admin games 共用）');
+  // pg.js 必须 re-export（旧 db.* 导入签名不变；routes/games.js 与现有测试照旧走聚合壳）
+  assert.match(GM_PG, /gameSearch,/, 'pg.js 必须 re-export gameSearch');
+  assert.match(GM_PG, /countGamesForApi,/, 'pg.js 必须 re-export countGamesForApi');
+  assert.match(GM_PG, /gamesStamp,/, 'pg.js 必须 re-export gamesStamp');
+  assert.match(GM_PG, /getUserWatch,/, 'pg.js 必须 re-export getUserWatch');
+  assert.match(GM_PG, /recordView,/, 'pg.js 必须 re-export recordView');
+  assert.match(GM_PG, /dataGen,/, 'pg.js 必须 re-export dataGen');
+  assert.match(GM_PG, /listGameDlc,/, 'pg.js 必须 re-export listGameDlc');
+  assert.match(GM_PG, /countGameDlc,/, 'pg.js 必须 re-export countGameDlc');
+  assert.match(GM_PG, /countDlcMissing,/, 'pg.js 必须 re-export countDlcMissing');
+  assert.match(GM_PG, /dlcSummary,/, 'pg.js 必须 re-export dlcSummary');
+  assert.match(GM_PG, /setGameBlocked,/, 'pg.js 必须 re-export setGameBlocked');
+  assert.match(GM_PG, /setGameDeleted,/, 'pg.js 必须 re-export setGameDeleted');
+  assert.match(GM_PG, /setUserGameFlag,/, 'pg.js 必须 re-export setUserGameFlag');
+  assert.match(GM_PG, /from '\.\/games-repository\.js'/, 'pg.js re-export 指向 games-repository.js');
+  // 旧定义不得残留在 pg.js（双实现会漂移）
+  assert.ok(!/export (async )?function (gameSearch|getUserWatch|recordView|dataGen|listGameDlc|countGameDlc|countDlcMissing|dlcSummary|setGameBlocked|setGameDeleted|setUserGameFlag)/.test(GM_PG), 'pg.js 不允许保留旧函数定义（只许 re-export）');
+  // 边界判据锁：跨模块共用 SQL 留在 pg.js（watchlist 域/CLI/admin #15 共用）
+  assert.match(GM_PG, /export async function gameDetail\(q, \{ steamAppid = null, gameId = null, region = 'cn', userId = null, adult = 'show' \}\)/, 'gameDetail 留 pg.js（watchlist/admin merge/links 跨域共用）');
+  assert.match(GM_PG, /export async function regionOffers\(q, \{ steamAppid, region = null \} = \{\}\)/, 'regionOffers 留 pg.js（cli report 共用）');
+  assert.match(GM_PG, /export async function dailyMinSeries\(q, \{ gameId, region = 'cn' \}\)/, 'dailyMinSeries 留 pg.js（report.js 共用）');
+  assert.match(GM_PG, /export async function offersOfGame\(q, \{ gameId, region = 'cn' \}\)/, 'offersOfGame 留 pg.js（report.js 共用）');
+  assert.match(GM_PG, /export async function setInterest\(q, \{ steamAppid = null, gameId = null, interested \}\)/, 'setInterest 留 pg.js（cli 共用）');
+  assert.match(GM_PG, /export async function setOwned\(q, \{ steamAppid = null, gameId = null, owned \}\)/, 'setOwned 留 pg.js（cli 共用）');
+  assert.match(GM_PG, /export async function setGameDescription\(q, \{ steamAppid, description, overwrite = false \}\)/, 'setGameDescription 留 pg.js（cli sync 共用）');
+  assert.match(GM_PG, /export function gameKeywordSql\(kwParam, \{ appidAsInt = false, appidAsText = false, tokenCond = null \} = \{\}\)/, 'gameKeywordSql 留 pg.js（#15 admin games 搜索共用）');
+  assert.match(GM_PG, /export const GAME_SELECT = `select g\.id,/, 'GAME_SELECT 共享片段留 pg.js 并 export');
+  // repository 不搬家 DDL
+  assert.ok(!/create table/.test(GM_REPO), 'games-repository.js 不搬家 DDL');
 });
