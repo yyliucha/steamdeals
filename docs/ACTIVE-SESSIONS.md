@@ -16,7 +16,7 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| （空——v2.28.7 构建会话 2026-11-23 收尾注销：EZ+FA 已发布 v2.28.7（b5bb9ab），CI 双绿） | | | | | |
+| FE（个人资料 Steam 同步按钮 + 按钮样式） | frontend/src/pages/ProfilePage.vue、test/profile.test.js、docs/TODO.md、docs/REQUIREMENTS-INDEX.md、docs/PROJECT-OVERVIEW.md | headless 浏览器（FE 截图验证）；真实服务栈（本地起服务渲染 ProfilePage） | 2026-11-23 18:40 | 2026-11-23 21:00 | 本会话（lead） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 
