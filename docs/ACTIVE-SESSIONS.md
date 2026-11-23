@@ -16,8 +16,7 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| （空——FE 会话 2026-11-23 收尾注销：同步按钮 + 按钮样式已实现（0bc2733），QA 第 1 轮 ✅ 放行） | | | | | |
-| FC（v2.28.8 构建） | CHANGELOG/README/PROJECT-OVERVIEW/SCHEDULER-COMPOSE-SPLIT/TODO/DONE/REQUIREMENTS-INDEX/DELIVERY/package*.json | 打 tag 构建 | 2026-11-23 19:05 | 2026-11-23 20:30 | lead（FC 构建会话） |
+| （空——FE 会话 2026-11-23 收尾注销：QA 第 1 轮 ✅ 放行；FC 会话 2026-11-23 收尾注销：v2.28.8 已发布（release ecf2362，CI 三绿）） | | | | | |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 
