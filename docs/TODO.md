@@ -22,7 +22,7 @@
 |---|---|---|
 | 🐞 缺陷 | 3 | EO、ER、EU |
 | ✨ 功能 | 1 | EQ |
-| ⚙️ 调整 | 1 | EP |
+| ⚙️ 调整 | 2 | EP / EV |
 | 🧹 技术债 | 1 | EN |
 | 🧪 测试基建 | 0 | — |
 | 📝 文档流程 | 0 | — |
@@ -132,3 +132,17 @@
 - **方案**：EU-1 中断标记（interrupted 不记失败/不告警）；EU-2 steam-prices 分批 5000 + 断点续跑；
   EU-3 发版避让（部署前检查长任务/等待或跳过，写入 DELIVERY/部署脚本）；EU-4 日志降噪。
 - **验收**：见规格 §4（模拟重启显示 interrupted 不告警；分批续跑；部署文档含避让；重启后恢复；测试全绿）。
+
+## EV. 待开发（⚙️ 调整）：调度器独立进程化 + 一键安装/删除
+
+**类型：** ⚙️ 调整（部署架构：调度器与 app 分离）
+**状态：** 待开发（2026-11-23 所有者要求：任务写到服务器、不与系统重合、可一键删除）
+**优先级：** P1 —— 发版不影响定时服务（与 EU 配套）
+**依赖：** EU（重启韧性）
+**解锁：** 无
+**规格**：[SCHEDULER-AS-SERVICE.md](SCHEDULER-AS-SERVICE.md)
+
+- **方案**：app 改 `command: ["serve"]` 只跑 Web/API；新增独立 `scheduler` service（`node src/scheduler.js`）；
+  `scripts/scheduler-service.sh install|remove|status`（remove = 一键删除所有任务：停容器 + 删配置/状态）；
+  发版只重启 app、不动 scheduler；防双调度器（切换时确认旧 all 容器已停）。
+- **验收**：见规格 §4（app 无调度日志；重启 app 任务不中断；remove 一键清空；无双调度器；测试全绿）。
