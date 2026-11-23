@@ -138,6 +138,24 @@ docker exec steamdeals node -p "require('./package.json').version"   # 期望输
 > - 有任务在跑 → **等待它完成（steam-prices 单轮 ≤10 分钟）**，或至少等 10 分钟后升级——
 >   被打断的任务会记为「被重启中断」（不告警、不发失败邮件），下一轮自动断点续跑，不丢已处理进度。
 
+> **调度器独立服务（EV 批，2026-11-23 起，见 [SCHEDULER-AS-SERVICE.md](SCHEDULER-AS-SERVICE.md)）**：
+> app 容器只跑 Web/API（`command: ["serve"]`），定时任务跑在独立的 `scheduler` 容器里：
+>
+> ```bash
+> # 首次升级到 EV 之后：安装调度器服务（自动防双调度器：app 还在跑 all 会拒绝）
+> ./scripts/scheduler-service.sh install
+> ./scripts/scheduler-service.sh status    # 容器状态 + 最近心跳 + 当前 heavy slot 任务
+>
+> # 发版（只更新 Web/API 或前端时）：只重启 app，调度任务不中断
+> docker compose pull app && docker compose up -d app
+>
+> # 只有调度器代码（src/scheduler.js 等）有更新时才重启 scheduler：
+> docker compose restart scheduler
+>
+> # 一键删除所有调度任务（停容器 + 删容器 + 清 data/scheduler-*.json 状态；业务数据不动）：
+> ./scripts/scheduler-service.sh remove
+> ```
+
 回滚：把 tag 换回上一个已部署版本（如 1.4.0）再 pull/up。
 
 ### 部署后验证清单

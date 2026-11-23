@@ -15,7 +15,8 @@ services:
   app:
     image: s1065420329/steamdeals:latest
     restart: unless-stopped
-    command: ["all"]
+    # EV 批（docs/SCHEDULER-AS-SERVICE.md）：只跑 Web/API；调度器独立成 scheduler 服务
+    command: ["serve"]
     ports:
       - "${WEB_PORT:-8090}:8080"
     environment:
@@ -47,6 +48,30 @@ services:
       timeout: 15s
       retries: 3
       start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # EV 批（docs/SCHEDULER-AS-SERVICE.md）：独立调度器服务——与 app 同镜像，command 空 →
+  # entrypoint 按 RUN_MODE=scheduler 跑 node src/scheduler.js；与 app 共享 appdata/logs 卷。
+  # 外部库模式没有 db service，DATABASE_URL 与 app 保持一致（改 app 那行时这里同步改）。
+  scheduler:
+    image: s1065420329/steamdeals:latest
+    restart: unless-stopped
+    command: []
+    environment:
+      DATABASE_URL: "postgres://user:password@host:5432/steamdeals?sslmode=require"
+      TZ: ${TZ:-Asia/Shanghai}
+      RUN_MODE: scheduler
+      # 采集开关/代理/告警等配置与 app 同源：按需在此追加（如 STEAM_API_KEY / STEAM_PROXY）
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - appdata:/app/data
+      - logs:/app/logs
+    stop_grace_period: 30s
     logging:
       driver: json-file
       options:

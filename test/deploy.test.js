@@ -100,10 +100,17 @@ test('教程必须先建目录再 chown（logs/out 不在仓库里）', () => {
   assert.ok(existsSync(new URL('../data/wishlist.example.txt', import.meta.url)), '缺少 wishlist 模板');
 });
 
-test('前后端合并成一个服务：app 跑 all，暴露 WEB_PORT', () => {
+test('EV 批：app 只跑 Web/API（serve），调度器独立成 scheduler 服务，暴露 WEB_PORT', () => {
   const doc = parse(read('compose.yaml'));
   assert.equal(doc.services.web, undefined, '不应再有独立的 web 服务');
-  assert.deepEqual(doc.services.app.command, ['all'], 'app 同时跑调度器与 Web/API');
+  assert.deepEqual(doc.services.app.command, ['serve'], 'app 只跑 Web/API，不再拉起调度器（EV 批）');
+  assert.ok(doc.services.scheduler, '必须新增独立 scheduler 服务');
+  assert.deepEqual(doc.services.scheduler.command, [], 'scheduler command 为空 → entrypoint 按 RUN_MODE=scheduler 跑 src/scheduler.js');
+  assert.equal(doc.services.scheduler.environment.RUN_MODE, 'scheduler', 'scheduler 的 RUN_MODE 必须显式为 scheduler');
+  assert.equal(doc.services.scheduler.restart, 'unless-stopped', 'scheduler 需重启策略');
+  assert.ok(doc.services.scheduler.depends_on?.db, 'scheduler 依赖 db 就绪');
+  // 与 app 共享同一份 data/logs：后台读到的状态文件与日志页同源
+  assert.deepEqual(doc.services.scheduler.volumes, doc.services.app.volumes, 'scheduler 与 app 必须挂同一份 data/logs');
   assert.deepEqual(doc.services.app.ports, ['${WEB_PORT:-8090}:8080'], '对外只有这一个端口');
   assert.ok(!JSON.stringify(doc).includes('nginx'), '不依赖外部 nginx');
   assert.ok(existsSync(new URL('../web/index.html', import.meta.url)), '前端首页必须存在');

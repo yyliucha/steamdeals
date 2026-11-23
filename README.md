@@ -60,6 +60,7 @@
 | Steam 国区采集 | ⚠️ 代码完成，**本机网络不可达** | `store.steampowered.com` 连接超时（12s），需出口 |
 | ITAD 官方 API | ⚠️ 代码完成，**未用真 key 验证** | 无 key 时返回 403；响应结构按官方文档实现 |
 | Docker 部署 | ✅ 已发布镜像 | 镜像由 GitHub Actions 构建并推送 TCR / Docker Hub（v2.2.0 双绿）；线上容器版本以 [DELIVERY.md](docs/DELIVERY.md) 部署记录为准 |
+| **调度器独立服务（EV）** | ✅ 已实现待发版 | app 容器只跑 Web/API（`serve`），定时任务跑独立 `scheduler` 容器；`scripts/scheduler-service.sh install|remove|status` 一键安装/删除/查看（install 防双调度器、remove 清空调度任务与状态、status 显示心跳与 heavy slot）；发版只重启 app、调度任务不中断。见 [SCHEDULER-AS-SERVICE.md](docs/SCHEDULER-AS-SERVICE.md) 与 [DELIVERY.md](docs/DELIVERY.md) 第 4 节 |
 | **一键部署（自动建库/建表/导入）** | ✅ 已验证 | `ensureDatabase` 在真 PG 协议下建库成功；`bootstrap` 幂等建表与导入 |
 | Fanatical | ⏸ 不接入 | 商品页是 SPA 且 Algolia key 被 Cloudflare 403，无可靠取数路径 |
 | 多区服同屏并排 | 🚧 未实现 | 采集与单区切换已支持（见上方「多区服采集」）；`region` 维度已在数据模型里，同屏多区并排展示未做 |

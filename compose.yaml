@@ -30,8 +30,9 @@ services:
       dockerfile: Dockerfile
     image: steamdeals:latest
     restart: unless-stopped
-    # 一体化：同一个容器里跑调度器 + Web/API（前端 / ，控制台 /console）
-    command: ["all"]
+    # EV 批（docs/SCHEDULER-AS-SERVICE.md）：只跑 Web/API，调度器独立成 scheduler 服务——
+    # 发版重启 app 不再打断定时任务
+    command: ["serve"]
     ports:
       - "${WEB_PORT:-8090}:8080"
     # 用宿主机上现成的 PostgreSQL 时，容器里要能用 host.docker.internal 访问宿主机
@@ -100,6 +101,73 @@ services:
       timeout: 15s
       retries: 3
       start_period: 40s
+
+  # EV 批（docs/SCHEDULER-AS-SERVICE.md）：独立调度器服务——与 app 同镜像，
+  # command 为空 → entrypoint 按 RUN_MODE=scheduler 跑 node src/scheduler.js。
+  # 与 app 挂载同一份 ./data、./logs：后台「同步与回填」读到的状态文件、日志页读到的日志
+  # 都来自调度器；发版只重启 app、不打断任务。
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: steamdeals:latest
+    restart: unless-stopped
+    command: []
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+    environment:
+      # 与 app 完全一致的配置（采集开关/代理/告警通道等），新增采集环境变量时两处同步
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-steamdeals}@db:5432/${POSTGRES_DB:-steamdeals}}
+      TZ: ${TZ:-Asia/Shanghai}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SEED_ON_START: ${SEED_ON_START:-1}
+      DB_WAIT_SEC: ${DB_WAIT_SEC:-60}
+      RUN_MODE: scheduler
+      ITAD_API_KEY: ${ITAD_API_KEY:-}
+      STEAM_ENABLED: ${STEAM_ENABLED:-1}
+      SONKWO_ENABLED: ${SONKWO_ENABLED:-1}
+      ITAD_ENABLED: ${ITAD_ENABLED:-1}
+      STEAM_INTERVAL_MIN: ${STEAM_INTERVAL_MIN:-60}
+      SONKWO_INTERVAL_MIN: ${SONKWO_INTERVAL_MIN:-60}
+      ITAD_INTERVAL_MIN: ${ITAD_INTERVAL_MIN:-1440}
+      GOG_ENABLED: ${GOG_ENABLED:-1}
+      HUMBLE_ENABLED: ${HUMBLE_ENABLED:-1}
+      GOG_INTERVAL_MIN: ${GOG_INTERVAL_MIN:-720}
+      GOG_REGIONS: ${GOG_REGIONS:-cn}
+      HUMBLE_INTERVAL_MIN: ${HUMBLE_INTERVAL_MIN:-720}
+      DISCOVER_ENABLED: ${DISCOVER_ENABLED:-0}
+      DISCOVER_INTERVAL_MIN: ${DISCOVER_INTERVAL_MIN:-720}
+      CHART_ON_SYNC: ${CHART_ON_SYNC:-1}
+      OUT_DIR: ${OUT_DIR:-out}
+      ALERTS_ENABLED: ${ALERTS_ENABLED:-1}
+      ALERTS_INTERVAL_MIN: ${ALERTS_INTERVAL_MIN:-360}
+      STEAM_PROXY: ${STEAM_PROXY:-}
+      STEAM_API_KEY: ${STEAM_API_KEY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-}
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-1}
+      RATE_LIMIT_PAGE_MAX: ${RATE_LIMIT_PAGE_MAX:-120}
+      RATE_LIMIT_API_MAX: ${RATE_LIMIT_API_MAX:-150}
+      RATE_LIMIT_ASSET_MAX: ${RATE_LIMIT_ASSET_MAX:-300}
+      RATE_LIMIT_WINDOW_SEC: ${RATE_LIMIT_WINDOW_SEC:-60}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      WECOM_WEBHOOK_URL: ${WECOM_WEBHOOK_URL:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SECURE: ${SMTP_SECURE:-1}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      CIRCUIT_THRESHOLD: ${CIRCUIT_THRESHOLD:-3}
+      CIRCUIT_COOLDOWN_MIN: ${CIRCUIT_COOLDOWN_MIN:-360}
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
 
 volumes:
   pgdata:

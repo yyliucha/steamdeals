@@ -1,0 +1,34 @@
+#!/bin/bash
+# mock docker：只支持 scripts/scheduler-service.sh 用到的子命令；容器状态记在 $MOCK_STATE_DIR。
+set -u
+STATE="${MOCK_STATE_DIR:-/tmp/mock-state}"
+mkdir -p "$STATE"
+
+case "$1" in
+  compose)
+    shift
+    # 跳过 -f <file> 参数（真实调用形如 docker compose -f compose.mock.yaml ps -q scheduler）
+    while [ "${1:-}" = "-f" ]; do shift 2; done
+    case "$1" in
+      ps)
+        if [ "${2:-}" = "-q" ]; then
+          case "${3:-}" in
+            app) [ -n "${MOCK_APP_ID:-}" ] && echo "${MOCK_APP_ID}" || true ;;
+            scheduler) [ -f "$STATE/scheduler-id" ] && cat "$STATE/scheduler-id" || true ;;
+            *) true ;;
+          esac
+        else
+          echo "NAME          STATUS"
+          [ -f "$STATE/scheduler-id" ] && echo "scheduler      Up"
+        fi
+        ;;
+      up) echo "mock-scheduler-$$" > "$STATE/scheduler-id"; exit 0 ;;
+      stop) exit 0 ;;
+      rm) rm -f "$STATE/scheduler-id"; exit 0 ;;
+      *) exit 0 ;;
+    esac
+    ;;
+  inspect) echo "${MOCK_APP_CMD:-[serve]}" ;;
+  logs) if [ "${MOCK_HAS_START:-1}" = "1" ]; then echo "2026-11-23T04:00:01Z INFO scheduler.start jobs=1"; fi ;;
+esac
+exit 0
