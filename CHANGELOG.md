@@ -1,3 +1,13 @@
+## [2.28.4] - 2026-11-23
+
+B4/cli 拆分回归修复（backfill 任务每次调度失败）——🐞 缺陷修复，无新功能面 → 小版本，2.28.3 → 2.28.4 连续递增。
+
+### 修复
+
+- **backfill `q is not a function` 回归（EX）**：B4/cli 拆分后 `src/cli/ops.js` 把 **store 对象**传给
+  `db.countBackfillCandidates(q)`，而该函数按 q 函数调用 → 每次调度 `TypeError: q is not a function`（生产
+  日志 `/app/src/store/pg.js` + 失败邮件）。修复：ops.js 显式传 `s.query`；pg.js 兼容 `q 函数 / store({query})`
+  两种调用；`test/backfill-throughput.test.js` 增加 store 调用回归用例（反向自检）。
 # 变更日志
 
 ## [2.28.3] - 2026-11-23

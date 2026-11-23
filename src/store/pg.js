@@ -3037,7 +3037,10 @@ export async function listBackfillCandidates(q, { limit }) {
 
 /** 回填候选总数（BL-2 进度文件 candidateTotal / 观测口径）。 */
 export async function countBackfillCandidates(q, opts = {}) {
-  const r = await q(`select count(*)::int as n from games g where ${backfillCandidateWhere(opts)}`);
+  // v2.28.4：兼容「q 函数」与「store 对象（{ query }）」两种调用——B4 拆分后 ops.js 传的是 store，
+  // 旧实现直接 q(...) 会 TypeError: q is not a function（backfill 任务每次调度都失败）。
+  const query = typeof q === 'function' ? q : (sql, p) => q.query(sql, p);
+  const r = await query(`select count(*)::int as n from games g where ${backfillCandidateWhere(opts)}`);
   return Number(r.rows[0]?.n ?? 0);
 }
 

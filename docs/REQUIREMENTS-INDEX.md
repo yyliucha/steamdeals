@@ -150,6 +150,7 @@
 | **EU** | 🐞 缺陷：定时任务重启韧性（中断标记不误报 + steam-prices 分批断点 + 发版避让） | [SCHEDULER-RESTART-RESILIENCE.md](SCHEDULER-RESTART-RESILIENCE.md) | 已发布 v2.28.3（2026-11-23，3c6d752；QA-EU 第 1 轮 ✅） | ✅ 本轮已给 |
 | **EV** | ⚙️ 调整：调度器独立进程化 + 一键安装/删除（app=serve、scheduler 独立容器、scheduler-service.sh） | [SCHEDULER-AS-SERVICE.md](SCHEDULER-AS-SERVICE.md) | 已发布 v2.28.3（2026-11-23，8dcd41a；QA-EV 第 1 轮 ✅） | ✅ 本轮已给 |
 | **EW** | ⚙️ 调整：前台愿望单显示 Steam 账号列（只读；多账号 +N；无来源显示本站添加） | [WISHLIST-STEAM-ACCOUNT.md](WISHLIST-STEAM-ACCOUNT.md) | 质检通过（2026-11-23，0fcde48 + 9a65cc2；QA docs/QA-EW.md） | ✅ demo 已给 |
+| **EX** | 🐞 缺陷：v2.28.3 backfill 回归（countBackfillCandidates 传 store → q is not a function；随 v2.28.4） | CHANGELOG 2.28.4 | 已实现待发版（2026-11-23 P0） | ✅ |
 | **DX** | 🧹 技术债：列表/站点接口性能优化（count 合并 + 短 TTL 缓存 + /api/site 缓存 + 压测） | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DX | 已发布 v2.27.8（2026-11-20，实现 090af4c；QA docs/QA-DX.md 第 1 轮 ✅ 6/0/0/1） | ✅ 本轮已给 |
 | **EN** | CSP 安全加固（Report-Only → 正式；三件套唯一未落地项） | [ROADMAP.md](ROADMAP.md)「安全排查结论」#2 | 待开发 | ✅ 本轮已给 |
 | **EO** | 首页工具栏 1100–1300px 挤成一行（先排查是否仍复现） | [ROADMAP.md](ROADMAP.md)「体验与性能优化」#1 | 待排查 | ✅ 本轮已给 |

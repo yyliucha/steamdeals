@@ -889,3 +889,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 - 已知事项：`web/*.html` 旧回退页（无 Vue 构建产物时才使用）的 Steam 区块未同步新接口，生产走 Vue 构建不受影响。
 
 
+
+### v2.28.4（2026-11-23）缺陷修复：backfill 回归
+- 修复：B4/cli 拆分后 backfill 任务 `q is not a function`（ops.js 传 store 而非 q；pg.js 已兼容两种调用）。
+- 部署：`docker compose pull && docker compose up -d`；镜像更新后 scheduler 自动重启（排空保护）。
+- 验证：后台「运行与同步」backfill 任务成功（无失败邮件）。

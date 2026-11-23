@@ -20,7 +20,7 @@
 
 | 类型 | 数量 | 编号 |
 |---|---|---|
-| 🐞 缺陷 | 3 | EO、ER、EU |
+| 🐞 缺陷 | 4 | EO、ER、EU、EX |
 | ✨ 功能 | 1 | EQ |
 | ⚙️ 调整 | 3 | EP / EV / EW |
 | 🧹 技术债 | 1 | EN |
@@ -154,3 +154,19 @@
 4. 只读约束：不改加入/移除/同步逻辑；**不写回 Steam**；**游客不显示账号**；A/B 双用户越权不可见；
 5. 视觉参考：`docs/design/my-wishlist-steam-account-demo.html`（桌面表格 + 移动卡片三态）；
 6. 验收补充：两层数据同时命中时卡片显示正确；既有「愿望单」筛选（两层合并）不受影响。
+
+## EX. 已实现待发版（🐞 缺陷）：v2.28.3 backfill 回归——countBackfillCandidates 传参错误
+
+**类型：** 🐞 缺陷（B4/cli 拆分回归）
+**状态：** 已实现待发版（2026-11-23，随 v2.28.4）
+**优先级：** P0 —— 生产 backfill 任务每次调度失败（q is not a function）+ 失败邮件
+**依赖：** 无
+**解锁：** 无
+**规格**：CHANGELOG 2.28.4 修复节
+
+- **根因**：B4/cli 拆分后 `src/cli/ops.js` 把 store 对象传给 `db.countBackfillCandidates(q)`，
+  该函数按 q 函数调用 → `TypeError: q is not a function`（生产 scheduler 日志 + 失败邮件）。
+- **修复**：ops.js 显式传 `s.query`；`pg.js` 兼容 `q 函数 / store({query})` 两种调用；
+  `test/backfill-throughput.test.js` 增加 store 调用回归用例（反向自检）。
+- **验收**：backfill-throughput/backfill 测试 13/13 通过；`npm run scan` 通过；api.test 通过；
+  线上更新 v2.28.4 后 backfill 任务成功。

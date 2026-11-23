@@ -52,6 +52,10 @@ test('BL-1：候选去噪——四态排除、no_price 保留、正常缺价入�
     assert.equal(total, 3, '候选计数与列表一致');
     const totalNoCooldown = await db.countBackfillCandidates(q, { includeCooldown: false, includeSkip: false });
     assert.equal(totalNoCooldown, 3, '无冷却口径同样 3');
+    // v2.28.4 回归：兼容 store 对象（{ query }）调用——B4 拆分后 ops.js 传的是 store，
+    // 旧实现直接 q(...) 会 TypeError（backfill 任务每次调度都失败）。反向自检：去掉兼容即红。
+    const totalViaStore = await db.countBackfillCandidates({ query: q });
+    assert.equal(totalViaStore, 3, '兼容 store 对象（{query}）调用');
   } finally {
     await store.close();
   }

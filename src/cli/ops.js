@@ -477,8 +477,9 @@ export function createCliOps(ctx) {
     let partial = false;
     let count429 = 0;
     let last429At = readSteam429Info()?.at ?? null;
-    // 拆分前这里原样传 store（pg.js 的 countBackfillCandidates 内部兼容两种调用：q 或 store）
-    const candidateTotal = await withStore((s) => db.countBackfillCandidates(s));
+    // v2.28.4 回归修复：countBackfillCandidates 期望 q 函数，这里显式传 store.query
+    // （旧代码传整个 store 对象 → TypeError: q is not a function，backfill 每次调度都失败）。
+    const candidateTotal = await withStore((s) => db.countBackfillCandidates(s.query));
     const writeProgress = (result) =>
       writeBackfillProgress({
         startedAt: startedIso,
