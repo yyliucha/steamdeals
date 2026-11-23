@@ -151,7 +151,9 @@ test('前端（静态）：去 Steam 多选弹窗/账号展示，加入直写本
   const home = read('../frontend/src/pages/Home.vue');
   assert.doesNotMatch(home, /wishlistPick|wishlistRemovePick/, '不再有愿望单多选弹窗');
   assert.doesNotMatch(home, /openWishlistRemove|confirmWishlist/, '不再有 Steam 账号选择流程');
-  assert.doesNotMatch(home, /wishlistByText|愿望单账号/, '卡片/详情不再拼接 Steam 账号名');
+  // EW（docs/WISHLIST-STEAM-ACCOUNT.md）：恢复「只读展示」Steam 账号（wishlistByText 渲染 wishlisted_by），
+  // 但仍禁止账号选择/多选/推送——下方的直写本站、空 body 删除断言继续锁住只读口径。
+  assert.match(home, /wishlistByText/, 'EW：卡片/详情只读展示 Steam 账号名');
   assert.doesNotMatch(home, /steamAccounts/, '前台不再加载 Steam 账号列表');
   assert.match(home, /async function addWishlist\(game\)/, '加入只接收游戏');
   assert.match(home, /await request\('\/api\/wishlist',\{method:'POST'/, '直接 POST 本站');

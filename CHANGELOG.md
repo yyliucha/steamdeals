@@ -1,3 +1,13 @@
+## [2.28.5] - 2026-11-23
+
+v2.28.4 构建未发布（CI 红：EW 旧静态断言过期）→ 修正后连发；含 backfill 回归修复。
+
+### 修复
+
+- **EW 旧静态断言更新（test/wishlist.test.js）**：v2.9.0 时代「卡片/详情不再拼接 Steam 账号名」断言与 EW
+  「恢复只读展示 wishlisted_by」冲突 → 改为 `assert.match(home, /wishlistByText/)`（允许只读展示），
+  仍保留「禁止账号选择/多选/推送」的断言（直写本站、空 body 删除）。
+- **backfill 回归修复**（同 v2.28.4 内容）：countBackfillCandidates 兼容 store 调用 + ops.js 传 s.query。
 ## [2.28.4] - 2026-11-23
 
 B4/cli 拆分回归修复（backfill 任务每次调度失败）——🐞 缺陷修复，无新功能面 → 小版本，2.28.3 → 2.28.4 连续递增。
