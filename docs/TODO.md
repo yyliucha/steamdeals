@@ -22,7 +22,7 @@
 |---|---|---|
 | 🐞 缺陷 | 4 | EO、ER、EU、EX |
 | ✨ 功能 | 1 | EQ |
-| ⚙️ 调整 | 3 | EP / EV / EW |
+| ⚙️ 调整 | 4 | EP / EV / EW / EY |
 | 🧹 技术债 | 1 | EN |
 | 🧪 测试基建 | 0 | — |
 | 📝 文档流程 | 0 | — |
@@ -117,3 +117,19 @@
 - **动作**：部署侧对模糊搜索查询执行 EXPLAIN，确认走索引而非全表扫；结果回填本条目
   （命中 → 移 DONE；未命中 → 转缺陷条目）。
 - **注意**：需服务器环境（本机无生产库），由部署/运维阶段执行，不改代码。
+
+## EY. 待开发（⚙️ 调整）：我的愿望单合并 Steam 愿望单展示（Steam 行只读）
+
+**类型：** ⚙️ 调整（前台愿望单：两层合并展示，操作仅限本站）
+**状态：** 待开发（2026-11-23 所有者要求）
+**优先级：** P2
+**依赖：** EW（账号列已发布）
+**解锁：** 无
+**规格**：[MY-WISHLIST-MERGED.md](MY-WISHLIST-MERGED.md)
+
+- **需求**：「我的愿望单」= 本站（user_wishlist）+ Steam 导入（steam_wishlist）合并展示；
+  **Steam 行只读无操作按钮**；同一游戏两层都有 → 合并一行（来源「本站 + Steam」），移除只删本站；
+  账号列沿用 EW；分页/搜索覆盖两层。
+- **实现**：`GET /api/me/wishlist?include=steam`（UNION + 按 game_id 合并，返回 sources/site_wishlist_id/steam_accounts）；
+  UserSections.vue 合并渲染 + 操作条件（仅 site）。
+- **验收**：见规格 §4（空/仅 Steam/两层都有/分页搜索/越权；`npm test`（分段）+ `frontend:build` + `scan` 全绿）。
