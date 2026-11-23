@@ -38,6 +38,7 @@ import { runPool } from '../pool.js';
 import { runSteamStatusRound } from '../steam-status.js';
 import { yuanAmount } from '../format.js';
 import * as cliSyncRepo from '../store/cli-sync-repository.js';
+import { readResumeState, validResumeAppids, recordResume, clearResume, writeResumeState } from '../sync-resume.js';
 
 // 统一成 { code, name, kind, ..., searchOffer } 的形状，供 syncByTitle 复用
 const gog = { ...gogDescriptor, searchOffer: gogSearch, fetchById: gogFetchById };
@@ -87,6 +88,9 @@ export function createCliSync(ctx) {
   /** 每日刷新已经有 Steam 报价的游戏，避免对全目录的免费/未售游戏重复请求。 */
   async function cmdSyncSteamPrices() {
     const limit = Math.max(1, Math.min(Number(flag('limit', '200000')) || 200000, 200000));
+    // EU-2（docs/SCHEDULER-RESTART-RESILIENCE.md §EU-2）：--batch 每轮最多处理一批（默认 5000 ≈ 4–5 分钟）；
+    // 批内每 chunk 落断点（data/scheduler-resume.json），被重启打断后下一轮从断点续跑、不重跑已处理部分。
+    const batch = Math.max(1, Math.min(Number(flag('batch', '5000')) || 5000, 200000));
     // F 批（docs/TODO.md F 段）：热点优先 + 冷门降频。
     // 热点 = 近 90 天有访问 / 有用户标记 / 热度达标 → 每天刷；冷门 = 最近价格快照超过 N 天未更新才刷。
     const hotHeatMin = Number(process.env.STEAM_PRICES_HOT_HEAT_MIN ?? '1');
@@ -100,35 +104,85 @@ export function createCliSync(ctx) {
       return;
     }
 
-    logger.info('sync.start', { platform: 'steam', mode: 'prices', appids: appids.length, regions: regionContext() });
+    // 断点续跑：上一轮被中断前已处理的 appid 本轮排除（断点超 36h 自动作废）
+    const resumeState = readResumeState();
+    const doneAppids = new Set(validResumeAppids(resumeState, { mode: 'steam-prices' }));
+    const todo = appids.filter((id) => !doneAppids.has(id)).slice(0, batch);
+    if (!todo.length) {
+      // 断点里已把本轮候选全部处理完（正常收尾路径，理论上不可达；防御性清断点）
+      writeResumeState(clearResume(resumeState, 'steam-prices'));
+      logger.info('sync.steam_prices_empty', { hint: '断点已覆盖全部候选，本轮无新报价' });
+      console.log('没有需要刷新的 Steam 报价（断点已覆盖全部候选）。');
+      return;
+    }
+    const skippedByResume = appids.length - todo.length;
+
+    logger.info('sync.start', {
+      platform: 'steam',
+      mode: 'prices',
+      appids: todo.length,
+      batch,
+      skippedByResume,
+      regions: regionContext(),
+    });
     const runId_ = await withStore((store) => db.startFetchRun((sql, p) => store.query(sql, p), steam.code));
+    const totals = { requests: 0, offers: 0, skipped: 0, bytes: 0 };
+    const ingested = { inserted: 0, updated: 0, snapshots: 0, unchanged: 0 };
+    let processed = 0;
     try {
-      const result = await syncPrices({
-        appids,
-        logger,
-        region: baseRegion(),
-        batchSize: 30,
-        rateLimitMs: 1600,
-        log: (m) => logger.debug('sync.progress', { msg: m }),
-      });
-      const stats = await withStore((store) => ingestOffers(store, { platform: steam, offers: result.offers, logger }));
+      // 每 chunk 最多 1000 个 appid：一次 syncPrices + 入库，完成后立即落断点——中断损失 ≤1 chunk
+      for (let i = 0; i < todo.length; i += 1000) {
+        const chunk = todo.slice(i, i + 1000);
+        const result = await syncPrices({
+          appids: chunk,
+          logger,
+          region: baseRegion(),
+          batchSize: 30,
+          rateLimitMs: 1600,
+          log: (m) => logger.debug('sync.progress', { msg: m }),
+        });
+        const stats = await withStore((store) => ingestOffers(store, { platform: steam, offers: result.offers, logger }));
+        for (const key of Object.keys(ingested)) ingested[key] += stats[key] ?? 0;
+        processed += chunk.length;
+        totals.requests += result.requests;
+        totals.offers += result.offers.length;
+        totals.skipped += result.skipped.length;
+        totals.bytes += result.bytes;
+        const done = todo.slice(0, processed);
+        writeResumeState(recordResume(resumeState, { mode: 'steam-prices', appids: [...doneAppids, ...done] }));
+        logger.info('sync.progress_batch', {
+          platform: steam.code,
+          mode: 'prices',
+          processed,
+          total: todo.length,
+          offers: totals.offers,
+        });
+      }
+      // 本轮正常跑完：清断点（下一轮由 last_snap 收敛性自然推进，不再需要排除）
+      writeResumeState(clearResume(resumeState, 'steam-prices'));
       await withStore((store) =>
         db.finishFetchRun((sql, p) => store.query(sql, p), runId_, {
-          requests: result.requests,
-          total: appids.length,
-          ok: result.offers.length,
-          skipped: result.skipped.length,
-          failed: appids.length - result.offers.length - result.skipped.length,
+          requests: totals.requests,
+          total: todo.length,
+          ok: totals.offers,
+          skipped: totals.skipped,
+          failed: todo.length - totals.offers - totals.skipped,
           status: 'ok',
-          note: `${(result.bytes / 1024).toFixed(0)}KB`,
+          note: `${(totals.bytes / 1024).toFixed(0)}KB`,
         }),
       );
-      logger.info('sync.done', { platform: steam.code, mode: 'prices', ...stats });
+      syncNote.note = skippedByResume
+        ? `本轮处理 ${processed} 条报价（断点续跑跳过 ${skippedByResume} 条已处理）`
+        : `本轮处理 ${processed} 条报价`;
+      logger.info('sync.done', { platform: steam.code, mode: 'prices', ...totals, ...ingested, processed });
     } catch (err) {
+      // 中断/失败：断点保留在上一 chunk 完成点，下一轮续跑
       await withStore((store) =>
         db.finishFetchRun((sql, p) => store.query(sql, p), runId_, {
-          total: appids.length,
-          failed: appids.length,
+          total: todo.length,
+          ok: totals.offers,
+          skipped: totals.skipped,
+          failed: todo.length - totals.offers - totals.skipped,
           status: 'failed',
           note: String(err.message).slice(0, 200),
         }),

@@ -145,13 +145,13 @@
           <el-table :data="visibleRuns" v-loading="loading.run" stripe :row-class-name="syncRunRowClass">
             <el-table-column label="时间" min-width="155"><template #default="{ row }">{{ dateTime(row.started_at) }}</template></el-table-column>
             <el-table-column label="模式" width="120"><template #default="{ row }"><el-tag size="small">{{ syncModeLabel(row.mode) }}</el-tag></template></el-table-column>
-            <el-table-column label="状态" width="95"><template #default="{ row }"><el-tag :type="row.status === 'ok' ? 'success' : row.status === 'running' ? 'primary' : 'danger'" size="small">{{ { ok: '成功', running: '运行中', failed: '失败', stopped: '已停止' }[row.status] || row.status || '—' }}</el-tag></template></el-table-column>
+            <el-table-column label="状态" width="105"><template #default="{ row }"><el-tag :type="runStatusTag(row.status)" size="small">{{ { ok: '成功', running: '运行中', failed: '失败', stopped: '已停止', interrupted: '被重启中断' }[row.status] || row.status || '—' }}</el-tag></template></el-table-column>
             <el-table-column label="结果" min-width="200"><template #default="{ row }">{{ runResult(row) }}</template></el-table-column>
             <el-table-column label="耗时" width="100"><template #default="{ row }">{{ syncDuration(row) }}</template></el-table-column>
             <el-table-column label="备注" min-width="220" show-overflow-tooltip><template #default="{ row }">{{ row.fetch_note || String(row.output || '').split('\n').filter(Boolean).slice(-1)[0] || '—' }}</template></el-table-column>
           </el-table>
           </template>
-          <div v-else class="game-card-list"><div v-for="r in visibleRuns" :key="r.id" class="admin-card"><div class="admin-card-main"><strong>{{ syncModeLabel(r.mode) }}</strong><small class="muted">{{ dateTime(r.started_at) }} · {{ syncDuration(r) }}</small><small class="muted">{{ runResult(r) }}</small><p class="admin-card-tags"><el-tag :type="r.status === 'ok' ? 'success' : r.status === 'running' ? 'primary' : 'danger'" size="small">{{ { ok: '成功', running: '运行中', failed: '失败', stopped: '已停止' }[r.status] || r.status || '—' }}</el-tag></p></div></div><el-empty v-if="!syncRuns.length" description="暂无同步记录"/></div>
+          <div v-else class="game-card-list"><div v-for="r in visibleRuns" :key="r.id" class="admin-card"><div class="admin-card-main"><strong>{{ syncModeLabel(r.mode) }}</strong><small class="muted">{{ dateTime(r.started_at) }} · {{ syncDuration(r) }}</small><small class="muted">{{ runResult(r) }}</small><p class="admin-card-tags"><el-tag :type="runStatusTag(r.status)" size="small">{{ { ok: '成功', running: '运行中', failed: '失败', stopped: '已停止', interrupted: '被重启中断' }[r.status] || r.status || '—' }}</el-tag></p></div></div><el-empty v-if="!syncRuns.length" description="暂无同步记录"/></div>
         </div>
 
         <!-- 日志面板：固定高度内部滚动（sticky 筛选条） -->
@@ -455,6 +455,7 @@ function jobState(j) {
   if (j.running) return 'idle';
   if (j.openUntil) return 'failed';
   if (j.lastResult === 'ok') return 'ok';
+  if (j.lastResult === 'interrupted') return 'interrupted';
   if (j.lastResult === 'failed') return 'failed';
   return 'idle';
 }
@@ -462,8 +463,16 @@ function jobStateText(j) {
   if (j.running) return '运行中';
   if (j.openUntil) return '熔断至 ' + dateTime(j.openUntil);
   if (j.lastResult === 'ok') return '成功';
+  if (j.lastResult === 'interrupted') return '被重启中断';
   if (j.lastResult === 'failed') return '失败';
   return j.lastRunAt ? '待运行' : '未运行';
+}
+// EU-1：sync_runs 状态 → el-tag 类型（interrupted 用 info 而不是 danger，不吓人）
+function runStatusTag(status) {
+  if (status === 'ok') return 'success';
+  if (status === 'running') return 'primary';
+  if (status === 'interrupted') return 'info';
+  return 'danger';
 }
 // CO-1/A5：chip 悬停提示——失败时展示完整失败原因
 function jobFailTitle(j) {
@@ -584,6 +593,7 @@ onBeforeUnmount(() => {
 .health-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--fg-subtle);flex:none}
 .health-chip.ok .dot{background:var(--success)}
 .health-chip.failed .dot{background:var(--danger)}
+.health-chip.interrupted .dot{background:var(--fg-subtle);outline:1px solid var(--border-strong,var(--border))}
 .health-chip .chip-state{color:var(--fg-muted);font-size:11px}
 .health-chip .chip-next{color:var(--fg-subtle);font-size:11px}
 /* CO-1/A5：失败原因单行截断，悬停 title 看全文 */

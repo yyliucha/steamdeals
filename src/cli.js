@@ -23,6 +23,7 @@ import { createCliSync } from './cli/sync.js';
 import { createCliReport } from './cli/report.js';
 import { createCliOps } from './cli/ops.js';
 import * as cliSyncRepo from './store/cli-sync-repository.js';
+import { installSigtermHandler } from './cli-interrupt.js';
 
 const args = process.argv.slice(2);
 const command = args[0] ?? 'help';
@@ -744,8 +745,16 @@ async function cmdAlignSnapshot() {
   });
 }
 
+/**
+ * EU-1（docs/SCHEDULER-RESTART-RESILIENCE.md）：当前在跑的同步记录（SIGTERM 收尾用）。
+ * 服务停机时父进程先 SIGTERM 子进程——这里把 sync_runs 记为 interrupted（含已完成进度）
+ * 再以 143 退出，父调度器按「被重启中断」收尾（不告警、不熔断、下轮断点续跑）。
+ */
+let activeSyncRun = null;
+
 async function runSyncTracked(mode, fn, { fetchRun = true } = {}) {
   const run = await beginSyncRunRecord(mode);
+  activeSyncRun = run;
   const fetchRunId = fetchRun ? await beginFetchRunRecord(mode) : null;
   try {
     await fn();
@@ -755,6 +764,8 @@ async function runSyncTracked(mode, fn, { fetchRun = true } = {}) {
     await finishSyncRunRecord(run, 'failed', String(err.message).slice(0, 500));
     await finishFetchRunRecord(fetchRunId, { status: 'failed', note: String(err.message).slice(0, 300) });
     throw err;
+  } finally {
+    activeSyncRun = null;
   }
 }
 
@@ -855,6 +866,15 @@ async function main() {
 
 process.on('unhandledRejection', (err) => logger.fatal('process.unhandled_rejection', { err: serializeError(err) }));
 process.on('uncaughtException', (err) => logger.fatal('process.uncaught_exception', { err: serializeError(err) }));
+
+// EU-1（docs/SCHEDULER-RESTART-RESILIENCE.md）：SIGTERM 收尾——把 sync_runs 记为 interrupted 后
+// 以 143（128+15）退出。控制台手动触发的任务（SYNC_RUN_ID 由 web 进程建行，own=false）不写库，
+// 由 web 端按「已停止（cancelled）」收尾，避免互相覆盖。
+installSigtermHandler({
+  getRun: () => activeSyncRun,
+  finish: (run) => finishSyncRunRecord(run, 'interrupted', '进程收到 SIGTERM（服务重启/停止），任务被中断'),
+  logger,
+});
 
 main()
   .then(() => logger.debug('process.exit', { code: 0 }))

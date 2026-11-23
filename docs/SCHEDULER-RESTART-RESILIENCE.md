@@ -1,4 +1,4 @@
-# 定时任务重启韧性（EU，待开发，2026-11-23）
+# 定时任务重启韧性（EU，已实现待发版，2026-11-23）
 
 > 现象（2026-11-23 生产）：`steam-prices` 定时任务被服务重启打断 → `exit -1` → 判失败并发邮件
 > （`Cannot use a pool after calling end on the pool` 为次生噪音）。所有者要求：

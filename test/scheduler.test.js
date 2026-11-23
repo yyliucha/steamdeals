@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, theoreticalRunSeconds, jobRuntimeEstimates, registerCircuitReset, resetCircuit, applyRetry, syncRunModeFor, jobFailureError, jobFailedReason } from '../src/scheduler.js';
+import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, theoreticalRunSeconds, jobRuntimeEstimates, registerCircuitReset, resetCircuit, applyRetry, syncRunModeFor, jobFailureError, jobFailedReason, outcomeFor } from '../src/scheduler.js';
 
 test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），默认 3，非法回落默认', () => {
   assert.equal(lightConcurrency({}), 3);
@@ -99,7 +99,7 @@ test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清�
   assert.deepEqual(args('images'), ['images', 'pull', '--limit', '500', '--sleep', '300'], 'BC 批：每轮补图默认 500');
   assert.deepEqual(args('images-backfill'), ['images', 'backfill', '--limit', '100', '--sleep', '1200'], 'EC 批：缺图回填默认每轮 100 款、限速 1.2s/请求');
   assert.ok(!jobsFromEnv({ IMAGES_BACKFILL_ENABLED: '0' }).some((j) => j.name === 'images-backfill'), 'EC 批：IMAGES_BACKFILL_ENABLED=0 可关闭');
-  assert.deepEqual(args('steam-prices'), ['sync', 'steam-prices', '--limit', '200000']);
+  assert.deepEqual(args('steam-prices'), ['sync', 'steam-prices', '--limit', '200000', '--batch', '5000'], 'EU-2：价格刷新默认每轮分批 5000（约 4–5 分钟，批间落断点）');
   assert.deepEqual(args('heat'), ['heat', '--limit', '20000', '--sleep', '1700']);
   assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '6000', '--rate', '1500']);
   assert.deepEqual(args('rename'), ['rename', '--limit', '200000', '--batch', '100', '--sleep', '1500']);
@@ -646,4 +646,64 @@ test('CH steam-discovery：默认 100 页/回退 100/1440 分钟，归入 STEAM_
   assert.match(job.args.join(' '), /--fallback 100/, '默认回退 100');
   assert.equal(job.intervalMin, 1440, '默认每天一轮');
   assert.ok(STEAM_HEAVY.has('steam-discovery'), '与 Steam 重任务互斥串行');
+});
+
+// ============================================================ EU 批（docs/SCHEDULER-RESTART-RESILIENCE.md）
+// EU-1 中断标记：停机时非零退出 = interrupted（不记 failed / 不发邮件 / 不进熔断）；
+// EU-2 分批：steam-prices --batch 默认 5000 可覆盖；EU-4 停机跳过失败原因查询。
+// 反向自检口径：删掉 completeJob 的「stopping && code !== 0」分支 → outcomeFor 断言红；
+// 删掉「!stopping」跳过条件 → EU-4 静态锁红；删前端「被重启中断」文案 → 前端静态锁红。
+
+test('EU-1：outcomeFor——停机中非零退出判 interrupted（不失败/不告警），停机瞬间成功仍算 ok', () => {
+  assert.deepEqual(outcomeFor(143, null, true), { result: 'interrupted', error: '服务重启，任务被中断' }, 'SIGTERM 退出码 143 + 停机中 → interrupted');
+  assert.deepEqual(outcomeFor(-1, null, true), { result: 'interrupted', error: '服务重启，任务被中断' }, '被 SIGKILL/信号杀 → interrupted');
+  assert.deepEqual(outcomeFor(0, null, true), { result: 'ok', error: null }, '停机瞬间恰好正常退出不算中断');
+  assert.deepEqual(outcomeFor(0, null, false), { result: 'ok', error: null }, '非停机成功照旧 ok');
+  assert.deepEqual(outcomeFor(75, null, false), { result: 'partial', error: 'HTTP 429/403 提前收尾（进度已保留，1 小时后重排）' }, '75 软退出照旧 partial');
+  assert.deepEqual(outcomeFor(1, 'data/skus.json 为空', false), { result: 'failed', error: 'data/skus.json 为空' }, '非停机失败照旧 failed（带真实原因）');
+  assert.equal(outcomeFor(1, null, true).result, 'interrupted', '停机中即使有失败原因也不判 failed');
+});
+
+test('EU-2：steam-prices 分批参数——默认 --batch 5000，STEAM_PRICE_BATCH 可覆盖', () => {
+  assert.deepEqual(
+    jobsFromEnv({}).find((j) => j.name === 'steam-prices').args,
+    ['sync', 'steam-prices', '--limit', '200000', '--batch', '5000'],
+    '默认 limit 200000 + batch 5000（每轮只处理一批，批间断点）',
+  );
+  assert.deepEqual(
+    jobsFromEnv({ STEAM_PRICE_BATCH: '2000', STEAM_PRICE_LIMIT: '100000' }).find((j) => j.name === 'steam-prices').args,
+    ['sync', 'steam-prices', '--limit', '100000', '--batch', '2000'],
+    'limit/batch 都可环境变量覆盖',
+  );
+});
+
+test('EU 批静态锁：scheduler 停机语义 + 前端「被重启中断」显示（删任一即红）', () => {
+  const sched = readFileSync(new URL('../src/scheduler.js', import.meta.url), 'utf8');
+  // EU-1：interrupted 分支存在且不触发失败邮件/熔断
+  assert.match(sched, /outcomeFor\(code, runReason, stopping\)/, 'completeJob 用 outcomeFor 判定（stopping 透传）');
+  assert.match(sched, /outcome\.result === 'interrupted'/, 'interrupted 分支存在');
+  assert.match(sched, /if \(outcome\.result === 'interrupted'\) return;/, 'interrupted 不进熔断计数（提前返回）');
+  // EU-4：停机时跳过失败原因查询（消除 Cannot use a pool 噪音）
+  assert.match(sched, /if \(!stopping && code !== 0 && code !== 75\)/, '停机中不查 lastFailedSyncRun');
+  // EU-2：分批参数进任务表
+  assert.match(sched, /STEAM_PRICE_BATCH/, 'steam-prices 分批可配置');
+  // 前端三处显示「被重启中断」（任务卡 / 健康条 / 同步记录）
+  const adminModules = readFileSync(new URL('../frontend/src/pages/AdminModules.vue', import.meta.url), 'utf8');
+  assert.match(adminModules, /lastResult==='interrupted'/, '任务表「上次结果」列支持 interrupted');
+  assert.match(adminModules, /被重启中断/, '任务表显示「被重启中断」');
+  const adminLogs = readFileSync(new URL('../frontend/src/pages/AdminLogs.vue', import.meta.url), 'utf8');
+  assert.match(adminLogs, /j\.lastResult === 'interrupted'/, '健康条 jobState 支持 interrupted');
+  assert.match(adminLogs, /interrupted: '被重启中断'/, '同步记录 status 映射支持 interrupted');
+  // CLI 侧：SIGTERM 收尾接线（工厂 + 真实收尾函数；真信号行为在 cli-interrupt.test.js）
+  const cli = readFileSync(new URL('../src/cli.js', import.meta.url), 'utf8');
+  assert.match(cli, /installSigtermHandler\(\{/, 'CLI 用 cli-interrupt 工厂安装 SIGTERM 收尾');
+  assert.match(cli, /getRun: \(\) => activeSyncRun/, '收尾目标是在跑的同步记录 activeSyncRun');
+  assert.match(cli, /'interrupted'/, 'SIGTERM 把 sync_runs 记为 interrupted');
+  assert.match(cli, /installSigtermHandler/, '退出码 143 由工厂保证（见 src/cli-interrupt.js）');
+  const cliInterrupt = readFileSync(new URL('../src/cli-interrupt.js', import.meta.url), 'utf8');
+  assert.match(cliInterrupt, /process\.once\('SIGTERM'/, '工厂注册 SIGTERM');
+  assert.match(cliInterrupt, /process\.exit\(exitCode\)/, '收尾后按 exitCode（143）退出');
+  // 数据层：重启残留 running 记录标 interrupted 而不是 failed
+  const pg = readFileSync(new URL('../src/store/pg.js', import.meta.url), 'utf8');
+  assert.match(pg, /status = 'interrupted', finished_at = now\(\)/, 'markStaleSyncRuns 标 interrupted');
 });

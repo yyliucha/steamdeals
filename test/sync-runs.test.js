@@ -30,12 +30,12 @@ test('同步记录：插入 → 完成 → 列表 → 重启中断标记', async
     assert.ok(list[0].finished_at, '结束时间要写入');
     assert.equal(await db.runningSyncRun(q), null, '完成后不再是 running');
 
-    // 服务重启残留：running 记录被标成失败，避免同步按钮永远禁用
+    // 服务重启残留：running 记录被标成「被重启中断」（EU-1，不误报失败），避免同步按钮永远禁用
     const r2 = await db.insertSyncRun(q, { mode: 'catalog' });
     assert.equal((await db.runningSyncRun(q)).id, r2.id);
     assert.equal(await db.markStaleSyncRuns(q), 1);
     const row = (await q('select status, output from sync_runs where id = $1', [r2.id])).rows[0];
-    assert.equal(row.status, 'failed');
+    assert.equal(row.status, 'interrupted', 'EU-1：重启残留标 interrupted 而不是 failed');
     assert.match(row.output, /服务重启/);
 
     // CO-1/A5：任务失败原因——最近一条 failed 记录的输出；成功记录/别的 mode 不命中
@@ -44,6 +44,11 @@ test('同步记录：插入 → 完成 → 列表 → 重启中断标记', async
     );
     assert.equal(await db.lastFailedSyncRun(q, 'app-sync'), 'App Release 同步失败：network', '取该 mode 最近失败原因');
     assert.equal(await db.lastFailedSyncRun(q, 'steam-prices'), null, '别的 mode 不命中');
+    // EU-1：interrupted 行不参与失败原因查询（被打断的轮次不是「失败」，下一轮断点续跑）
+    await db.insertSyncRun(q, { mode: 'app-sync' }).then((r) =>
+      db.finishSyncRun(q, r.id, { status: 'interrupted', exitCode: 143, output: '进程收到 SIGTERM（服务重启/停止），任务被中断' }),
+    );
+    assert.equal(await db.lastFailedSyncRun(q, 'app-sync'), 'App Release 同步失败：network', 'interrupted 行不覆盖失败原因');
   } finally {
     await store.close();
   }

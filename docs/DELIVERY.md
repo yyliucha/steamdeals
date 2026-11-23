@@ -126,6 +126,18 @@ docker compose pull app && docker compose up -d app
 docker exec steamdeals node -p "require('./package.json').version"   # 期望输出新版本
 ```
 
+> **发版避让长任务（EU 批，2026-11-23 起，见 [SCHEDULER-RESTART-RESILIENCE.md](SCHEDULER-RESTART-RESILIENCE.md)）**：
+> 重启 app 会打断正在跑的定时任务。升级前先看一眼有没有长任务在跑：
+>
+> ```bash
+> # 方式一：后台「游戏管理 → 同步与回填」看「当前任务」；方式二：命令行看状态文件
+> docker exec steamdeals cat data/scheduler-status.json | grep -E '"running": true|"lastResult"'
+> ```
+>
+> - 没有任务在跑 → 直接升级；
+> - 有任务在跑 → **等待它完成（steam-prices 单轮 ≤10 分钟）**，或至少等 10 分钟后升级——
+>   被打断的任务会记为「被重启中断」（不告警、不发失败邮件），下一轮自动断点续跑，不丢已处理进度。
+
 回滚：把 tag 换回上一个已部署版本（如 1.4.0）再 pull/up。
 
 ### 部署后验证清单

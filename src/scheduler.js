@@ -38,7 +38,16 @@ export function jobsFromEnv(env = process.env) {
     {
       name: 'steam-prices',
       // 每日只刷新已经有 Steam 报价的游戏；初次导入/补详情由后台回填完成。
-      args: ['sync', 'steam-prices', '--limit', String(num(env.STEAM_PRICE_LIMIT, 200000))],
+      // EU-2（docs/SCHEDULER-RESTART-RESILIENCE.md）：--batch 每轮只处理一批（默认 5000 ≈ 4–5 分钟），
+      // 批间落断点，发版重启打断后下一轮从断点续跑，不再整轮 106 分钟重跑。
+      args: [
+        'sync',
+        'steam-prices',
+        '--limit',
+        String(num(env.STEAM_PRICE_LIMIT, 200000)),
+        '--batch',
+        String(num(env.STEAM_PRICE_BATCH, 5000)),
+      ],
       intervalMin: num(env.STEAM_PRICE_INTERVAL_MIN, 1440),
       initialDelaySec: num(env.STEAM_INITIAL_DELAY_SEC, 600),
       enabled: env.STEAM_ENABLED !== '0',
@@ -348,6 +357,21 @@ export function jobFailureError(code, runReason) {
 export function jobFailedReason(code, runReason) {
   if (code === 75) return 'http_429_soft_exit';
   return String(runReason || `exit_${code}`).slice(0, 160);
+}
+
+/**
+ * EU-1（docs/SCHEDULER-RESTART-RESILIENCE.md）：任务收尾结果判定（纯函数）。
+ * 停机过程中非零退出 = 被重启打断 → interrupted：不记 failed、不发失败邮件、不进熔断计数；
+ * 停机瞬间恰好正常退出（code 0）仍记 ok，不算中断。
+ */
+export function outcomeFor(code, runReason, stopping = false) {
+  if (stopping && code !== 0) {
+    return { result: 'interrupted', error: '服务重启，任务被中断' };
+  }
+  if (code === 0) return { result: 'ok', error: null };
+  // BL-2：75 = 429/403 软退出 → partial（不记失败、不熔断）
+  if (code === 75) return { result: 'partial', error: jobFailureError(75, null) };
+  return { result: 'failed', error: jobFailureError(code, runReason) };
 }
 
 // ---------------------------------------------------------------- BL-2：429 软退出后的 1 小时重排（docs/BACKFILL-THROUGHPUT.md §3.2）
@@ -865,9 +889,11 @@ export async function main() {
       lastRunMs.set(job.name, Date.now());
       const started = startedAt.get(job.name) ?? Date.now();
       startedAt.delete(job.name);
-      // CO-1/A5：失败原因从 sync_runs 取（子进程退出前已落库），取不到回退退出码
+      // CO-1/A5：失败原因从 sync_runs 取（子进程退出前已落库），取不到回退退出码。
+      // EU-4（docs/SCHEDULER-RESTART-RESILIENCE.md）：停机时不查——store 已 close，
+      // 查询只会打出「Cannot use a pool」噪音（真失败原因已由子进程 SIGTERM 收尾写库）。
       let runReason = null;
-      if (code !== 0 && code !== 75) {
+      if (!stopping && code !== 0 && code !== 75) {
         try {
           runReason = await db.lastFailedSyncRun(q, syncRunModeFor(job));
         } catch (err) {
@@ -876,9 +902,8 @@ export async function main() {
       }
       const outcome = {
         elapsedMs: Date.now() - started,
-        // BL-2：75 = 429/403 软退出 → partial（不记失败、不熔断）
-        result: code === 0 ? 'ok' : code === 75 ? 'partial' : 'failed',
-        error: jobFailureError(code, runReason),
+        // EU-1：stopping && code!==0 → interrupted（不告警、不熔断）；其余沿用 ok/partial/failed 口径
+        ...outcomeFor(code, runReason, stopping),
       };
       lastOutcome.set(job.name, outcome);
       // E4 批（docs/LOGGING-SCHEMA.md §4）：job_failed 带 reason 稳定短码（job_spawn_failed 已单独记过，不重复）
@@ -889,6 +914,10 @@ export async function main() {
           elapsedMs: outcome.elapsedMs,
           reason: jobFailedReason(code, runReason),
         });
+      }
+      // EU-1：被重启中断不告警——interrupted 只落状态文件/健康面板「被重启中断」，不发失败邮件
+      if (outcome.result === 'interrupted') {
+        logger.info('scheduler.job_interrupted', { job: job.name, code, elapsedMs: outcome.elapsedMs });
       }
       // CO-1/A5：失败邮件告警（开关 settings alerts.jobFailureEmail，默认关；收件人走告警回退链）
       if (outcome.result === 'failed') {
@@ -919,6 +948,8 @@ export async function main() {
           })
           .catch(() => {});
       }
+      // EU-1：interrupted 不进熔断计数——重启打断不是任务自身的连续失败，误熔断会让下一轮被跳过
+      if (outcome.result === 'interrupted') return;
       const state = health.get(job.name) ?? { failures: 0, openUntil: null };
       const next = recordJobResult(state, {
         code,

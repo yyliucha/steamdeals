@@ -2743,10 +2743,13 @@ export async function lastSyncRunStartedByMode(q) {
   return r.rows ?? [];
 }
 
-/** 服务启动时把上次中断的 running 记录标成失败，避免按钮永远禁用。 */
+/**
+ * 服务启动时把上次中断的 running 记录标成「被重启中断」（EU-1），避免按钮永远禁用；
+ * 与 CLI 收到 SIGTERM 时的 interrupted 收尾同语义，前端「同步记录」显示「被重启中断」。
+ */
 export async function markStaleSyncRuns(q) {
   const r = await q(
-    "update sync_runs set status = 'failed', finished_at = now(), " +
+    "update sync_runs set status = 'interrupted', finished_at = now(), " +
     "output = coalesce(output, '') || '\n（服务重启，任务中断）' where status = 'running'",
   );
   return r.rowCount ?? 0;

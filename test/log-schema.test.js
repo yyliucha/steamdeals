@@ -36,7 +36,7 @@ const EVENT_SNAPSHOT = {
     'scheduler.circuit_skip', 'scheduler.circuit_tripped', 'scheduler.crash', 'scheduler.exit',
     'scheduler.failure_alert', 'scheduler.failure_alert_failed', 'scheduler.failure_alert_skipped',
     'scheduler.failure_reason_failed', 'scheduler.followup', 'scheduler.heavy_slot_released',
-    'scheduler.job_deferred_busy', 'scheduler.job_done', 'scheduler.job_failed', 'scheduler.job_partial',
+    'scheduler.job_deferred_busy', 'scheduler.job_done', 'scheduler.job_failed', 'scheduler.job_interrupted', 'scheduler.job_partial',
     'scheduler.job_spawn_failed', 'scheduler.job_start', 'scheduler.job_unexpected', 'scheduler.job_wait_end',
     'scheduler.job_wait_slot', 'scheduler.lastrun_restore_failed', 'scheduler.lastrun_restored',
     'scheduler.no_jobs', 'scheduler.observed_fetch_failed', 'scheduler.settings_reloaded', 'scheduler.start', 'scheduler.stop',
