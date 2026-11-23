@@ -16,12 +16,14 @@ export function safeNextPath(raw) {
  * @param {object} opts
  * @param {string} opts.reason `expired` = 会话失效（登录页显示「登录已过期，请重新登录」，BM-3 口径）
  * @param {string|null} opts.next 回跳地址；缺省用当前 pathname+search+hash
+ * @param {boolean} opts.switchAccount FA 批「切换账户」：URL 带 switch=1（登录页显示「切换账户」提示）
  */
-export function openLogin({ reason = '', next = null } = {}) {
+export function openLogin({ reason = '', next = null, switchAccount = false } = {}) {
   if (typeof window === 'undefined') return;
   if (window.location.pathname === '/login') return; // 防循环
   const raw = next ?? (window.location.pathname + window.location.search + window.location.hash);
   const qs = new URLSearchParams({ next: safeNextPath(raw) });
   if (reason) qs.set('reason', reason);
+  if (switchAccount) qs.set('switch', '1');
   window.location.assign(`/login?${qs.toString()}`);
 }

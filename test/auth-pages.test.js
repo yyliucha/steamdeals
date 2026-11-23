@@ -99,13 +99,15 @@ test('站点信息带注册就绪状态（/api/site → registration.enabled/smt
 // ---------------------------------------------------------------- BT 批（docs/MOBILE-LOGIN-ENTRY-FIX.md §6）
 // 登录入口统一硬跳（方案 C）：helper 结构 + next 白名单 + 懒加载 chunk 兜底。
 
-test('BT：openLogin 结构——防循环、next 白名单、reason、location.assign 整页跳', () => {
+test('BT：openLogin 结构——防循环、next 白名单、reason、switchAccount、location.assign 整页跳', () => {
   const entry = read('../frontend/src/utils/login-entry.js');
-  assert.match(entry, /export function openLogin\(\{ reason = '', next = null \} = \{\}\)/, 'openLogin 签名（reason + next）');
+  assert.match(entry, /export function openLogin\(\{ reason = '', next = null, switchAccount = false \} = \{\}\)/, 'openLogin 签名（reason + next + switchAccount）');
   assert.match(entry, /window\.location\.pathname === '\/login'\)\s*return/, '已在登录页防循环');
   assert.match(entry, /safeNextPath\(raw\)/, 'next 走白名单函数');
   assert.match(entry, /window\.location\.assign\(`\/login\?/, 'location.assign 整页硬跳');
   assert.match(entry, /if \(reason\) qs\.set\('reason', reason\)/, 'reason=expired 透传登录页');
+  // FA 批（docs/PROFILE-PAGE-SLIM.md §3）：切换账户 → /login?switch=1（登录页显示「切换账户」提示）
+  assert.match(entry, /if \(switchAccount\) qs\.set\('switch', '1'\)/, 'switchAccount 透传 switch=1');
 });
 
 test('BT：safeNextPath 只接受站内相对路径（// 与绝对 URL 一律回落 /）', async () => {

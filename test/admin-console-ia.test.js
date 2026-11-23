@@ -475,19 +475,50 @@ test('DT-5 验收 1：Console 全局顶栏（所有 section 共用）右上「�
   assert.match(c, /<el-dropdown v-if="user" trigger="click"/, '徽标可点开下拉（登录用户）');
 });
 
-test('DT-5 验收 2：徽标下拉菜单树——个人资料/修改密码/返回网站/退出登录（普通用户同样可用）', () => {
+test('DT-5 验收 2：徽标下拉菜单树——个人资料/修改密码/返回网站/切换账户/退出登录（普通用户同样可用）', () => {
   const c = read('../frontend/src/pages/Console.vue');
-  for (const item of ['command="profile"', 'command="password"', 'command="site"', 'command="logout"']) {
+  for (const item of ['command="profile"', 'command="password"', 'command="site"', 'command="switch"', 'command="logout"']) {
     assert.ok(c.includes(item), `菜单树含 ${item}`);
   }
-  for (const label of ['个人资料', '修改密码', '返回网站 ↗', '退出登录']) {
-    assert.ok(c.includes(`>${label}<`), `菜单文案 ${label}`);
+  for (const label of ['个人资料', '修改密码', '返回网站 ↗', '切换账户', '退出登录']) {
+    assert.ok(c.includes(`>${label}<`) || c.includes(`>${label}</span><`), `菜单文案 ${label}`);
   }
+  // FA 批：菜单顺序与 demo 一致——个人资料 → 修改密码 → 返回网站 →（分隔线）切换账户 → 退出登录
+  // 顺序在 <el-dropdown-menu> 片段内比较（全文 indexOf 会被侧栏/其它文案干扰）
+  const menuBlock = c.match(/<el-dropdown-menu>([\s\S]*?)<\/el-dropdown-menu>/)?.[1] ?? '';
+  const order = ['个人资料', '修改密码', '返回网站 ↗', '切换账户', '退出登录'].map((l) => menuBlock.indexOf(l));
+  assert.ok(order.every((i) => i >= 0), '五项文案全部存在于用户菜单');
+  assert.ok(order.every((v, i) => i === 0 || v > order[i - 1]), `菜单顺序与 demo 一致（实际序 ${order.join(' < ')}）`);
+  // 分隔线在「切换账户」上（divided），退出登录紧随其后无分隔——demo 的 hr 位置
+  assert.match(c, /command="switch" divided/, '分隔线在「切换账户」上方');
+  assert.match(c, /command="logout"><span class="user-menu-danger">退出登录<\/span>/, '退出登录红字（demo 的 danger 项）');
   // 菜单树在全局顶栏（不区分 admin/user 角色条件）——普通用户同样可用
   assert.ok(!/el-dropdown[^>]*user\?\.role/.test(c), '菜单树不受角色条件限制（普通用户同样可用）');
   assert.match(c, /async function onUserCommand\(cmd\)/, '菜单命令分发');
   assert.match(c, /cmd==='password'[\s\S]{0,120}router\.push\('\/change-password'\)/, '修改密码 → /change-password');
+  assert.match(c, /cmd==='switch'[\s\S]{0,80}doSwitchAccount\(\)/, '切换账户 → doSwitchAccount');
   assert.match(c, /cmd==='logout'[\s\S]{0,80}doLogout\(\)/, '退出登录 → doLogout');
+});
+
+test('FA 验收：切换账户退出会话 → /login?switch=1（next=原页面）→ 登录后回原页面；退出登录仍回首页', () => {
+  const c = read('../frontend/src/pages/Console.vue');
+  const login = read('../frontend/src/pages/LoginPage.vue');
+  // 切换账户复用 /api/logout 清会话 + 心跳基线（BM-4），与退出登录同款兜底
+  assert.match(c, /async function doSwitchAccount\(\)/, 'doSwitchAccount 存在');
+  assert.match(c, /fetch\('\/api\/logout'/, '切换账户先 POST /api/logout 清会话');
+  assert.match(c, /markSessionLoggedOut\(\)/, '切换账户标记心跳基线（防误判会话失效）');
+  assert.match(c, /user\.value=null/, '切换账户清本地用户态');
+  // 整页硬跳登录页统一走 openLogin（BM-3 唯一允许入口）：
+  // switchAccount=1 → /login?switch=1&next=<当前页面>，登录成功后回原页面
+  assert.match(c, /import \{ openLogin \} from '\.\.\/utils\/login-entry\.js'/, 'Console 引入统一硬跳入口 openLogin');
+  assert.match(c, /openLogin\(\{ switchAccount: true \}\)/, '切换账户走 openLogin({switchAccount:true})（next 缺省=当前页面）');
+  // 退出登录保持现状：回首页
+  assert.match(c, /router\.replace\('\/'\)/, '退出登录仍回前台首页');
+  // 登录页：?switch=1 显示「切换账户」提示，登录成功走 next（safeNext 已有白名单锁）
+  assert.match(login, /route\.query\.switch === '1'/, '登录页识别 switch=1');
+  assert.match(login, /switchHint/, 'switchHint 控制提示条');
+  assert.match(login, /切换账户：已退出当前会话，请登录其他账号/, '切换账户提示文案');
+  assert.match(login, /router\.replace\(safeNext\(\)\)/, '登录成功回 next（原页面）');
 });
 
 test('DT-5 验收 3：退出后回到未登录态且心跳基线正确', () => {

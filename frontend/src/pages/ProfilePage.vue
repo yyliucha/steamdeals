@@ -1,169 +1,130 @@
 <template>
   <div class="profile-wrap" :class="{ 'm-console': isMobile }">
-    <!-- 基本信息 -->
-    <section class="module-card">
-      <div class="card-heading">
-        <div>
-          <h3>基本信息</h3>
-          <p>带 <span class="req">*</span> 为必填 · 管理员昵称/简介可空</p>
-        </div>
-      </div>
-      <div class="profile-body">
-        <div class="avatar-row">
-          <div class="avatar-box" @click="pickFile">
-            <img v-if="avatarImgUrl" :src="avatarImgUrl" alt="头像" />
-            <span v-else class="avatar-letter">{{ initial }}</span>
-            <span class="avatar-edit">✎</span>
-          </div>
-          <div class="avatar-side">
-            <div class="avatar-actions">
-              <el-button size="small" @click="pickFile">更换头像</el-button>
-              <el-button size="small" :disabled="!avatarSource" @click="removeAvatar">移除</el-button>
+    <!-- EZ 批（docs/PROFILE-PAGE-SLIM.md）：3 个 Tab（基本信息 / Steam 账号 / 偏好与统计），
+         与 demo docs/design/profile-tab-demo.html 对齐；所有 Tab 共用同一表单状态；
+         保存/取消固定在底部；全部按钮用 el-button（无原生 button 默认样式）。 -->
+    <el-tabs v-model="activeTab" class="profile-tabs">
+      <!-- Tab 1：基本信息 -->
+      <el-tab-pane label="基本信息" name="basic">
+        <div class="profile-body">
+          <p class="hint tab-note">带 <span class="req">*</span> 为必填 · 管理员昵称/简介可空</p>
+          <div class="avatar-row">
+            <div class="avatar-box" @click="pickFile">
+              <img v-if="avatarImgUrl" :src="avatarImgUrl" alt="头像" />
+              <span v-else class="avatar-letter">{{ initial }}</span>
+              <span class="avatar-edit">✎</span>
             </div>
-            <p class="hint">JPG/PNG/WebP ≤512KB，客户端自动裁剪 256×256</p>
-            <p class="hint">未上传时显示昵称首字母（英文大写）或第一个汉字 + 品牌色</p>
-            <input ref="fileInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden-input" @change="onFilePicked" />
-          </div>
-        </div>
-        <div class="grid2">
-          <div class="field">
-            <label>昵称<span class="req" v-if="!isAdmin">*</span></label>
-            <el-input v-model="form.displayName" :maxlength="20" placeholder="2–20 个字符" />
-            <div class="hint">2–20 个字符{{ isAdmin ? '（管理员可留空）' : '' }}</div>
-          </div>
-          <div class="field">
-            <label>邮箱<span class="req">*</span></label>
-            <div class="ro-input">
-              <span>{{ me?.email || '未绑定' }}</span>
-              <el-tag v-if="me?.email" :type="me?.emailVerified ? 'success' : 'warning'" size="small" class="tag-gap">{{ me?.emailVerified ? '已验证' : '未验证' }}</el-tag>
-              <el-button v-if="me?.email" size="small" class="mail-op" @click="openEmailDialog">更换邮箱</el-button>
-            </div>
-            <div class="hint">验证码发到新邮箱 · 每天最多更换 1 次</div>
-          </div>
-          <div class="field">
-            <label>用户名（登录名）</label>
-            <div class="ro-input muted">{{ me?.username }}</div>
-            <div class="hint">不可修改</div>
-          </div>
-          <div class="field">
-            <label>角色 / 注册时间</label>
-            <div class="ro-input muted">{{ roleLabel }} · {{ fmtDateTime(me?.createdAt) }}</div>
-            <div class="hint">角色由所有者分配</div>
-          </div>
-        </div>
-        <div class="field bio-field">
-          <label>个人简介<span class="req" v-if="!isAdmin">*</span></label>
-          <!-- DU 批：placeholder 必须是动态绑定——静态属性里写 {{ }} 会原样显示源码（2026-11-19 缺陷） -->
-          <el-input v-model="form.bio" type="textarea" :rows="3" :maxlength="200" show-word-limit :placeholder="`介绍一下自己（${isAdmin ? '可选' : '1–200 字'}）`" />
-        </div>
-      </div>
-    </section>
-
-    <!-- Steam 绑定账号 -->
-    <section class="module-card">
-      <div class="card-heading">
-        <div>
-          <h3>Steam 绑定账号</h3>
-          <p>可解绑 / 新增 / 更换 · 共 {{ accounts.length }} 个</p>
-        </div>
-        <el-button size="small" @click="bindNew">＋ 绑定新的 Steam 账号</el-button>
-      </div>
-      <div class="steam-list">
-        <div v-for="a in accounts" :key="a.steamId" class="steam-row">
-          <span class="sav">{{ (a.name || 'S').slice(0, 1).toUpperCase() }}</span>
-          <div class="name">
-            <b>{{ a.name }}</b>
-            <span v-if="a.isDefault" class="def">默认</span>
-            <div class="id">SteamID {{ a.steamId.slice(0, 8) }}…{{ a.steamId.slice(-4) }} · 绑定于 {{ fmtDay(a.boundAt) }}</div>
-          </div>
-          <div class="ops">
-            <el-button size="small" :disabled="a.isDefault" @click="setDefault(a)">设为默认</el-button>
-            <el-button size="small" type="danger" plain @click="unbind(a)">解绑</el-button>
-          </div>
-        </div>
-        <el-empty v-if="!accounts.length" description="还没有绑定 Steam 账号" :image-size="56" />
-      </div>
-      <p class="hint pad">解绑只停止后续检测，历史「曾拥有」记录保留。已拥有游戏的展示以当前绑定账号为准。</p>
-    </section>
-
-    <!-- 偏好与通知 -->
-    <section class="module-card">
-      <div class="card-heading">
-        <div>
-          <h3>偏好与通知</h3>
-        </div>
-      </div>
-      <div class="grid2">
-        <div class="field">
-          <label>主题</label>
-          <el-select v-model="form.theme" style="width: 100%">
-            <el-option label="跟随系统" value="system" />
-            <el-option label="深色" value="dark" />
-            <el-option label="浅色" value="light" />
-          </el-select>
-        </div>
-        <div class="field">
-          <label>到价提醒邮件</label>
-          <div class="switch-row">
-            <el-switch v-model="form.emailAlerts" />
-            <span>{{ form.emailAlerts ? '开启' : '关闭' }}</span>
-          </div>
-          <div class="hint">降价时发邮件提醒</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 我的游戏库（仅本人） -->
-    <section class="module-card">
-      <div class="card-heading">
-        <div>
-          <h3>我的游戏库</h3>
-          <p>{{ accounts.length }} 个 Steam 账号 · 每账号一张卡 · 仅本人可见</p>
-        </div>
-      </div>
-      <div v-if="accounts.length" class="grid2">
-        <div v-for="a in accounts" :key="a.steamId" class="acct">
-          <div class="acct-h">
-            <span class="av">{{ (a.name || 'S').slice(0, 1).toUpperCase() }}</span>
-            <div>
-              <b>{{ a.name }}</b>
-              <span v-if="a.isDefault" class="def">默认</span>
-              <div class="id">SteamID {{ a.steamId.slice(0, 8) }}…{{ a.steamId.slice(-4) }}</div>
+            <div class="avatar-side">
+              <div class="avatar-actions">
+                <el-button size="small" @click="pickFile">更换头像</el-button>
+                <el-button size="small" :disabled="!avatarSource" @click="removeAvatar">移除</el-button>
+              </div>
+              <p class="hint">JPG/PNG/WebP ≤512KB，客户端自动裁剪 256×256</p>
+              <p class="hint">未上传时显示昵称首字母（英文大写）或第一个汉字 + 品牌色</p>
+              <input ref="fileInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden-input" @change="onFilePicked" />
             </div>
           </div>
-          <div class="acct-stats">
-            <div>已拥有<b>{{ a.owned }}</b></div>
-            <div>愿望单<b>{{ a.wishlist }}</b></div>
-            <div v-if="!isMobile">最近同步<b class="sync">{{ fmtDateTime(a.lastSyncedAt) }}</b></div>
+          <div class="grid2">
+            <div class="field">
+              <label>昵称<span class="req" v-if="!isAdmin">*</span></label>
+              <el-input v-model="form.displayName" :maxlength="20" placeholder="2–20 个字符" />
+              <div class="hint">2–20 个字符{{ isAdmin ? '（管理员可留空）' : '' }}</div>
+            </div>
+            <div class="field">
+              <label>邮箱<span class="req">*</span></label>
+              <div class="ro-input">
+                <span>{{ me?.email || '未绑定' }}</span>
+                <el-tag v-if="me?.email" :type="me?.emailVerified ? 'success' : 'warning'" size="small" class="tag-gap">{{ me?.emailVerified ? '已验证' : '未验证' }}</el-tag>
+                <el-button v-if="me?.email" size="small" class="mail-op" @click="openEmailDialog">更换邮箱</el-button>
+              </div>
+              <div class="hint">验证码发到新邮箱 · 每天最多更换 1 次</div>
+            </div>
+            <div class="field">
+              <label>用户名（登录名）</label>
+              <div class="ro-input muted">{{ me?.username }}</div>
+              <div class="hint">不可修改</div>
+            </div>
+            <div class="field">
+              <label>角色 / 注册时间</label>
+              <div class="ro-input muted">{{ roleLabel }} · {{ fmtDateTime(me?.createdAt) }}</div>
+              <div class="hint">角色由所有者分配</div>
+            </div>
           </div>
-          <div class="acct-ops">
-            <el-button size="small" @click="openDialog(a, 'library')">查看已拥有</el-button>
-            <el-button size="small" @click="openDialog(a, 'wishlist')">查看愿望单</el-button>
-          </div>
-          <div class="acct-ops">
-            <el-button size="small" :disabled="a.isDefault" @click="setDefault(a)">{{ a.isDefault ? '已设为默认' : '设为默认' }}</el-button>
-            <el-button size="small" type="danger" plain @click="unbind(a)">解绑</el-button>
+          <div class="field bio-field">
+            <label>个人简介<span class="req" v-if="!isAdmin">*</span></label>
+            <!-- DU 批：placeholder 必须是动态绑定——静态属性里写 {{ }} 会原样显示源码（2026-11-19 缺陷） -->
+            <el-input v-model="form.bio" type="textarea" :rows="3" :maxlength="200" show-word-limit :placeholder="`介绍一下自己（${isAdmin ? '可选' : '1–200 字'}）`" />
           </div>
         </div>
-      </div>
-      <el-empty v-else description="绑定 Steam 账号并同步后，这里会按账号分别展示游戏库" :image-size="56" />
-    </section>
+      </el-tab-pane>
 
-    <!-- 我的统计（DQ：已拥有/愿望单合计放标题行，卡片只留三项） -->
-    <section class="module-card">
-      <div class="card-heading">
-        <div>
-          <h3>我的统计</h3>
-          <p>已拥有合计 <b>{{ stats.ownedTotal }}</b> · 愿望单合计 <b>{{ stats.wishlistTotal }}</b> · 仅本人可见</p>
+      <!-- Tab 2：Steam 账号（绑定管理 + 游戏库统计合并：每账号一行；底部绑定新账号） -->
+      <el-tab-pane label="Steam 账号" name="steam">
+        <div class="profile-body">
+          <p class="hint tab-note">共 {{ accounts.length }} 个账号 · 已拥有合计 <b>{{ stats.ownedTotal }}</b> · 愿望单合计 <b>{{ stats.wishlistTotal }}</b> · 仅本人可见</p>
+          <div class="steam-list">
+            <div v-for="a in accounts" :key="a.steamId" class="steam-row">
+              <span class="sav">{{ (a.name || 'S').slice(0, 1).toUpperCase() }}</span>
+              <div class="name">
+                <div class="nm-line">
+                  <b>{{ a.name }}</b>
+                  <span v-if="a.isDefault" class="def">默认</span>
+                </div>
+                <div class="id">SteamID {{ a.steamId.slice(0, 8) }}…{{ a.steamId.slice(-4) }} · 绑定于 {{ fmtDay(a.boundAt) }}</div>
+                <div class="row-stats">
+                  <span>已拥有<b>{{ a.owned }}</b></span>
+                  <span>愿望单<b>{{ a.wishlist }}</b></span>
+                  <span v-if="!isMobile">最近同步<b class="sync">{{ fmtDateTime(a.lastSyncedAt) }}</b></span>
+                </div>
+              </div>
+              <div class="ops">
+                <el-button size="small" @click="openDialog(a, 'library')">查看已拥有</el-button>
+                <el-button size="small" @click="openDialog(a, 'wishlist')">查看愿望单</el-button>
+                <el-button size="small" :disabled="a.isDefault" @click="setDefault(a)">{{ a.isDefault ? '已设为默认' : '设为默认' }}</el-button>
+                <el-button size="small" type="danger" plain @click="unbind(a)">解绑</el-button>
+              </div>
+            </div>
+            <el-empty v-if="!accounts.length" description="还没有绑定 Steam 账号" :image-size="56" />
+          </div>
+          <p class="hint pad">解绑只停止后续检测，历史「曾拥有」记录保留。已拥有游戏的展示以当前绑定账号为准。</p>
+          <div class="bind-row">
+            <el-button @click="bindNew">＋ 绑定新的 Steam 账号</el-button>
+          </div>
         </div>
-      </div>
-      <div class="stats3">
-        <div class="stat3"><div class="k">本站愿望单</div><div class="v">{{ stats.siteWishlist }}</div></div>
-        <div class="stat3"><div class="k">到价提醒</div><div class="v">{{ stats.alerts }}</div></div>
-        <div class="stat3"><div class="k">史低命中</div><div class="v">{{ stats.histLowHits }}</div></div>
-      </div>
-    </section>
+      </el-tab-pane>
 
+      <!-- Tab 3：偏好与统计（主题 + 邮件开关 + 三项统计） -->
+      <el-tab-pane label="偏好与统计" name="prefs">
+        <div class="profile-body">
+          <div class="grid2">
+            <div class="field">
+              <label>主题</label>
+              <el-select v-model="form.theme" style="width: 100%">
+                <el-option label="跟随系统" value="system" />
+                <el-option label="深色" value="dark" />
+                <el-option label="浅色" value="light" />
+              </el-select>
+            </div>
+            <div class="field">
+              <label>到价提醒邮件</label>
+              <div class="switch-row">
+                <el-switch v-model="form.emailAlerts" />
+                <span>{{ form.emailAlerts ? '开启' : '关闭' }}</span>
+              </div>
+              <div class="hint">降价时发邮件提醒</div>
+            </div>
+          </div>
+          <!-- DQ：统计只留三项卡片；已拥有/愿望单合计在 Steam 账号 Tab 说明行 -->
+          <div class="stats3">
+            <div class="stat3"><div class="k">本站愿望单</div><div class="v">{{ stats.siteWishlist }}</div></div>
+            <div class="stat3"><div class="k">到价提醒</div><div class="v">{{ stats.alerts }}</div></div>
+            <div class="stat3"><div class="k">史低命中</div><div class="v">{{ stats.histLowHits }}</div></div>
+          </div>
+        </div>
+      </el-tab-pane>
+    </el-tabs>
+
+    <!-- 固定底部保存条（所有 Tab 共用；Web 与手机端都固定） -->
     <div class="profile-foot">
       <el-button @click="reset">取消</el-button>
       <el-button type="primary" :loading="saving" @click="save">保存修改</el-button>
@@ -307,6 +268,8 @@ const form = reactive({ displayName: '', bio: '', theme: 'system', emailAlerts: 
 const saving = ref(false);
 const fileInput = ref(null);
 const dirty = ref(false);
+// EZ 批：三个 Tab 共用同一表单状态，默认「基本信息」（与 demo 一致）
+const activeTab = ref('basic');
 
 const isAdmin = computed(() => me.value?.role === 'admin');
 const initial = computed(() => avatarInitial(me.value?.displayName || me.value?.username, 'S'));
@@ -670,10 +633,6 @@ onMounted(load);
   min-width: 0;
   padding-bottom: var(--space-24);
 }
-.profile-wrap .card-heading {
-  justify-content: space-between;
-  margin-bottom: var(--space-12);
-}
 .profile-body {
   display: flex;
   flex-direction: column;
@@ -776,6 +735,16 @@ onMounted(load);
 .bio-field {
   margin-top: var(--space-2);
 }
+/* EZ 批：Tab 内首行说明（必填提示 / Steam 账号合计），demo 无标题行、说明行顶格 */
+.tab-note {
+  margin: 0;
+}
+.tab-note b {
+  color: var(--fg);
+}
+.profile-tabs :deep(.el-tabs__content) {
+  padding-top: var(--space-10);
+}
 .steam-list {
   display: flex;
   flex-direction: column;
@@ -783,7 +752,7 @@ onMounted(load);
 .steam-row {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 12px;
   padding: 11px 0;
   border-top: 1px dashed var(--border);
 }
@@ -808,14 +777,36 @@ onMounted(load);
   flex: 1;
   min-width: 0;
 }
-.steam-row .name b {
+.nm-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.nm-line b {
   font-size: var(--font-13);
   font-weight: 600;
 }
-.steam-row .id,
-.acct-h .id {
+.steam-row .id {
   color: var(--fg-subtle);
   font-size: var(--font-11);
+}
+/* EZ 批：每账号一行的游戏库统计（已拥有/愿望单/最近同步），与 demo 一致 */
+.row-stats {
+  display: flex;
+  gap: var(--space-16);
+  margin-top: 6px;
+  font-size: var(--font-11);
+  color: var(--fg-subtle);
+}
+.row-stats b {
+  font-size: var(--font-13);
+  color: var(--fg);
+  margin-left: 4px;
+}
+.row-stats b.sync {
+  font-size: var(--font-12);
+  font-weight: 500;
 }
 .def {
   font-size: var(--font-10);
@@ -824,12 +815,17 @@ onMounted(load);
   background: var(--panel-2);
   border-radius: var(--radius-pill);
   padding: 0 7px;
-  margin-left: 6px;
 }
 .steam-row .ops {
   display: flex;
   gap: var(--space-8);
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex: none;
+}
+.bind-row {
+  padding-top: var(--space-8);
 }
 .switch-row {
   display: flex;
@@ -838,67 +834,7 @@ onMounted(load);
   font-size: var(--font-13);
   min-height: 34px;
 }
-.acct {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-12);
-  padding: 11px;
-}
-.acct-h {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: var(--space-8);
-}
-.acct-h .av {
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-9);
-  background: linear-gradient(135deg, var(--brand), #3e4fd8);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  color: #fff;
-  font-size: var(--font-13);
-  flex: none;
-}
-.acct-h b {
-  font-size: var(--font-13);
-}
-.acct-stats {
-  display: flex;
-  gap: var(--space-16);
-  padding: 7px 0;
-  border-top: 1px dashed var(--border);
-}
-.acct-stats div {
-  font-size: var(--font-11);
-  color: var(--fg-subtle);
-}
-.acct-stats b {
-  display: block;
-  font-size: var(--font-15);
-  color: var(--fg);
-}
-.acct-stats b.sync {
-  font-size: var(--font-12);
-  font-weight: 500;
-}
-/* DQ（docs/PROFILE-UI-2026-11-19.md 决策 3）：账号卡按钮两行等宽——行1「查看已拥有/查看愿望单」、
-   行2「设为默认（已默认则禁用）/解绑」；不去 flex-wrap，窄屏保持两列等宽不竖排。 */
-.acct-ops {
-  display: flex;
-  gap: var(--space-6);
-  margin-top: var(--space-6);
-  padding-top: 7px;
-  border-top: 1px dashed var(--border);
-}
-.acct-ops .el-button {
-  flex: 1 1 0;
-  margin-left: 0;
-}
-/* DQ 决策 4：统计三项卡片（本站愿望单/到价提醒/史低命中）；已拥有/愿望单合计在标题行 */
+/* DQ 决策 4（EZ 批延续）：统计三项卡片（本站愿望单/到价提醒/史低命中）；已拥有/愿望单合计在 Steam 账号 Tab 说明行 */
 .stats3 {
   display: flex;
   gap: var(--space-10);
@@ -919,10 +855,16 @@ onMounted(load);
   font-weight: 800;
   margin-top: var(--space-4);
 }
+/* EZ 批：保存/取消固定底部（所有 Tab 共用；Web 与手机端一致，demo 的 foot-bar/p-save） */
 .profile-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
   display: flex;
   justify-content: flex-end;
   gap: var(--space-10);
+  padding: var(--space-10) 0 var(--space-4);
+  background: linear-gradient(180deg, transparent, var(--bg) 45%);
 }
 /* 弹窗 */
 .d-tag {
@@ -1061,7 +1003,7 @@ onMounted(load);
   font-size: var(--font-12);
   margin-top: var(--space-4);
 }
-/* 移动端（demo：单列、卡片吸底保存条） */
+/* 移动端（demo：单列、卡片吸底保存条、Tab 横向滚动） */
 @media (max-width: 768px) {
   .grid2 {
     grid-template-columns: 1fr;
@@ -1071,9 +1013,15 @@ onMounted(load);
     height: 76px;
     font-size: 26px;
   }
+  /* EZ 批：手机端 Tab 横向滚动（m-shell 已提供，这里兜底独立使用场景） */
+  .profile-tabs :deep(.el-tabs__nav-wrap) {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .profile-tabs :deep(.el-tabs__nav-wrap::-webkit-scrollbar) {
+    display: none;
+  }
   .profile-foot {
-    position: sticky;
-    bottom: 0;
     padding: var(--space-10) 0 var(--space-4);
     background: linear-gradient(180deg, transparent, var(--bg));
   }
@@ -1083,6 +1031,9 @@ onMounted(load);
   .steam-row .ops {
     width: 100%;
     justify-content: flex-end;
+  }
+  .stats3 {
+    flex-direction: column;
   }
 }
 </style>

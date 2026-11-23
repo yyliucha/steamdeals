@@ -428,7 +428,9 @@ test('DQ 迁移：default_steam_id 回填自 steam: 头像来源并清空该来�
 });
 
 // DQ 前端静态锁：验收 §6 的「无从 Steam 选头像 / 两行按钮窄屏不竖排 / 统计去重 / 开关文案」锁进测试。
-test('DQ 前端静态锁：无 Steam 头像来源入口；两行等宽按钮；统计只三项；开关副说明；头像规则统一', () => {
+// EZ 批（docs/PROFILE-PAGE-SLIM.md）：页面重排为 el-tabs 三 Tab（基本信息 / Steam 账号 / 偏好与统计），
+// 原「账号卡两行按钮」结构被「每账号一行四操作」取代（demo 一致）——本用例同步更新为新结构锁。
+test('DQ+EZ 前端静态锁：三 Tab 结构；账号一行四操作；统计只三项；全 el-button；头像规则统一', () => {
   const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
   const page = read('../frontend/src/pages/ProfilePage.vue');
   const avatar = read('../frontend/src/components/UserAvatar.vue');
@@ -440,16 +442,33 @@ test('DQ 前端静态锁：无 Steam 头像来源入口；两行等宽按钮；�
   // 头像规则：只有 custom 走 /api/avatar
   assert.ok(page.includes("avatarSource.value === 'custom'"), '只有 custom 显示 /api/avatar');
 
-  // 验收「账号卡两行按钮」：模板里恰好两行按钮容器；按钮 flex:1 等宽、容器不去 flex-wrap（窄屏不竖排）
-  assert.equal((page.match(/class="acct-ops"/g) || []).length, 2, '账号卡两行按钮（行1 查看已拥有/查看愿望单，行2 设为默认/解绑）');
-  assert.ok(!/\.acct-ops\s*\{[^}]*flex-wrap/.test(page), '按钮行不去 flex-wrap——窄屏保持两列等宽不竖排');
-  assert.ok(/\.acct-ops\s*\.el-button\s*\{[^}]*flex:\s*1\s*1\s*0/.test(page), '按钮等宽（flex: 1 1 0）');
-  assert.ok(page.includes('已设为默认'), '默认账号行内按钮禁用态文案');
+  // 验收 EZ「三 Tab」：el-tabs + 三个 el-tab-pane，默认「基本信息」
+  assert.ok(page.includes('<el-tabs'), '页面用 el-tabs');
+  assert.equal((page.match(/<el-tab-pane label=/g) || []).length, 3, '恰好三个 Tab');
+  assert.ok(page.includes('<el-tab-pane label="基本信息" name="basic"'), 'Tab1 基本信息');
+  assert.ok(page.includes('<el-tab-pane label="Steam 账号" name="steam"'), 'Tab2 Steam 账号');
+  assert.ok(page.includes('<el-tab-pane label="偏好与统计" name="prefs"'), 'Tab3 偏好与统计');
+  assert.match(page, /const activeTab = ref\('basic'\)/, '默认 Tab 是基本信息');
 
-  // 验收「统计去重」：底部统计只有三项；已拥有/愿望单合计在标题行
-  assert.ok(page.includes('已拥有合计 <b>{{ stats.ownedTotal }}</b> · 愿望单合计'), '合计放统计标题行');
+  // 验收 EZ「每账号一行四操作」：查看已拥有/查看愿望单/设为默认（已默认禁用文案）/解绑
+  assert.ok(page.includes('查看已拥有'), '账号行有「查看已拥有」');
+  assert.ok(page.includes('查看愿望单'), '账号行有「查看愿望单」');
+  assert.ok(page.includes('已设为默认'), '默认账号行内按钮禁用态文案');
+  assert.ok(page.includes('＋ 绑定新的 Steam 账号'), 'Tab2 底部绑定新账号入口');
+  assert.ok(!page.includes('class="acct-ops"'), '旧「两行等宽按钮」结构已移除（被每账号一行取代）');
+
+  // 验收「统计去重」：统计只有三项；已拥有/愿望单合计在 Steam 账号 Tab 说明行
+  assert.ok(page.includes('共 {{ accounts.length }} 个账号 · 已拥有合计 <b>{{ stats.ownedTotal }}</b> · 愿望单合计'), '合计放 Steam 账号 Tab 说明行');
   assert.ok(!page.includes('statsline'), '旧的五合一统计行已移除');
   assert.equal((page.match(/class="stat3"/g) || []).length, 3, '统计卡片恰好三项（本站愿望单/到价提醒/史低命中）');
+
+  // 验收 EZ「保存固定底部 + 全 el-button」：保存条 sticky、模板无原生 button
+  assert.ok(/\.profile-foot\s*\{[^}]*position:\s*sticky[^}]*bottom:\s*0/.test(page), '保存/取消固定底部（sticky）');
+  assert.ok(page.includes('保存修改') && page.includes('>取消<'), '固定底部有取消/保存修改');
+  assert.ok(!/<button[\s>]/.test(page), '模板不出现原生 button（全部用 el-button）');
+
+  // 验收 EZ「手机端」：Tab 横向滚动样式存在
+  assert.ok(/overflow-x:\s*auto/.test(page), '手机端 Tab 横向滚动（overflow-x:auto）');
 
   // 验收「开关文案」：标签 + 副说明
   assert.ok(page.includes('到价提醒邮件'), '开关标签');

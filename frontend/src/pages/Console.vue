@@ -46,7 +46,8 @@
           <span v-if="user?.role==='admin'" class="header-version" :title="versionTitle" @click="loadVersion(true)">v{{ verInfo.current || '—' }}<em v-if="verInfo.updateAvailable && verInfo.latest"> ↑ 新版 v{{ String(verInfo.latest).replace(/^v/i, '') }} 可用</em></span>
           <el-button v-if="!isMobile" text class="header-back" @click="router.push('/')">返回网站 ↗</el-button>
           <!-- DT-5（docs/ADMIN-PERMISSIONS.md）：Console 全局顶栏（所有 section 共用）——
-               返回网站 ↗ + 用户徽标；徽标下拉菜单树：个人资料/修改密码/返回网站/退出登录（普通用户同样可用） -->
+               返回网站 ↗ + 用户徽标；徽标下拉菜单树：个人资料/修改密码/返回网站/切换账户/退出登录
+               （普通用户同样可用；FA 批新增「切换账户」，顺序与 demo docs/design/profile-tab-demo.html 一致） -->
           <el-dropdown v-if="user" trigger="click" class="header-user-dropdown" @command="onUserCommand">
             <button type="button" class="user-chip header-userchip" :title="user.displayName || user.username"><UserAvatar :user-id="user.id" :name="user.displayName || user.username" :size="22" /><span class="user-label">{{ user.displayName || user.username }}</span><span class="user-caret">▾</span></button>
             <template #dropdown>
@@ -54,7 +55,8 @@
                 <el-dropdown-item command="profile">个人资料</el-dropdown-item>
                 <el-dropdown-item command="password">修改密码</el-dropdown-item>
                 <el-dropdown-item command="site">返回网站 ↗</el-dropdown-item>
-                <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+                <el-dropdown-item command="switch" divided>切换账户</el-dropdown-item>
+                <el-dropdown-item command="logout"><span class="user-menu-danger">退出登录</span></el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -88,6 +90,8 @@ import { fmtDateTime } from '../utils/siteTime.js';
 import { requestLeave, bypassNextGuard, hasDirtySources } from '../composables/useUnsavedGuard.js';
 // DT-5（docs/ADMIN-PERMISSIONS.md）：主动退出登录标记心跳基线（BM-4），避免心跳把主动退出误判成会话失效
 import { markSessionLoggedOut } from '../composables/useSessionHeartbeat.js';
+// FA 批（docs/PROFILE-PAGE-SLIM.md §3）：切换账户整页硬跳登录页统一走 openLogin（BM-3 唯一允许入口）
+import { openLogin } from '../utils/login-entry.js';
 
 const router=useRouter(), route=useRoute(), filter=ref(''), user=ref(null);
 // BW 批（docs/MOBILE-REDESIGN.md §5.1）：≤768px 侧栏收进 ☰ 抽屉
@@ -266,9 +270,23 @@ async function onUserCommand(cmd){
   }else if(cmd==='site'){
     bypassNextGuard();
     router.push('/').catch(()=>{});
+  }else if(cmd==='switch'){
+    await doSwitchAccount();
   }else if(cmd==='logout'){
     await doLogout();
   }
+}
+// FA 批（docs/PROFILE-PAGE-SLIM.md §3）：切换账户 = 退出当前会话 → /login?switch=1 →
+// 登录成功后回原页面（openLogin 缺省 next=当前 pathname+search，如 /console?section=profile）；
+// 与「退出登录」的区别：退出登录保持现状回首页。
+async function doSwitchAccount(){
+  try{
+    await fetch('/api/logout',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:'{}'});
+  }catch{/* 网络失败也照走切换流程（本地态清空） */}
+  markSessionLoggedOut(); // BM-4：主动退出标记心跳基线
+  user.value=null;
+  bypassNextGuard();
+  openLogin({ switchAccount: true });
 }
 async function doLogout(){
   try{
@@ -284,6 +302,8 @@ async function doLogout(){
 <style scoped>
 .theme-btn{font-size:17px}
 .tag-avatar{vertical-align:middle;margin-right:5px}
+/* FA 批：用户菜单「退出登录」红字（demo 的 .danger 项）；dropdown teleport 后 scoped 属性仍跟随 slot 内容生效 */
+.user-menu-danger{color:var(--danger)}
 /* DT-5（docs/ADMIN-PERMISSIONS.md）：全局顶栏「返回网站 ↗ + 用户徽标」下拉菜单树 */
 .header-back{font-size:13px;font-weight:600}
 .header-userchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-2);background:var(--panel-2);border-radius:999px;padding:4px 10px 4px 5px;color:var(--fg);font-size:12px;cursor:pointer;min-height:30px}
