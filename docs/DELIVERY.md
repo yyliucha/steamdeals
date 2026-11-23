@@ -240,6 +240,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 **v2.28.6 已发布（2026-11-23，tag v2.28.6 → cd3fa17；CI 双绿：docker-hub 45135093938 ✅ test/smoke/publish 全 success；docker-tcr 45135094024 ✅ test/publish 全 success；test-main 45135073389 ✅ main 全链绿）**：EV 部署回归修复——`serve` 默认端口 8090→8080（与 compose 集装箱 8080 映射一致，消除 nginx 502；`WEB_PORT` 环境变量仍可覆盖）。**无 schema 变更、无新增依赖**。**服务器部署待执行**（按本文第 4 节升级到 2.28.6）。
 
+**EZ + FA 已实现待发版（2026-11-23，实现 8eeb1f4；QA docs/QA-EZ-FA.md 第 1 轮 ✅ 通过 11 / 缺失 0 / 偏差 0 / 需人工确认 1=截图目视）**：EZ 个人资料页 Tab 版——`el-tabs` 三 Tab（基本信息 / Steam 账号（绑定+游戏库合并，每账号一行四操作：查看已拥有/查看愿望单/设为默认/解绑 + 底部绑定新账号）/ 偏好与统计（主题/邮件 + 三项统计））+ 保存/取消固定底部（Web 与手机端 sticky、三 Tab 共用同一表单）+ 手机端 Tab 横向滚动 + 全部按钮 el-button，原功能不变（头像/邮箱/简介/绑定/解绑/默认/主题/邮件/统计/未保存离开提示）；FA 用户菜单「切换账户」——菜单顺序与 demo 一致（个人资料/修改密码/返回网站 ↗/（分隔线）切换账户/退出登录，退出登录红字），切换 = POST /api/logout → `/login?switch=1`（提示「切换账户：已退出当前会话…」）→ 登录成功回原页面，退出登录保持回首页。验证：profile 15/15 + admin-console-ia 23/23 + auth-pages 14/14 + session-heartbeat 7/7 + frontend-registration 9/9 + 主链分段 test:1~4 全绿 + frontend:build ✓ + scan 干净 + headless Chrome 断言全过（三 Tab 切换、菜单顺序、sticky、横向滚动、全 el-button；截图 8 张在 `F:\dsh\ez-fa-shots\` 待所有者目视）。**无 schema 变更、无新增依赖**。
+
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 - **v2.27.8 已发布**（tag `v2.27.8`，release 提交见 git log）：ED + EH + EI + EL + EK + DX 六条合并发版（🧪 测试基建 1 + ⚙️ 调整 3 + 🐞 缺陷 1 + 🧹 技术债 1，均无新功能面 → 小版本，2.27.7 → 2.27.8 连续递增）。本批不涉及 App 仓库。
   ED（143d97e）：test-main 加文档路径忽略（`docs/**`、`**/*.md`、`CHANGELOG.md`、`data/**`）——纯文档提交不再触发/取消重跑 test-main；代码路径一律不忽略；docker-hub/docker-tcr 只在 tag 触发不动。
