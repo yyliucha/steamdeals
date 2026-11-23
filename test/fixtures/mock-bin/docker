@@ -1,5 +1,6 @@
 #!/bin/bash
 # mock docker：只支持 scripts/scheduler-service.sh 用到的子命令；容器状态记在 $MOCK_STATE_DIR。
+# 注意：本文件需保持可执行位（CI Linux 直接经 PATH 执行）。
 set -u
 STATE="${MOCK_STATE_DIR:-/tmp/mock-state}"
 mkdir -p "$STATE"

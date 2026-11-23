@@ -8,7 +8,17 @@ MOCK_BIN="$HERE/mock-bin"
 STATE="$(mktemp -d)"
 DATA_DIR_TMP="$(mktemp -d)"
 
-export PATH="$MOCK_BIN:$PATH"
+# git checkout 不保证 mock 脚本带执行位（Windows 提交会丢模式）——
+# 运行时生成一个带 +x 的 wrapper（bash 解释），绕开执行位问题。
+# 注意：wrapper 目录必须独立于 STATE——场景 3/5 会清空 STATE 重建（模拟无容器状态）。
+BIN_DIR="$(mktemp -d)"
+cat > "$BIN_DIR/docker" <<EOF
+#!/bin/bash
+exec bash "$MOCK_BIN/docker" "\$@"
+EOF
+chmod +x "$BIN_DIR/docker"
+
+export PATH="$BIN_DIR:$PATH"
 export MOCK_STATE_DIR="$STATE"
 export MOCK_APP_ID="mock-app-id"
 export MOCK_APP_CMD='[serve]'
@@ -67,6 +77,6 @@ if "$REPO/scripts/scheduler-service.sh" remove | grep -q "删除完成"; then ec
 if [ ! -f "$DATA_DIR_TMP/scheduler-status.json" ] && [ ! -f "$DATA_DIR_TMP/scheduler-retry.json" ]; then echo "PASS files-cleared"; else echo "FAIL files-cleared"; fail=1; fi
 if [ ! -f "$STATE/scheduler-id" ]; then echo "PASS container-gone"; else echo "FAIL container-gone"; fail=1; fi
 
-rm -rf "$DATA_DIR_TMP" "$STATE"
+rm -rf "$DATA_DIR_TMP" "$STATE" "$BIN_DIR"
 echo "RESULT fail=$fail"
 exit "$fail"

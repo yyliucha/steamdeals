@@ -15,6 +15,7 @@
 #   - install 前必须把 app 从 command: ["all"] 改成 ["serve"]（compose 变体已改好），
 #     否则 app 与 scheduler 两个调度器并行，任务会重复执行——install 会检测并拒绝。
 #   - 一键删除只删调度服务与调度状态（scheduler-status/retry/resume 等），业务数据（PostgreSQL）不动。
+#   - 本文件保持 LF 换行 + 可执行位（服务器上直接 ./scripts/scheduler-service.sh install）。
 set -eu
 
 SVC=scheduler
