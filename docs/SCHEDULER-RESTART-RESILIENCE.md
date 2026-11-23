@@ -1,4 +1,4 @@
-# 定时任务重启韧性（EU，已实现待发版，2026-11-23）
+# 定时任务重启韧性（EU，已实现并发布 v2.28.3，2026-11-23）
 
 > 现象（2026-11-23 生产）：`steam-prices` 定时任务被服务重启打断 → `exit -1` → 判失败并发邮件
 > （`Cannot use a pool after calling end on the pool` 为次生噪音）。所有者要求：
@@ -54,3 +54,10 @@
 - 不改任务调度频率/顺序；不改 heavy slot 策略；
 - 断点续跑只对 steam-prices（其它长任务按需后续扩展）；
 - 部署避让以「文档 + 脚本建议」落地，不强制改 CI 门禁。
+
+### EU-5 排空（drain）——发版零中断
+
+- scheduler 收到 SIGTERM：**不再启动新任务** + 等待在跑任务完成（`drainTimeout` 默认 10 分钟）；
+- 超时才 SIGKILL（被超时杀掉的任务标 interrupted，走 EU-1）；
+- compose 的 scheduler service 设置 `stop_grace_period: 10m`（给排空留时间）；
+- 发版脚本按 EV §6 的顺序执行：app 先更新 → 等 scheduler 当前任务完成 → 更新 scheduler。
