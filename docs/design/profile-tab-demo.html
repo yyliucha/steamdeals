@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>个人资料页 · Tab 版 demo（Web + 手机端）</title>
+<style>
+  :root{--bg:#0a101c;--panel:#111a2b;--panel-2:#0e1727;--border:#1e2b40;--fg:#d8e0ee;--fg-muted:#8b98ad;--brand:#3b82f6;--brand-hover:#2f6fe0;--brand-soft:#16263f;--ok:#2fb47c;--danger:#e57373;--radius:12px}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;font-size:13px}
+  .note{max-width:1120px;margin:14px auto 0;padding:8px 14px;border:1px dashed #2a3b55;border-radius:10px;color:var(--fg-muted);font-size:12px;line-height:1.7}
+  .note b{color:var(--fg)}
+  .page{max-width:1120px;margin:0 auto;padding:16px 20px 60px}
+  h1{font-size:20px;margin:6px 0 2px}.sub{color:var(--fg-muted);font-size:12px}
+
+  /* ===== 设计系统按钮（与站内 Element Plus 风格一致，不用原生样式） ===== */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;height:30px;padding:0 14px;border-radius:8px;font-size:12.5px;line-height:1;cursor:pointer;border:1px solid var(--border);background:var(--panel-2);color:var(--fg);transition:all .15s;user-select:none;font-family:inherit}
+  .btn:hover{border-color:#35618f;color:#fff}
+  .btn--primary{background:var(--brand);border-color:var(--brand);color:#fff}
+  .btn--primary:hover{background:var(--brand-hover);border-color:var(--brand-hover)}
+  .btn--danger{color:var(--danger);border-color:rgba(229,115,115,.45);background:transparent}
+  .btn--danger:hover{background:rgba(229,115,115,.1);border-color:var(--danger)}
+  .btn--text{border:0;background:transparent;color:#8ab4ff;padding:0 6px;height:26px}
+  .btn--text:hover{background:var(--brand-soft)}
+  .btn--sm{height:26px;padding:0 10px;font-size:11.5px;border-radius:7px}
+
+  /* ===== Tab ===== */
+  .tabs{display:flex;gap:26px;border-bottom:1px solid var(--border);margin-top:16px;padding:0 4px;flex-wrap:wrap}
+  .tabs button{appearance:none;background:none;border:0;padding:11px 0;color:var(--fg-muted);font-size:13.5px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;font-family:inherit}
+  .tabs button.active{color:var(--fg);border-bottom-color:var(--brand)}
+  .tab-body{border:1px solid var(--border);border-radius:0 0 var(--radius) var(--radius);border-top:0;background:var(--panel);padding:16px}
+  .tab-pane{display:none;flex-direction:column;gap:14px}
+  .tab-pane.active{display:flex}
+
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .field label{display:block;font-size:12px;color:var(--fg-muted);margin-bottom:5px}
+  .field input,.field textarea,.field select{width:100%;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;color:var(--fg);padding:7px 10px;font-size:13px;font-family:inherit;outline:none}
+  .field input:focus,.field textarea:focus{border-color:var(--brand)}
+  .field input[readonly]{color:var(--fg-muted);cursor:default}
+  .hint{font-size:11px;color:var(--fg-muted);margin-top:4px}
+  .avatar-row{display:flex;align-items:center;gap:14px}
+  .avatar{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#2e6b4f,#7aa86b);display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff}
+  .tag{font-size:10.5px;padding:1px 7px;border-radius:999px;border:1px solid var(--border);color:var(--fg-muted)}
+  .tag.default{color:var(--ok);border-color:rgba(47,180,124,.45);background:rgba(47,180,124,.08)}
+  .acct{border:1px solid var(--border);border-radius:10px;background:var(--panel-2);padding:12px;display:flex;gap:12px;align-items:flex-start}
+  .acct .ico{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;flex:none;background:var(--brand-soft);border:1px solid var(--border);color:#8ab4ff}
+  .acct-main{flex:1;min-width:0}
+  .acct-name{font-weight:600;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:13.5px}
+  .acct-meta{color:var(--fg-muted);font-size:11.5px;margin-top:2px}
+  .acct-stats{display:flex;gap:18px;margin-top:8px;font-size:12px}
+  .acct-stats b{font-size:15px}
+  .acct-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;flex:none;max-width:300px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .stat{border:1px solid var(--border);border-radius:10px;background:var(--panel-2);padding:12px}
+  .stat span{font-size:11.5px;color:var(--fg-muted)}
+  .stat strong{display:block;font-size:22px;margin-top:2px}
+  .switch{width:38px;height:20px;border-radius:999px;background:var(--brand);position:relative;flex:none}
+  .switch::after{content:"";position:absolute;top:2px;left:20px;width:16px;height:16px;border-radius:50%;background:#fff}
+
+  /* 固定底部保存条 */
+  .foot-bar{position:sticky;bottom:0;display:flex;justify-content:flex-end;gap:10px;padding:14px 4px;background:linear-gradient(180deg,transparent,var(--bg) 45%)}
+
+  /* ===== 手机端 ===== */
+  .phones{display:flex;gap:40px;justify-content:center;padding:10px 0;flex-wrap:wrap}
+  .phone{width:370px;border:1px solid var(--border);border-radius:22px;background:#0b1220;overflow:hidden}
+  .phone .p-head{padding:12px 14px 8px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+  .phone .p-head b{font-size:15px}
+  .phone .p-tabs{display:flex;gap:18px;padding:0 14px;border-bottom:1px solid var(--border);overflow-x:auto}
+  .phone .p-tabs span{padding:10px 0;font-size:12.5px;color:var(--fg-muted);white-space:nowrap;border-bottom:2px solid transparent}
+  .phone .p-tabs span.active{color:var(--fg);border-bottom-color:var(--brand)}
+  .phone .p-body{padding:12px;display:flex;flex-direction:column;gap:10px}
+  .p-card{border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:10px 12px}
+  .p-profile{display:flex;gap:10px;align-items:center}
+  .p-profile .ava{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,#2e6b4f,#7aa86b);display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;flex:none}
+  .p-profile .nm{font-weight:600;font-size:14px}
+  .p-profile .em{color:var(--fg-muted);font-size:11.5px;margin-top:2px}
+  .p-field{margin-bottom:9px}
+  .p-field label{display:block;font-size:11.5px;color:var(--fg-muted);margin-bottom:4px}
+  .p-field input,.p-field textarea{width:100%;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;color:var(--fg);padding:7px 9px;font-size:12.5px;font-family:inherit}
+  .p-acct{border:1px solid var(--border);border-radius:10px;background:var(--panel-2);padding:10px;margin-bottom:9px}
+  .p-acct .nm{font-weight:600;display:flex;align-items:center;gap:6px;font-size:13px}
+  .p-acct .meta{color:var(--fg-muted);font-size:11px;margin-top:2px}
+  .p-acct .nums{display:flex;gap:16px;margin-top:7px;font-size:11.5px}
+  .p-acct .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+  .p-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .p-stat{border:1px solid var(--border);border-radius:9px;background:var(--panel-2);padding:9px}
+  .p-stat span{font-size:10.5px;color:var(--fg-muted)}
+  .p-stat b{display:block;font-size:17px;margin-top:2px}
+  .p-save{position:sticky;bottom:0;display:flex;gap:8px;padding:12px;background:linear-gradient(180deg,transparent,#0b1220 45%)}
+  .p-save .btn{flex:1;height:36px;font-size:13px}
+  /* 用户菜单 */
+  .menu-demo{width:240px;border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:6px;margin-top:12px}
+  .menu-demo div{padding:9px 10px;border-radius:8px;font-size:13px;cursor:pointer}
+  .menu-demo div:hover{background:var(--brand-soft)}
+  .menu-demo hr{border:0;border-top:1px solid var(--border);margin:4px 0}
+  .menu-demo .danger{color:var(--danger)}
+</style>
+</head>
+<body>
+<div class="note"><b>demo：个人资料页 Tab 版</b>（不用原生按钮，按钮为站内设计系统样式）。分 3 个 Tab 切换，
+  底部固定「取消 / 保存修改」；手机端 Tab 横向滚动 + 底部固定保存。</div>
+<div class="page">
+  <h1>个人资料 <span class="sub" style="font-weight:400;font-size:12px">demo · Tab 版</span></h1>
+  <div class="sub">编辑个人资料、头像与 Steam 账号绑定（仅本人可见）</div>
+
+  <!-- Web Tab 版 -->
+  <div class="tabs" id="webTabs">
+    <button class="active" data-tab="basic">基本信息</button>
+    <button data-tab="steam">Steam 账号</button>
+    <button data-tab="prefs">偏好与统计</button>
+  </div>
+  <div class="tab-body">
+    <!-- Tab1 基本信息 -->
+    <div class="tab-pane active" id="pane-basic">
+      <div class="avatar-row">
+        <div class="avatar">孙</div>
+        <div>
+          <button class="btn">更换头像</button>
+          <button class="btn" style="margin-left:8px">移除</button>
+          <div class="hint">JPG/PNG/WebP ≤512KB · 未上传时显示昵称首字母</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label>昵称</label><input value="孙铭" /></div>
+        <div class="field"><label>邮箱</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input value="jacksunyx@outlook.com" readonly style="flex:1" />
+            <button class="btn btn--sm">更换邮箱</button>
+          </div>
+          <div class="hint">已验证 · 每天最多更换 1 次</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label>用户名（登录名）</label><input value="sunboxiang" readonly /><div class="hint">不可修改</div></div>
+        <div class="field"><label>角色 / 注册时间</label><input value="普通用户 · 2026/10/28 13:37" readonly /><div class="hint">角色由所有者分配</div></div>
+      </div>
+      <div class="field"><label>个人简介</label><textarea rows="2" placeholder="介绍一下自己（1-200 字）"></textarea></div>
+    </div>
+
+    <!-- Tab2 Steam 账号 -->
+    <div class="tab-pane" id="pane-steam">
+      <div class="acct">
+        <div class="ico">F</div>
+        <div class="acct-main">
+          <div class="acct-name">FF <span class="tag">SteamID 76561198…2591</span></div>
+          <div class="acct-meta">绑定于 2026/10/28</div>
+          <div class="acct-stats"><span>已拥有 <b>612</b></span><span>愿望单 <b>5</b></span><span>最近同步 15:39</span></div>
+        </div>
+        <div class="acct-actions">
+          <button class="btn btn--sm">查看已拥有</button><button class="btn btn--sm">查看愿望单</button>
+          <button class="btn btn--sm">设为默认</button><button class="btn btn--sm btn--danger">解绑</button>
+        </div>
+      </div>
+      <div class="acct">
+        <div class="ico">H</div>
+        <div class="acct-main">
+          <div class="acct-name">Happy <span class="tag default">默认</span> <span class="tag">SteamID 76561199…0255</span></div>
+          <div class="acct-meta">绑定于 2026/10/28</div>
+          <div class="acct-stats"><span>已拥有 <b>73</b></span><span>愿望单 <b>15</b></span><span>最近同步 15:39</span></div>
+        </div>
+        <div class="acct-actions">
+          <button class="btn btn--sm">查看已拥有</button><button class="btn btn--sm">查看愿望单</button>
+          <button class="btn btn--sm" disabled style="opacity:.55;cursor:default">已设为默认</button>
+          <button class="btn btn--sm btn--danger">解绑</button>
+        </div>
+      </div>
+      <div><button class="btn">＋ 绑定新的 Steam 账号</button></div>
+    </div>
+
+    <!-- Tab3 偏好与统计 -->
+    <div class="tab-pane" id="pane-prefs">
+      <div class="row">
+        <div class="field"><label>主题</label><select><option>深色</option><option>浅色</option><option>跟随系统</option></select></div>
+        <div class="field"><label>到价提醒邮件</label>
+          <div style="display:flex;align-items:center;gap:10px;padding-top:5px"><span class="switch"></span><span>开启（降价时发邮件）</span></div>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat"><span>本站愿望单</span><strong>0</strong></div>
+        <div class="stat"><span>到价提醒</span><strong>0</strong></div>
+        <div class="stat"><span>史低命中</span><strong>0</strong></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot-bar"><button class="btn">取消</button><button class="btn btn--primary">保存修改</button></div>
+
+  <!-- 手机端 -->
+  <h2 style="margin-top:34px;font-size:16px">手机端（Tab 横向滚动 + 底部固定保存）</h2>
+  <div class="phones">
+    <div class="phone">
+      <div class="p-head"><b>个人资料</b><button class="btn btn--text">返回 ↗</button></div>
+      <div class="p-tabs"><span class="active">基本信息</span><span>Steam 账号</span><span>偏好与统计</span></div>
+      <div class="p-body">
+        <div class="p-card">
+          <div class="p-profile">
+            <div class="ava">孙</div>
+            <div><div class="nm">孙铭</div><div class="em">jacksunyx@outlook.com</div></div>
+          </div>
+          <div style="margin-top:10px;display:flex;gap:8px"><button class="btn btn--sm">更换头像</button><button class="btn btn--sm">移除</button></div>
+        </div>
+        <div class="p-card">
+          <div class="p-field"><label>昵称</label><input value="孙铭" /></div>
+          <div class="p-field" style="margin-bottom:0"><label>个人简介</label><textarea rows="2" placeholder="介绍一下自己（1-200 字）"></textarea></div>
+        </div>
+      </div>
+      <div class="p-save"><button class="btn">取消</button><button class="btn btn--primary">保存修改</button></div>
+    </div>
+    <div class="phone">
+      <div class="p-head"><b>个人资料 · Steam 账号</b><button class="btn btn--text">返回 ↗</button></div>
+      <div class="p-tabs"><span>基本信息</span><span class="active">Steam 账号</span><span>偏好与统计</span></div>
+      <div class="p-body">
+        <div class="p-acct">
+          <div class="nm">FF <span class="tag">…2591</span></div>
+          <div class="meta">绑定于 2026/10/28</div>
+          <div class="nums"><span>已拥有 <b>612</b></span><span>愿望单 <b>5</b></span></div>
+          <div class="acts"><button class="btn btn--sm">查看已拥有</button><button class="btn btn--sm">查看愿望单</button><button class="btn btn--sm">设为默认</button><button class="btn btn--sm btn--danger">解绑</button></div>
+        </div>
+        <div class="p-acct">
+          <div class="nm">Happy <span class="tag default">默认</span></div>
+          <div class="meta">76561199…0255 · 绑定于 2026/10/28</div>
+          <div class="nums"><span>已拥有 <b>73</b></span><span>愿望单 <b>15</b></span></div>
+          <div class="acts"><button class="btn btn--sm">查看已拥有</button><button class="btn btn--sm">查看愿望单</button><button class="btn btn--sm" disabled style="opacity:.55">已设为默认</button><button class="btn btn--sm btn--danger">解绑</button></div>
+        </div>
+        <button class="btn" style="width:100%">＋ 绑定新的 Steam 账号</button>
+      </div>
+      <div class="p-save"><button class="btn">取消</button><button class="btn btn--primary">保存修改</button></div>
+    </div>
+  </div>
+
+  <!-- 用户菜单 -->
+  <h2 style="margin-top:30px;font-size:16px">用户菜单新增「切换账户」</h2>
+  <div class="menu-demo">
+    <div>个人资料</div>
+    <div>修改密码</div>
+    <div>返回网站 ↗</div>
+    <hr/>
+    <div>切换账户</div>
+    <div class="danger">退出登录</div>
+  </div>
+</div>
+<script>
+  // Tab 切换（demo 交互；支持 ?tab=basic|steam|prefs 预设）
+  const tabs = document.querySelectorAll('#webTabs button');
+  function activate(name) {
+    tabs.forEach((x) => x.classList.toggle('active', x.dataset.tab === name));
+    document.querySelectorAll('.tab-pane').forEach((p) => p.classList.toggle('active', p.id === 'pane-' + name));
+  }
+  tabs.forEach((b) => b.addEventListener('click', () => activate(b.dataset.tab)));
+  const preset = new URLSearchParams(location.search).get('tab');
+  if (preset && document.getElementById('pane-' + preset)) activate(preset);
+</script>
+</body>
+</html>
