@@ -7,6 +7,19 @@
 
 ---
 
+## FC. ~~调度器 compose 文件级拆分——app 与 scheduler 两个文件独立发布~~ → 已发布 v2.28.8
+
+**类型：** 🧹 技术债（部署架构拆分；业务不剥离）
+**状态：** 已发布 v2.28.8（2026-11-23，实现 5ef3c2c；QA [QA-FC.md](QA-FC.md) 第 1 轮 ✅ 通过 8/缺失 0/偏差 0/需人工确认 2=服务器实跑）
+**优先级：** P1
+**依赖：** 无（EV 批 scheduler 独立服务已发布 v2.28.3，本条目在其上拆文件）
+**解锁：** 无
+**规格**：[SCHEDULER-COMPOSE-SPLIT.md](SCHEDULER-COMPOSE-SPLIT.md)
+
+- **需求**：app 与 scheduler 拆成两个 compose 文件（compose.hub.yaml + compose.scheduler.hub.yaml，\n  独立项目名 + external 网络连 db），发版命令两套互不牵连——app 发版不重建 scheduler、scheduler 升级只动\n  scheduler 文件；只拆生产变体一份（B1 档），其余 4 个变体保持现状；业务不剥离（同镜像 / 同 ./data ./logs / 同库）。
+- **实现**：见规格 §3/§4（compose 拆分与网络、scripts/scheduler-service.sh 双 compose 上下文）。
+- **验收**：见规格 §6（8 条；含 docs/DEPLOY.md「命令与文件归属」表——后续调整按表找文件与命令、\n  env 双份同步提醒、部署侧验证清单）。
+
 ## EZ. ~~个人资料页精简——3 个 Tab（基本信息 / Steam 账号 / 偏好与统计）~~ → 已发布 v2.28.7
 
 **类型：** ⚙️ 调整（前台个人资料页布局合并）

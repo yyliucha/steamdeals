@@ -1,6 +1,6 @@
 # 调度器 compose 文件级拆分（FC，已实现并发布，2026-11-23）
 
-> 状态：**已实现并发布（2026-11-23 实现完成；验收以本文 §6 为准，代码随「构建」指令发版）**。
+> 状态：**已实现并发布 v2.28.8（2026-11-23；实现 5ef3c2c；QA docs/QA-FC.md 第 1 轮 ✅ 8/0/0/2）**。
 > 关联：[SCHEDULER-AS-SERVICE.md](SCHEDULER-AS-SERVICE.md)（EV 批：调度器独立进程化，本条目在其上做文件级隔离）、
 > [DELIVERY.md](DELIVERY.md)（部署与发版流程）。
 > 背景：EV 批后 app 与 scheduler 在同一个 compose 文件里，发版 `pull && up -d`（不带服务名）会同时重建

@@ -1,3 +1,25 @@
+## [2.28.8] - 2026-11-23
+
+FC 调度器 compose 文件级拆分——app 与 scheduler 两个文件独立发布（🧹 技术债，业务不剥离 → 无新功能面 → 小版本，2.28.7 → 2.28.8 连续递增）。本批不涉及 App 仓库。
+
+### 调整
+
+- **生产变体 compose 文件级拆分（5ef3c2c）**：新增 `compose.scheduler.hub.yaml`（独立项目 `steamdeals-scheduler`，
+  external 网络 `steamdeals_default` + external 卷 `steamdeals_appdata`/`steamdeals_logs`，无 depends_on——跨项目靠
+  `DB_WAIT_SEC=60` 重试 + 启动顺序兜底）；`compose.hub.yaml` 删除 scheduler 服务段（只留 db+app），其余 4 个变体不动。
+  发版命令两套互不牵连：app 发版 `pull app && up -d app`（不再重建 scheduler），scheduler 升级/回滚只动 scheduler 文件。
+- **`scripts/scheduler-service.sh` 双 compose 上下文**：新增 `SCHEDULER_COMPOSE_FILES`（默认 `-f compose.scheduler.hub.yaml`，
+  可环境变量覆盖），install/remove/status 的 up/stop/rm/ps/logs 全部走 scheduler 上下文；防双调度器检查与 app 查询仍走
+  app 上下文。
+- **文档**：docs/DEPLOY.md 两套发布命令 + 「命令与文件归属」表（含 env 双份同步提醒）+ 首次启动顺序（先 app 后 scheduler）；
+  docs/DELIVERY.md 部署提示与部署后验证清单（app 发版后 scheduler 未重建、scheduler 独立重建后心跳）。
+
+### 测试
+
+- QA docs/QA-FC.md 第 1 轮 ✅ 放行（通过 8 / 缺失 0 / 偏差 0 / 需人工确认 2=服务器实跑项）。
+- `test/scheduler-service.test.js` 12/12（静态锁随拆分更新 + 反向自检 + mock 场景实跑双上下文断言）；
+  `test/deploy.test.js` 24/24（FC 段断言 hub 无 scheduler + scheduler 文件接 app 网络）；`test/docs.test.js` 5/5；`scan` 干净。
+
 ## [2.28.7] - 2026-11-23
 
 EZ 个人资料页 Tab 版 + FA 用户菜单切换账户（⚙️ 调整 ×2，均无新功能面 → 小版本，2.28.6 → 2.28.7 连续递增）。本批不涉及 App 仓库。

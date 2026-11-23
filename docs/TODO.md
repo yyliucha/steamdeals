@@ -148,22 +148,6 @@
 - **需求**：① 删顶栏「返回网站」按钮（保留菜单项）；② 版本徽标**所有登录用户可见**（当前版本 + 新版提示）；\n  ③ `/api/admin/version` 从 requireAdmin 改为登录用户可访问（未登录 401；force=1 仅管理员）；管理员行为不变。
 - **验收**：见规格 §3（单入口、普通用户显示版本号、管理员完整、移动端正常、测试全绿）。
 
-## FC. 质检通过（🧹 技术债）：调度器 compose 文件级拆分——app 与 scheduler 两个文件独立发布
-
-**类型：** 🧹 技术债（部署架构拆分；业务不剥离）
-**状态：** 质检通过（2026-11-23；实现 5ef3c2c；QA docs/QA-FC.md 第 1 轮 ✅ 8/0/0/2，待「构建」指令）
-**优先级：** P1
-**依赖：** 无（EV 批 scheduler 独立服务已发布 v2.28.3，本条目在其上拆文件）
-**解锁：** 无
-**规格**：[SCHEDULER-COMPOSE-SPLIT.md](SCHEDULER-COMPOSE-SPLIT.md)
-
-- **需求**：app 与 scheduler 拆成两个 compose 文件（compose.hub.yaml + compose.scheduler.hub.yaml，
-  独立项目名 + external 网络连 db），发版命令两套互不牵连——app 发版不重建 scheduler、scheduler 升级只动
-  scheduler 文件；只拆生产变体一份（B1 档），其余 4 个变体保持现状；业务不剥离（同镜像 / 同 ./data ./logs / 同库）。
-- **实现**：见规格 §3/§4（compose 拆分与网络、scripts/scheduler-service.sh 双 compose 上下文）。
-- **验收**：见规格 §6（8 条；含 docs/DEPLOY.md「命令与文件归属」表——后续调整按表找文件与命令、
-  env 双份同步提醒、部署侧验证清单）。
-
 ## FD. 待开发（⚙️ 调整）：部署稳定性——nginx upstream 跟随容器 IP（发版不再 502）
 
 **类型：** ⚙️ 调整（服务器部署配置）
