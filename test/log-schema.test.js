@@ -39,7 +39,7 @@ const EVENT_SNAPSHOT = {
     'scheduler.job_deferred_busy', 'scheduler.job_done', 'scheduler.job_failed', 'scheduler.job_interrupted', 'scheduler.job_partial',
     'scheduler.job_spawn_failed', 'scheduler.job_start', 'scheduler.job_unexpected', 'scheduler.job_wait_end',
     'scheduler.job_wait_slot', 'scheduler.lastrun_restore_failed', 'scheduler.lastrun_restored',
-    'scheduler.no_jobs', 'scheduler.observed_fetch_failed', 'scheduler.settings_reloaded', 'scheduler.start', 'scheduler.stop',
+    'scheduler.no_jobs', 'scheduler.observed_fetch_failed', 'scheduler.drain_timeout', 'scheduler.settings_reloaded', 'scheduler.start', 'scheduler.stop',
     'scheduler.waiting_setup',
   ],
   'src/ingest.js': [
