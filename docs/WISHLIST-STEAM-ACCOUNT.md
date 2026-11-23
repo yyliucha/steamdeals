@@ -43,3 +43,23 @@
 3. 只读：加入/移除/同步功能不受影响；
 4. 普通用户只能看到**自己**的 Steam 账号（越权不可见，A/B 双用户验证）；
 5. `npm test`（分段）+ `frontend:build` + `scan` 全绿；截图对照。
+
+## 6. 补充核查（2026-11-23，两层愿望单现状）
+
+**后端已完整支持两个层面**（无需新增功能）：
+
+| 层 | 数据 | SQL/字段 | 现状 |
+|---|---|---|---|
+| ① Steam 同步层 | `steam_wishlist`（按账号同步导入） | `WISHLISTED_SQL` 合并判定；**`WISHLISTED_BY_SQL` 已返回 `wishlisted_by` = `[{steamId,name}]`（多账号）** | ✅ 已在 `/api/games` 返回（games-repository.js:344/378/400） |
+| ② 手动层 | `user_wishlist`（前台手动添加） | `SITE_WISHLISTED_SQL` → `site_wishlisted` 标记 | ✅ 已实现（POST /api/wishlist 只写本站，不推 Steam） |
+
+**缺的只是前端展示**：
+- 前台游戏卡片/详情**未渲染 `wishlisted_by`**（账号名不显示）；
+- 「我的愿望单」页接口 `listWishlists` 未返回 `steam_accounts`（需补）。
+
+## 7. 更新后的范围（EW）
+
+- **EW-1** 前台游戏卡片（首页/搜索共用）显示 `wishlisted_by` 账号名（多个、>2 折叠 +N）；
+- **EW-2** 游戏详情弹窗显示所属 Steam 账号（多个）；
+- **EW-3** 「我的愿望单」页加「Steam 账号」列（接口补 `steam_accounts`）；
+- **两层支持已存在**（① Steam 同步 ② 手动添加），本条目**只补展示**，不新增数据/写回逻辑；站点仍不修改 Steam 愿望单。

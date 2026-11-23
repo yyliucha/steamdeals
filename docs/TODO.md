@@ -118,7 +118,7 @@
   （命中 → 移 DONE；未命中 → 转缺陷条目）。
 - **注意**：需服务器环境（本机无生产库），由部署/运维阶段执行，不改代码。
 
-## EW. 待开发（⚙️ 调整）：前台愿望单显示 Steam 账号列（只读）
+## EW. 待开发（⚙️ 调整）：前台愿望单显示 Steam 账号（卡片/详情/我的愿望单；两层愿望单已支持）
 
 **类型：** ⚙️ 调整（前台展示；恢复 v2.9.0 前「显示账号」只读能力）
 **状态：** 待开发（2026-11-23 所有者要求 + demo 已给）
@@ -127,8 +127,7 @@
 **解锁：** 无
 **规格**：[WISHLIST-STEAM-ACCOUNT.md](WISHLIST-STEAM-ACCOUNT.md)（demo：docs/design/my-wishlist-steam-account-demo.html/.png）
 
-- **需求**：「我的愿望单」加「Steam 账号」列（桌面表格 + 移动卡片）——显示该游戏在用户已绑定 Steam 账号的导入愿望单中
-  命中的账号名（多账号并排、>2 折叠 +N；无来源显示「本站添加」）；**只读**，不做账号选择/推送。
+- **需求**：两层愿望单已支持（① Steam 同步 ② 手动添加）——本条目补展示：\n  前台游戏**卡片/详情**显示 `wishlisted_by` 账号名（多个、>2 折叠 +N）；「我的愿望单」加「Steam 账号」列\n  （接口补 `steam_accounts`）；只读、不写回 Steam。
 - **实现**：`/api/me/wishlist` 行附加 `steam_accounts`（steam_wishlist join steam_accounts，按 user 限定）；
   UserSections.vue 桌面列 + 移动卡片行。
 - **验收**：见规格 §5（单/多/无来源三种显示；只读；越权不可见；测试全绿）。
