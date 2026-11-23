@@ -116,6 +116,11 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
 - **页面类条目必须核对 demo（2026-11-17 起）**：规格附 `docs/design/*.html` 时，打开 demo（或同名 `.png`）
   与实现截图逐项对比（层级 / 状态 / 间距 / 移动端 / 文案）；**有 demo 却不一致 → 判 ⚠️ 偏差**；
   规格要求了 demo 却没有 → 打回需求方（📋 需求缺陷）。
+- **视觉核对（2026-11-23 起，模型不支持读图时）**：`read_image` 报 `does not declare image input` 时，
+  ① 先看开发侧 DOM 断言证据（关键元素/Tab 状态/按钮 class）；② 需要看图时用
+  `subagent(provider="deepseek-official", model="deepseek-flash", prompt="读取图片 <绝对路径>，输出结构化描述：
+  ①区块与文字 ②按钮样式 ③布局问题 ④Tab 状态；只读图不改代码")`；
+  ③ 或把截图路径交所有者/lead 人工确认——**不许不看图就判 ✅**，也不许猜。
 
 ## 5. 报告格式（docs/QA-<TOPIC>.md）
 
