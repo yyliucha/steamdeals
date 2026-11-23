@@ -16,7 +16,7 @@ EU 定时任务重启韧性 + EV 调度器独立进程化（🐞 缺陷 1 + ⚙�
 
 ### 测试
 
-- QA [docs/QA-EU.md](docs/QA-EU.md) 第 1 轮 ✅ 放行（5/0/0/2）、[docs/QA-EV.md](docs/QA-EV.md) 第 1 轮 ✅ 放行（5/0/0/2）。
+- QA docs/QA-EU.md 第 1 轮 ✅ 放行（5/0/0/2）、docs/QA-EV.md 第 1 轮 ✅ 放行（5/0/0/2）（QA 报告默认不入库，纯文本引用）。
 - 新增主链：`test/cli-interrupt.test.js`（SIGTERM 收尾——纯逻辑全平台 + 真信号 CI Linux）、`test/sync-resume.test.js`（断点读写/排除/过期/脏数据）、`test/scheduler-service.test.js`（五个 compose 静态锁 + 脚本语义锁 + mock docker 场景实跑 install/remove/status）；`test/scheduler.test.js` +41 项 EU 断言（outcomeFor/分批参数/静态锁）、`test/sync-runs.test.js` 更新 interrupted 语义、`test/log-schema.test.js` 快照补 `scheduler.job_interrupted`、`test/deploy.test.js` app command 断言随 EV 更新。
 - 主链分段 test:1~4 全绿；`node test/api.test.js` 38/38；`node test/cli-dispatch.test.js` 12/12；`frontend:build` ✓；`scan` 干净；CI test-main（3c6d752）✅。
 
