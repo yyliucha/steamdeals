@@ -231,6 +231,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 **EU 已实现待发版（2026-11-23，3c6d752，未打 tag）**：定时任务重启韧性——SIGTERM 打断在跑任务记「被重启中断」（sync_runs/健康面板，不误报失败、不发失败邮件、不进熔断）；steam-prices 分批（默认每轮 5000 ≈ 4–5 分钟）+ 断点续跑（data/scheduler-resume.json，中断后下轮不重跑）；重启残留 running 记录标 interrupted；停机时跳过失败原因查询（消除 Cannot use a pool 噪音）；部署步骤增加「发版避让长任务」（本文第 4 节）。**无 schema 变更、无新增依赖**。待质检后随下个版本发布。
 
+**EV 已实现待发版（2026-11-23，8dcd41a，未打 tag）**：调度器独立进程化——compose 五个变体 app 改 `command: ["serve"]`（只 Web/API）+ 新增独立 `scheduler` 服务（与 app 同镜像、共享 data/logs 卷、depends_on db、restart unless-stopped）；`scripts/scheduler-service.sh install|remove|status` 一键安装/删除/查看（install 防双调度器、remove 清空容器与 data/scheduler-*.json 状态、status 显示心跳与 heavy slot）；部署说明更新（发版只重启 app、调度器代码更新才 restart scheduler，本文第 4 节）。**无 schema 变更、无新增依赖**。待质检后随下个版本发布。
+
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 - **v2.27.8 已发布**（tag `v2.27.8`，release 提交见 git log）：ED + EH + EI + EL + EK + DX 六条合并发版（🧪 测试基建 1 + ⚙️ 调整 3 + 🐞 缺陷 1 + 🧹 技术债 1，均无新功能面 → 小版本，2.27.7 → 2.27.8 连续递增）。本批不涉及 App 仓库。
   ED（143d97e）：test-main 加文档路径忽略（`docs/**`、`**/*.md`、`CHANGELOG.md`、`data/**`）——纯文档提交不再触发/取消重跑 test-main；代码路径一律不忽略；docker-hub/docker-tcr 只在 tag 触发不动。
