@@ -1,3 +1,17 @@
+## [2.28.7] - 2026-11-23
+
+EZ 个人资料页 Tab 版 + FA 用户菜单切换账户（⚙️ 调整 ×2，均无新功能面 → 小版本，2.28.6 → 2.28.7 连续递增）。本批不涉及 App 仓库。
+
+### 调整
+
+- **EZ 个人资料页 Tab 版（8eeb1f4）**：`frontend/src/pages/ProfilePage.vue` 五分区重排为 `el-tabs` 三 Tab——基本信息 / Steam 账号（绑定+游戏库合并：每账号一行（名/默认徽标/SteamID/绑定时间 + 已拥有/愿望单/最近同步）+ 查看已拥有/查看愿望单/设为默认/解绑 + 底部「＋ 绑定新的 Steam 账号」）/ 偏好与统计（主题/邮件 + 三项统计）；保存/取消固定底部（sticky，三 Tab 共用同一表单）；手机端 Tab 横向滚动 + 单列布局 + 底部固定保存；全部按钮 el-button；原功能不变（头像/邮箱/简介/绑定/解绑/默认/主题/邮件/统计/未保存离开提示）。规格见 [docs/PROFILE-PAGE-SLIM.md](docs/PROFILE-PAGE-SLIM.md)。
+- **FA 用户菜单「切换账户」（8eeb1f4）**：`frontend/src/pages/Console.vue` 用户菜单新增「切换账户」，顺序与 demo 一致（个人资料/修改密码/返回网站 ↗/（分隔线）切换账户/退出登录，退出登录红字）；切换 = POST /api/logout → `/login?switch=1`（提示「切换账户：已退出当前会话…」）→ 登录成功回原页面；退出登录保持现状（回首页）。规格见 [docs/PROFILE-PAGE-SLIM.md](docs/PROFILE-PAGE-SLIM.md) §3。
+
+### 测试
+
+- QA docs/QA-EZ-FA.md 第 1 轮 ✅ 放行（通过 11 / 缺失 0 / 偏差 0 / 需人工确认 1=截图目视，截图 8 张在 `F:\dsh\ez-fa-shots\` 待所有者目视）。
+- 本批相关测试全绿（profile 15/15 + admin-console-ia 23/23 + auth-pages 14/14 + session-heartbeat 7/7 + frontend-registration 9/9）+ 主链分段 test:1~4 + `frontend:build` ✓ + `scan` 干净。
+
 ## [2.28.6] - 2026-11-23
 
 EV 部署回归修复（serve 默认端口 8090 与 compose 映射 8080 不一致 → 502）——🐞 缺陷修复，无新功能面 → 小版本，2.28.5 → 2.28.6 连续递增。
