@@ -163,3 +163,30 @@
 - **实现**：见规格 §3/§4（compose 拆分与网络、scripts/scheduler-service.sh 双 compose 上下文）。
 - **验收**：见规格 §6（8 条；含 docs/DEPLOY.md「命令与文件归属」表——后续调整按表找文件与命令、
   env 双份同步提醒、部署侧验证清单）。
+
+## FD. 待开发（⚙️ 调整）：部署稳定性——nginx upstream 跟随容器 IP（发版不再 502）
+
+**类型：** ⚙️ 调整（服务器部署配置）
+**状态：** 待开发（2026-11-23 所有者确认方案 A）
+**优先级：** P1 —— 每次发版后 502
+**依赖：** 无
+**解锁：** 无
+**规格**：[NGINX-UPSTREAM-FIX.md](NGINX-UPSTREAM-FIX.md)
+
+- **根因**：nginx upstream 写容器名 `steamdeals:8080`，启动时解析缓存旧 IP；app 重建后 IP 变 → 502。
+- **方案 A**：nginx 加入 webnet + 配置 `resolver 127.0.0.11 valid=10s` + 变量 proxy_pass（自动跟随容器 IP）；
+  备选：部署清单固定加 `docker restart nginx`。
+- **验收**：重建 app 后域名自动恢复（或按清单操作后恢复）；DELIVERY 部署步骤更新；502 不再复现。
+
+## FE. 待开发（⚙️ 调整）：个人资料 Steam 账号——同步按钮 + 按钮样式
+
+**类型：** ⚙️ 调整（EZ 发布后补全）
+**状态：** 待开发（2026-11-23 所有者反馈）
+**优先级：** P2
+**依赖：** EZ（已发布 v2.28.7）、EM（同步异步化已发布）
+**解锁：** 无
+**规格**：[PROFILE-STEAM-ACTIONS.md](PROFILE-STEAM-ACTIONS.md)
+
+- **需求**：① Steam 账号 Tab 每账号加「同步游戏库 / 同步愿望单」按钮（普通用户本人可用；异步 202 + 轮询
+  sync-status；无 API Key 给提示）；② 该页四个按钮改站内 el-button 样式（不得原生）。
+- **验收**：见规格 §3（同步可用/提示/样式统一/手机端/测试全绿）。
