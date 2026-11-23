@@ -238,6 +238,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 **v2.28.5 已发布（2026-11-23，tag v2.28.5 → c39cd9f；CI 双绿：docker-hub 45129428416 ✅ test/smoke/publish 全 success；docker-tcr 45129428468 ✅ test/publish 全 success；test-main 45129405730 ✅ main c39cd9f 全链绿）**：EW 前台愿望单显示 Steam 账号（0fcde48 + 9a65cc2，功能随本版发布）+ EX backfill 回归修复（08eab51）+ EW 旧静态断言更新（test/wishlist.test.js 改 `assert.match(home, /wishlistByText/)`，保留禁止账号选择/推送断言）。**无 schema 变更、无新增依赖**；升级后 backfill 任务恢复调度。**服务器部署待执行**（按本文第 4 节升级到 2.28.5）。
 
+**v2.28.6 已发布（2026-11-23，tag v2.28.6 → cd3fa17；CI 双绿：docker-hub 45135093938 ✅ test/smoke/publish 全 success；docker-tcr 45135094024 ✅ test/publish 全 success；test-main 45135073389 ✅ main 全链绿）**：EV 部署回归修复——`serve` 默认端口 8090→8080（与 compose 集装箱 8080 映射一致，消除 nginx 502；`WEB_PORT` 环境变量仍可覆盖）。**无 schema 变更、无新增依赖**。**服务器部署待执行**（按本文第 4 节升级到 2.28.6）。
+
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 - **v2.27.8 已发布**（tag `v2.27.8`，release 提交见 git log）：ED + EH + EI + EL + EK + DX 六条合并发版（🧪 测试基建 1 + ⚙️ 调整 3 + 🐞 缺陷 1 + 🧹 技术债 1，均无新功能面 → 小版本，2.27.7 → 2.27.8 连续递增）。本批不涉及 App 仓库。
   ED（143d97e）：test-main 加文档路径忽略（`docs/**`、`**/*.md`、`CHANGELOG.md`、`data/**`）——纯文档提交不再触发/取消重跑 test-main；代码路径一律不忽略；docker-hub/docker-tcr 只在 tag 触发不动。
