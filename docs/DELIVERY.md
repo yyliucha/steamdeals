@@ -211,6 +211,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 **v2.28.2 已发布（2026-11-23，tag v2.28.2；CI 双绿：docker-hub 45101984459 ✅ test/smoke/publish 全 success；docker-tcr 45101984469 ✅ test/publish 全 success；test-main 45101958048 ✅ main 全链绿）**：ET 设置页布局系统修复（64d9f48；QA [QA-ET.md](QA-ET.md) 第 1 轮 ✅ 5/0/0/1——数据源与采集/站点与内容/高级三 tab 每 section 一张卡片、两列网格 ≤960px 单列、折叠在卡片内；纯前端布局修复，无 schema/接口/配置变化，升级即可）。验证：settings.test.js 15/15 + 主链分段 test:1~4 全绿 + frontend:build ✓ + scan 干净 + headless Chrome 结构/功能探针。**服务器部署待执行**（按本文第 4 节升级到 2.28.2）。
 
+**EU 已实现待发版（2026-11-23，3c6d752，未打 tag）**：定时任务重启韧性——SIGTERM 打断在跑任务记「被重启中断」（sync_runs/健康面板，不误报失败、不发失败邮件、不进熔断）；steam-prices 分批（默认每轮 5000 ≈ 4–5 分钟）+ 断点续跑（data/scheduler-resume.json，中断后下轮不重跑）；重启残留 running 记录标 interrupted；停机时跳过失败原因查询（消除 Cannot use a pool 噪音）；部署步骤增加「发版避让长任务」（本文第 4 节）。**无 schema 变更、无新增依赖**。待质检后随下个版本发布。
+
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 - **v2.27.8 已发布**（tag `v2.27.8`，release 提交见 git log）：ED + EH + EI + EL + EK + DX 六条合并发版（🧪 测试基建 1 + ⚙️ 调整 3 + 🐞 缺陷 1 + 🧹 技术债 1，均无新功能面 → 小版本，2.27.7 → 2.27.8 连续递增）。本批不涉及 App 仓库。
   ED（143d97e）：test-main 加文档路径忽略（`docs/**`、`**/*.md`、`CHANGELOG.md`、`data/**`）——纯文档提交不再触发/取消重跑 test-main；代码路径一律不忽略；docker-hub/docker-tcr 只在 tag 触发不动。
