@@ -146,6 +146,7 @@
 | **EL** | ⚙️ 调整：后台「添加/编辑」统一弹窗（IP 黑/白名单、站点通知、设置代理、申诉处理；原编号 EK，2026-11-20 编号撞车由所有者裁决改为 EL） | [ADMIN-EDIT-DIALOG.md](ADMIN-EDIT-DIALOG.md) | 已发布 v2.27.8（2026-11-20，实现 e0821f9；QA docs/QA-EL.md 第 1 轮 ✅ 5/0/0/2） | ✅ 本轮已给 |
 | **EK** | 🐞 缺陷：App Release 同步资产下载走专用代理（有代理走代理、无代理直连 GitHub；代理超时 30s） | [APP-RELEASE-SYNC-PROXY.md](APP-RELEASE-SYNC-PROXY.md) | 已发布 v2.27.8（2026-11-20，实现 cc4fcf5；QA docs/QA-EK.md 第 1 轮 ✅ 6/0/0/1） | ✅ 本轮已给 |
 | **EM** | 🐞 缺陷：Steam 同步超时（代理快速切换 + 同步异步化 + 结果反馈） | [STEAM-SYNC-TIMEOUT.md](STEAM-SYNC-TIMEOUT.md) | 已发布 v2.28.0（2026-11-20，实现 ba9b0b0；QA docs/QA-EM.md 第 1 轮 ✅ 5/0/0/1） | ✅ 本轮已给 |
+| **EN** | ⚙️ 调整：设置页布局系统修复（cardHead/字段/折叠拆网格 → 每 section 一张卡片，方案 A；覆盖 sources/site/advanced） | [SETTINGS-LAYOUT-FIX.md](SETTINGS-LAYOUT-FIX.md) | 待开发（2026-11-23 P1） | ✅ demo 已给 |
 | **DX** | 🧹 技术债：列表/站点接口性能优化（count 合并 + 短 TTL 缓存 + /api/site 缓存 + 压测） | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DX | 已发布 v2.27.8（2026-11-20，实现 090af4c；QA docs/QA-DX.md 第 1 轮 ✅ 6/0/0/1） | ✅ 本轮已给 |
 | **EN** | CSP 安全加固（Report-Only → 正式；三件套唯一未落地项） | [ROADMAP.md](ROADMAP.md)「安全排查结论」#2 | 待开发 | ✅ 本轮已给 |
 | **EO** | 首页工具栏 1100–1300px 挤成一行（先排查是否仍复现） | [ROADMAP.md](ROADMAP.md)「体验与性能优化」#1 | 待排查 | ✅ 本轮已给 |
