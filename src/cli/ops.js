@@ -128,7 +128,8 @@ export function createCliOps(ctx) {
 
   /** 内置静态页服务：直接 IP:端口 访问生成好的页面，不需要外部 nginx。 */
   async function cmdServe() {
-    const port = Number(flag('port', process.env.WEB_PORT ?? process.env.PORT ?? 8090));
+    // v2.28.6：与 compose 的容器端口映射（8080）保持一致；旧默认 8090 会造成 nginx 502。
+    const port = Number(flag('port', process.env.WEB_PORT ?? process.env.PORT ?? 8080));
     const host = String(flag('host', '0.0.0.0'));
     // 有 web/ 就服务前端工程，否则退回静态页目录
     const dir = String(flag('dir', existsSync('web') ? 'web' : (process.env.OUT_DIR ?? 'out')));
