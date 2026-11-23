@@ -234,6 +234,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 **v2.28.3 已发布（2026-11-23，tag v2.28.3 → 7723f0c；CI 双绿：docker-hub 45121904048 ✅ test/smoke/publish 全 success；docker-tcr 45121904031 ✅ test/publish 全 success；test-main 45110357498 ✅ main 3c6d752 全链绿，7723f0c 纯文档修复由 docker-hub test job 兜底全绿）**：EU 定时任务重启韧性（3c6d752；QA docs/QA-EU.md 第 1 轮 ✅ 5/0/0/2——SIGTERM 打断在跑任务记「被重启中断」不误报失败/不发邮件/不进熔断；steam-prices 分批 5000 + 断点续跑；重启残留 running 标 interrupted；停机跳过失败原因查询降噪；EU-5 排空——停机先等任务自然完成 ≤10 分钟再退出）+ EV 调度器独立进程化（8dcd41a；QA docs/QA-EV.md 第 1 轮 ✅ 5/0/0/2——compose 五变体 app 改 serve + 独立 scheduler 容器（stop_grace_period 10m）；scheduler-service.sh install/remove/status；发版只重启 app）。**无 schema 变更、无新增依赖**。**部署提示**：服务器 compose 需同步「app command 改 serve + 新增 scheduler 服务（stop_grace_period: 10m）」两处（本文第 4 节）；升级后执行 `scripts/scheduler-service.sh install`（防双调度器）并观察一轮任务；日常发版一行 `docker compose pull && docker compose up -d`（规格 §7 一键，排空保护）。**服务器部署待执行**。
 
+**EW 已实现待发版（2026-11-23，0fcde48 + 9a65cc2；QA docs/QA-EW.md 第 1 轮 ✅ 通过 7/缺失 0/偏差 0/需人工确认 2；未打 tag、未触发构建，等「构建」指令）**：前台愿望单显示 Steam 账号（只读展示）——首页卡片/详情弹窗渲染 `wishlisted_by`（多账号「、」并排、>2 折叠 +N、悬停全量）；「我的愿望单」加「Steam 账号」列与移动卡片行（单账号「导入」/多账号折叠/无来源「本站添加（无 Steam 来源）」）；`GET /api/me/wishlist` 每行附加 `steam_accounts`（按当前用户聚合、去重排序）；空白别名回退 persona/SteamID（9a65cc2）。两层愿望单数据与写逻辑零改动；游客不显示账号。**无 schema 变更、无新增依赖**。
+
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 - **v2.27.8 已发布**（tag `v2.27.8`，release 提交见 git log）：ED + EH + EI + EL + EK + DX 六条合并发版（🧪 测试基建 1 + ⚙️ 调整 3 + 🐞 缺陷 1 + 🧹 技术债 1，均无新功能面 → 小版本，2.27.7 → 2.27.8 连续递增）。本批不涉及 App 仓库。
   ED（143d97e）：test-main 加文档路径忽略（`docs/**`、`**/*.md`、`CHANGELOG.md`、`data/**`）——纯文档提交不再触发/取消重跑 test-main；代码路径一律不忽略；docker-hub/docker-tcr 只在 tag 触发不动。

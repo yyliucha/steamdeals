@@ -17,7 +17,6 @@
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
 | （空——v2.28.3 构建会话 2026-11-23 14:45 收尾注销：tag v2.28.3 CI 双绿（docker-hub 45121904048 / docker-tcr 45121904031），EU+EV 发布完成） | | | | | |
-| EW | frontend/src/pages/Home.vue、frontend/src/pages/UserSections.vue、src/routes/watchlist.js、src/steam-accounts.js、test/ | 无 | 2026-11-23 14:25 | 2026-11-23 16:30 | EW 开发会话（定时任务） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 
