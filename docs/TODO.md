@@ -131,3 +131,26 @@
 - **实现**：`/api/me/wishlist` 行附加 `steam_accounts`（steam_wishlist join steam_accounts，按 user 限定）；
   UserSections.vue 桌面列 + 移动卡片行。
 - **验收**：见规格 §5（单/多/无来源三种显示；只读；越权不可见；测试全绿）。
+
+### 实现要点（2026-11-23 对话全部落定）
+
+**两层愿望单（已支持，勿重复实现）**
+- ① Steam 同步层：`steam_wishlist`（按账号同步导入，**站点只读、不写回 Steam**）；
+- ② 手动层：`user_wishlist`（前台「加入愿望单」，`POST /api/wishlist` 只写本站 + 建史低提醒，不推 Steam）；
+- 合并判定已有：`WISHLISTED_SQL`（steam_wishlist OR user_wishlist）；
+- 账号列表已有：`WISHLISTED_BY_SQL` → `wishlisted_by = [{steamId, name}]`（多账号，`games-repository.js:344/378/400` 已 select）；
+- 手动标记已有：`SITE_WISHLISTED_SQL` → `site_wishlisted`。
+
+**本次只做「前端展示」**
+1. 前台游戏卡片（`frontend/src/pages/Home.vue` 桌面卡片 + 移动卡片）：显示 `game.wishlisted_by` 的账号名——
+   多个用「、」并排，**>2 折叠「+N」**，无则隐藏；位置在卡片底部信息行/移动卡片标签区，**不抢价格与标题**；
+2. 游戏详情弹窗（Home.vue detail）：显示所属 Steam 账号（多个；无则隐藏/「Manual wishlist」）；
+3. 「我的愿望单」页（`frontend/src/pages/UserSections.vue`）：桌面加「Steam 账号」列
+   （多账号并排、>2 折叠 +N、无来源显示「本站添加（无 Steam 来源）」）；移动卡片加一行「Steam 账号：…」；
+   后端 `GET /api/me/wishlist`（`src/routes/watchlist.js:157` → `steamAccountsMod.listWishlists`）每行附加
+   `steam_accounts` 数组：`steam_wishlist sw join steam_accounts a on a.steam_id=sw.steam_id`
+   where `a.user_id=<当前用户>` and `sw.appid=g.steam_appid`，
+   `coalesce(nullif(btrim(a.alias),''), a.persona_name, a.steam_id)`，多账号聚合去重、无命中空数组；
+4. 只读约束：不改加入/移除/同步逻辑；**不写回 Steam**；**游客不显示账号**；A/B 双用户越权不可见；
+5. 视觉参考：`docs/design/my-wishlist-steam-account-demo.html`（桌面表格 + 移动卡片三态）；
+6. 验收补充：两层数据同时命中时卡片显示正确；既有「愿望单」筛选（两层合并）不受影响。
