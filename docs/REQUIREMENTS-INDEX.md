@@ -151,7 +151,7 @@
 | **EV** | ⚙️ 调整：调度器独立进程化 + 一键安装/删除（app=serve、scheduler 独立容器、scheduler-service.sh） | [SCHEDULER-AS-SERVICE.md](SCHEDULER-AS-SERVICE.md) | 已发布 v2.28.3（2026-11-23，8dcd41a；QA-EV 第 1 轮 ✅） | ✅ 本轮已给 |
 | **EW** | ⚙️ 调整：前台愿望单显示 Steam 账号列（只读；多账号 +N；无来源显示本站添加） | [WISHLIST-STEAM-ACCOUNT.md](WISHLIST-STEAM-ACCOUNT.md) | 已发布 v2.28.5（2026-11-23，0fcde48 + 9a65cc2；QA docs/QA-EW.md） | ✅ demo 已给 |
 | **EX** | 🐞 缺陷：v2.28.3 backfill 回归（countBackfillCandidates 传 store → q is not a function；随 v2.28.4） | CHANGELOG 2.28.4 | 已发布 v2.28.5（2026-11-23，08eab51；v2.28.4 CI 红由 v2.28.5 补发） | ✅ |
-| **FC** | 🧹 技术债：调度器 compose 文件级拆分（app/scheduler 两文件独立发布；命令归属表） | [SCHEDULER-COMPOSE-SPLIT.md](SCHEDULER-COMPOSE-SPLIT.md) | 待开发（2026-11-23 P1） | ✅ 本次已给 |
+| **FC** | 🧹 技术债：调度器 compose 文件级拆分（app/scheduler 两文件独立发布；命令归属表） | [SCHEDULER-COMPOSE-SPLIT.md](SCHEDULER-COMPOSE-SPLIT.md) | 已实现待发版（2026-11-23 P1） | ✅ 本次已给 |
 | **EY** | ⚙️ 调整：我的愿望单合并 Steam 愿望单（两层展示、Steam 行只读无操作、同游戏合并一行） | [MY-WISHLIST-MERGED.md](MY-WISHLIST-MERGED.md) | 待开发（2026-11-23 P2） | ✅ 本轮已给 |
 | **EZ** | ⚙️ 调整：个人资料页精简（el-tabs 三 Tab：基本信息 / Steam 账号（绑定+游戏库合并）/ 偏好与统计；保存固定底部；手机端 Tab 横向滚动；全 el-button） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 质检通过（2026-11-23，QA-EZ-FA 第 1 轮 ✅） | ✅ demo 已给 |
 | **FA** | ⚙️ 调整：用户菜单新增「切换账户」（退出会话 → /login?switch=1 → 登录后回 Console；保留退出登录） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 质检通过（2026-11-23，QA-EZ-FA 第 1 轮 ✅） | ✅ demo 已给 |
