@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>个人资料页精简 demo（Web 合并版 + 手机端方案）</title>
+<style>
+  :root{--bg:#0a101c;--panel:#111a2b;--panel-2:#0e1727;--border:#1e2b40;--fg:#d8e0ee;--fg-muted:#8b98ad;--brand:#3b82f6;--brand-soft:#16263f;--ok:#2fb47c;--danger:#e57373;--radius:12px}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;font-size:13px}
+  .note{max-width:1180px;margin:14px auto 0;padding:8px 14px;border:1px dashed #2a3b55;border-radius:10px;color:var(--fg-muted);font-size:12px;line-height:1.7}
+  .note b{color:var(--fg)}
+  .page{max-width:1180px;margin:0 auto;padding:16px 20px 40px}
+  h1{font-size:20px;margin:6px 0 2px}.sub{color:var(--fg-muted);font-size:12px}
+  .card{border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);margin-top:14px;overflow:hidden}
+  .card h3{margin:0;padding:10px 14px;background:var(--panel-2);border-bottom:1px solid var(--border);font-size:14px}
+  .card h3 small{color:var(--fg-muted);font-weight:400;font-size:11.5px;margin-left:6px}
+  .body{padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .field label{display:block;font-size:12px;color:var(--fg-muted);margin-bottom:4px}
+  .field input,.field textarea{width:100%;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;color:var(--fg);padding:7px 10px;font-size:13px;font-family:inherit}
+  .field input[readonly]{color:var(--fg-muted)}
+  .field .hint{font-size:11px;color:var(--fg-muted);margin-top:3px}
+  .avatar-row{display:flex;align-items:center;gap:12px}
+  .avatar{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#2e6b4f,#7aa86b);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff}
+  .btn{border:1px solid var(--border);background:var(--panel-2);color:var(--fg);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer}
+  .btn-primary{background:var(--brand);border-color:var(--brand);color:#fff}
+  .btn-danger{color:var(--danger);border-color:rgba(229,115,115,.4)}
+  .acct{border:1px solid var(--border);border-radius:10px;background:var(--panel-2);padding:10px 12px;display:flex;gap:12px;align-items:flex-start}
+  .acct .ico{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;flex:none;background:var(--brand-soft);border:1px solid var(--border);color:#8ab4ff}
+  .acct-main{flex:1;min-width:0}
+  .acct-name{font-weight:600;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .tag{font-size:10.5px;padding:1px 7px;border-radius:999px;border:1px solid var(--border);color:var(--fg-muted)}
+  .tag.default{color:var(--ok);border-color:rgba(47,180,124,.45);background:rgba(47,180,124,.08)}
+  .acct-meta{color:var(--fg-muted);font-size:11.5px;margin-top:2px}
+  .acct-stats{display:flex;gap:16px;margin-top:6px;font-size:12px}
+  .acct-stats b{font-size:14px}
+  .acct-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;flex:none;max-width:260px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .stat{border:1px solid var(--border);border-radius:10px;background:var(--panel-2);padding:10px 12px}
+  .stat span{font-size:11.5px;color:var(--fg-muted)}
+  .stat strong{display:block;font-size:20px;margin-top:2px}
+  .switch{width:38px;height:20px;border-radius:999px;background:var(--brand);position:relative;flex:none}
+  .switch::after{content:"";position:absolute;top:2px;left:20px;width:16px;height:16px;border-radius:50%;background:#fff}
+  .foot-bar{position:sticky;bottom:0;display:flex;justify-content:flex-end;gap:10px;padding:12px 0;background:linear-gradient(180deg,transparent,var(--bg) 40%)}
+  /* ===== 手机端方案 ===== */
+  .phones{display:flex;gap:40px;justify-content:center;padding:10px 0;flex-wrap:wrap}
+  .phone{width:360px;border:1px solid var(--border);border-radius:22px;background:#0b1220;overflow:hidden}
+  .phone .p-head{padding:12px 14px 8px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+  .phone .p-head b{font-size:15px}
+  .phone .p-body{padding:12px;display:flex;flex-direction:column;gap:10px}
+  .p-card{border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:10px 12px}
+  .p-card h4{margin:0 0 8px;font-size:12.5px;color:var(--fg-muted);font-weight:600}
+  .p-profile{display:flex;gap:10px;align-items:center}
+  .p-profile .ava{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#2e6b4f,#7aa86b);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;flex:none}
+  .p-profile .nm{font-weight:600;font-size:14px}
+  .p-profile .em{color:var(--fg-muted);font-size:11.5px;margin-top:2px}
+  .p-field{margin-bottom:8px}
+  .p-field label{display:block;font-size:11.5px;color:var(--fg-muted);margin-bottom:3px}
+  .p-field input,.p-field textarea{width:100%;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;color:var(--fg);padding:6px 8px;font-size:12.5px}
+  .p-acct{border:1px solid var(--border);border-radius:10px;background:var(--panel-2);padding:8px 10px;margin-bottom:8px}
+  .p-acct .nm{font-weight:600;display:flex;align-items:center;gap:6px}
+  .p-acct .meta{color:var(--fg-muted);font-size:11px;margin-top:2px}
+  .p-acct .nums{display:flex;gap:14px;margin-top:6px;font-size:11.5px}
+  .p-acct .acts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+  .p-acct .acts .btn{width:100%;padding:5px 0;font-size:11.5px}
+  .p-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .p-stat{border:1px solid var(--border);border-radius:9px;background:var(--panel-2);padding:8px}
+  .p-stat span{font-size:10.5px;color:var(--fg-muted)}
+  .p-stat b{display:block;font-size:16px;margin-top:2px}
+  .p-save{position:sticky;bottom:0;display:flex;gap:8px;padding:10px 12px;background:linear-gradient(180deg,transparent,#0b1220 40%)}
+  .p-save .btn{flex:1;padding:9px 0;font-size:13px}
+  /* 用户菜单（切换账户） */
+  .menu-demo{width:240px;border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:6px;margin-top:12px}
+  .menu-demo div{padding:9px 10px;border-radius:8px;font-size:13px;cursor:pointer}
+  .menu-demo div:hover{background:var(--brand-soft)}
+  .menu-demo hr{border:0;border-top:1px solid var(--border);margin:4px 0}
+  .menu-demo .danger{color:var(--danger)}
+</style>
+</head>
+<body>
+<div class="note"><b>demo：个人资料页精简</b>（左：Web 合并版；右：手机端方案）。合并思路：5 个分区 → 3 个卡片
+  「基本信息 / Steam 账号（绑定+游戏库合并）/ 偏好与统计」，保存按钮固定底部；手机端单列 + 底部固定保存。</div>
+<div class="page">
+  <h1>个人资料 <span class="sub" style="font-weight:400;font-size:12px">demo</span></h1>
+  <div class="sub">编辑个人资料、头像与 Steam 账号绑定（仅本人可见）</div>
+
+  <!-- Web 合并版 -->
+  <div class="card">
+    <h3>① 基本信息 <small>头像 / 昵称 / 邮箱 / 简介（用户名与角色只读）</small></h3>
+    <div class="body">
+      <div class="avatar-row">
+        <div class="avatar">孙</div>
+        <div>
+          <button class="btn">更换头像</button>
+          <button class="btn" style="margin-left:6px">移除</button>
+          <div class="hint" style="font-size:11px;color:var(--fg-muted);margin-top:4px">JPG/PNG/WebP ≤512KB · 未上传时显示昵称首字母</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label>昵称</label><input value="孙铭" /></div>
+        <div class="field"><label>邮箱</label><input value="jacksunyx@outlook.com" readonly /><div class="hint">已验证 · 每天最多更换 1 次</div></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>用户名（登录名）</label><input value="sunboxiang" readonly /><div class="hint">不可修改</div></div>
+        <div class="field"><label>角色 / 注册时间</label><input value="普通用户 · 2026/10/28 13:37" readonly /><div class="hint">角色由所有者分配</div></div>
+      </div>
+      <div class="field"><label>个人简介</label><textarea rows="2">介绍一下自己（1-200 字）</textarea></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>② Steam 账号 <small>绑定管理 + 游戏库统计合并（每个账号一行）</small></h3>
+    <div class="body">
+      <div class="acct">
+        <div class="ico">F</div>
+        <div class="acct-main">
+          <div class="acct-name">FF <span class="tag">SteamID 76561198…2591</span></div>
+          <div class="acct-meta">绑定于 2026/10/28</div>
+          <div class="acct-stats"><span>已拥有 <b>612</b></span><span>愿望单 <b>5</b></span><span>最近同步 15:39</span></div>
+        </div>
+        <div class="acct-actions">
+          <button class="btn">查看已拥有</button><button class="btn">查看愿望单</button>
+          <button class="btn">设为默认</button><button class="btn btn-danger">解绑</button>
+        </div>
+      </div>
+      <div class="acct">
+        <div class="ico">H</div>
+        <div class="acct-main">
+          <div class="acct-name">Happy <span class="tag default">默认</span> <span class="tag">SteamID 76561199…0255</span></div>
+          <div class="acct-meta">绑定于 2026/10/28</div>
+          <div class="acct-stats"><span>已拥有 <b>73</b></span><span>愿望单 <b>15</b></span><span>最近同步 15:39</span></div>
+        </div>
+        <div class="acct-actions">
+          <button class="btn">查看已拥有</button><button class="btn">查看愿望单</button>
+          <button class="btn">已设为默认</button><button class="btn btn-danger">解绑</button>
+        </div>
+      </div>
+      <div><button class="btn">＋ 绑定新的 Steam 账号</button></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>③ 偏好与统计 <small>主题 / 邮件提醒 / 个人统计合并</small></h3>
+    <div class="body">
+      <div class="row">
+        <div class="field"><label>主题</label><input value="深色" readonly /></div>
+        <div class="field"><label>到价提醒邮件</label><div style="display:flex;align-items:center;gap:8px;padding-top:4px"><span class="switch"></span><span>开启（降价时发邮件）</span></div></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><span>本站愿望单</span><strong>0</strong></div>
+        <div class="stat"><span>到价提醒</span><strong>0</strong></div>
+        <div class="stat"><span>史低命中</span><strong>0</strong></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot-bar"><button class="btn">取消</button><button class="btn btn-primary">保存修改</button></div>
+
+  <!-- 手机端方案 -->
+  <h2 style="margin-top:30px;font-size:16px">手机端方案（单列 + 底部固定保存）</h2>
+  <div class="phones">
+    <div class="phone">
+      <div class="p-head"><b>个人资料</b><span class="sub">返回 ↗</span></div>
+      <div class="p-body">
+        <div class="p-card">
+          <div class="p-profile">
+            <div class="ava">孙</div>
+            <div><div class="nm">孙铭</div><div class="em">jacksunyx@outlook.com</div></div>
+          </div>
+          <div style="margin-top:8px"><button class="btn">更换头像</button> <button class="btn">移除</button></div>
+        </div>
+        <div class="p-card">
+          <h4>基本信息</h4>
+          <div class="p-field"><label>昵称</label><input value="孙铭" /></div>
+          <div class="p-field"><label>个人简介</label><textarea rows="2">介绍一下自己（1-200 字）</textarea></div>
+        </div>
+        <div class="p-card">
+          <h4>Steam 账号 · 2 个</h4>
+          <div class="p-acct">
+            <div class="nm">FF <span class="tag">76561198…2591</span></div>
+            <div class="meta">绑定于 2026/10/28</div>
+            <div class="nums"><span>已拥有 <b>612</b></span><span>愿望单 <b>5</b></span></div>
+            <div class="acts"><button class="btn">查看已拥有</button><button class="btn">查看愿望单</button><button class="btn">设为默认</button><button class="btn btn-danger">解绑</button></div>
+          </div>
+          <div class="p-acct">
+            <div class="nm">Happy <span class="tag default">默认</span></div>
+            <div class="meta">76561199…0255 · 绑定于 2026/10/28</div>
+            <div class="nums"><span>已拥有 <b>73</b></span><span>愿望单 <b>15</b></span></div>
+            <div class="acts"><button class="btn">查看已拥有</button><button class="btn">查看愿望单</button><button class="btn">已设为默认</button><button class="btn btn-danger">解绑</button></div>
+          </div>
+          <button class="btn" style="width:100%">＋ 绑定新的 Steam 账号</button>
+        </div>
+        <div class="p-card">
+          <h4>偏好与统计</h4>
+          <div class="p-field"><label>主题</label><input value="深色" readonly /></div>
+          <div class="p-field"><label>到价提醒邮件</label><div style="display:flex;align-items:center;gap:8px;padding-top:4px"><span class="switch"></span><span>开启</span></div></div>
+          <div class="p-stats"><div class="p-stat"><span>本站愿望单</span><b>0</b></div><div class="p-stat"><span>到价提醒</span><b>0</b></div><div class="p-stat"><span>史低命中</span><b>0</b></div></div>
+        </div>
+      </div>
+      <div class="p-save"><button class="btn">取消</button><button class="btn btn-primary">保存修改</button></div>
+    </div>
+  </div>
+
+  <!-- 用户菜单 -->
+  <h2 style="margin-top:30px;font-size:16px">用户菜单新增「切换账户」</h2>
+  <div class="menu-demo">
+    <div>个人资料</div>
+    <div>修改密码</div>
+    <div>返回网站 ↗</div>
+    <hr/>
+    <div>切换账户</div>
+    <div class="danger">退出登录</div>
+  </div>
+</div>
+</body>
+</html>

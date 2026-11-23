@@ -152,6 +152,8 @@
 | **EW** | ⚙️ 调整：前台愿望单显示 Steam 账号列（只读；多账号 +N；无来源显示本站添加） | [WISHLIST-STEAM-ACCOUNT.md](WISHLIST-STEAM-ACCOUNT.md) | 已发布 v2.28.5（2026-11-23，0fcde48 + 9a65cc2；QA docs/QA-EW.md） | ✅ demo 已给 |
 | **EX** | 🐞 缺陷：v2.28.3 backfill 回归（countBackfillCandidates 传 store → q is not a function；随 v2.28.4） | CHANGELOG 2.28.4 | 已发布 v2.28.5（2026-11-23，08eab51；v2.28.4 CI 红由 v2.28.5 补发） | ✅ |
 | **EY** | ⚙️ 调整：我的愿望单合并 Steam 愿望单（两层展示、Steam 行只读无操作、同游戏合并一行） | [MY-WISHLIST-MERGED.md](MY-WISHLIST-MERGED.md) | 待开发（2026-11-23 P2） | ✅ 本轮已给 |
+| **EZ** | ⚙️ 调整：个人资料页精简（5 分区→3 卡片：基本信息/Steam 账号/偏好与统计；手机端单列方案） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 待开发（2026-11-23 P2） | ✅ demo 已给 |
+| **FA** | ⚙️ 调整：用户菜单新增「切换账户」（换账号登录，保留退出登录） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 待开发（2026-11-23 P2） | ✅ demo 已给 |
 | **DX** | 🧹 技术债：列表/站点接口性能优化（count 合并 + 短 TTL 缓存 + /api/site 缓存 + 压测） | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DX | 已发布 v2.27.8（2026-11-20，实现 090af4c；QA docs/QA-DX.md 第 1 轮 ✅ 6/0/0/1） | ✅ 本轮已给 |
 | **EN** | CSP 安全加固（Report-Only → 正式；三件套唯一未落地项） | [ROADMAP.md](ROADMAP.md)「安全排查结论」#2 | 待开发 | ✅ 本轮已给 |
 | **EO** | 首页工具栏 1100–1300px 挤成一行（先排查是否仍复现） | [ROADMAP.md](ROADMAP.md)「体验与性能优化」#1 | 待排查 | ✅ 本轮已给 |
