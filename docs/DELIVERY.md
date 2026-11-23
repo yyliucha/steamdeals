@@ -146,11 +146,14 @@ docker exec steamdeals node -p "require('./package.json').version"   # 期望输
 > ./scripts/scheduler-service.sh install
 > ./scripts/scheduler-service.sh status    # 容器状态 + 最近心跳 + 当前 heavy slot 任务
 >
-> # 日常发版（按规格 §6 顺序，保证任务尽量不中断）：
-> docker compose pull                        # 1) 先拉新镜像（不重启任何服务）
-> docker compose up -d --no-deps app         # 2) 只更新 Web/API——调度器继续跑、任务不受影响
-> docker compose logs --tail 50 scheduler    # 3) 观察当前长任务（EU-2 分批后单轮 ≤10 分钟）
-> docker compose up -d --no-deps scheduler   # 4) 调度器代码有更新时才更新——SIGTERM 触发 EU-5 排空（等任务自然完成，≤10 分钟）才退出
+> # 日常发版（规格 §7 一键：stop_grace_period 10m + EU-5 排空自动保证顺序，无需分步）
+> docker compose pull && docker compose up -d
+>
+> # 保守场景：只想更新 Web/API 时只动 app（调度器继续跑、任务不受影响）
+> docker compose up -d --no-deps app
+>
+> # 分步命令（原理说明，见规格 §6）：pull → up app → 观察调度器任务 → up scheduler
+> # （scheduler 收到 SIGTERM 触发 EU-5 排空——等任务自然完成 ≤10 分钟才退出）
 >
 > # 一键删除所有调度任务（停容器 + 删容器 + 清 data/scheduler-*.json 状态；业务数据不动）：
 > ./scripts/scheduler-service.sh remove
