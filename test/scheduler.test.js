@@ -685,6 +685,12 @@ test('EU 批静态锁：scheduler 停机语义 + 前端「被重启中断」显�
   assert.match(sched, /if \(outcome\.result === 'interrupted'\) return;/, 'interrupted 不进熔断计数（提前返回）');
   // EU-4：停机时跳过失败原因查询（消除 Cannot use a pool 噪音）
   assert.match(sched, /if \(!stopping && code !== 0 && code !== 75\)/, '停机中不查 lastFailedSyncRun');
+  // EU-5：排空（drain）——停机时不再立即打断在跑任务，等其自然完成（默认 10 分钟可调），超时才 SIGTERM
+  assert.match(sched, /SCHEDULER_DRAIN_TIMEOUT_MS/, '排空超时可用环境变量调整');
+  assert.match(sched, /10 \* 60_000/, '排空超时默认 10 分钟');
+  assert.match(sched, /drainTimeoutMs/, 'stop() 挂排空超时定时器');
+  assert.match(sched, /scheduler\.drain_timeout/, '超时打断记日志（drain_timeout）');
+  assert.match(sched, /wait for running jobs/, 'stop 日志标注排空语义');
   // EU-2：分批参数进任务表
   assert.match(sched, /STEAM_PRICE_BATCH/, 'steam-prices 分批可配置');
   // 前端三处显示「被重启中断」（任务卡 / 健康条 / 同步记录）

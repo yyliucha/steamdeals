@@ -113,6 +113,8 @@ services:
     image: steamdeals:latest
     restart: unless-stopped
     command: []
+    # EU-5 排空：docker stop 时给调度器最多 10 分钟等在跑任务自然完成（配合 SCHEDULER_DRAIN_TIMEOUT_MS）
+    stop_grace_period: 10m
     depends_on:
       db:
         condition: service_healthy

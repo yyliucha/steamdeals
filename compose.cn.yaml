@@ -79,7 +79,7 @@ services:
     volumes:
       - appdata:/app/data
       - logs:/app/logs
-    stop_grace_period: 30s
+    stop_grace_period: 10m
     logging:
       driver: json-file
       options:

@@ -146,11 +146,11 @@ docker exec steamdeals node -p "require('./package.json').version"   # 期望输
 > ./scripts/scheduler-service.sh install
 > ./scripts/scheduler-service.sh status    # 容器状态 + 最近心跳 + 当前 heavy slot 任务
 >
-> # 发版（只更新 Web/API 或前端时）：只重启 app，调度任务不中断
-> docker compose pull app && docker compose up -d app
->
-> # 只有调度器代码（src/scheduler.js 等）有更新时才重启 scheduler：
-> docker compose restart scheduler
+> # 日常发版（按规格 §6 顺序，保证任务尽量不中断）：
+> docker compose pull                        # 1) 先拉新镜像（不重启任何服务）
+> docker compose up -d --no-deps app         # 2) 只更新 Web/API——调度器继续跑、任务不受影响
+> docker compose logs --tail 50 scheduler    # 3) 观察当前长任务（EU-2 分批后单轮 ≤10 分钟）
+> docker compose up -d --no-deps scheduler   # 4) 调度器代码有更新时才更新——SIGTERM 触发 EU-5 排空（等任务自然完成，≤10 分钟）才退出
 >
 > # 一键删除所有调度任务（停容器 + 删容器 + 清 data/scheduler-*.json 状态；业务数据不动）：
 > ./scripts/scheduler-service.sh remove
@@ -229,9 +229,7 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 **v2.28.2 已发布（2026-11-23，tag v2.28.2；CI 双绿：docker-hub 45101984459 ✅ test/smoke/publish 全 success；docker-tcr 45101984469 ✅ test/publish 全 success；test-main 45101958048 ✅ main 全链绿）**：ET 设置页布局系统修复（64d9f48；QA [QA-ET.md](QA-ET.md) 第 1 轮 ✅ 5/0/0/1——数据源与采集/站点与内容/高级三 tab 每 section 一张卡片、两列网格 ≤960px 单列、折叠在卡片内；纯前端布局修复，无 schema/接口/配置变化，升级即可）。验证：settings.test.js 15/15 + 主链分段 test:1~4 全绿 + frontend:build ✓ + scan 干净 + headless Chrome 结构/功能探针。**服务器部署待执行**（按本文第 4 节升级到 2.28.2）。
 
-**EU 已实现待发版（2026-11-23，3c6d752，未打 tag）**：定时任务重启韧性——SIGTERM 打断在跑任务记「被重启中断」（sync_runs/健康面板，不误报失败、不发失败邮件、不进熔断）；steam-prices 分批（默认每轮 5000 ≈ 4–5 分钟）+ 断点续跑（data/scheduler-resume.json，中断后下轮不重跑）；重启残留 running 记录标 interrupted；停机时跳过失败原因查询（消除 Cannot use a pool 噪音）；部署步骤增加「发版避让长任务」（本文第 4 节）。**无 schema 变更、无新增依赖**。待质检后随下个版本发布。
-
-**EV 已实现待发版（2026-11-23，8dcd41a，未打 tag）**：调度器独立进程化——compose 五个变体 app 改 `command: ["serve"]`（只 Web/API）+ 新增独立 `scheduler` 服务（与 app 同镜像、共享 data/logs 卷、depends_on db、restart unless-stopped）；`scripts/scheduler-service.sh install|remove|status` 一键安装/删除/查看（install 防双调度器、remove 清空容器与 data/scheduler-*.json 状态、status 显示心跳与 heavy slot）；部署说明更新（发版只重启 app、调度器代码更新才 restart scheduler，本文第 4 节）。**无 schema 变更、无新增依赖**。待质检后随下个版本发布。
+**v2.28.3 已发布（2026-11-23，tag v2.28.3；CI 待确认）**：EU 定时任务重启韧性（3c6d752；QA [QA-EU.md](QA-EU.md) 第 1 轮 ✅ 5/0/0/2——SIGTERM 打断在跑任务记「被重启中断」不误报失败/不发邮件/不进熔断；steam-prices 分批 5000 + 断点续跑；重启残留 running 标 interrupted；停机跳过失败原因查询降噪）+ EV 调度器独立进程化（8dcd41a；QA [QA-EV.md](QA-EV.md) 第 1 轮 ✅ 5/0/0/2——compose 五变体 app 改 serve + 独立 scheduler 容器；scheduler-service.sh install/remove/status；发版只重启 app）。**无 schema 变更、无新增依赖**。**部署提示**：服务器 compose 需同步「app command 改 serve + 新增 scheduler 服务」两处（本文第 4 节）；升级后执行 `scripts/scheduler-service.sh install`（防双调度器）并观察一轮任务。**服务器部署待执行**。
 
 > 未完成事项的完整清单见 [TODO.md](TODO.md)。本节只记录版本与部署现状。
 - **v2.27.8 已发布**（tag `v2.27.8`，release 提交见 git log）：ED + EH + EI + EL + EK + DX 六条合并发版（🧪 测试基建 1 + ⚙️ 调整 3 + 🐞 缺陷 1 + 🧹 技术债 1，均无新功能面 → 小版本，2.27.7 → 2.27.8 连续递增）。本批不涉及 App 仓库。

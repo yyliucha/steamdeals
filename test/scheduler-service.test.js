@@ -35,6 +35,8 @@ test('EV-1：五个 compose 变体的 app 全部只跑 serve，且都有独立 s
     // 与 app 挂同一份 data/logs：后台「同步与回填」状态文件、日志页同源
     assert.deepEqual(sched.volumes, doc.services.app.volumes, `${f}: scheduler 必须与 app 共享 data/logs 卷`);
     assert.equal(sched.environment?.DATABASE_URL, doc.services.app.environment?.DATABASE_URL, `${f}: scheduler 与 app 连同一个库`);
+    // EU-5 排空：docker stop 时给调度器留 10 分钟等在跑任务自然完成（配合 SCHEDULER_DRAIN_TIMEOUT_MS）
+    assert.equal(sched.stop_grace_period, '10m', `${f}: scheduler 需要 stop_grace_period 10m（排空窗口）`);
   }
 });
 

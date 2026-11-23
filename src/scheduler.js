@@ -745,21 +745,32 @@ export async function main() {
   const children = new Map(); // 并发子进程：job.name -> child（轻任务并行，重任务同一时刻最多一个）
   let wake = null;
 
+  // EU-5（docs/SCHEDULER-RESTART-RESILIENCE.md §EU-5）：排空（drain）——收到停机信号后不再打断在跑任务，
+  // 等它们自然完成（默认 ≤10 分钟，SCHEDULER_DRAIN_TIMEOUT_MS 可调）；超时才 SIGTERM（+5s SIGKILL），
+  // 被超时打断的任务按 EU-1 记「被重启中断」。发版按 EV §6 顺序走时任务零中断。
+  const drainTimeoutMs = num(process.env.SCHEDULER_DRAIN_TIMEOUT_MS, 10 * 60_000);
   const stop = (signal) => {
     if (stopping) return;
     stopping = true;
-    logger.info('scheduler.stop', { signal, children: children.size });
-    for (const child of children.values()) {
-      child.kill('SIGTERM');
-      setTimeout(() => {
-        try {
-          child.kill('SIGKILL');
-        } catch {
-          /* 已退出 */
-        }
-      }, 5000).unref();
-    }
+    logger.info('scheduler.stop', { signal, children: children.size, drainTimeoutMs, drain: 'wait for running jobs' });
     wake?.();
+    // 主循环已因 stopping 退出、不再派发新任务；这里只挂一个排空超时定时器——
+    // 在跑子进程的句柄会让进程继续存活，任务自然完成后进程才退出。
+    const drainTimer = setTimeout(() => {
+      if (children.size === 0) return;
+      logger.warn('scheduler.drain_timeout', { signal, children: [...children.keys()], drainTimeoutMs, action: 'SIGTERM 剩余子进程（EU-1 interrupted）' });
+      for (const child of children.values()) {
+        child.kill('SIGTERM');
+        setTimeout(() => {
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            /* 已退出 */
+          }
+        }, 5000).unref();
+      }
+    }, drainTimeoutMs);
+    drainTimer.unref?.();
   };
   process.on('SIGTERM', () => stop('SIGTERM'));
   process.on('SIGINT', () => stop('SIGINT'));

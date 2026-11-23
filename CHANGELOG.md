@@ -1,5 +1,25 @@
 # 变更日志
 
+## [2.28.3] - 2026-11-23
+
+EU 定时任务重启韧性 + EV 调度器独立进程化（🐞 缺陷 1 + ⚙️ 部署调整 1，均无新功能面 → 小版本，2.28.2 → 2.28.3 连续递增）。本批不涉及 App 仓库。
+
+### 修复
+
+- **EU 定时任务重启韧性（3c6d752）**：发版重启不再把在跑任务误报成失败——`scheduler.stop()` 停机过程中非零退出的任务判定为 `interrupted`（`src/scheduler.js` 新纯函数 `outcomeFor`），不记 `job_failed`、不发失败邮件、不进熔断计数；CLI 子进程收到 SIGTERM 先把 `sync_runs.status` 记为 `interrupted`（含「进程收到 SIGTERM」说明）再以 143 退出（新模块 `src/cli-interrupt.js`）；服务重启残留的 running 记录由 `markStaleSyncRuns` 标 `interrupted`（原 failed）；后台「任务健康条 / 同步记录 / 同步与回填任务表」新增「被重启中断」显示（info 标签，不标红）。停机时跳过失败原因查询，消除 `Cannot use a pool` 日志噪音。**EU-5 排空（drain）**：scheduler 收到停机信号不再立即打断在跑任务——先等它们自然完成（`SCHEDULER_DRAIN_TIMEOUT_MS` 默认 10 分钟，compose 的 scheduler 服务 `stop_grace_period: 10m` 配套），超时才 SIGTERM（被打断的按 EU-1 记「被重启中断」）——按 EV §6 发版顺序升级时任务零中断。规格见 [docs/SCHEDULER-RESTART-RESILIENCE.md](docs/SCHEDULER-RESTART-RESILIENCE.md)。
+
+### 调整
+
+- **EU-2 steam-prices 分批断点续跑**：`sync steam-prices` 新增 `--batch`（默认 5000，调度器任务参数 `STEAM_PRICE_BATCH` 可调）——每轮只处理一批（5000 款 ≈ 4–5 分钟，原整轮 106 分钟），批内每 1000 个 appid 落一次断点（新模块 `src/sync-resume.js`，`data/scheduler-resume.json`，无 schema 变更）；被重启打断后下一轮自动排除已处理 appid、不重跑；断点超过 36 小时自动作废。规格见 [docs/SCHEDULER-RESTART-RESILIENCE.md](docs/SCHEDULER-RESTART-RESILIENCE.md)。
+- **EV 调度器独立进程化（8dcd41a）**：compose 五个变体（compose.yaml / hub / cn / 两个 external-db）的 app 改为 `command: ["serve"]`（只跑 Web/API），新增独立 `scheduler` 服务（与 app 同镜像、`command: []` → `RUN_MODE=scheduler` → `node src/scheduler.js`、共享 data/logs 卷、`depends_on db`、`restart: unless-stopped`）——发版只重启 app、不打断定时任务；`scripts/scheduler-service.sh install|remove|status` 一键安装/删除/查看（install 防双调度器：app 仍在跑 all 拒绝，幂等，并校验 `scheduler.start` 日志；remove 一键删除——停容器 + rm 容器 + 清 `data/scheduler-*.json` 状态 + 校验无残留，业务数据不动；status 显示容器状态、最近心跳与当前 heavy slot 任务）。规格见 [docs/SCHEDULER-AS-SERVICE.md](docs/SCHEDULER-AS-SERVICE.md)。
+- **部署文档**：DELIVERY 第 4 节新增「发版避让长任务」（重启前查长任务，等待 ≤10 分钟或跳过）与「调度器独立服务」（install/status/remove、发版只重启 app、调度器代码更新才 restart scheduler）。
+
+### 测试
+
+- QA [docs/QA-EU.md](docs/QA-EU.md) 第 1 轮 ✅ 放行（5/0/0/2）、[docs/QA-EV.md](docs/QA-EV.md) 第 1 轮 ✅ 放行（5/0/0/2）。
+- 新增主链：`test/cli-interrupt.test.js`（SIGTERM 收尾——纯逻辑全平台 + 真信号 CI Linux）、`test/sync-resume.test.js`（断点读写/排除/过期/脏数据）、`test/scheduler-service.test.js`（五个 compose 静态锁 + 脚本语义锁 + mock docker 场景实跑 install/remove/status）；`test/scheduler.test.js` +41 项 EU 断言（outcomeFor/分批参数/静态锁）、`test/sync-runs.test.js` 更新 interrupted 语义、`test/log-schema.test.js` 快照补 `scheduler.job_interrupted`、`test/deploy.test.js` app command 断言随 EV 更新。
+- 主链分段 test:1~4 全绿；`node test/api.test.js` 38/38；`node test/cli-dispatch.test.js` 12/12；`frontend:build` ✓；`scan` 干净；CI test-main（3c6d752）✅。
+
 ## [2.28.2] - 2026-11-23
 
 ET 设置页布局系统修复（⚙️ 调整，无新功能面 → 小版本，2.28.1 → 2.28.2 连续递增）。本批不涉及 App 仓库。
