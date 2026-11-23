@@ -80,6 +80,11 @@
               <div class="ops">
                 <el-button size="small" @click="openDialog(a, 'library')">查看已拥有</el-button>
                 <el-button size="small" @click="openDialog(a, 'wishlist')">查看愿望单</el-button>
+                <!-- FE 批（docs/PROFILE-STEAM-ACTIONS.md）：每账号同步按钮（普通用户本人可用）——
+                     点同步 → 202 后台任务 → 每 2s 轮询 sync-status（最长 60s）→ 刷新统计并提示；
+                     无 API Key 由后端 400 拒绝，前端映射为明确提示（不报 500）。 -->
+                <el-button size="small" type="primary" plain :loading="syncing(a, 'library')" @click="syncAccount(a, 'library')">{{ syncing(a, 'library') ? '同步中…' : '同步游戏库' }}</el-button>
+                <el-button size="small" type="primary" plain :loading="syncing(a, 'wishlist')" @click="syncAccount(a, 'wishlist')">{{ syncing(a, 'wishlist') ? '同步中…' : '同步愿望单' }}</el-button>
                 <el-button size="small" :disabled="a.isDefault" @click="setDefault(a)">{{ a.isDefault ? '已设为默认' : '设为默认' }}</el-button>
                 <el-button size="small" type="danger" plain @click="unbind(a)">解绑</el-button>
               </div>
@@ -449,6 +454,81 @@ async function unbind(a) {
 function bindNew() {
   // 绑定流程在 Steam 完成，成功后回跳本页（back=profile）
   window.location.href = '/api/auth/steam/start?back=profile';
+}
+
+// ---- FE 批（docs/PROFILE-STEAM-ACTIONS.md §2）：每账号「同步游戏库 / 同步愿望单」----
+// 触发 POST .../sync（EM 已异步：202 {accepted} 后台任务）→ 每 2s 轮询 sync-status（最长 60s）
+// → 完成后刷新统计（loadLibrary）并提示结果；无 API Key 后端 400，映射为明确提示（不报 500）。
+// 接口权限保持 requireUser + requireAccountOwner（普通用户本人可用，他人账号 404/403）。
+const syncPolling = reactive({}); // `${steamId}:${kind}` -> true（同步中）
+function syncing(a, kind) {
+  return Boolean(syncPolling[`${a.steamId}:${kind}`]);
+}
+function applySyncResult(st, kind) {
+  const r = st?.lastResult;
+  if (!r) {
+    ElMessage.info('还没有同步记录');
+    return;
+  }
+  if (!r.ok) {
+    ElMessage.error(`同步失败：${r.error || '未知原因'}（可重新点击同步重试）`);
+    return;
+  }
+  const isLib = kind === 'library' || r.kind === 'library';
+  if (isLib) ElMessage.success(`已同步 ${r.total || 0} 款游戏（差集清理 ${r.deleted || 0} 条${r.typeUnknown > 0 ? `，类型未知 ${r.typeUnknown} 款已尝试补全` : ''}）`);
+  else ElMessage.success(`已同步 ${r.total || 0} 个愿望单（新增提醒 ${r.watches || 0}，目录未命中 ${r.skipped || 0}）`);
+}
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+async function pollSync(a, kind) {
+  const started = Date.now();
+  while (Date.now() - started < 60000) {
+    await sleepMs(2000);
+    try {
+      const stRes = await fetch(`/api/steam/accounts/${encodeURIComponent(a.steamId)}/sync-status`, { credentials: 'same-origin' });
+      const st = await stRes.json().catch(() => ({}));
+      if (!stRes.ok) throw new Error(st.error || `HTTP ${stRes.status}`);
+      if (st.status !== 'running') {
+        applySyncResult(st, kind);
+        await loadLibrary(); // 完成后刷新账号统计（已拥有/愿望单/最近同步）
+        return;
+      }
+    } catch (e) {
+      ElMessage.error(e.message || '同步状态查询失败');
+      return;
+    }
+  }
+  ElMessage.warning('同步仍在后台进行中，稍后刷新页面查看结果');
+  await loadLibrary();
+}
+async function syncAccount(a, kind) {
+  const key = `${a.steamId}:${kind}`;
+  if (syncing(a, kind)) return;
+  try {
+    const res = await fetch(`/api/steam/accounts/${encodeURIComponent(a.steamId)}/${kind}/sync`, { method: 'POST', credentials: 'same-origin' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      // 无 API Key 的明确提示（后端 400「该账号未配置 API Key，请先在后台填写」→ 规格文案）
+      if (String(data.error || '').includes('未配置 API Key')) throw new Error('该账号缺少 API Key，请先配置');
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    if (data.accepted) {
+      syncPolling[key] = true;
+      ElMessage.info('已开始后台同步…');
+      await pollSync(a, kind);
+    } else {
+      const stRes = await fetch(`/api/steam/accounts/${encodeURIComponent(a.steamId)}/sync-status`, { credentials: 'same-origin' });
+      const st = await stRes.json().catch(() => ({}));
+      if (!stRes.ok) throw new Error(st.error || `HTTP ${stRes.status}`);
+      applySyncResult(st, kind);
+      await loadLibrary();
+    }
+  } catch (e) {
+    ElMessage.error(e.message || '同步失败');
+  } finally {
+    syncPolling[key] = false;
+  }
 }
 
 // ---- 更换登录邮箱（CZ，docs/EMAIL-CHANGE.md §3） ----
@@ -1028,9 +1108,18 @@ onMounted(load);
   .steam-row {
     flex-wrap: wrap;
   }
+  /* FE 批（docs/PROFILE-STEAM-ACTIONS.md §2.3）：手机端同步按钮并入操作区——
+     六个按钮排 2×N 网格（2 列），触摸目标 ≥44px；覆盖 el-button 相邻默认 margin-left。 */
   .steam-row .ops {
     width: 100%;
-    justify-content: flex-end;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-8);
+  }
+  .steam-row .ops .el-button {
+    margin-left: 0;
+    min-height: 44px;
+    width: 100%;
   }
   .stats3 {
     flex-direction: column;

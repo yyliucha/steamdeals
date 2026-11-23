@@ -457,6 +457,12 @@ test('DQ+EZ 前端静态锁：三 Tab 结构；账号一行四操作；统计只
   assert.ok(page.includes('＋ 绑定新的 Steam 账号'), 'Tab2 底部绑定新账号入口');
   assert.ok(!page.includes('class="acct-ops"'), '旧「两行等宽按钮」结构已移除（被每账号一行取代）');
 
+  // FE 批（docs/PROFILE-STEAM-ACTIONS.md §2.1）：每账号加「同步游戏库 / 同步愿望单」，
+  // 与查看/设默认/解绑并列在账号操作区；同步中按钮有「同步中…」禁用态文案
+  assert.ok(page.includes('同步游戏库'), '账号行有「同步游戏库」');
+  assert.ok(page.includes('同步愿望单'), '账号行有「同步愿望单」');
+  assert.ok(page.includes('同步中…'), '同步按钮有「同步中…」状态文案');
+
   // 验收「统计去重」：统计只有三项；已拥有/愿望单合计在 Steam 账号 Tab 说明行
   assert.ok(page.includes('共 {{ accounts.length }} 个账号 · 已拥有合计 <b>{{ stats.ownedTotal }}</b> · 愿望单合计'), '合计放 Steam 账号 Tab 说明行');
   assert.ok(!page.includes('statsline'), '旧的五合一统计行已移除');
@@ -641,5 +647,50 @@ test('DU：ProfilePage 个人简介 placeholder 是动态绑定（编译级）�
     }
   }
   assert.deepEqual(offenders, [], '全项目不得再出现静态属性值里嵌 {{ }} 插值');
+});
+
+// ===== FE（docs/PROFILE-STEAM-ACTIONS.md §2/§3）：个人资料 Steam 账号同步按钮 =====
+// 编译级断言（模板先编译，坏模板直接抛错）+ 行为锁：
+// ① 两个同步按钮渲染且点击走 syncAccount(library/wishlist)，loading 由 syncing 驱动；
+// ② 轮询 sync-status 2s 间隔、最长 60s；POST 响应处理 202 {accepted}；
+// ③ 无 API Key 映射提示「该账号缺少 API Key，请先配置」（后端 400 文案不原样透出）；
+// ④ 完成后 loadLibrary 刷新统计；
+// ⑤ 手机端按钮 2×N 网格（2 列）+ 触摸目标 ≥44px。
+// 反向自检：把轮询改回一次 POST 等结果 → sync-status/60000/2000 断言红；
+// 把无 Key 提示改回透传后端文案 → 「缺少 API Key，请先配置」断言红；
+// 把手机端网格改回 flex 行 → grid 断言红。
+test('FE：ProfilePage 同步按钮编译可渲染 + 轮询参数 / 无 Key 提示 / 手机端网格锁', async () => {
+  const { compile } = await import('@vue/compiler-dom');
+  const src = readFileSync(new URL('../frontend/src/pages/ProfilePage.vue', import.meta.url), 'utf8');
+  const start = src.indexOf('<template>');
+  const end = src.lastIndexOf('</template>');
+  assert.ok(start >= 0 && end > start, '能取出 SFC 模板');
+  const tpl = src.slice(start + '<template>'.length, end);
+  const code = compile(tpl, { mode: 'module' }).code;
+
+  // 行为锁：两个同步按钮渲染并绑定 syncAccount(a, 'library'/'wishlist')
+  assert.match(code, /syncAccount\([^,]+,\s*["']library["']\)/, '「同步游戏库」点击走 syncAccount library');
+  assert.match(code, /syncAccount\([^,]+,\s*["']wishlist["']\)/, '「同步愿望单」点击走 syncAccount wishlist');
+  // 同步中态：按钮文案「同步中…」+ loading 由 syncing 状态驱动
+  assert.ok(src.includes("syncing(a, 'library') ? '同步中…' : '同步游戏库'"), '库按钮有「同步中…」禁用态文案');
+  assert.ok(src.includes("syncing(a, 'wishlist') ? '同步中…' : '同步愿望单'"), '愿望单按钮有「同步中…」禁用态文案');
+  // 六个操作按钮全部 el-button（无原生 button）
+  assert.ok(!/<button[\s>]/.test(tpl), '操作区无原生 button（全部 el-button）');
+
+  // 轮询锁：2s 间隔 + 最长 60s + 处理 202 {accepted} + 完成后刷新统计
+  // （60000 后必须紧跟右括号——写成 600000 等更大值不得前缀误匹配，反向自检已证）
+  assert.match(src, /Date\.now\(\) - started < 60000\)/, '轮询最长 60s');
+  assert.match(src, /sleepMs\(2000\)/, '轮询间隔 2s');
+  assert.match(src, /data\.accepted/, '处理 202 {accepted} 触发响应');
+  assert.match(src, /sync-status/, '轮询 GET sync-status');
+  assert.match(src, /applySyncResult\(st, kind\);\s*await loadLibrary\(\)/, '完成后刷新账号统计');
+
+  // 无 API Key：后端 400「未配置 API Key」映射为规格文案（明确提示，不报 500）
+  assert.ok(src.includes('该账号缺少 API Key，请先配置'), '无 API Key 提示规格文案');
+  assert.ok(src.includes("includes('未配置 API Key')"), '后端「未配置 API Key」→ 规格文案映射');
+
+  // 手机端 2×N 网格 + 触摸目标 ≥44px
+  assert.match(src, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/, '手机端按钮 2 列网格');
+  assert.match(src, /\.steam-row \.ops \.el-button\s*\{[^}]*min-height:\s*44px/, '手机端按钮触摸目标 ≥44px');
 });
 
