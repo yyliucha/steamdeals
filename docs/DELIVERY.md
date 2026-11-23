@@ -159,6 +159,26 @@ docker exec steamdeals node -p "require('./package.json').version"   # 期望输
 > ./scripts/scheduler-service.sh remove
 > ```
 
+> **调度器 compose 文件级拆分（FC 批，2026-11-23 起，见 [SCHEDULER-COMPOSE-SPLIT.md](SCHEDULER-COMPOSE-SPLIT.md)）**：
+> app 与 scheduler 拆成两个 compose 文件（`compose.hub.yaml` + 新增 `compose.scheduler.hub.yaml`，独立项目
+> `steamdeals-scheduler` + external 网络 `steamdeals_default`），发布命令两套互不牵连——**app 发版不再重建
+> scheduler**。**服务器升级注意**：
+>
+> ```bash
+> # 首次拆分部署（顺序写死：先 app 项目建网络/命名卷，再 scheduler 项目）
+> docker compose -f compose.hub.yaml up -d
+> docker compose -f compose.scheduler.hub.yaml up -d
+>
+> # 日常发版两套命令（后续调整按 docs/DEPLOY.md「命令与文件归属」表找文件与命令）：
+> docker compose -f compose.hub.yaml pull app && docker compose -f compose.hub.yaml up -d app   # 站点（app）发版
+> docker compose -f compose.scheduler.hub.yaml pull && docker compose -f compose.scheduler.hub.yaml up -d  # 调度器升级/回滚
+> ```
+>
+> **部署后验证清单（服务器实跑，本批必做）**：
+> ① app 发版命令执行后 **scheduler 容器未重建**——`docker ps` 的 scheduler Created 时间不变、
+> `scheduler.start` 无新日志；② scheduler 独立重建后任务表正常心跳（`docker logs` 看一轮任务）。
+> **环境变量双份同步**：新增采集/告警 env 必须同时改 compose.hub.yaml（app）与 compose.scheduler.hub.yaml（scheduler）两处。
+
 回滚：把 tag 换回上一个已部署版本（如 1.4.0）再 pull/up。
 
 ### 部署后验证清单

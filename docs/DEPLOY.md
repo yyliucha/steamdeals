@@ -36,19 +36,46 @@ CI 不可用时退回服务器本地构建：`git pull && docker compose up -d -
 
 ### 3. 服务器侧：更新镜像并重建容器（部署人员执行）
 
-按服务器使用的镜像源二选一：
+> **FC 批（docs/SCHEDULER-COMPOSE-SPLIT.md，2026-11-23 起）：app 与 scheduler 拆成两个 compose 文件，
+> 发布命令两套、互不牵连**——app 发版只动 `compose.hub.yaml`（**不会重建 scheduler**），
+> scheduler 升级/回滚只动 `compose.scheduler.hub.yaml`。
+>
+> **首次拆分部署 / 全量重建的顺序固定：先 app 项目、后 scheduler 项目**（网络 `steamdeals_default`
+> 与命名卷 `steamdeals_appdata`/`steamdeals_logs` 都由 app 项目创建，scheduler 文件经 external 引用）：
+
+```bash
+# ① 先起 app 项目（创建网络与命名卷、拉起 db + app）
+docker compose -f compose.hub.yaml up -d
+# ② 再起 scheduler 项目（经 external 网络用 db 别名连库）
+docker compose -f compose.scheduler.hub.yaml up -d
+```
+
+日常发版按服务器使用的镜像源二选一（app 与 scheduler 各走各的文件，见下方归属表）：
 
 ```bash
 # Docker Hub 源（compose.hub.yaml；外部库用 compose.hub.external-db.yaml）
 docker compose -f compose.hub.yaml pull app
-docker compose -f compose.hub.yaml up -d
+docker compose -f compose.hub.yaml up -d app
 
 # 腾讯云 TCR 源（compose.cn.yaml；外部库用 compose.cn.external-db.yaml）
 docker compose -f compose.cn.yaml pull app
-docker compose -f compose.cn.yaml up -d
+docker compose -f compose.cn.yaml up -d app
 ```
 
-`up -d` 用新镜像重建容器并重启调度器；数据在命名卷里，不会丢。启动时自动跑幂等迁移。
+`up -d app` 用新镜像重建 app 容器；数据在命名卷里，不会丢。启动时自动跑幂等迁移。
+
+### 3.1 命令与文件归属表（FC 批起）
+
+以后要调整哪一部分，直接照表找文件与命令：
+
+| 要调整什么 | 改哪个文件 | 命令 |
+|---|---|---|
+| 站点（app）发版 | compose.hub.yaml | `docker compose -f compose.hub.yaml pull app && docker compose -f compose.hub.yaml up -d app` |
+| 站点（app）回滚 | compose.hub.yaml（image tag 改旧版本） | 同上（或整文件 up） |
+| 定时服务（scheduler）升级/回滚 | compose.scheduler.hub.yaml | `docker compose -f compose.scheduler.hub.yaml pull && docker compose -f compose.scheduler.hub.yaml up -d` |
+| 调度服务安装/删除/状态 | scripts/scheduler-service.sh（`SCHEDULER_COMPOSE_FILES` 默认已指 scheduler 文件） | `./scripts/scheduler-service.sh install \| remove \| status` |
+| 新增采集/告警环境变量 | compose.hub.yaml（app env）**和** compose.scheduler.hub.yaml（scheduler env）**两处同步** | — |
+| 首次全量重建顺序 | 先 app 后 scheduler | `docker compose -f compose.hub.yaml up -d` 先，再 `docker compose -f compose.scheduler.hub.yaml up -d` |
 
 > **AV 批（docs/READ-MODEL.md）升级注意**：首次启动会建 `game_region_snapshot` 读模型表并做**一次性回填**
 > （offers ∪ daily_prices 全量聚合，生产量级估 10–60 秒，`readmodel.backfill_start/done` 日志可观测），
@@ -62,11 +89,11 @@ docker compose -f compose.cn.yaml up -d
 # ① 新 CLI 命令已随镜像生效（以 rename 为例，换成本次发布的命令名即可）
 docker exec steamdeals node src/cli.js 2>&1 | grep -A1 rename
 
-# ② 调度器任务表包含新任务
-docker exec steamdeals cat data/scheduler-status.json
+# ② 调度器任务表包含新任务（调度器在独立容器；容器名以 `docker compose -f compose.scheduler.hub.yaml ps` 实际输出为准）
+docker exec steamdeals-scheduler-scheduler-1 cat data/scheduler-status.json
 
 # ③ 启动日志任务清单
-docker logs steamdeals 2>&1 | grep 'scheduler.start' | tail -1
+docker logs steamdeals-scheduler-scheduler-1 2>&1 | grep 'scheduler.start' | tail -1
 ```
 
 容器名以实际为准（compose 默认是 `steamdeals-app-1`，旧版 compose 是 `steamdeals_app_1`）。
@@ -74,8 +101,10 @@ docker logs steamdeals 2>&1 | grep 'scheduler.start' | tail -1
 ### 回滚
 
 ```bash
-# 服务器退回上一个版本（把 compose 里 image 的 tag 改成旧版本号再执行）
-docker compose -f compose.hub.yaml pull app && docker compose -f compose.hub.yaml up -d
+# app 回滚：把 compose.hub.yaml 里 image 的 tag 改成旧版本号再执行（scheduler 不受影响）
+docker compose -f compose.hub.yaml pull app && docker compose -f compose.hub.yaml up -d app
+# scheduler 回滚：只动 compose.scheduler.hub.yaml 的 image tag（app 不受影响）
+docker compose -f compose.scheduler.hub.yaml pull && docker compose -f compose.scheduler.hub.yaml up -d
 # 代码层面：git revert <提交> 后重新走本节流程
 ```
 

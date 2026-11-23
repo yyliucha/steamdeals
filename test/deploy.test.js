@@ -117,6 +117,27 @@ test('EV 批：app 只跑 Web/API（serve），调度器独立成 scheduler 服�
   assert.ok(existsSync(new URL('../web/console.html', import.meta.url)), '控制台页面必须存在');
 });
 
+test('FC 批：生产变体 compose 文件级拆分——hub 无 scheduler，scheduler 独立文件接 app 项目网络', () => {
+  // compose.hub.yaml：scheduler 服务整段拆出（其余 4 个变体保持 EV 原状，见 scheduler-service.test.js）
+  const hub = parse(read('compose.hub.yaml'));
+  assert.equal(hub.services.scheduler, undefined, 'compose.hub.yaml 不应再有 scheduler 服务（FC 批）');
+  assert.ok(hub.services.app && hub.services.db, 'db/app 服务保留');
+  // compose.scheduler.hub.yaml：独立项目 + 与拆分前一致的 scheduler 定义 + external 网络连 db
+  const split = parse(read('compose.scheduler.hub.yaml'));
+  assert.equal(split.name, 'steamdeals-scheduler', '独立 compose 项目名');
+  const sched = split.services.scheduler;
+  assert.ok(sched, 'scheduler 服务必须存在');
+  assert.equal(sched.image, hub.services.app.image, '与 app 同镜像（同 tag 升级/回滚口径）');
+  assert.equal(sched.environment.RUN_MODE, 'scheduler', 'RUN_MODE=scheduler');
+  assert.equal(sched.environment.DATABASE_URL, hub.services.app.environment.DATABASE_URL, '与 app 连同一个库');
+  assert.deepEqual(sched.volumes, hub.services.app.volumes, '与 app 挂同一份 data/logs 卷');
+  assert.equal(sched.depends_on, undefined, '跨项目不能 depends_on db（靠 DB_WAIT_SEC + 启动顺序兜底）');
+  assert.equal(split.networks.default.external, true, '网络必须 external');
+  assert.equal(split.networks.default.name, 'steamdeals_default', '加入 app 项目默认网络（db 服务别名可达）');
+  assert.equal(split.volumes.appdata.name, 'steamdeals_appdata', '复用 app 项目的 data 命名卷');
+  assert.equal(split.volumes.logs.name, 'steamdeals_logs', '复用 app 项目的 logs 命名卷');
+});
+
 test('.env.example 覆盖 compose 用到的可配置项', () => {
   const example = read('.env.example');
   for (const key of ['COMPOSE_PROFILES', 'POSTGRES_PASSWORD', 'ITAD_API_KEY', 'STEAM_PRICE_INTERVAL_MIN', 'TZ', 'SEED_ON_START']) {

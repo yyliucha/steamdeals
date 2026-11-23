@@ -1,0 +1,53 @@
+name: steamdeals-scheduler
+
+# FC 批（docs/SCHEDULER-COMPOSE-SPLIT.md）：定时服务独立 compose 项目。
+#
+#   docker compose -f compose.scheduler.hub.yaml up -d
+#
+# 本文件只管定时服务（scheduler），与 app 项目（compose.hub.yaml，name: steamdeals）分开发布：
+# 站点发版只动 app 文件，scheduler 升级/回滚只动本文件，互不牵连。
+#
+# 启动前必须先 up 过 app 项目：网络（steamdeals_default）与 db 服务、命名卷
+# （steamdeals_appdata / steamdeals_logs）都由它创建，本文件经 external 引用，
+# 因此首次全量重建顺序固定为：先 app 项目、后本文件。
+#
+# 与 app 同镜像、挂同一份 data/logs 卷、连同一个库（经 external 网络用 db 别名），
+# 业务不剥离；只剥离文件与发布命令。
+
+services:
+  scheduler:
+    # 与 compose.hub.yaml 的 app 同镜像；镜像 tag 变化只在本文件 up 时重建
+    image: s1065420329/steamdeals:latest
+    restart: unless-stopped
+    command: []
+    environment:
+      DATABASE_URL: postgres://steamdeals@db:5432/steamdeals
+      TZ: ${TZ:-Asia/Shanghai}
+      RUN_MODE: scheduler
+      # 采集开关/代理/告警等配置与 app 同源：按需在此追加（如 STEAM_API_KEY / STEAM_PROXY）。
+      # 注意（FC 批归属表）：新增采集/告警环境变量必须与 compose.hub.yaml 的 app environment 两处同步。
+    # 跨项目无法 depends_on db（决策 6）：靠应用层 DB_WAIT_SEC=60 重试 + 启动顺序（先 app 后本文件）兜底
+    volumes:
+      - appdata:/app/data
+      - logs:/app/logs
+    stop_grace_period: 10m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# app 项目（name: steamdeals）的默认网络；db 容器在其中注册服务名别名 db
+networks:
+  default:
+    external: true
+    name: steamdeals_default
+
+# 与 app 项目共用同一份命名卷（后台状态文件与日志页同源）；由 app 项目先 up 创建
+volumes:
+  appdata:
+    external: true
+    name: steamdeals_appdata
+  logs:
+    external: true
+    name: steamdeals_logs

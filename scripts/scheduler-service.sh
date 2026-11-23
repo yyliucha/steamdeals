@@ -1,5 +1,6 @@
 #!/bin/bash
 # EV 批（docs/SCHEDULER-AS-SERVICE.md）：调度器独立服务的一键安装/删除/状态管理。
+# FC 批（docs/SCHEDULER-COMPOSE-SPLIT.md）：拆两个 compose 上下文——app 项目与 scheduler 项目分文件发布。
 #
 # 用法：
 #   ./scripts/scheduler-service.sh install   安装：防双调度器检查 → up -d scheduler → 校验 scheduler.start 日志
@@ -7,8 +8,12 @@
 #   ./scripts/scheduler-service.sh status    状态：容器状态 + 最近心跳（状态文件 updatedAt）+ 当前 heavy slot 任务
 #
 # 环境变量：
-#   COMPOSE_FILES   compose 文件列表，如 "-f docker-compose.yml"；默认让 docker compose 自动发现
+#   COMPOSE_FILES   app 项目 compose 文件列表，如 "-f docker-compose.yml"；默认让 docker compose 自动发现
 #                   （生产服务器若主文件叫 docker-compose.yml 而非 compose.yaml，请显式传入）。
+#                   仅用于查 app（防双调度器检查）；调度服务的操作不走本变量。
+#   SCHEDULER_COMPOSE_FILES  scheduler 项目 compose 文件列表；默认 "-f compose.scheduler.hub.yaml"
+#                   （FC 批拆分后独立文件；服务器文件名不同时显式传入覆盖）。
+#                   install/remove/status 的 up/stop/rm/ps/logs 全部走本上下文。
 #   DATA_DIR        状态文件目录（默认 ./data；容器挂载点不同时覆盖）。
 #
 # 说明：
@@ -20,21 +25,26 @@ set -eu
 
 SVC=scheduler
 COMPOSE_FILES="${COMPOSE_FILES:-}"
+SCHEDULER_COMPOSE_FILES="${SCHEDULER_COMPOSE_FILES:--f compose.scheduler.hub.yaml}"
 DATA_DIR="${DATA_DIR:-./data}"
 HEAVY_JOBS='^(steam-prices|rename|backfill|rating-backfill|heat|steam-status|steam-discovery|catalog)$' # 与 src/scheduler.js STEAM_HEAVY 保持同步
 STATUS_FILE="$DATA_DIR/scheduler-status.json"
 
+# app 项目上下文：查 app 容器（防双调度器检查），不操作调度服务
 compose() { docker compose $COMPOSE_FILES "$@"; }
+
+# scheduler 项目上下文（FC 批拆分）：调度服务的 up/stop/rm/ps/logs 全部走它
+compose_scheduler() { docker compose $SCHEDULER_COMPOSE_FILES "$@"; }
 
 log() { echo "[scheduler-service] $*"; }
 
 fail() { echo "[scheduler-service] 错误：$*" >&2; exit 1; }
 
-# 取 app 容器 id（不存在返回空）
+# 取 app 容器 id（app 项目上下文；不存在返回空）
 app_container_id() { compose ps -q app 2>/dev/null || true; }
 
-# 取 scheduler 容器 id（不存在返回空）
-scheduler_container_id() { compose ps -q "$SVC" 2>/dev/null || true; }
+# 取 scheduler 容器 id（scheduler 项目上下文；不存在返回空）
+scheduler_container_id() { compose_scheduler ps -q "$SVC" 2>/dev/null || true; }
 
 # 防双调度器：app 还在跑 all 时拒绝安装
 check_no_legacy_all() {
@@ -51,7 +61,7 @@ check_no_legacy_all() {
 }
 
 install() {
-    log "安装调度器服务（compose: ${COMPOSE_FILES:-默认发现}）"
+    log "安装调度器服务（scheduler compose: $SCHEDULER_COMPOSE_FILES）"
     check_no_legacy_all
 
     local id
@@ -61,7 +71,7 @@ install() {
         return 0
     fi
 
-    compose up -d "$SVC"
+    compose_scheduler up -d "$SVC"
 
     # 校验 scheduler 已真正启动：等 scheduler.start 日志（最多 90 秒）
     log "等待 scheduler.start 启动日志（最多 90 秒）…"
@@ -73,7 +83,7 @@ install() {
         fi
         sleep 3
     done
-    log "⚠ 90 秒内未检测到 scheduler.start，请检查：docker compose $COMPOSE_FILES logs scheduler"
+    log "⚠ 90 秒内未检测到 scheduler.start，请检查：docker compose $SCHEDULER_COMPOSE_FILES logs scheduler"
     return 1
 }
 
@@ -84,8 +94,8 @@ remove() {
 
     if [ -n "$id" ]; then
         log "停止并删除 scheduler 容器…"
-        compose stop "$SVC" || true
-        compose rm -f "$SVC" || true
+        compose_scheduler stop "$SVC" || true
+        compose_scheduler rm -f "$SVC" || true
     else
         log "没有 scheduler 容器，跳过容器清理"
     fi
@@ -105,7 +115,7 @@ remove() {
 status() {
     log "调度器服务状态"
     echo "── 容器状态 ──────────────────────────────"
-    compose ps "$SVC" 2>/dev/null || echo "（compose 项目内没有 scheduler 服务）"
+    compose_scheduler ps "$SVC" 2>/dev/null || echo "（scheduler 项目内没有 scheduler 服务）"
     echo ""
 
     if [ ! -f "$STATUS_FILE" ]; then

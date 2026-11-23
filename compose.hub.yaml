@@ -9,6 +9,7 @@ name: steamdeals
 #
 # 用已有 PostgreSQL：见 compose.hub.external-db.yaml。
 # 只想构建源码：见 compose.yaml。
+# 定时任务服务：见 compose.scheduler.hub.yaml（FC 批拆分，与本文件分开发布）。
 
 services:
   db:
@@ -62,31 +63,6 @@ services:
       timeout: 15s
       retries: 3
       start_period: 40s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # EV 批（docs/SCHEDULER-AS-SERVICE.md）：独立调度器服务——与 app 同镜像，command 空 →
-  # entrypoint 按 RUN_MODE=scheduler 跑 node src/scheduler.js；与 app 共享 appdata/logs 卷
-  # （后台状态文件与日志页同源）。发版只重启 app、不打断任务。
-  scheduler:
-    image: s1065420329/steamdeals:latest
-    restart: unless-stopped
-    command: []
-    environment:
-      DATABASE_URL: postgres://steamdeals@db:5432/steamdeals
-      TZ: ${TZ:-Asia/Shanghai}
-      RUN_MODE: scheduler
-      # 采集开关/代理/告警等配置与 app 同源：按需在此追加（如 STEAM_API_KEY / STEAM_PROXY）
-    depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      - appdata:/app/data
-      - logs:/app/logs
-    stop_grace_period: 10m
     logging:
       driver: json-file
       options:

@@ -1,5 +1,7 @@
 #!/bin/bash
 # mock docker：只支持 scripts/scheduler-service.sh 用到的子命令；容器状态记在 $MOCK_STATE_DIR。
+# FC 批：记录每次 compose 调用用的 -f 文件（ps/up/stop/rm 各自落档），供场景断言
+# 「app 检查走 app 文件、调度操作走 scheduler 文件」的双上下文分离。
 # 注意：本文件需保持可执行位（CI Linux 直接经 PATH 执行）。
 set -u
 STATE="${MOCK_STATE_DIR:-/tmp/mock-state}"
@@ -8,10 +10,12 @@ mkdir -p "$STATE"
 case "$1" in
   compose)
     shift
-    # 跳过 -f <file> 参数（真实调用形如 docker compose -f compose.mock.yaml ps -q scheduler）
-    while [ "${1:-}" = "-f" ]; do shift 2; done
+    COMPOSE_F=""
+    # 解析 -f <file> 参数（真实调用形如 docker compose -f compose.mock.yaml ps -q scheduler）
+    while [ "${1:-}" = "-f" ]; do COMPOSE_F="$2"; shift 2; done
     case "$1" in
       ps)
+        echo "${COMPOSE_F}" >> "$STATE/ps-files.log"
         if [ "${2:-}" = "-q" ]; then
           case "${3:-}" in
             app) [ -n "${MOCK_APP_ID:-}" ] && echo "${MOCK_APP_ID}" || true ;;
@@ -23,9 +27,9 @@ case "$1" in
           [ -f "$STATE/scheduler-id" ] && echo "scheduler      Up"
         fi
         ;;
-      up) echo "mock-scheduler-$$" > "$STATE/scheduler-id"; exit 0 ;;
-      stop) exit 0 ;;
-      rm) rm -f "$STATE/scheduler-id"; exit 0 ;;
+      up) echo "${COMPOSE_F}" > "$STATE/up-file.txt"; echo "mock-scheduler-$$" > "$STATE/scheduler-id"; exit 0 ;;
+      stop) echo "${COMPOSE_F}" >> "$STATE/stop-rm-files.log"; exit 0 ;;
+      rm) echo "${COMPOSE_F}" >> "$STATE/stop-rm-files.log"; rm -f "$STATE/scheduler-id"; exit 0 ;;
       *) exit 0 ;;
     esac
     ;;

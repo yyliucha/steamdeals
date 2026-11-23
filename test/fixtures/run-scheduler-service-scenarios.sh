@@ -1,6 +1,7 @@
 #!/bin/bash
-# EV-2 场景驱动：mock docker + 真实执行 scripts/scheduler-service.sh 的 install/remove/status。
-# 覆盖：install 成功/幂等、防双调度器拒绝、status 心跳与 heavy slot、remove 一键清空。
+# EV-2/FC-2 场景驱动：mock docker + 真实执行 scripts/scheduler-service.sh 的 install/remove/status。
+# 覆盖：install 成功/幂等、防双调度器拒绝、status 心跳与 heavy slot、remove 一键清空，
+# 以及 FC 双 compose 上下文分离——app 检查走 app 文件、up/stop/rm 走 scheduler 文件。
 #
 # 平台兼容说明（CI Linux 与 Windows Git Bash 都要过）：
 #   - git 在 Windows 提交会丢执行位 → 不依赖脚本的 +x：本文件与 scheduler-service.sh 一律
@@ -28,6 +29,7 @@ export MOCK_APP_ID="mock-app-id"
 export MOCK_APP_CMD='[serve]'
 export MOCK_HAS_START=1
 export COMPOSE_FILES="-f compose.mock.yaml"
+export SCHEDULER_COMPOSE_FILES="-f compose.scheduler.mock.yaml"
 export DATA_DIR="$DATA_DIR_TMP"
 
 fail=0
@@ -35,6 +37,13 @@ step() { echo "=== $1 ==="; }
 
 step "1) install 成功（app=serve、无 scheduler 容器）"
 if bash "$SVC_SH" install; then echo "PASS install"; else echo "FAIL install"; fail=1; fi
+
+step "1b) FC 双上下文：up 走 scheduler 文件"
+if [ "$(cat "$STATE/up-file.txt" 2>/dev/null)" = "compose.scheduler.mock.yaml" ]; then echo "PASS up-scheduler-context"; else echo "FAIL up-scheduler-context（up 用了「$(cat "$STATE/up-file.txt" 2>/dev/null)」）"; fail=1; fi
+step "1c) FC 双上下文：防双调度器的 app 检查仍走 app 文件"
+if grep -q "^compose.mock.yaml$" "$STATE/ps-files.log" 2>/dev/null; then echo "PASS app-check-app-context"; else echo "FAIL app-check-app-context（ps 调用记录：$(cat "$STATE/ps-files.log" 2>/dev/null)）"; fail=1; fi
+step "1d) FC 双上下文：scheduler 容器查询走 scheduler 文件"
+if grep -q "^compose.scheduler.mock.yaml$" "$STATE/ps-files.log" 2>/dev/null; then echo "PASS sched-check-scheduler-context"; else echo "FAIL sched-check-scheduler-context（ps 调用记录：$(cat "$STATE/ps-files.log" 2>/dev/null)）"; fail=1; fi
 
 step "2) install 幂等（scheduler 已存在 → 无需重复安装）"
 if bash "$SVC_SH" install | grep -q "无需重复安装"; then echo "PASS idempotent"; else echo "FAIL idempotent"; fail=1; fi
@@ -78,6 +87,8 @@ cat > "$DATA_DIR_TMP/scheduler-retry.json" <<'EOF'
 EOF
 echo "mock-scheduler-1" > "$STATE/scheduler-id"
 if bash "$SVC_SH" remove | grep -q "删除完成"; then echo "PASS remove"; else echo "FAIL remove"; fail=1; fi
+step "5b) FC 双上下文：remove 的 stop/rm 走 scheduler 文件（不碰 app 文件）"
+if grep -q "^compose.scheduler.mock.yaml$" "$STATE/stop-rm-files.log" 2>/dev/null && ! grep -q "^compose.mock.yaml$" "$STATE/stop-rm-files.log" 2>/dev/null; then echo "PASS stop-rm-scheduler-context"; else echo "FAIL stop-rm-scheduler-context（stop/rm 调用记录：$(cat "$STATE/stop-rm-files.log" 2>/dev/null)）"; fail=1; fi
 if [ ! -f "$DATA_DIR_TMP/scheduler-status.json" ] && [ ! -f "$DATA_DIR_TMP/scheduler-retry.json" ]; then echo "PASS files-cleared"; else echo "FAIL files-cleared"; fail=1; fi
 if [ ! -f "$STATE/scheduler-id" ]; then echo "PASS container-gone"; else echo "FAIL container-gone"; fail=1; fi
 
