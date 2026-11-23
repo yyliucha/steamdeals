@@ -483,10 +483,25 @@ export async function listWishlists(q, { limit = 200, offset = 0, keyword = '', 
   const off = Math.max(Number(offset) || 0, 0);
   params.push(off);
   const whereSql = where.length ? 'where ' + where.join(' and ') : '';
+  // EW（docs/WISHLIST-STEAM-ACCOUNT.md §7）：每行附加 steam_accounts（只读展示数据源）——
+  // 该游戏在「当前用户已绑定账号」的导入愿望单 steam_wishlist 中命中的账号名列表：
+  // coalesce(nullif(btrim(alias),''), persona_name, steam_id) 逐账号取展示名，distinct 去重、按名排序，
+  // 无命中返回空数组（前端显示「本站添加」）。$1 = userId（where 已占位），仅用户级查询附加；
+  // 后台（userId=null）不附加该列，保持 admin 接口契约不变。
+  const steamAccountsCol = userId != null
+    ? `,
+       (select coalesce(json_agg(acct order by acct), '[]'::json)
+          from (
+            select distinct coalesce(nullif(btrim(a.alias), ''), a.persona_name, a.steam_id) as acct
+              from steam_wishlist sw
+              join steam_accounts a on a.steam_id = sw.steam_id
+             where a.user_id = $1 and sw.appid = g.steam_appid
+          ) t) as steam_accounts`
+    : '';
   const rows = (await q(
     `select uw.id, uw.user_id, uw.game_id, uw.created_at,
             u.username, nullif(btrim(u.display_name), '') as display_name, g.name, g.name_en, g.steam_appid,
-            rs.price_cents as current_low, rs.hist_low_cents as hist_low
+            rs.price_cents as current_low, rs.hist_low_cents as hist_low${steamAccountsCol}
        from user_wishlist uw
        join users u on u.id = uw.user_id
        join games g on g.id = uw.game_id

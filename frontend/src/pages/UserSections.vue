@@ -85,6 +85,7 @@
         <el-table v-if="!isMobile" :data="wishItems" size="small" v-loading="wishLoading">
           <el-table-column label="游戏" min-width="220"><template #default="{ row }"><button class="game-name" @click="openGameById(row.game_id)">{{ row.name }}</button></template></el-table-column>
           <el-table-column label="AppID" width="110"><template #default="{ row }">{{ row.steam_appid || '—' }}</template></el-table-column>
+          <el-table-column label="Steam 账号" min-width="170"><template #default="{ row }"><div v-if="wishAccts(row).length" class="wish-acct"><span v-for="name in wishAccts(row).slice(0, 2)" :key="name" class="acct-chip"><span class="acct-avatar">{{ name.slice(0, 1).toUpperCase() }}</span><span class="acct-name">{{ name }}</span></span><span v-if="wishAccts(row).length === 1" class="tag-steam">导入</span><span v-if="wishAccts(row).length > 2" class="tag-more">+{{ wishAccts(row).length - 2 }}</span></div><span v-else class="muted">本站添加（无 Steam 来源）</span></template></el-table-column>
           <el-table-column label="当前价" width="110"><template #default="{ row }">{{ money(row.current_low, 'CNY') }}</template></el-table-column>
           <el-table-column label="史低" width="110"><template #default="{ row }">{{ money(row.hist_low, 'CNY') }}</template></el-table-column>
           <el-table-column label="加入时间" min-width="150"><template #default="{ row }">{{ fmtDateTime(row.created_at) }}</template></el-table-column>
@@ -95,6 +96,7 @@
             <div class="admin-card-main">
               <strong><button class="game-name" @click="openGameById(w.game_id)">{{ w.name }}</button></strong>
               <small>当前 {{ money(w.current_low, 'CNY') }} · 史低 {{ money(w.hist_low, 'CNY') }}</small>
+              <small class="wish-acct-line">Steam 账号：{{ wishAcctLine(w) }}</small>
               <small class="muted">加入于 {{ fmtDateTime(w.created_at) }}</small>
             </div>
             <div class="admin-card-actions"><el-button link type="danger" @click="removeWish(w)">移除</el-button></div>
@@ -166,6 +168,16 @@ function levelLabel(level) { return ({ critical: '重要', warning: '提醒', in
 function levelType(level) { return ({ critical: 'danger', warning: 'warning', info: 'info' })[level] || 'info'; }
 function openGame(row) { if (row.steam_appid) window.open(`/?game=${row.steam_appid}`, '_self'); }
 function openGameById(gameId) { if (gameId) window.open(`/?game=${gameId}`, '_self'); }
+// EW（docs/WISHLIST-STEAM-ACCOUNT.md §7）：愿望单行的 Steam 账号（接口 steam_accounts 数组，只读展示）——
+// 桌面列（头像首字母 + 名字并排、单账号带「导入」、>2 折叠 +N）；移动行「Steam 账号：…（+N）」；
+// 无来源显示「本站添加（无 Steam 来源）」。防御：接口缺字段/非数组一律按空处理。
+function wishAccts(row) { return Array.isArray(row.steam_accounts) ? row.steam_accounts : []; }
+function wishAcctLine(row) {
+  const accts = wishAccts(row);
+  if (!accts.length) return '本站添加（无 Steam 来源）';
+  if (accts.length > 2) return `${accts.slice(0, 2).join('、')}（+${accts.length - 2}）`;
+  return accts.join('、');
+}
 
 // ---- 登录会话（我的设备）：/api/me/sessions* ----
 const sessions = ref([]);
@@ -326,6 +338,13 @@ onMounted(() => {
 .notice-head .muted{margin-left:auto;font-size:var(--font-11)}
 .notice-body{font-size:var(--font-12);color:var(--fg-muted);margin:var(--space-8) 0 0;white-space:pre-wrap}
 .wish-pager{display:flex;justify-content:flex-end;margin-top:var(--space-12)}
+/* EW（docs/WISHLIST-STEAM-ACCOUNT.md §7）：Steam 账号列（demo 对齐：头像首字母 + 名字并排、导入/折叠小标签） */
+.wish-acct{display:flex;align-items:center;gap:var(--space-6);flex-wrap:wrap}
+.acct-chip{display:inline-flex;align-items:center;gap:var(--space-4);white-space:nowrap}
+.acct-avatar{width:18px;height:18px;border-radius:5px;background:var(--brand-soft);border:1px solid var(--border-2);display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:var(--brand);flex:none}
+.acct-name{font-size:var(--font-12);color:var(--fg)}
+.tag-steam,.tag-more{font-size:10px;color:var(--fg-muted);border:1px solid var(--border-2);border-radius:999px;padding:1px 6px;white-space:nowrap;background:var(--panel-2)}
+.wish-acct-line{color:var(--brand)}
 @media (max-width: 768px){
   .card-heading{flex-direction:column;align-items:flex-start}
   .wish-actions{width:100%}

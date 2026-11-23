@@ -38,6 +38,14 @@ async function setup() {
   const w1 = (await q("insert into user_wishlist (user_id, game_id) values ($1, $2) returning id", [alice.id, g1.id])).rows[0];
   const w2 = (await q("insert into user_wishlist (user_id, game_id) values ($1, $2) returning id", [alice.id, g2.id])).rows[0];
   const w3 = (await q("insert into user_wishlist (user_id, game_id) values ($1, $2) returning id", [bob.id, g1.id])).rows[0];
+  // EW（docs/WISHLIST-STEAM-ACCOUNT.md §7）：Steam 账号 + 导入愿望单（steam_accounts 列数据源）——
+  // alice 两账号都导入 g1（多账号）、g2 无导入（空数组）；bob 一账号导入 g1（单账号、steam_id 回退）。
+  await q("insert into steam_accounts (steam_id, persona_name, alias, user_id) values ('76561198000000001', 'PersonaA', 'yy_steam_main', $1)", [alice.id]);
+  await q("insert into steam_accounts (steam_id, persona_name, alias, user_id) values ('76561198000000002', 'yy_steam_alt', '   ', $1)", [alice.id]);
+  await q("insert into steam_accounts (steam_id, persona_name, alias, user_id) values ('76561198000000003', null, null, $1)", [bob.id]);
+  await q("insert into steam_wishlist (steam_id, appid) values ('76561198000000001', 710001)");
+  await q("insert into steam_wishlist (steam_id, appid) values ('76561198000000002', 710001)");
+  await q("insert into steam_wishlist (steam_id, appid) values ('76561198000000003', 710001)");
   await q("insert into watchlist (game_id, region, target_cents, note, source) values ($1, 'cn', null, '愿望单', 'user_wishlist')", [g1.id]);
   await q("insert into watchlist (game_id, region, target_cents, note, source) values ($1, 'cn', null, '愿望单', 'user_wishlist')", [g2.id]);
   const srv = await startApiServer({ query: q, port: 0, host: '127.0.0.1' });
@@ -249,4 +257,60 @@ test('DT-2 愿望单：忽略传入 userId（越权传他人 id 仍只回本人�
     await ctx.store.close();
     await ctx.srv.close();
   }
+});
+
+// ===== EW（docs/WISHLIST-STEAM-ACCOUNT.md §7）：steam_accounts 列（只读展示数据源） =====
+// 反向自检：删掉 steamAccountsCol 子查询里的 a.user_id = $1 → 越权断言红（alice 会看到 bob 的账号）；
+// 删 distinct → 重复账号断言红；改 coalesce 顺序 → alias 优先断言红；删 order by → 排序断言红。
+
+test('EW steam_accounts：多账号去重排序 + alias 优先/persona 回退；无来源空数组', async () => {
+  const ctx = await setup();
+  try {
+    const alice = await getJson(`${ctx.base}/api/me/wishlist?limit=200`, ctx.aliceCookie);
+    const g1 = alice.body.items.find((x) => x.game_id === ctx.g1.id);
+    const g2 = alice.body.items.find((x) => x.game_id === ctx.g2.id);
+    assert.ok(g1, 'alice 的 g1 行');
+    // 多账号：两账号都导入 g1（710001）；别名优先、全空格别名回退 persona，按名字排序去重
+    assert.deepEqual(g1.steam_accounts, ['yy_steam_alt', 'yy_steam_main'], '多账号按名排序；alias 优先 + 空白 alias 回退 persona');
+    // 无来源：g2 无任何 steam_wishlist 命中 → 空数组（前端显示「本站添加（无 Steam 来源）」）
+    assert.deepEqual(g2.steam_accounts, [], '无 Steam 来源 → 空数组');
+  } finally {
+    await ctx.store.close();
+    await ctx.srv.close();
+  }
+});
+
+test('EW steam_accounts：单账号 + steam_id 回退；A/B 双用户越权不可见', async () => {
+  const ctx = await setup();
+  try {
+    const bobCookie = await (async () => {
+      const res = await fetch(`${ctx.base}/api/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: 'bob', password: 'bob123456' }),
+      });
+      return res.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+    })();
+    const bob = await getJson(`${ctx.base}/api/me/wishlist?limit=200`, bobCookie);
+    assert.deepEqual(bob.body.items[0].steam_accounts, ['76561198000000003'], '单账号；无 alias/persona 回退 steam_id');
+    // 越权不可见：账号名只按 a.user_id = 当前用户 聚合
+    const alice = await getJson(`${ctx.base}/api/me/wishlist?limit=200`, ctx.aliceCookie);
+    assert.ok(!JSON.stringify(alice.body).includes('76561198000000003'), 'alice 响应不含 bob 的账号');
+    assert.ok(!JSON.stringify(bob.body).includes('yy_steam_main'), 'bob 响应不含 alice 的账号');
+  } finally {
+    await ctx.store.close();
+    await ctx.srv.close();
+  }
+});
+
+test('EW 前端接线：Home 卡片/详情渲染 wishlisted_by；UserSections 桌面列 + 移动行 + 无来源兜底', () => {
+  // 反向自检：删掉 Home 卡片/详情任一处 wishlisted_by 渲染 → 对应断言红；
+  // 删掉 UserSections 的「Steam 账号」列或移动行 → 对应断言红（展示即缺失）。
+  const home = read('../frontend/src/pages/Home.vue');
+  const us = read('../frontend/src/pages/UserSections.vue');
+  assert.match(home, /v-if="user && wishlistByText\(game\)"/, 'Home 卡片（桌面底部行 + 移动标签区）都带登录条件渲染账号文案');
+  assert.match(home, /detail\.game\.wishlisted_by/, 'Home 详情弹窗渲染所属 Steam 账号');
+  assert.match(us, /label="Steam 账号"/, 'UserSections 桌面加「Steam 账号」列');
+  assert.match(us, /本站添加（无 Steam 来源）/, '无来源兜底文案（桌面列 + 移动行共用）');
+  assert.match(us, /steam_accounts/, 'UserSections 消费接口 steam_accounts 字段');
 });
