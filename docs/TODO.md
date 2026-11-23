@@ -22,7 +22,7 @@
 |---|---|---|
 | 🐞 缺陷 | 4 | EO、ER、EU、EX |
 | ✨ 功能 | 1 | EQ |
-| ⚙️ 调整 | 7 | EP / EV / EW / EY / EZ / FA / FB |
+| ⚙️ 调整 | 5 | EP / EV / EW / EY / FB |
 | 🧹 技术债 | 2 | EN、FC |
 | 🧪 测试基建 | 0 | — |
 | 📝 文档流程 | 0 | — |
@@ -133,35 +133,6 @@
 - **实现**：`GET /api/me/wishlist?include=steam`（UNION + 按 game_id 合并，返回 sources/site_wishlist_id/steam_accounts）；
   UserSections.vue 合并渲染 + 操作条件（仅 site）。
 - **验收**：见规格 §4（空/仅 Steam/两层都有/分页搜索/越权；`npm test`（分段）+ `frontend:build` + `scan` 全绿）。
-
-## EZ. 质检通过（⚙️ 调整）：个人资料页精简——3 个 Tab（基本信息 / Steam 账号 / 偏好与统计）
-
-**类型：** ⚙️ 调整（前台个人资料页布局合并）
-**状态：** 质检通过（2026-11-23；实现 8eeb1f4；QA docs/QA-EZ-FA.md 第 1 轮 ✅ 通过 11/缺失 0/偏差 0/需人工确认 1=截图目视）
-**优先级：** P2
-**依赖：** 无
-**解锁：** 无
-**规格**：[PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md)（demo：docs/design/profile-tab-demo.html/.png）
-
-- **方案（Tab）**：el-tabs 三个 Tab（基本信息 / Steam 账号（绑定+游戏库合并）/ 偏好与统计）+ 保存固定底部；\n  手机端 Tab 横向滚动 + 底部固定保存；按钮全部用 el-button（不用原生按钮）；demo 见规格。
-- **验收**：见规格 §4（Web/手机与 demo 一致；功能不变；测试全绿；截图对照）。
-
-## FA. 质检通过（⚙️ 调整）：用户菜单新增「切换账户」
-
-**类型：** ⚙️ 调整（后台用户菜单 + 登录流程）
-**状态：** 质检通过（2026-11-23；实现 8eeb1f4；QA docs/QA-EZ-FA.md 第 1 轮 ✅）
-**优先级：** P2
-**依赖：** 无
-**解锁：** 无
-**规格**：[PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) §3 菜单示例（demo 底部）
-
-- **需求**：Console 用户菜单（个人资料/修改密码/返回网站/退出登录）新增「切换账户」；保留「退出登录」。
-- **行为**：
-  - 切换账户：退出当前会话 → 跳登录页（提示「切换账户」）→ 登录成功后回到 Console（或原页面）；
-  - 退出登录：保持现状（退出 → 首页）。
-- **实现**：`Console.vue` 用户菜单加项；登录页支持 `?switch=1` 提示；`/api/auth/logout` 复用。
-- **验收**：切换账户清会话并跳登录、登录后回 Console；退出登录回首页；菜单顺序与 demo 一致；
-  `npm test`（分段）+ `frontend:build` + `scan` 全绿。
 
 ## FB. 待开发（⚙️ 调整）：后台顶栏——去重「返回网站」+ 版本徽标所有登录用户可见（含更新提示）
 
