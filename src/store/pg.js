@@ -1847,11 +1847,13 @@ export const WISHLISTED_SQL = (uidRef) =>
      where sa.user_id = ${uidRef} and sw.appid = g.steam_appid)
     or exists (select 1 from user_wishlist uw
      where uw.user_id = ${uidRef} and uw.game_id = g.id))`;
-// 谁愿望单（Steam 账号维度；本站手动项单独用 site_wishlisted 表示）
+// 谁愿望单（Steam 账号维度；本站手动项单独用 site_wishlisted 表示）。
+// EW（docs/WISHLIST-STEAM-ACCOUNT.md §7）：展示名按 alias（btrim 后非空）→ persona_name → steam_id 回退——
+// 空白别名不再显示成空白账号名（与「我的愿望单」steam_accounts 聚合口径一致）。
 export const WISHLISTED_BY_SQL = (uidRef) =>
   `(select coalesce(json_agg(json_build_object(
         'steamId', sa.steam_id,
-        'name', coalesce(sa.alias, sa.persona_name, sa.steam_id)) order by sa.steam_id), '[]'::json)
+        'name', coalesce(nullif(btrim(sa.alias), ''), sa.persona_name, sa.steam_id)) order by sa.steam_id), '[]'::json)
       from steam_wishlist sw
       join steam_accounts sa on sa.steam_id = sw.steam_id
      where sa.user_id = ${uidRef} and sw.appid = g.steam_appid)`;

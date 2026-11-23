@@ -303,6 +303,24 @@ test('EW steam_accounts：单账号 + steam_id 回退；A/B 双用户越权不�
   }
 });
 
+test('EW wishlisted_by：空白 alias 回退 persona（卡片/详情不显示空白账号名）', async () => {
+  // 反向自检：把 pg.js WISHLISTED_BY_SQL 的 name 改回 coalesce(sa.alias, …)（去掉 nullif(btrim(…)))
+  // → 本用例红（sa2 的 alias 是三个空格，会以空白名进入 wishlisted_by）。
+  const ctx = await setup();
+  try {
+    const res = await getJson(`${ctx.base}/api/games/710001`, ctx.aliceCookie);
+    assert.equal(res.status, 200, '详情可读');
+    const by = res.body.game?.wishlisted_by ?? [];
+    const names = by.map((a) => a.name);
+    assert.ok(names.includes('yy_steam_alt'), '空白 alias 回退 persona 名');
+    assert.ok(names.includes('yy_steam_main'), '正常 alias 优先');
+    assert.ok(!names.some((n) => String(n).trim() === ''), '不得出现空白账号名');
+  } finally {
+    await ctx.store.close();
+    await ctx.srv.close();
+  }
+});
+
 test('EW 前端接线：Home 卡片/详情渲染 wishlisted_by；UserSections 桌面列 + 移动行 + 无来源兜底', () => {
   // 反向自检：删掉 Home 卡片/详情任一处 wishlisted_by 渲染 → 对应断言红；
   // 删掉 UserSections 的「Steam 账号」列或移动行 → 对应断言红（展示即缺失）。
