@@ -7,6 +7,41 @@
 
 ---
 
+## EW. ~~前台愿望单显示 Steam 账号——卡片/详情/我的愿望单只读展示~~ → 已发布 v2.28.5
+
+**类型：** ⚙️ 调整（前台展示；恢复 v2.9.0 前「显示账号」只读能力）
+**状态：** 已发布 v2.28.5（2026-11-23，实现 0fcde48 + 修复 9a65cc2 + release c39cd9f；QA [QA-EW.md](QA-EW.md) 第 1 轮 ✅ 通过 7/缺失 0/偏差 0/需人工确认 2）
+**优先级：** P2
+**依赖：** 无（DT-2 的 /api/me/wishlist 基础上扩展）
+**解锁：** 无
+**规格**：[WISHLIST-STEAM-ACCOUNT.md](WISHLIST-STEAM-ACCOUNT.md)（demo：docs/design/my-wishlist-steam-account-demo.html/.png）
+
+- **需求**：两层愿望单已支持（① Steam 同步 ② 手动添加）——本条目补展示：前台游戏**卡片/详情**显示
+  `wishlisted_by` 账号名（多个、>2 折叠 +N）；「我的愿望单」加「Steam 账号」列（接口补 `steam_accounts`）；
+  只读、不写回 Steam。
+- **实现**：`/api/me/wishlist` 行附加 `steam_accounts`（steam_wishlist join steam_accounts，按 user 限定）；
+  UserSections.vue 桌面列 + 移动卡片行；Home.vue 卡片底部信息行/移动标签区 + 详情弹窗「愿望单账号」；
+  `WISHLISTED_BY_SQL` 展示名改 `nullif(btrim(alias))` 回退口径（9a65cc2）。
+- **验收**：见规格 §5（单/多/无来源三种显示；只读；越权不可见；测试全绿）。
+- **验证**：wishlist-site-only 11/11 + steam-accounts 16/16 + watchlist-user 13/13 + admin-console-ia 22/22 +
+  game-search-read-model/exact 0 失败 + frontend:build ✓ + scan 干净 + headless Chrome 实渲染 11/11 断言
+  （截图 F:\dsh\ew-shots\ew-01~06.png：卡片/详情/我的愿望单三处 × 单账号/多账号/无来源三态）。
+
+## EX. ~~v2.28.3 backfill 回归——countBackfillCandidates 传参错误~~ → 已发布 v2.28.5
+
+**类型：** 🐞 缺陷（B4/cli 拆分回归）
+**状态：** 已发布 v2.28.5（2026-11-23，修复 08eab51 + release c39cd9f；v2.28.4 CI 红未发布，v2.28.5 补发）
+**优先级：** P0 —— 生产 backfill 任务每次调度失败（q is not a function）+ 失败邮件
+**依赖：** 无
+**解锁：** 无
+**规格**：CHANGELOG 2.28.4 修复节
+
+- **根因**：B4/cli 拆分后 `src/cli/ops.js` 把 store 对象传给 `db.countBackfillCandidates(q)`，
+  该函数按 q 函数调用 → `TypeError: q is not a function`（生产 scheduler 日志 + 失败邮件）。
+- **修复**：ops.js 显式传 `s.query`；`pg.js` 兼容 `q 函数 / store({query})` 两种调用；
+  `test/backfill-throughput.test.js` 增加 store 调用回归用例（反向自检）。
+- **验收**：backfill-throughput/backfill 测试通过；`npm run scan` 通过；api.test 通过；上线后 backfill 任务成功。
+
 ## EU. ~~定时任务重启韧性——发版不影响定时服务~~ → 已发布 v2.28.3
 
 **类型：** 🐞 缺陷（重启打断长任务 → 误报失败 + 丢进度）
