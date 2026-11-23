@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>我的愿望单 · 加「Steam 账号」列 demo</title>
+<style>
+  :root{--bg:#0a101c;--panel:#111a2b;--panel-2:#0e1727;--border:#1e2b40;--fg:#d8e0ee;--fg-muted:#8b98ad;--brand:#3b82f6;--brand-soft:#16263f;--ok:#2fb47c;--radius:12px}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;font-size:13px}
+  .note{max-width:1180px;margin:14px auto 0;padding:8px 14px;border:1px dashed #2a3b55;border-radius:10px;color:var(--fg-muted);font-size:12px;line-height:1.7}
+  .note b{color:var(--fg)}
+  .page{max-width:1180px;margin:0 auto;padding:16px 20px 40px}
+  h1{font-size:20px;margin:6px 0 2px}
+  .sub{color:var(--fg-muted);font-size:12px}
+  .card{border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);margin-top:16px;overflow:hidden}
+  .card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;background:var(--panel-2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .card-head h3{margin:0;font-size:14px}
+  .card-head p{margin:3px 0 0;color:var(--fg-muted);font-size:12px}
+  .tools{display:flex;gap:8px;align-items:center}
+  .tools input{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;color:var(--fg);padding:6px 10px;font-size:12px;width:190px}
+  .btn{border:1px solid var(--border);background:var(--panel-2);color:var(--fg);border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer}
+  .btn-primary{background:var(--brand);border-color:var(--brand);color:#fff}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;color:var(--fg-muted);font-weight:500;padding:9px 12px;border-bottom:1px solid var(--border);background:#0c1422;white-space:nowrap}
+  td{padding:9px 12px;border-bottom:1px solid #162135;vertical-align:middle}
+  .game{color:var(--fg);font-weight:600;cursor:pointer}
+  .mono{font-family:ui-monospace,Consolas,monospace;color:var(--fg-muted);font-size:12px}
+  .price{color:#7fb2ff;font-weight:600}
+  .hist{color:var(--fg-muted)}
+  .acct{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .avatar{width:20px;height:20px;border-radius:6px;background:var(--brand-soft);border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:#8ab4ff;flex:none}
+  .acct-name{white-space:nowrap}
+  .tag-more{font-size:11px;color:var(--fg-muted);border:1px solid var(--border);border-radius:999px;padding:1px 7px}
+  .tag-steam{font-size:10.5px;color:#9fb6d9;border:1px solid #2a3b55;border-radius:999px;padding:1px 6px;background:#0d1626}
+  .danger{color:#e57373;cursor:pointer;font-size:12px;background:none;border:none}
+  .foot{color:var(--fg-muted);font-size:11.5px;padding:10px 14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  .mobile{display:flex;flex-direction:column;gap:8px;padding:10px 14px}
+  .mcard{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--panel-2)}
+  .mcard strong{display:block;margin-bottom:4px}
+  .mcard small{display:block;color:var(--fg-muted);line-height:1.6}
+  .mcard .m-acct{color:#8ab4ff}
+  .demo-tag{display:inline-block;margin-left:8px;font-size:10.5px;padding:1px 7px;border-radius:999px;background:rgba(59,130,246,.15);color:#8ab4ff;border:1px solid rgba(59,130,246,.4)}
+</style>
+</head>
+<body>
+<div class="note">
+  <b>demo：我的愿望单 + 「Steam 账号」列</b>（前台 · 普通用户）。Steam 账号列显示该愿望单游戏「来自哪个 Steam 账号的导入愿望单」
+  （多账号时并排显示，超过 2 个折叠为「+N」）。仅显示，不做账号选择/推送（保持 v2.9.0「仅本站」口径）。
+</div>
+<div class="page">
+  <h1>我的愿望单 <span class="demo-tag">demo · 新增列已标注</span></h1>
+  <div class="sub">我收藏的愿望单游戏（本站手动添加）· Steam 账号列 = 该游戏在你的 Steam 导入愿望单中命中的账号</div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h3>我的愿望单</h3>
+        <p>我收藏的愿望单游戏（本站手动添加）</p>
+      </div>
+      <div class="tools">
+        <input placeholder="搜索游戏名 / AppID" />
+        <button class="btn">搜索</button>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>游戏</th>
+          <th>AppID</th>
+          <th>Steam 账号 <span class="demo-tag">新增</span></th>
+          <th>当前价</th>
+          <th>史低</th>
+          <th>加入时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="game">雾锁王国 Enshrouded</td>
+          <td class="mono">1203220</td>
+          <td><div class="acct"><span class="avatar">Y</span><span class="acct-name">yy_steam_main</span><span class="tag-steam">导入</span></div></td>
+          <td class="price">¥138.00</td>
+          <td class="hist">¥138.00</td>
+          <td class="mono">2026-11-18 21:30</td>
+          <td><button class="danger">移除</button></td>
+        </tr>
+        <tr>
+          <td class="game">Stray</td>
+          <td class="mono">1332010</td>
+          <td><div class="acct"><span class="avatar">Y</span><span class="acct-name">yy_steam_main</span><span class="avatar">L</span><span class="acct-name">yy_steam_alt</span><span class="tag-more">+1</span></div></td>
+          <td class="price">¥98.00</td>
+          <td class="hist">¥98.00</td>
+          <td class="mono">2026-11-19 10:12</td>
+          <td><button class="danger">移除</button></td>
+        </tr>
+        <tr>
+          <td class="game">海狸浮生记 Timberborn</td>
+          <td class="mono">1062090</td>
+          <td><div class="acct"><span class="acct-name" style="color:var(--fg-muted)">本站添加（无 Steam 来源）</span></div></td>
+          <td class="price">¥89.00</td>
+          <td class="hist">¥128.00</td>
+          <td class="mono">2026-11-20 18:05</td>
+          <td><button class="danger">移除</button></td>
+        </tr>
+        <tr>
+          <td class="game">Kingdom Rush Vengeance</td>
+          <td class="mono">1239860</td>
+          <td><div class="acct"><span class="avatar">L</span><span class="acct-name">yy_steam_alt</span><span class="tag-steam">导入</span></div></td>
+          <td class="price">¥80.00</td>
+          <td class="hist">¥80.00</td>
+          <td class="mono">2026-11-21 09:40</td>
+          <td><button class="danger">移除</button></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="foot"><span>共 4 条 · 愿望单为本站数据，Steam 账号列来自已绑定的 Steam 导入愿望单（只读）</span><span>第 1 / 1 页</span></div>
+  </div>
+
+  <div class="sub" style="margin:18px 0 6px">移动端卡片（同一页，窄屏）</div>
+  <div class="card">
+    <div class="card-head"><div><h3>我的愿望单</h3><p>移动端卡片样式</p></div></div>
+    <div class="mobile">
+      <div class="mcard">
+        <strong>Stray</strong>
+        <small>当前 ¥98.00 · 史低 ¥98.00</small>
+        <small class="m-acct">Steam 账号：yy_steam_main、yy_steam_alt（+1）</small>
+        <small>加入于 2026-11-19 10:12</small>
+      </div>
+      <div class="mcard">
+        <strong>海狸浮生记 Timberborn</strong>
+        <small>当前 ¥89.00 · 史低 ¥128.00</small>
+        <small class="m-acct">Steam 账号：本站添加（无 Steam 来源）</small>
+        <small>加入于 2026-11-20 18:05</small>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
