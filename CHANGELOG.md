@@ -1,5 +1,17 @@
 # 变更日志
 
+## [2.28.2] - 2026-11-23
+
+ET 设置页布局系统修复（⚙️ 调整，无新功能面 → 小版本，2.28.1 → 2.28.2 连续递增）。本批不涉及 App 仓库。
+
+### 修复
+
+- **ET 设置页布局系统修复（64d9f48）**：`frontend/src/pages/AdminModules.vue` 设置 tab 非 plain 分支——`displaySettingsFields` 改按 section 分组返回 `{sec,entries}[]`；模板每 section 一张 `.settings-card`（卡片内 cardHead→cardBody→rows/grid→fold→foldBody）；样式 `.settings-sections` 两列网格 `repeat(2,minmax(0,1fr))`（≤960px 单列）、`.settings-card` 容器边框/圆角、head/body 去独立边框、fold 卡片内全宽。修复「数据源与采集 / 站点与内容 / 高级」三 tab 卡片零件（卡头/字段/折叠）被拆成独立网格项导致的左右错位与大片空白；plain 组（auth/security/alerts/network）与邮件/初始化页不动；字段功能（保存/恢复默认/搜索/只看非默认/折叠记忆/secret 编辑）不变。规格见 [docs/SETTINGS-LAYOUT-FIX.md](docs/SETTINGS-LAYOUT-FIX.md)。
+
+### 测试
+
+- QA docs/QA-ET.md 第 1 轮 ✅ 放行（5/0/0/1）；`node test/settings.test.js` 15/15、主链分段 test:1~4 全绿、`npm run frontend:build` ✓、`npm run scan` 干净；headless Chrome 实测三 tab 卡片结构（每 section 一张卡、两列网格、390px 单列、折叠在卡片内）与功能回归（保存/恢复默认/搜索高亮/折叠自动展开）。
+
 ## [2.28.1] - 2026-11-21
 
 CO-5/B4-2 巨石拆分第十四~十七轮交付（8 域：admin align / admin 用户批量 / admin 报表备份日志 / admin 图片 / admin 游戏目录 / admin 提醒愿望单 / cli 运维类 / 公开 games，契约零变化）（🧹 技术债重构，无新功能面 → 小版本，2.28.0 → 2.28.1 连续递增）。本批不涉及 App 仓库。**B4 队列 21 域全部拆完。**

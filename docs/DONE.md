@@ -2942,3 +2942,20 @@ pm test（分段）+ rontend:build + scan 全绿）。
   返回明确状态而非 503 超时；③ 现有 align 测试全绿 + 反向自检（去掉 staleCache 路径必须红）；
   ④ `npm test`（分段）+ `scan` 全绿。
 - **过时原因**：DL（对齐审核快照落库，[ALIGN-SNAPSHOT.md](ALIGN-SNAPSHOT.md)）已发布 v2.27.0，短期补丁方案不再派发。
+
+## ET. ~~设置页布局系统修复（卡片容器包裹，方案 A）~~ → 已发布 v2.28.2
+
+**类型：** ⚙️ 调整（后台布局重构）
+**状态：已发布 v2.28.2（2026-11-23；实现 64d9f48；QA docs/QA-ET.md 第 1 轮 ✅ 5/0/0/1）**
+**优先级：** P1 —— 系统设置页布局错乱
+**依赖：** EL（设置弹窗）已完成，不冲突
+**解锁：** 无
+**规格**：[SETTINGS-LAYOUT-FIX.md](SETTINGS-LAYOUT-FIX.md)（demo：docs/design/settings-layout-demo.html/.png）
+
+- **根因**：AdminModules 设置页把 cardHead/cardBody/字段/折叠当独立网格项 → 卡片零件错位（截图）。
+- **范围**：sources / site / advanced 三个 tab（非 plain 分支）；plain 组（auth/security/alerts/network）
+  与邮件/初始化页正常不动。
+- **方案 A**：displaySettingsFields 按 section 分组 + 每 section 一个 .settings-card 容器（两列网格、
+  卡片内字段对齐、折叠全宽）；字段功能不变。
+- **验收**：三个 tab 与 demo 一致、移动端单列、功能不变、
+pm test（分段）+ rontend:build + scan 全绿、截图对照。
