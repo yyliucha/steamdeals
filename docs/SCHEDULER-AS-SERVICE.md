@@ -90,3 +90,20 @@ docker compose ps          # app 与 scheduler 均 Up
 - EU-1（中断标记）保证 scheduler 重启时不误报；
 - EU-2（分批断点）保证重启时进度损失 ≤1 批；
 - **EU-5（排空）**保证发版时调度器「等当前任务完成再退出」——发版零中断。
+
+## 7. 一键发版（所有者 2026-11-23：命令太繁琐，要一行）
+
+**目标：发版 = 一行 `docker compose up -d`**，不需要手动分步。
+
+前提（本条目落地后）：
+- scheduler 独立 service + `stop_grace_period: 10m`（EU-5 排空：收到 SIGTERM 后不再启新任务、等当前任务完成）；
+- app 与 scheduler 各自独立容器：`up -d` 会重建变化的服务，app 重启不影响 scheduler，scheduler 在排空窗口内完成任务后自动重启。
+
+用法：
+```bash
+docker compose pull && docker compose up -d   # 拉镜像 + 一键更新（app 与 scheduler 分容器，排空保护）
+```
+
+- 若只想更新 Web：`docker compose up -d --no-deps app`（保守场景，调度器不动）；
+- 「分步命令」（§6）只是原理说明，日常发版用一行即可；
+- `scheduler-service.sh` 保留 install/remove/status 管理能力（一键删除所有任务）。
