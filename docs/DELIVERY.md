@@ -927,3 +927,8 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
   - 两处 `proxy_pass http://steamdeals$request_uri;` → `set $steamdeals_upstream steamdeals:8080; proxy_pass http://$steamdeals_upstream$request_uri;`；
 - 验证：`docker compose up -d --force-recreate app` → 15 秒后域名自动 200（无需 restart nginx）。
 - 备份：`steamdeals.conf.bak-*`（同目录）。
+### 2026-11-24 v2.28.9 镜像 CI 失败说明（已修复）
+- **现象**：v2.28.9 tag 已推，但 docker-hub/docker-tcr 构建失败（`docs.test.js`「文档里的相对链接」红）。
+- **根因**：CHANGELOG 的 v2.28.9 条目引用了 `docs/QA-FE.md`（QA 报告不入库）→ 断链。
+- **修复**：CHANGELOG 该引用改纯文本（提交 b07b644，main 上 docs 测试 5/5 绿）。
+- **发布处理**：v2.28.9 镜像未发布；由 **v2.28.10**（含 FG/FH + 本修复）覆盖发布，CHANGELOG 保留 v2.28.9 记录。
