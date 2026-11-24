@@ -12,12 +12,12 @@
 | 2 | 新增**专用**设置项 `network.appSyncProxy`（env `APP_RELEASE_SYNC_PROXY`），只作用于 App Release 同步的资产下载；不复用 `network.httpsProxy`（会波及 itad/gog/humble/images 等全部非 Steam 出站）。 |
 | 3 | 复用 `src/http.js` 的 `proxyAgentOptions` + `undici.ProxyAgent`（零新依赖）。 |
 | 4 | 走代理时下载超时 30s；直连保持现状 10s。仅支持 http/https。 |
-| 5 | 生产建议值 `http://steam-proxy:8888`（容器内美区 sidecar，2026-11-20 实测可拉 GitHub 资产）；部署时在后台设置页填写，最终以部署时为准。 |
+| 5 | 生产建议值 `http://<代理主机>:<端口>`（容器内美区 sidecar，2026-11-20 实测可拉 GitHub 资产）；部署时在后台设置页填写，最终以部署时为准。 |
 
 ## 2. 背景（线上缺陷，2026-11-20）
 
 - `app-release-sync`（每 15 分钟）连续失败：`reason=apk_download / latest_download`，`message="The operation was aborted due to timeout"`——大陆服务器直连 GitHub 资产域名（`release-assets.githubusercontent.com`）超时（实测宿主机下载 756B 需 3.3s，波动时超过下载超时 10s 撞线）。
-- 站点容器网络内已有美区代理 sidecar（`STEAM_PROXY=http://steam-proxy:8888`，Steam 采集同款通路），但同步下载是裸 `fetch`（`src/app-release.js` `doFetch = fetchImpl ?? fetch`），不走代理。
+- 站点容器网络内已有美区代理 sidecar（`STEAM_PROXY=http://<代理主机>:<端口>`，Steam 采集同款通路），但同步下载是裸 `fetch`（`src/app-release.js` `doFetch = fetchImpl ?? fetch`），不走代理。
 - 性质：**🐞 线上缺陷修复**（现有同步功能在生产跑不通），非新功能面；手工兜底（`undici.ProxyAgent` 强制走 sidecar 下载后 `docker cp`）2026-11-20 已验证通路可用。
 
 ## 3. 服务端
@@ -31,7 +31,7 @@
 
 ## 4. 设置与配置
 
-- `def('network.appSyncProxy', 'APP_RELEASE_SYNC_PROXY', 'network', 'App 同步专用代理', 'secret', '', { help: '只作用于 GitHub Release 资产下载（latest.json/APK/sha256）；留空直连。仅支持 http/https，如 http://steam-proxy:8888。' })`
+- `def('network.appSyncProxy', 'APP_RELEASE_SYNC_PROXY', 'network', 'App 同步专用代理', 'secret', '', { help: '只作用于 GitHub Release 资产下载（latest.json/APK/sha256）；留空直连。仅支持 http/https，如 http://<代理主机>:<端口>。' })`
 - 后台「系统设置 → 网络」组由 def 自动渲染，无新页面设计（不触发 demo 硬规则）。
 
 ## 5. 安全
@@ -45,7 +45,7 @@
 3. 留空：行为与现状完全一致（无 dispatcher、直连、10s 超时）——回归用例。
 4. 反向自检：把「配代理走直连」与「留空走代理」的断言改反，测试必须红。
 5. 代理不可用：reason 仍为 `latest_download` / `apk_download` 且 message 可见；任务健康条红（A5 接线不变）。
-6. 通用：相关段 `npm test` 全绿 + `frontend:build` + `npm run scan`；线上验证（部署后）：后台填 `http://steam-proxy:8888` → 下一轮同步出现 `app.release_synced`（version 2.24.1）。
+6. 通用：相关段 `npm test` 全绿 + `frontend:build` + `npm run scan`；线上验证（部署后）：后台填 `http://<代理主机>:<端口>` → 下一轮同步出现 `app.release_synced`（version 2.24.1）。
 
 ## 7. 实施顺序
 
@@ -56,4 +56,4 @@
 
 ## 8. 待确认问题
 
-无。生产代理值以部署时后台填写为准（建议 `http://steam-proxy:8888`，2026-11-20 实测可用）。
+无。生产代理值以部署时后台填写为准（建议 `http://<代理主机>:<端口>`，2026-11-20 实测可用）。

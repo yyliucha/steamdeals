@@ -384,7 +384,7 @@ export const SETTINGS = [
 
   // ---- 网络 ----
   def('network.steamProxy', 'STEAM_PROXY', 'network', 'Steam 专用代理', 'secret', '', {
-    help: '只作用于 Steam 域名，如 http://127.0.0.1:7890。可配多条（换行分隔、按顺序尝试、最多 10 条），仅支持 http/https。',
+    help: '只作用于 Steam 域名。可配多条（换行分隔、按顺序尝试、最多 10 条），仅支持 http/https。',
   }),
   def('network.httpsProxy', 'HTTPS_PROXY', 'network', '通用出网代理', 'secret', '', {
     help: '作用于其余所有主机；受 NO_PROXY 排除。仅支持 http/https。',
@@ -395,7 +395,7 @@ export const SETTINGS = [
   // EK 批（docs/APP-RELEASE-SYNC-PROXY.md）：App Release 同步专用代理——只作用于 GitHub 资产下载
   // （latest.json / APK / sha256），不复用 network.httpsProxy（避免波及 itad/gog/humble/images 等出站）。
   def('network.appSyncProxy', 'APP_RELEASE_SYNC_PROXY', 'network', 'App 同步专用代理', 'secret', '', {
-    help: '只作用于 GitHub Release 资产下载（latest.json/APK/sha256）；留空直连。仅支持 http/https，如 http://steam-proxy:8888。',
+    help: '只作用于 GitHub Release 资产下载（latest.json/APK/sha256）；留空直连。仅支持 http/https。',
   }),
 
   // ---- 高级 ----

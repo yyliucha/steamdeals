@@ -716,7 +716,7 @@ async function saveSecretDialog(){
   const raw=String(secretDialog.value??'').trim();
   let values=null;
   if(secretDialog.clear)values={[key]:null};
-  else if(raw){if(!/^https?:\/\//i.test(raw)){ElMessage.error('仅支持 http/https 代理地址（如 http://127.0.0.1:7890）');return;}values={[key]:raw};}
+  else if(raw){if(!/^https?:\/\//i.test(raw)){ElMessage.error('仅支持 http/https 代理地址');return;}values={[key]:raw};}
   else{secretDialog.visible=false;return;}
   secretSaving.value=true;
   try{

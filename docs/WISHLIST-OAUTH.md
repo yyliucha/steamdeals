@@ -11,7 +11,7 @@
 
 ```
 2026-11-09T16:10:43 WARN adapter.steam.wishlist_add_failed
-  {"steamId":"76561199509090255","appid":916470,"reason":"HTTP 401 → api.steampowered.com · 经 steam-proxy(http://steam-proxy:8888)"}
+  {"steamId":"76561199509090255","appid":916470,"reason":"HTTP 401 → api.steampowered.com · 经 steam-proxy(http://<代理主机>:<端口>)"}
 2026-11-09T16:10:43 INFO steam.wishlist_manual_add
   {... "steamIds":["76561199509090255"],"added":[],"alreadyIn":[],"failed":["76561199509090255"]}
 ```
