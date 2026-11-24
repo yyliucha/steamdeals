@@ -160,7 +160,7 @@
 | **FI** | ⚙️ 调整：内容分级——后台恢复「内容分级」筛选（不受 adultDisplay 影响）+ 前台/App 按 site.adultDisplay 控制 18R 入口（hide 无入口 / badge 角标 / show 普通展示） | [ADMIN-RATING-FILTER.md](ADMIN-RATING-FILTER.md) | 已发布 v2.29.1（2026-11-24；站点 31126db + App 4266359；App 侧 app-v2.25.0 随本批） | ✅ 本轮已给 |
 | **FJ** | ⚙️ 调整：同步服务合并为任务组（25→12 组：元数据/报价/目录/图片/索引/维护/账号等；claim 改手动） | [SYNC-JOB-GROUPS.md](SYNC-JOB-GROUPS.md) | 已发布 v2.29.1（2026-11-24；QA-FJ 第 1 轮 ✅ 14/0/1 修/2） | ✅ 本轮已给 |
 | **FL** | ⚙️ 调整：系统设置页所有分组统一折叠（无高级字段的组也折叠，交互一致） | 本条目 | 质检打回（2026-11-24，QA-FL 第 1 轮：✅ 11 / ❌ 1 / ⚠️ 4 / 🔎 3） | ⚠️ 补登记（先实现后补条目）；打回 3 项详见 `docs/QA-FL.md` |
-| **FK** | ⚙️ 调整：App 资产同步换源（GitHub→腾讯云 COS，双通道+自动回退；服务器无法直连 GitHub Release 资产） | [APP-SYNC-COS.md](APP-SYNC-COS.md) | 已实现待发版（2026-11-24，5ad406b P1） | ✅ 本轮已给 |
+| **FK** | ⚙️ 调整：App 资产同步换源（GitHub→腾讯云 COS，双通道+自动回退；服务器无法直连 GitHub Release 资产） | [APP-SYNC-COS.md](APP-SYNC-COS.md) | 质检通过（2026-11-24，QA-FK 第 1 轮 ✅ 9/0/0/3；实现 5ad406b） | ✅ 本轮已给 |
 | **FM** | 🐞 缺陷：价格提醒史低误报（hist_low 含当天→恒标新史低；相同价重复显示史低） | [ALERT-HISTLOW-FIX.md](ALERT-HISTLOW-FIX.md) | 待开发（2026-11-24 P2） | ✅ 本轮已给 |
 | **EY** | ⚙️ 调整：我的愿望单合并 Steam 愿望单（两层展示、Steam 行只读无操作、同游戏合并一行） | [MY-WISHLIST-MERGED.md](MY-WISHLIST-MERGED.md) | 已发布 v2.29.0（2026-11-24，合并展示按新功能定档 → 大版本） | ✅ 本轮已给 |
 | **EZ** | ⚙️ 调整：个人资料页精简（el-tabs 三 Tab：基本信息 / Steam 账号（绑定+游戏库合并）/ 偏好与统计；保存固定底部；手机端 Tab 横向滚动；全 el-button） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 已发布 v2.28.7（2026-11-23，8eeb1f4；QA-EZ-FA 第 1 轮 ✅） | ✅ demo 已给 |

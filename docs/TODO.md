@@ -226,10 +226,10 @@
 - **验收**：设置页各分组（高级 tab 的调度与熔断/备份与日志/缓存与图片/时区与显示，及站点/数据源各组）均可折叠/展开；
   `frontend:build` 通过；admin-console-ia / style-tokens 测试 fail 0；截图对照（全部分组均有折叠箭头）。
 
-## FK. 已实现待发版（⚙️ 调整）：App 资产同步换源（GitHub → 腾讯云 COS，双通道 + 自动回退）
+## FK. 质检通过（⚙️ 调整）：App 资产同步换源（GitHub → 腾讯云 COS，双通道 + 自动回退）
 
 **类型：** ⚙️ 调整（App 发布链路：服务器无法直连 GitHub Release 资产）
-**状态：** 已实现待发版（2026-11-24，提交 5ad406b；`network.appSyncSource/appSyncCosBase/appSyncFallbackGithub` + `syncAppRelease` COS 源/失败回退 + App 构建技能 COS 双上传；QA 待做）
+**状态：** 质检通过（2026-11-24，QA-FK 第 1 轮 ✅ 放行：通过 9 / 缺失 0 / 偏差 0 / 需人工确认 3；实现 5ad406b + 文档 81e6dc6，待构建）
 **优先级：** P1 —— App 更新同步被阻断
 **依赖：** 所有者提供 COS 桶/凭证（部署时）
 **解锁：** 无
