@@ -343,9 +343,14 @@ test('CO-5/B4-2 第四轮：watchlist/wishlist 路由分支全部在 src/routes/
   assert.match(WL_ROUTES, /requireUser\(\)/, '分支内登录守卫存在');
   assert.match(WL_ROUTES, /watchUserLimited\(user\.id\)/, '用户级写限流随域移入');
   // DT-2（docs/ADMIN-PERMISSIONS.md）：/api/me/wishlist 也落本域（复用 wishlist 服务层），
+  // EY（docs/MY-WISHLIST-MERGED.md）：该分支显式 includeSteam 打开合并视图（后台接口不受影响）。
   // 反向自检：删掉该分支 → 下面两行红；把 userId: user.id 改成读请求参数 → wishlist-site-only 越权用例红。
   assert.match(WL_ROUTES, /path === '\/api\/me\/wishlist' && req\.method === 'GET'/, 'DT-2 me/wishlist GET 分支在新文件');
-  assert.match(WL_ROUTES, /listWishlists\(q, \{ limit, offset, keyword, userId: user\.id \}\)/, 'DT-2 userId 强制 = session.user.id（忽略传入参数）');
+  assert.match(
+    WL_ROUTES,
+    /listWishlists\(q, \{ limit, offset, keyword, userId: user\.id, includeSteam: true \}\)/,
+    'DT-2/EY userId 强制 = session.user.id（忽略传入参数）+ 合并 Steam 层',
+  );
 });
 
 test('CO-5/B4-2 第四轮：server.js 必须真实接线 handleWatchlistRoutes（删掉调用即红，防死模块）', () => {

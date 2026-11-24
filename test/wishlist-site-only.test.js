@@ -332,3 +332,132 @@ test('EW 前端接线：Home 卡片/详情渲染 wishlisted_by；UserSections �
   assert.match(us, /本站添加（无 Steam 来源）/, '无来源兜底文案（桌面列 + 移动行共用）');
   assert.match(us, /steam_accounts/, 'UserSections 消费接口 steam_accounts 字段');
 });
+
+// ===== EY（docs/MY-WISHLIST-MERGED.md §2/§4）：本站愿望单 ∪ Steam 导入愿望单合并展示 =====
+// 行语义：两层都有 → 合并一行 sources=['site','steam']；仅本站 → ['site']；仅 Steam → ['steam']（只读）。
+// 反向自检：把合并视图的 site/steam 任一 `user_id = $1` 去掉 → 越权用例红；把 merged 改回两层
+// 各一行（不按 game_id 聚合）→ 合并行/total 用例红；把 sources 的 case 删掉/改错 → 来源与只读用例红；
+// 删掉 UserSections 的 wishHasSite 判定 → 前端静态用例红（Steam-only 行会冒出移除按钮）。
+
+test('EY 合并视图：两层都有合并一行（本站+Steam）、仅 Steam 行只读、移除只删本站', async () => {
+  const ctx = await setup();
+  try {
+    // 仅 Steam 行：alice 账号 1 导入 710003（本站没加）；bob 账号导入 710004 用于越权对照
+    await ctx.q("insert into games (steam_appid, name) values (710003, 'Steam 独有')");
+    await ctx.q("insert into games (steam_appid, name) values (710004, 'Bob 独有')");
+    await ctx.q("insert into steam_wishlist (steam_id, appid) values ('76561198000000001', 710003)");
+    await ctx.q("insert into steam_wishlist (steam_id, appid) values ('76561198000000003', 710004)");
+
+    const res = await getJson(`${ctx.base}/api/me/wishlist?limit=200`, ctx.aliceCookie);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.total, 3, 'alice：g1 合并 + g2 仅本站 + 710003 仅 Steam = 3 行（两层不重复出行）');
+
+    const g1 = res.body.items.find((x) => x.game_id === ctx.g1.id);
+    assert.ok(g1, 'g1 行在');
+    assert.deepEqual(g1.sources, ['site', 'steam'], '同游戏两层都有 → 合并一行、来源两值');
+    assert.equal(g1.id, ctx.w1.id, 'id = site_wishlist_id（前端据此显示移除）');
+    assert.deepEqual(g1.steam_accounts, ['yy_steam_alt', 'yy_steam_main'], '来源账号沿用 EW 口径');
+
+    const g2 = res.body.items.find((x) => x.game_id === ctx.g2.id);
+    assert.deepEqual(g2.sources, ['site'], '仅本站 → 来源只有 site');
+    assert.equal(g2.id, ctx.w2.id, '仅本站行有 site id');
+
+    const g3 = res.body.items.find((x) => x.name === 'Steam 独有');
+    assert.ok(g3, 'Steam-only 行在合并列表里');
+    assert.deepEqual(g3.sources, ['steam'], '仅 Steam → 来源只有 steam');
+    assert.equal(g3.id, null, 'Steam-only 行没有 site id（前端不显示移除）');
+    assert.deepEqual(g3.steam_accounts, ['yy_steam_main'], 'Steam-only 行带来源账号');
+    assert.equal(g3.steam_appid, 710003);
+
+    // 移除合并行的本站记录：Steam 层不受影响 → 该行降级为 Steam-only、total 不变
+    const del = await fetch(`${ctx.base}/api/wishlist/id/${ctx.g1.id}`, { method: 'DELETE', headers: { cookie: ctx.aliceCookie } });
+    assert.equal(del.status, 200);
+    const after = await getJson(`${ctx.base}/api/me/wishlist?limit=200`, ctx.aliceCookie);
+    assert.equal(after.body.total, 3, '删本站记录后 Steam 行仍在（total 不变）');
+    const g1After = after.body.items.find((x) => x.game_id === ctx.g1.id);
+    assert.deepEqual(g1After.sources, ['steam'], '只剩 Steam 来源');
+    assert.equal(g1After.id, null, '不再有可移除的 site id');
+    assert.equal(
+      (await ctx.q("select 1 from steam_wishlist where steam_id = '76561198000000001' and appid = 710001")).rows.length,
+      1,
+      'steam_wishlist 行未被删除（站点对 Steam 只读）',
+    );
+  } finally {
+    await ctx.srv.close();
+    await ctx.store.close();
+  }
+});
+
+test('EY 分页/搜索覆盖两层；A/B 越权不可见；Steam-only 行没有写通道', async () => {
+  const ctx = await setup();
+  try {
+    await ctx.q("insert into games (steam_appid, name) values (710003, 'Steam 独有')");
+    await ctx.q("insert into games (steam_appid, name) values (710004, 'Bob 独有')");
+    await ctx.q("insert into steam_wishlist (steam_id, appid) values ('76561198000000001', 710003)");
+    await ctx.q("insert into steam_wishlist (steam_id, appid) values ('76561198000000003', 710004)");
+
+    // 搜索：关键词命中仅 Steam 的条目（证明搜索不只看 user_wishlist）
+    const hit = await getJson(`${ctx.base}/api/me/wishlist?q=${encodeURIComponent('Steam 独有')}`, ctx.aliceCookie);
+    assert.equal(hit.body.total, 1, '搜索命中 Steam-only 行');
+    assert.deepEqual(hit.body.items[0].sources, ['steam']);
+    // 搜索同样覆盖本站层（对照）
+    const siteHit = await getJson(`${ctx.base}/api/me/wishlist?q=${encodeURIComponent('愿望单二号')}`, ctx.aliceCookie);
+    assert.equal(siteHit.body.total, 1, '搜索命中仅本站行');
+    assert.deepEqual(siteHit.body.items[0].sources, ['site']);
+
+    // 分页：合并后共 3 行，limit=2&offset=2 只剩 1 行；两页不重复
+    const p1 = await getJson(`${ctx.base}/api/me/wishlist?limit=2&offset=0`, ctx.aliceCookie);
+    const p2 = await getJson(`${ctx.base}/api/me/wishlist?limit=2&offset=2`, ctx.aliceCookie);
+    assert.equal(p1.body.total, 3, 'total 是合并后总数');
+    assert.equal(p1.body.items.length, 2);
+    assert.equal(p2.body.items.length, 1, '第二页覆盖合并行');
+    assert.equal(new Set([...p1.body.items, ...p2.body.items].map((x) => x.game_id)).size, 3, '两页合并行不重复');
+
+    // 越权：alice 看不到 bob 的 Steam 导入；bob 也看不到 alice 的
+    assert.ok(!JSON.stringify((await getJson(`${ctx.base}/api/me/wishlist?limit=200`, ctx.aliceCookie)).body).includes('Bob 独有'), 'alice 不可见 bob 的 Steam 愿望单');
+    const bobCookie = await (async () => {
+      const res = await fetch(`${ctx.base}/api/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: 'bob', password: 'bob123456' }),
+      });
+      return res.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+    })();
+    const bob = await getJson(`${ctx.base}/api/me/wishlist?limit=200`, bobCookie);
+    assert.equal(bob.body.total, 2, 'bob：g1 合并 + 710004 仅 Steam = 2 行');
+    assert.ok(bob.body.items.some((x) => x.name === 'Bob 独有'), 'bob 自己的 Steam 行可见');
+    assert.ok(!JSON.stringify(bob.body).includes('Steam 独有'), 'bob 不可见 alice 的 Steam 行');
+
+    // 只读：对 Steam-only 行调 DELETE → 只删本站记录（本来就没有）→ siteRemoved 0，Steam 行不动
+    const g3id = (await ctx.q('select id from games where steam_appid = 710003')).rows[0].id;
+    const del = await fetch(`${ctx.base}/api/wishlist/id/${g3id}`, { method: 'DELETE', headers: { cookie: ctx.aliceCookie } });
+    assert.equal(del.status, 200, '游戏存在 → 路由正常返回（没有本站记录可删也是幂等成功）');
+    assert.equal((await del.json()).siteRemoved, 0, 'Steam-only 行 siteRemoved=0（无本站记录）');
+    assert.equal(
+      (await ctx.q("select 1 from steam_wishlist where steam_id = '76561198000000001' and appid = 710003")).rows.length,
+      1,
+      'Steam 愿望单行仍在（站点对 Steam 只读，不写回）',
+    );
+    const again = await getJson(`${ctx.base}/api/me/wishlist?q=${encodeURIComponent('Steam 独有')}`, ctx.aliceCookie);
+    assert.equal(again.body.total, 1, 'Steam-only 行仍在列表（删除请求未影响 Steam 层）');
+  } finally {
+    await ctx.srv.close();
+    await ctx.store.close();
+  }
+});
+
+test('EY 前端接线：来源列/来源标注；移除按钮仅本站行；Steam-only 行只读且无操作；key 用 game_id', () => {
+  // 反向自检：删掉 UserSections 的 wishHasSite 判定或 sources 消费 → 下面断言红；
+  // 把操作列改回无条件「移除」→ 「仅本站行显示移除」断言红；把 key 改回 w.id → key 断言红。
+  const us = read('../frontend/src/pages/UserSections.vue');
+  assert.match(us, /label="来源"/, '桌面表格新增「来源」列');
+  assert.match(us, /function wishHasSite\(row\)/, '来源/可操作性判定函数（sources 含 site）');
+  assert.match(us, /function wishHasSteam\(row\)/, 'Steam 来源判定函数');
+  assert.match(us, /wishSourceLabel\(w\)/, '移动卡片显示来源文案');
+  assert.match(us, /v-if="wishHasSite\(row\)" link type="danger" @click="removeWish\(row\)">移除</, '移除按钮仅本站行显示');
+  assert.match(us, /v-else class="wish-readonly">Steam 导入（只读）</, 'Steam-only 行显示只读提示（桌面）');
+  assert.match(us, /v-else class="wish-readonly">Steam 导入（只读）<\/small>/, 'Steam-only 行显示只读提示（移动卡片）');
+  assert.match(us, /:key="w\.game_id"/, '列表 key 用 game_id（Steam-only 行 id 为 null）');
+  assert.match(us, /本站手动添加 \+ 已绑定 Steam 账号导入/, '页头说明合并两层');
+});
+

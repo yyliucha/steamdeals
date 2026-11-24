@@ -463,8 +463,12 @@ export async function setAccountApiKey(q, { steamId, apiKeyEnc, log = null }) {
  *  后台 /api/admin/wishlists 不传 offset/total 行为与拆分前一致（limit 内全量）。 */
 // EJ（docs/DISPLAY-NAME-RULE.md）：多带 display_name——后台「用户」列按「昵称 → 用户名」显示；
 // 关键字筛选仍按 username（账号标识，登录用）。
-export async function listWishlists(q, { limit = 200, offset = 0, keyword = '', userId = null } = {}) {
+export async function listWishlists(q, { limit = 200, offset = 0, keyword = '', userId = null, includeSteam = false } = {}) {
   const kw = String(keyword ?? '').trim().slice(0, 80);
+  // EY（docs/MY-WISHLIST-MERGED.md §2-1/§3）：我的愿望单合并视图——只有调用方显式要
+  // includeSteam 且限定到本人（userId 非空）时才走；后台 /api/admin/wishlists 永远走原查询，
+  // 契约零变化（不因 Steam 层多出行、字段不变）。
+  if (userId != null && includeSteam) return listMergedWishlists(q, { userId, limit, offset, keyword: kw });
   const params = [];
   const where = [];
   if (userId != null) {
@@ -524,3 +528,107 @@ export async function listWishlists(q, { limit = 200, offset = 0, keyword = '', 
 
 // CY 批（docs/DATA-ISOLATION.md §3）：原 deleteWishlistsByIds（后台删愿望单）已删除——
 // 愿望单属用户私有数据，管理员只读，唯一写通道是用户本人 POST/DELETE /api/wishlist。
+
+/**
+ * EY（docs/MY-WISHLIST-MERGED.md §2/§3）：我的愿望单合并视图——user_wishlist（本站）∪
+ * steam_wishlist（该用户已绑定账号导入），按 game_id 合并成一行。
+ * 行语义：
+ *   · sources：['site','steam'] / ['site'] / ['steam']（前端据此决定「移除」按钮是否出现）；
+ *   · site_wishlist_id（同时兼容旧前端 key 的 id）：仅本站行有值，Steam-only 行为 null；
+ *   · created_at：站点加入时间优先（合并行不因 Steam 同步时间更晚而跳序），Steam-only 行取最近同步时间；
+ *   · steam_accounts：沿用 EW 口径（该游戏在本人导入愿望单中命中的账号展示名，去重排序）。
+ * 越权：site / steam 两侧都限 user_id = $1（调用方强制 session.user.id，忽略请求参数）。
+ * 只读：本函数只读两层表；Steam 行没有本站行 → DELETE /api/wishlist* 自然 404，无写回 Steam 通道。
+ * 分页/搜索：merged 之后再按 g.name/g.name_en/appid 过滤，limit/offset 生效，total 为合并后总数。
+ * 反向自检：把 site/steam 任一 `user_id = $1` 去掉 → 越权用例红；把 bool_or 合并改回两行 → 合并行用例红；
+ * 把 site_wishlist_id 换成 steam 侧 id → 「仅 Steam 行 id 为 null」用例红。
+ */
+async function listMergedWishlists(q, { userId, limit, offset, keyword }) {
+  const uid = Number(userId);
+  const size = Math.min(Math.max(Number(limit) || 200, 1), 500);
+  const off = Math.max(Number(offset) || 0, 0);
+  const params = [uid];
+  let kwWhere = '';
+  if (keyword) {
+    params.push(`%${keyword}%`);
+    const like = `$${params.length}`;
+    params.push(keyword);
+    const exact = `$${params.length}`;
+    kwWhere = `where (g.name ilike ${like} or g.name_en ilike ${like} or cast(g.steam_appid as text) = ${exact})`;
+  }
+  const kwParams = params.slice();
+  params.push(size);
+  const limitSql = `$${params.length}`;
+  params.push(off);
+  const offsetSql = `$${params.length}`;
+  // CTE：site = 本站行；steam = 本人账号导入的 appid → games.id（按账号聚合一次，避免同账号多行）；
+  // merged = 两层 union 后按 game_id 聚合（保留站点 id / 两侧时间 / 两侧来源标记）。
+  const cte = `
+    with site as (
+      select uw.id, uw.game_id, uw.created_at
+        from user_wishlist uw
+       where uw.user_id = $1
+    ),
+    steam as (
+      select g.id as game_id, max(sw.synced_at) as created_at
+        from steam_wishlist sw
+        join steam_accounts sa on sa.steam_id = sw.steam_id
+        join games g on g.steam_appid = sw.appid
+       where sa.user_id = $1
+       group by g.id
+    ),
+    merged as (
+      select m.game_id,
+             min(m.id) as site_wishlist_id,
+             max(m.site_created_at) as site_created_at,
+             max(m.steam_created_at) as steam_created_at,
+             bool_or(m.has_site) as has_site,
+             bool_or(m.has_steam) as has_steam
+        from (
+          select game_id, id, created_at as site_created_at, null::timestamptz as steam_created_at,
+                 true as has_site, false as has_steam
+            from site
+          union all
+          select game_id, null::bigint as id, null::timestamptz as site_created_at, created_at as steam_created_at,
+                 false as has_site, true as has_steam
+            from steam
+        ) m
+       group by m.game_id
+    )`;
+  const rows = (await q(
+    `${cte}
+     select m.site_wishlist_id as id, u.id as user_id, m.game_id,
+            coalesce(m.site_created_at, m.steam_created_at) as created_at,
+            u.username, nullif(btrim(u.display_name), '') as display_name,
+            g.name, g.name_en, g.steam_appid,
+            rs.price_cents as current_low, rs.hist_low_cents as hist_low,
+            case when m.has_site and m.has_steam then array['site', 'steam']
+                 when m.has_site then array['site']
+                 else array['steam'] end as sources,
+            (select coalesce(json_agg(acct order by acct), '[]'::json)
+               from (
+                 select distinct coalesce(nullif(btrim(a.alias), ''), a.persona_name, a.steam_id) as acct
+                   from steam_wishlist sw
+                   join steam_accounts a on a.steam_id = sw.steam_id
+                  where a.user_id = $1 and sw.appid = g.steam_appid
+               ) t) as steam_accounts
+       from merged m
+       join users u on u.id = $1
+       join games g on g.id = m.game_id
+       left join game_region_snapshot rs on rs.game_id = m.game_id and rs.region = 'cn'
+       ${kwWhere}
+      order by coalesce(m.site_created_at, m.steam_created_at) desc, m.game_id desc
+      limit ${limitSql} offset ${offsetSql}`,
+    params,
+  )).rows;
+  const total =
+    (await q(
+      `${cte}
+       select count(*)::int as n
+         from merged m
+         join games g on g.id = m.game_id
+         ${kwWhere}`,
+      kwParams,
+    )).rows[0]?.n ?? 0;
+  return { items: rows, total };
+}

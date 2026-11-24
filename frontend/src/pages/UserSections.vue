@@ -78,31 +78,35 @@
         <div class="card-heading">
           <div>
             <h3>我的愿望单</h3>
-            <p>我收藏的愿望单游戏（本站手动添加）。</p>
+            <p>我收藏的愿望单游戏：本站手动添加 + 已绑定 Steam 账号导入（Steam 行只读）。</p>
           </div>
           <div class="wish-actions"><el-input v-model="wishQuery" placeholder="搜索游戏名 / AppID" clearable size="small" style="width: 200px" @keyup.enter="loadWishlist(1)" @clear="loadWishlist(1)" /><el-button size="small" @click="loadWishlist(1)">搜索</el-button></div>
         </div>
         <el-table v-if="!isMobile" :data="wishItems" size="small" v-loading="wishLoading">
           <el-table-column label="游戏" min-width="220"><template #default="{ row }"><button class="game-name" @click="openGameById(row.game_id)">{{ row.name }}</button></template></el-table-column>
           <el-table-column label="AppID" width="110"><template #default="{ row }">{{ row.steam_appid || '—' }}</template></el-table-column>
+          <!-- EY（docs/MY-WISHLIST-MERGED.md §2-2）：来源列——本站 / Steam / 本站 + Steam；Steam-only 标「只读」 -->
+          <el-table-column label="来源" width="150"><template #default="{ row }"><span v-if="wishHasSite(row)" class="tag-site">本站</span><span v-if="wishHasSite(row) && wishHasSteam(row)" class="wish-src-plus">+</span><span v-if="wishHasSteam(row)" class="tag-steam">Steam</span><span v-if="!wishHasSite(row)" class="tag-readonly">只读</span></template></el-table-column>
           <el-table-column label="Steam 账号" min-width="170"><template #default="{ row }"><div v-if="wishAccts(row).length" class="wish-acct"><span v-for="name in wishAccts(row).slice(0, 2)" :key="name" class="acct-chip"><span class="acct-avatar">{{ name.slice(0, 1).toUpperCase() }}</span><span class="acct-name">{{ name }}</span></span><span v-if="wishAccts(row).length === 1" class="tag-steam">导入</span><span v-if="wishAccts(row).length > 2" class="tag-more">+{{ wishAccts(row).length - 2 }}</span></div><span v-else class="muted">本站添加（无 Steam 来源）</span></template></el-table-column>
           <el-table-column label="当前价" width="110"><template #default="{ row }">{{ money(row.current_low, 'CNY') }}</template></el-table-column>
           <el-table-column label="史低" width="110"><template #default="{ row }">{{ money(row.hist_low, 'CNY') }}</template></el-table-column>
           <el-table-column label="加入时间" min-width="150"><template #default="{ row }">{{ fmtDateTime(row.created_at) }}</template></el-table-column>
-          <el-table-column label="操作" width="84" fixed="right"><template #default="{ row }"><el-button link type="danger" @click="removeWish(row)">移除</el-button></template></el-table-column>
+          <!-- EY §2-2：移除按钮仅本站行显示；Steam-only 行只读（没有任何操作按钮） -->
+          <el-table-column label="操作" width="132" fixed="right"><template #default="{ row }"><el-button v-if="wishHasSite(row)" link type="danger" @click="removeWish(row)">移除</el-button><span v-else class="wish-readonly">Steam 导入（只读）</span></template></el-table-column>
         </el-table>
         <div v-else class="game-card-list">
-          <div v-for="w in wishItems" :key="w.id" class="admin-card">
+          <div v-for="w in wishItems" :key="w.game_id" class="admin-card">
             <div class="admin-card-main">
               <strong><button class="game-name" @click="openGameById(w.game_id)">{{ w.name }}</button></strong>
               <small>当前 {{ money(w.current_low, 'CNY') }} · 史低 {{ money(w.hist_low, 'CNY') }}</small>
+              <small class="wish-src-line">来源：{{ wishSourceLabel(w) }}</small>
               <small class="wish-acct-line">Steam 账号：{{ wishAcctLine(w) }}</small>
               <small class="muted">加入于 {{ fmtDateTime(w.created_at) }}</small>
             </div>
-            <div class="admin-card-actions"><el-button link type="danger" @click="removeWish(w)">移除</el-button></div>
+            <div class="admin-card-actions"><el-button v-if="wishHasSite(w)" link type="danger" @click="removeWish(w)">移除</el-button><small v-else class="wish-readonly">Steam 导入（只读）</small></div>
           </div>
         </div>
-        <el-empty v-if="!wishLoading && !wishItems.length" description="愿望单是空的。去前台逛一逛，把想玩的游戏加入愿望单。" :image-size="64" />
+        <el-empty v-if="!wishLoading && !wishItems.length" description="愿望单是空的。去前台逛一逛，把想玩的游戏加入愿望单；已绑定 Steam 账号导入的愿望单也会显示在这里。" :image-size="64" />
         <div v-if="wishTotal > wishPageSize" class="wish-pager"><el-pagination layout="prev, pager, next" :total="wishTotal" :page-size="wishPageSize" :current-page="wishPage" @current-change="loadWishlist" /></div>
       </div>
     </template>
@@ -177,6 +181,24 @@ function wishAcctLine(row) {
   if (!accts.length) return '本站添加（无 Steam 来源）';
   if (accts.length > 2) return `${accts.slice(0, 2).join('、')}（+${accts.length - 2}）`;
   return accts.join('、');
+}
+// EY（docs/MY-WISHLIST-MERGED.md §2-2/§3）：合并视图行语义——sources 决定来源标注与可操作性：
+//   ['site'] → 本站（可移除）；['steam'] → Steam 导入（只读、无任何操作按钮）；
+//   ['site','steam'] → 本站 + Steam（移除只删本站，Steam 侧不受影响）。
+// 防御：旧接口没有 sources 字段时按「有 id/site_wishlist_id 即本站行、有账号即 Steam 行」回退。
+function wishHasSite(row) {
+  if (Array.isArray(row.sources)) return row.sources.includes('site');
+  return row.site_wishlist_id != null || row.id != null;
+}
+function wishHasSteam(row) {
+  if (Array.isArray(row.sources)) return row.sources.includes('steam');
+  return wishAccts(row).length > 0;
+}
+function wishSourceLabel(row) {
+  const site = wishHasSite(row);
+  const steam = wishHasSteam(row);
+  if (site && steam) return '本站 + Steam';
+  return site ? '本站' : 'Steam';
 }
 
 // ---- 登录会话（我的设备）：/api/me/sessions* ----
@@ -256,7 +278,9 @@ async function loadWishlist(page = 1) {
 }
 async function removeWish(row) {
   try {
-    await ElMessageBox.confirm(`把「${row.name}」移出愿望单？`, '移除愿望单', { type: 'warning' });
+    // EY §2-2：合并行移除只删本站记录，Steam 愿望单（只读导入）不受影响——确认框写明。
+    const extra = wishHasSteam(row) ? '（Steam 愿望单不受影响）' : '';
+    await ElMessageBox.confirm(`把「${row.name}」移出本站愿望单？${extra}`, '移除愿望单', { type: 'warning' });
     await api(`/api/wishlist/id/${row.game_id}`, { method: 'DELETE' });
     ElMessage.success('已移出愿望单');
     await loadWishlist(wishPage.value);
@@ -344,6 +368,12 @@ onMounted(() => {
 .acct-avatar{width:18px;height:18px;border-radius:5px;background:var(--brand-soft);border:1px solid var(--border-2);display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:var(--brand);flex:none}
 .acct-name{font-size:var(--font-12);color:var(--fg)}
 .tag-steam,.tag-more{font-size:10px;color:var(--fg-muted);border:1px solid var(--border-2);border-radius:999px;padding:1px 6px;white-space:nowrap;background:var(--panel-2)}
+/* EY（docs/MY-WISHLIST-MERGED.md §2-2）：合并视图来源标记 + Steam-only 行只读提示 */
+.tag-site{font-size:10px;color:var(--brand);border:1px solid var(--brand-soft);border-radius:999px;padding:1px 6px;white-space:nowrap;background:var(--brand-soft)}
+.tag-readonly{font-size:10px;color:var(--fg-muted);border:1px dashed var(--border-2);border-radius:999px;padding:1px 6px;white-space:nowrap}
+.wish-src-plus{font-size:10px;color:var(--fg-muted);padding:0 2px}
+.wish-src-line{color:var(--fg-muted)}
+.wish-readonly{font-size:var(--font-11);color:var(--fg-muted);white-space:nowrap}
 .wish-acct-line{color:var(--brand)}
 @media (max-width: 768px){
   .card-heading{flex-direction:column;align-items:flex-start}

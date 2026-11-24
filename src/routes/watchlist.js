@@ -153,7 +153,9 @@ export async function handleWatchlistRoutes(ctx) {
     return true;
   }
 
-  // ---- DT-2（docs/ADMIN-PERMISSIONS.md）：我的愿望单（分页/搜索，复用 wishlist 服务层）----
+  // ---- DT-2（docs/ADMIN-PERMISSIONS.md）+ EY（docs/MY-WISHLIST-MERGED.md）：我的愿望单 ----
+  // EY：本站 user_wishlist ∪ 本人绑定账号导入的 steam_wishlist，按 game_id 合并一行（Steam 行只读）；
+  // 分页/搜索覆盖两层，includeSteam 只在本用户级分支开启（后台 /api/admin/wishlists 契约不变）。
   if (path === '/api/me/wishlist' && req.method === 'GET') {
     if (!requireUser()) return true;
     const params = searchParamsOf(req);
@@ -161,8 +163,8 @@ export async function handleWatchlistRoutes(ctx) {
     const offset = Math.max(Number(params.get('offset') ?? 0) || 0, 0);
     const keyword = String(params.get('q') ?? '').trim();
     // 防御：userId 强制 = session.user.id（写死本人，忽略请求里任何传入 userId/username）；
-    // 越权数据不可达（listWishlists 的 where uw.user_id = user.id）。
-    json(res, 200, await steamAccountsMod.listWishlists(q, { limit, offset, keyword, userId: user.id }));
+    // 越权数据不可达（合并视图的 site/steam 两侧都限 user_id = session.user.id）。
+    json(res, 200, await steamAccountsMod.listWishlists(q, { limit, offset, keyword, userId: user.id, includeSteam: true }));
     return true;
   }
 
