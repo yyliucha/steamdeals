@@ -20,7 +20,7 @@
 
 | 类型 | 数量 | 编号 |
 |---|---|---|
-| 🐞 缺陷 | 4 | EO、ER、EU、EX |
+| 🐞 缺陷 | 5 | EO、ER、EU、EX、FM |
 | ✨ 功能 | 0 | — |
 | ⚙️ 调整 | 11 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FL / FK |
 | 🧹 技术债 | 2 | EN、FC |
@@ -238,3 +238,18 @@
 - **需求**：新增 `network.appSyncSource`（github/cos）与 `network.appSyncCosBase`；`syncAppRelease` 支持从 COS
   拉 latest.json/APK/sha256（与 GitHub 同落盘格式）；cos 失败自动回退 GitHub；App 构建技能增加 COS 双上传。
 - **验收**：见规格 §4（COS 源同步成功、GitHub 备用、回退可见、测试全绿、截图）。
+
+## FM. 待开发（🐞 缺陷）：价格提醒史低误报（价格=史低也标「新史低」，且重复显示史低）
+
+**类型：** 🐞 缺陷（提醒文案/判定）
+**状态：** 待开发（2026-11-24 所有者邮件截图反馈）
+**优先级：** P2
+**依赖：** 无
+**解锁：** 无
+**规格**：[ALERT-HISTLOW-FIX.md](ALERT-HISTLOW-FIX.md)
+
+- **根因**：`watchCandidates` 的 hist_low 含当天（当前价即史低）→ `evaluateAlerts` 恒触发 hist_low →
+  邮件标「新史低」并重复显示「史低 ¥X」。
+- **修复**：hist_low 改「今天以前」；`current < hist` 标「新史低」、`current == hist` 标「跌至史低」、否则不提醒；
+  模板相同价不重复显示史低；未降价不显示史低段。
+- **验收**：见规格 §3（不再误报新史低/不重复/无折扣不显示；有 target 不变；测试全绿）。
