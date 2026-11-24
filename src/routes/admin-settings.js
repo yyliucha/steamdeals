@@ -2,7 +2,8 @@
 // 巨石抽出的第十个域（B4 队列 #10：后台系统设置 smtp/mail/emails/proxies/version）。
 //
 // 域边界（外部契约零变化，路径/参数/响应/错误码与拆分前完全一致）：
-//   · GET  /api/admin/version                    版本与更新检查（UPDATE_CHECK=0 时只报当前版本，不出网）
+//   · GET  /api/admin/version                    版本与更新检查（FB：登录用户可读，未登录 401；
+//                                                UPDATE_CHECK=0 时只报当前版本，不出网；force=1 仅管理员）
 //   · GET  /api/admin/smtp                       SMTP 配置视图（密码只回 hasPassword）
 //   · POST /api/admin/smtp                       SMTP 配置保存（密码留空保持原值；保存后热加载限流阈值）
 //   · POST /api/admin/smtp/test                  发测试邮件（收件人留空时发给发件人自己）
@@ -16,7 +17,8 @@
 //
 // 单入口（位置语义，见 docs/ARCHITECTURE.md「域路由拆分模式」§15.3）：
 //   · handleAdminSettingsAdmin(ctx)：requireAdmin 就绪后的管理段——本域全部 11 条路由
-//     （管理段形态先例=申诉域 handleAppealAdmin / admin-access 域 handleAdminAccessAdmin /
+//     （FB：version 只需登录用户 requireUser，其余 10 条仍 requireAdmin；
+//     管理段形态先例=申诉域 handleAppealAdmin / admin-access 域 handleAdminAccessAdmin /
 //     admin-sync 域 handleAdminSyncAdmin）。
 //   返回值约定：true = 已处理并结束响应；false = 未命中本域，宿主继续。凡写过响应的分支
 //   必须返回 true（json(...) 自身返回 undefined，直接 return json(...) 会让宿主误判未命中
@@ -52,19 +54,24 @@ const mailTestCooldown = new Map();
 
 /**
  * 管理段：server.js 在 requireAdmin 就绪之后调用——后台系统设置全部路由。
- * 每条分支自己 requireAdmin()（401/403 文案由宿主守卫统一输出，契约不变）。
+ * 每条分支自己鉴权（FB：version 用 requireUser，其余 10 条用 requireAdmin；
+ * 401/403 文案由宿主守卫统一输出，契约不变）。
  * ctx 域特有字段（§15.2，按引用传入、语义共享，勿改成拷贝）：
  *   · ctx.appealEmail   宿主闭包——模板联系人邮箱（appealEmailFrom(process.env) 派生）；
  *   · ctx.store         宿主 pg store 实例——SMTP 保存后 hydrateSettings 写同一库；
  *   · ctx.invalidateSiteCache 宿主闭包——SMTP 保存后失效 /api/site 短缓存。
  */
 export async function handleAdminSettingsAdmin(ctx) {
-  const { path, req, res, url, q, logger, json, readBody, user, requireAdmin, store, appealEmail, invalidateSiteCache } = ctx;
+  const { path, req, res, url, q, logger, json, readBody, user, requireAdmin, requireUser, store, appealEmail, invalidateSiteCache } = ctx;
 
-  // ---- 管理员：版本与更新检查 ----
+  // ---- 登录用户（FB，docs/CONSOLE-HEADER-FIX.md）：版本与更新检查 ----
+  // 版本徽标所有登录用户可见，接口因此从 requireAdmin 改为 requireUser：
+  // 未登录仍 401（requireUser 文案与宿主一致：Web「需要登录」/ App「login_required」）。
   if (path === '/api/admin/version' && req.method === 'GET') {
-    if (!requireAdmin()) return true;
-    const force = url.searchParams.get('force') === '1';
+    if (!requireUser()) return true;
+    // force=1 仅管理员：普通用户即使带 force 也**静默忽略**（响应契约不变，等同读缓存），
+    // 防止普通用户频繁触发外网版本检查把外部仓库打进限流（规格 §2-3 二选一取「忽略」）。
+    const force = user?.role === 'admin' && url.searchParams.get('force') === '1';
     const repo = process.env.UPDATE_REPO || undefined;
     // UPDATE_CHECK=0 时只报当前版本，不出网
     if (process.env.UPDATE_CHECK === '0') {

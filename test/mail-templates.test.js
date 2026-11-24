@@ -276,15 +276,27 @@ async function setupMailServer() {
   return { store, q, srv, base, login };
 }
 
-test('admin-settings 权限：version/smtp/emails/mail/log/proxies 匿名 401、普通用户 403', async () => {
+test('admin-settings 权限：version 登录用户可读；smtp/emails/mail/log/proxies 仍管理员专属', async () => {
   const { store, srv, base, login } = await setupMailServer();
   const aliceCookie = await login('alice', 'alice123456');
+  const oldCheck = process.env.UPDATE_CHECK;
+  process.env.UPDATE_CHECK = '0'; // 权限用例不触发外网版本检查（UPDATE_CHECK=0 短路）
   try {
-    for (const p of ['/api/admin/version', '/api/admin/smtp', '/api/admin/emails', '/api/admin/mail/templates', '/api/admin/mail/log', '/api/admin/proxies']) {
+    // FB（docs/CONSOLE-HEADER-FIX.md §2-2/§3-2/§3-4）：版本徽标所有登录用户可见 → version 普通用户 200
+    assert.equal((await fetch(base + '/api/admin/version')).status, 401, '/api/admin/version 匿名 401');
+    assert.equal(
+      (await fetch(base + '/api/admin/version', { headers: { cookie: aliceCookie } })).status,
+      200,
+      '/api/admin/version 普通用户 200（FB 放开）',
+    );
+    // 其余管理段路由不变：匿名 401、普通用户 403
+    for (const p of ['/api/admin/smtp', '/api/admin/emails', '/api/admin/mail/templates', '/api/admin/mail/log', '/api/admin/proxies']) {
       assert.equal((await fetch(base + p)).status, 401, `${p} 匿名 401`);
       assert.equal((await fetch(base + p, { headers: { cookie: aliceCookie } })).status, 403, `${p} 普通用户 403`);
     }
   } finally {
+    if (oldCheck === undefined) delete process.env.UPDATE_CHECK;
+    else process.env.UPDATE_CHECK = oldCheck;
     await srv.close();
     await store.close();
   }

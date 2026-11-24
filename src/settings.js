@@ -31,6 +31,9 @@ export const SETTINGS_REVISION_KEY = 'settings.revision';
 
 export const GOG_REGION_CODES = ['cn', 'hk', 'tw', 'us', 'jp', 'ru', 'tr', 'ar'];
 export const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error'];
+// EN 批（docs/CSP-HARDENING.md）：CSP 三档——默认正式拦截（所有者 2026-11-24 决策），
+// report-only 只作观察/收敛期用，off 供紧急回滚。
+export const CSP_MODES = ['enforce', 'report-only', 'off'];
 
 // ---------------------------------------------------------------- CQ 批（docs/SETTINGS-IA.md §2.6）
 // 渲染 meta：section（卡/折叠组 id）/ tier（primary 常用 | advanced 进折叠）/ sum（折叠标题行摘要模板，{v}=当前值）。
@@ -358,6 +361,15 @@ export const SETTINGS = [
   }),
   def('security.autoBan.banLadderMin', 'SECURITY_AUTOBAN_LADDER', 'security', '封禁阶梯（分钟，逗号分隔）', 'string', '10,60,1440', {
     help: '同一天第 1/2/3 次自动封禁时长，第 3 次起封顶 1 天；跨天重置；永不自动永久。',
+  }),
+
+  // ---- CSP 安全策略（EN 批，docs/CSP-HARDENING.md）----
+  // 为什么做成业务设置而不是部署期 env：这是运行期策略开关，切观察/回滚不该重新部署；
+  // 保存后 hydrateSettings 写回 SECURITY_CSP_MODE，下一次请求即生效（与 RATE_LIMIT_* 同一机制）。
+  // 所有者 2026-11-24 决策：默认直接发正式 Content-Security-Policy；report-only 仅观察期可用。
+  def('security.csp.mode', 'SECURITY_CSP_MODE', 'security', 'CSP 安全策略模式', 'enum', 'enforce', {
+    options: CSP_MODES,
+    help: 'enforce=正式拦截（默认）；report-only=只报告不拦截（观察/收敛期用，违规仍在浏览器控制台与 csp.violation 日志）；off=不发 CSP 头（紧急回滚）。',
   }),
 
   // ---- Deck 认证 + 好评率 + 个性化推荐（CH 批，docs/DISCOVERY-FOR-YOU.md §5）----

@@ -9,7 +9,7 @@
 //
 // 折扣数据永远只由调度器写入，这里没有任何改价的接口——这是硬约束。
 import { createServer } from 'node:http';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import { readFileSync, existsSync, writeFileSync, statSync } from 'node:fs';
 import { join, extname, resolve, sep } from 'node:path';
 import * as db from './store/pg.js';
@@ -341,7 +341,9 @@ function serveBanPage(res, outDir, { status = 403, until = null, reason = '', si
     const script =
       `window.__BAN_PAGE__=${payload};` +
       `if(location.pathname!=='/banned'&&location.pathname!=='/appeal'){history.replaceState(null,'','/banned');}`;
-    html = readFileSync(distIndex, 'utf8').replace('</head>', `<script>${script}</script></head>`);
+    // EN 批：严格档 CSP 不含 'unsafe-inline'，注入脚本必须带上本请求的 nonce（applySecurityHeaders 生成）
+    const nonceAttr = res.cspNonce ? ` nonce="${res.cspNonce}"` : '';
+    html = readFileSync(distIndex, 'utf8').replace('</head>', `<script${nonceAttr}>${script}</script></head>`);
   } else {
     html = bannedTemplate(outDir)
       .replaceAll('__SITE_NAME__', escapeHtml(siteName))
@@ -366,7 +368,9 @@ function serveAppealPage(res, outDir, frontendDir, { site, email, code }) {
   if (!distIndex || !existsSync(distIndex)) return false;
   const payload = JSON.stringify({ site, email, code }).replace(/</g, '\\u003c');
   const script = `window.__APPEAL__=${payload};`;
-  const html = readFileSync(distIndex, 'utf8').replace('</head>', `<script>${script}</script></head>`);
+  // EN 批：同封禁页——严格档下内联脚本靠 per-request nonce 放行
+  const nonceAttr = res.cspNonce ? ` nonce="${res.cspNonce}"` : '';
+  const html = readFileSync(distIndex, 'utf8').replace('</head>', `<script${nonceAttr}>${script}</script></head>`);
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
   res.end(html);
   return true;
@@ -801,7 +805,7 @@ export function createApiServer({
 
     try {
       // ---- 基础安全响应头（所有响应都带）----
-      applySecurityHeaders(req, res);
+      applySecurityHeaders(req, res, { frontendDir });
 
       // ---- 访问者 IP + 黑名单 + 频率限制（整站拦截，静态资源也一样拦）----
       const ip = visitors.clientIp(req);
@@ -1218,6 +1222,37 @@ export function createApiServer({
       // 否则会直接 404——这正是之前"前台只有名字没有图"的真正原因。
       if (!path.startsWith('/api/') && !path.startsWith('/img/')) {
         return serveFrontendStatic(res, frontendDir, outDir, path);
+      }
+
+      // ---- EN 批（docs/CSP-HARDENING.md §2）：CSP 违规上报——只记日志（csp.violation），不落敏感数据 ----
+      // 浏览器按 report-uri 自动 POST（匿名、零配置）；body 兼容 report-uri 的 {"csp-report":{…}}
+      // 与 report-to 的 {"reports":[{…}]}。始终 204——上报失败会触发浏览器重试风暴。
+      // URL 只记 origin+path（sanitizeCspUrl 去掉 query/fragment），data: 只留协议名。
+      if (path === '/api/csp-report' && req.method === 'POST') {
+        let payload = null;
+        try {
+          payload = await readBody(req, 64 * 1024);
+        } catch {
+          payload = null; // 超限/非法 JSON 一律吞掉：上报端点不返回错误
+        }
+        const report = payload?.['csp-report'] ?? payload?.reports?.[0] ?? payload ?? {};
+        const directive = String(
+          report['violated-directive'] ?? report.effectiveDirective ?? report['effective-directive'] ?? '',
+        ).slice(0, 120);
+        const blocked = sanitizeCspUrl(report['blocked-uri'] ?? report.blockedURL ?? '');
+        const document = sanitizeCspUrl(report['document-uri'] ?? report.documentURL ?? '', { keepOrigin: false });
+        if (directive || blocked) {
+          logger?.warn('csp.violation', {
+            ip,
+            directive,
+            blocked,
+            document,
+            disposition: String(report.disposition ?? '').slice(0, 20),
+          });
+        }
+        res.writeHead(204, { 'cache-control': 'no-store' });
+        res.end();
+        return;
       }
 
       // ---- CO-5/B4-2 第七轮（docs/DESIGN-AUDIT.md B4）：site 域公开路由已抽到 src/routes/site.js ----
@@ -1726,6 +1761,8 @@ export function createApiServer({
       // ---- CO-5/B4-2 第十轮（docs/DESIGN-AUDIT.md B4）：admin-settings 域管理段路由已抽到
       // src/routes/admin-settings.js。调用位置不能动：必须在 requireAdmin 就绪之后的管理段
       // （401/403 语义依赖该位置；调用点取本域最早路由 /api/admin/version 的原位置）。
+      // FB（docs/CONSOLE-HEADER-FIX.md）：version 路由改为登录用户可读（requireUser），
+      // 仍留管理段位置以保持 401 文案/中间件顺序不变；requireUser 按宿主闭包传入。
       // 域内 11 条路由 path+method 互不重叠、与相邻其它 admin 域路由无同 path 双匹配，
       // 在管理段内集中到一处不改变匹配语义；appealEmail 宿主闭包、store（settings
       // hydrateSettings 需要真实 pg store 实例）按引用传入（语义共享），勿改成拷贝。
@@ -1741,6 +1778,7 @@ export function createApiServer({
           readBody,
           user,
           requireAdmin,
+          requireUser,
           store,
           appealEmail,
           invalidateSiteCache,
@@ -1909,6 +1947,8 @@ function isLoggablePath(path) {
   if (path === '/favicon.ico') return false;
   // 前台轮询用的轻量指纹接口：每 10 秒一次，记访问日志只会污染统计
   if (path === '/api/games/stamp') return false;
+  // EN 批：CSP 违规上报由浏览器自动发（可能成批），记访问日志只会让「今日访问」虚高
+  if (path === '/api/csp-report') return false;
   // 控制台轮询类接口：只用于刷新 UI，记进访问日志只会让统计虚高
   if (path === '/api/admin/sync/status' || path === '/api/admin/sync/runs') return false;
   if (/\.(png|jpe?g|gif|webp|svg|ico|css|js|map|woff2?|ttf|otf|eot|json|xml|txt|md)$/i.test(path)) return false;
@@ -1944,8 +1984,106 @@ async function banIpExclusiveSql(q, ip, note, kind, { refresh = true, markReview
   return { ip: row.ip, removedFromBlacklist: row.removedFromBlacklist, clearedBan };
 }
 
-/** 基础安全响应头：防嗅探、防点击劫持、限制 referrer 与权限。 */
-function applySecurityHeaders(req, res) {
+// ---------------------------------------------------------------- EN 批：CSP（docs/CSP-HARDENING.md）
+// 规格：docs/CSP-HARDENING.md「两步 + 切正式」；所有者 2026-11-24 决策——默认直接发正式 CSP，
+// Report-Only 只作观察/收敛期模式。模式是业务设置 security.csp.mode（env SECURITY_CSP_MODE，
+// 页面可改、保存即热加载）而不是部署期 env——切观察/回滚属于运行期操作，不该为了改一行策略重新部署
+// （与 RATE_LIMIT_* 同一机制）。违规上报走 report-uri → POST /api/csp-report（只记 csp.violation 日志）。
+
+/** CSP 模式：缺省或非法值一律回退 enforce（安全默认——观察/关闭必须显式选择）。 */
+export function cspMode(env = process.env) {
+  const raw = String(env.SECURITY_CSP_MODE ?? '').trim().toLowerCase();
+  return settings.CSP_MODES.includes(raw) ? raw : 'enforce';
+}
+
+/**
+ * 从 HTML 里抽内联 <script> 的 sha256 源（外链 script 由 'self' 覆盖）。
+ * SPA 严格档用它代替 'unsafe-inline'：frontend/index.html 有 3 段首屏内联脚本
+ * （主题防闪烁 / 手机跳转兜底 / viewport 修复），不改前端就只能按内容逐个放行。
+ */
+export function cspInlineScriptHashes(html) {
+  const hashes = new Set();
+  const re = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
+  let m;
+  while ((m = re.exec(String(html ?? '')))) {
+    if (/\bsrc\s*=/i.test(m[1])) continue;
+    const body = m[2];
+    if (!body.trim()) continue;
+    hashes.add(`sha256-${createHash('sha256').update(body, 'utf8').digest('base64')}`);
+  }
+  return [...hashes];
+}
+
+// dist/index.html 的内联脚本 hash 按 mtime+size 缓存：构建产物变了（重新构建/部署）自动失效
+const cspHashCache = new Map();
+function distInlineScriptHashes(file) {
+  try {
+    const stamp = (() => {
+      const st = statSync(file);
+      return `${st.mtimeMs}:${st.size}`;
+    })();
+    const hit = cspHashCache.get(file);
+    if (hit && hit.stamp === stamp) return hit.hashes;
+    const hashes = cspInlineScriptHashes(readFileSync(file, 'utf8'));
+    cspHashCache.set(file, { stamp, hashes });
+    return hashes;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 组装 CSP 策略串。资源来源按实际审计结果 + docs/CSP-HARDENING.md §2 收敛（不引第三方脚本源）：
+ *   /assets/*、/img/steam/* 封面代理、/api/*、manifest、sw.js → 'self'（图片由本站代理）；
+ *   img-src：规格允许 https:（Steam 头像/少量外部图标，收敛期继续按 csp.violation 日志收窄）；
+ *     data: 给图形验证码 SVG，blob: 给头像本地裁剪预览（ProfilePage.vue 的 createObjectURL）；
+ *   Element Plus 与现有页面大量 inline style → style-src 'self' 'unsafe-inline'（规格确认）。
+ * 脚本分两档：
+ *   严格档（有 frontend/dist 时的 SPA 页面，即生产全部页面）：'self' + dist/index.html 内联脚本的
+ *     sha256 + 服务端注入脚本（封禁页/申诉页）的 per-request nonce，**不含 'unsafe-inline'**；
+ *     注意 CSP3 里 nonce/hash 会让 'unsafe-inline' 失效，所以兼容档**绝不能**带 nonce。
+ *   兼容档（无构建产物时的旧 web/ 回退页）：这些页面带内联 <script> 与 onclick，只能放开
+ *     'unsafe-inline'（开发/无构建兜底；生产有 dist，只会命中严格档）。
+ * 两种模式都带 report-uri：违规上报端点常驻（生产可查 csp.violation 日志，便于继续收敛 allowlist）。
+ */
+export function buildCspPolicy({ scriptNonce = '', scriptHashes = [], allowInlineScript = false } = {}) {
+  const scriptSrc = ["'self'"];
+  for (const h of scriptHashes) scriptSrc.push(`'${h}'`);
+  if (scriptNonce) scriptSrc.push(`'nonce-${scriptNonce}'`);
+  if (allowInlineScript) scriptSrc.push("'unsafe-inline'");
+  return [
+    "default-src 'self'",
+    `script-src ${scriptSrc.join(' ')}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "media-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    'report-uri /api/csp-report',
+  ].join('; ');
+}
+
+/** CSP 上报里的 URL 只保留 origin+path（去 query/fragment，防 token/隐私进日志）；data: 只留协议。
+ *  document-uri 只留 path（站点自身地址已知，没必要记主域名）；blocked-uri 保留 origin（要看被拦的外部源）。 */
+function sanitizeCspUrl(raw, { max = 200, keepOrigin = true } = {}) {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  if (/^data:/i.test(s)) return 'data:…';
+  if (!/^https?:\/\//i.test(s)) return s.slice(0, 80); // inline / eval / blob: 等关键字原样截断
+  try {
+    const u = new URL(s);
+    return `${keepOrigin ? u.origin : ''}${u.pathname}`.slice(0, max);
+  } catch {
+    return s.slice(0, max);
+  }
+}
+
+/** 基础安全响应头：防嗅探、防点击劫持、限制 referrer 与权限；CSP 受 security.csp.mode 开关控制。 */
+function applySecurityHeaders(req, res, { frontendDir = null } = {}) {
   try {
     res.setHeader('x-content-type-options', 'nosniff');
     res.setHeader('x-frame-options', 'DENY');
@@ -1959,12 +2097,20 @@ function applySecurityHeaders(req, res) {
     if (pathname === '/appeal' || pathname === '/appeal/') {
       res.setHeader('cache-control', 'no-store');
     }
-    // CSP 先以 Report-Only 观察（Element Plus 需要 inline style），跑稳后再切换成强制
-    res.setHeader(
-      'content-security-policy-report-only',
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
-        "connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
-    );
+    const mode = cspMode();
+    if (mode !== 'off') {
+      // 与 serveFrontendStatic 的判定保持一致：有 dist/index.html 时，FRONTEND_PAGES 这些路径
+      // 返回的是 SPA 文档（严格档）；其余路径是无构建产物回退页/服务端生成页（兼容档）。
+      const distIndex = frontendDir ? resolve(frontendDir, 'index.html') : null;
+      const strictSpa = Boolean(distIndex && existsSync(distIndex) && FRONTEND_PAGES.includes(pathname));
+      // per-request nonce：只给服务端注入到 dist/index.html 的内联脚本用（serveBanPage/serveAppealPage）
+      const nonce = randomBytes(16).toString('base64');
+      res.cspNonce = nonce;
+      const policy = strictSpa
+        ? buildCspPolicy({ scriptNonce: nonce, scriptHashes: distInlineScriptHashes(distIndex) })
+        : buildCspPolicy({ allowInlineScript: true });
+      res.setHeader(mode === 'enforce' ? 'content-security-policy' : 'content-security-policy-report-only', policy);
+    }
     const proto = String(req.headers['x-forwarded-proto'] ?? '').toLowerCase();
     const https = proto === 'https' || Boolean(req.socket?.encrypted);
     if (https) res.setHeader('strict-transport-security', 'max-age=15552000; includeSubDomains');

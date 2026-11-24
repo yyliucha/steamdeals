@@ -460,16 +460,24 @@ test('DT-2 前端接线：会话页 /api/me/sessions*、到价提醒 /api/watchl
 // demo 状态 ↔ 断言（design/admin-menu-permissions-2026-11-19.html「前台顶栏」+
 // design/admin-users-2026-11-19.html ④「全局顶栏」）：
 //   ① 前台未登录只显示「登录」；已登录不显示退出/改密 → auth-pages.test.js DT-5 断言；
-//   ② Console 全局顶栏（所有 section 共用）：返回网站 ↗ + 用户徽标 → 用例 1；
+//   ② Console 全局顶栏（所有 section 共用）：版本徽标 + 用户徽标（FB：返回网站只在菜单里）→ 用例 1；
 //   ③ 徽标下拉菜单树：个人资料/修改密码/返回网站/退出登录（普通用户同样可用）→ 用例 2；
 //   ④ 退出后回到未登录态且心跳基线正确 → 用例 3（session-heartbeat.test.js 同步锁）。
 // 反向自检：删掉 header-actions 里任一 el-dropdown-item 或把 doLogout 的 markSessionLoggedOut
 // 删掉 → 对应断言红；把 user-chip 换成只读文字（无下拉）→ 用例 1 红。
-test('DT-5 验收 1：Console 全局顶栏（所有 section 共用）右上「返回网站 ↗ + 用户徽标」', () => {
+test('DT-5 验收 1 + FB：Console 全局顶栏（所有 section 共用）右上「版本徽标 + 用户徽标」，返回网站单一入口', () => {
   const c = read('../frontend/src/pages/Console.vue');
+  // FB（docs/CONSOLE-HEADER-FIX.md §2-1/§3-1）：顶栏「返回网站 ↗」按钮删除，
+  // 只保留用户菜单里的入口（单一入口；菜单断言在下面验收 2）。
+  assert.ok(!c.includes('header-back'), '顶栏不再有 header-back 按钮（FB 去重）');
+  assert.match(c, /<el-dropdown-item command="site">返回网站 ↗<\/el-dropdown-item>/, '返回网站入口只保留在用户菜单');
+  // FB（§2-2/§3-2）：版本徽标从「仅 admin」改为「所有登录用户可见」，移动端隐藏保持紧凑（§2-4）
+  assert.match(c, /<span v-if="user && !isMobile" class="header-version"/, '版本徽标所有登录用户可见（移动端隐藏）');
+  assert.match(c, /@click="loadVersion\(user\?\.role==='admin'\)"/, '普通用户点击只读缓存（force 仅管理员，§2-3）');
+  // FB：进入控制台自动查一次版本（所有登录用户；走服务端缓存，接口本身也已对登录用户开放）
+  assert.match(c, /if\(user\.value\)\{loadVersion\(false\);\}/, '所有登录用户进入控制台自动查一次版本');
   // 顶栏在 admin-header（每个 section 共用的外壳），不在任何具体 section 组件内
-  assert.match(c, /class="header-actions"[\s\S]{0,1200}header-back/, '顶栏有「返回网站」入口');
-  assert.match(c, /<el-button v-if="!isMobile" text class="header-back" @click="router\.push\('\/'\)">返回网站 ↗<\/el-button>/, '返回网站按钮（点击回前台 /）');
+  assert.match(c, /class="header-actions"/, '顶栏操作区存在');
   assert.match(c, /class="user-chip header-userchip"/, '用户徽标');
   assert.match(c, /<UserAvatar :user-id="user\.id" :name="user\.displayName \|\| user\.username" :size="22"/, '徽标显示头像+昵称（EJ 口径）');
   assert.match(c, /<el-dropdown v-if="user" trigger="click"/, '徽标可点开下拉（登录用户）');

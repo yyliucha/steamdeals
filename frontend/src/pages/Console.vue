@@ -43,10 +43,11 @@
         </div>
         <div class="header-actions">
           <el-button v-if="isMobile" text class="theme-btn m-bell" title="站点通知" @click="goAnnouncements">🔔</el-button>
-          <span v-if="user?.role==='admin'" class="header-version" :title="versionTitle" @click="loadVersion(true)">v{{ verInfo.current || '—' }}<em v-if="verInfo.updateAvailable && verInfo.latest"> ↑ 新版 v{{ String(verInfo.latest).replace(/^v/i, '') }} 可用</em></span>
-          <el-button v-if="!isMobile" text class="header-back" @click="router.push('/')">返回网站 ↗</el-button>
+          <span v-if="user && !isMobile" class="header-version" :title="versionTitle" @click="loadVersion(user?.role==='admin')">v{{ verInfo.current || '—' }}<em v-if="verInfo.updateAvailable && verInfo.latest"> ↑ 新版 v{{ String(verInfo.latest).replace(/^v/i, '') }} 可用</em></span>
           <!-- DT-5（docs/ADMIN-PERMISSIONS.md）：Console 全局顶栏（所有 section 共用）——
-               返回网站 ↗ + 用户徽标；徽标下拉菜单树：个人资料/修改密码/返回网站/切换账户/退出登录
+               版本徽标（FB：所有登录用户可见，移动端隐藏保持紧凑）+ 用户徽标；
+               「返回网站 ↗」只在菜单里（FB 去重，单一入口）。
+               徽标下拉菜单树：个人资料/修改密码/返回网站/切换账户/退出登录
                （普通用户同样可用；FA 批新增「切换账户」，顺序与 demo docs/design/profile-tab-demo.html 一致） -->
           <el-dropdown v-if="user" trigger="click" class="header-user-dropdown" @command="onUserCommand">
             <button type="button" class="user-chip header-userchip" :title="user.displayName || user.username"><UserAvatar :user-id="user.id" :name="user.displayName || user.username" :size="22" /><span class="user-label">{{ user.displayName || user.username }}</span><span class="user-caret">▾</span></button>
@@ -201,7 +202,8 @@ onMounted(()=>{menuDirtyTimer=setInterval(()=>{menuDirty.value=hasDirtySources()
 // 侧栏搜索按 Enter：直接打开第一个匹配的功能
 function onFilterEnter(){const first=visibleGroups.value[0]?.items[0];if(first){filter.value='';select(first);}else if(filter.value.trim()){ElMessage.warning('没有匹配的功能');}}
 
-// 版本检查：进入控制台自动查一次（走服务端缓存），点击带 force=1 重新检查
+// 版本检查（FB，docs/CONSOLE-HEADER-FIX.md）：所有登录用户进入控制台自动查一次（走服务端缓存）；
+// 点击时管理员带 force=1 强制出网检查，普通用户只读缓存（force 由后端忽略，前端也不主动发）。
 const verInfo=ref({current:null,latest:null,updateAvailable:false,url:null,checkedAt:null,error:null});
 const versionLoading=ref(false);
 const versionTitle=computed(()=>{
@@ -249,7 +251,9 @@ onMounted(async()=>{try{
   if(!valid)selected.value=isAdmin?'games':'profile';
   const st=data.prefs?.theme;if(st==='light'||st==='dark'){if(theme.storedMode()!==st)theme.set(st);}else if(theme.storedMode()){fetch('/api/prefs',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({theme:theme.storedMode()})}).catch(()=>{});}
 }catch{ElMessage.error('无法验证登录身份');bypassNextGuard();router.replace('/');return;}
-if(user.value?.role==='admin'){loadVersion(false);loadAppealsPending();}});
+if(user.value?.role==='admin'){loadAppealsPending();}
+// FB：版本徽标所有登录用户可见 → 普通用户也自动查一次（服务端缓存，普通用户 force 被后端忽略）
+if(user.value){loadVersion(false);}});
 
 // 拉取当前用户（进入控制台 / 个人资料保存后刷新侧栏显示名）
 async function loadMe(){
@@ -304,8 +308,7 @@ async function doLogout(){
 .tag-avatar{vertical-align:middle;margin-right:5px}
 /* FA 批：用户菜单「退出登录」红字（demo 的 .danger 项）；dropdown teleport 后 scoped 属性仍跟随 slot 内容生效 */
 .user-menu-danger{color:var(--danger)}
-/* DT-5（docs/ADMIN-PERMISSIONS.md）：全局顶栏「返回网站 ↗ + 用户徽标」下拉菜单树 */
-.header-back{font-size:13px;font-weight:600}
+/* DT-5（docs/ADMIN-PERMISSIONS.md）：全局顶栏「用户徽标」下拉菜单树；FB 起「返回网站」只在菜单里 */
 .header-userchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-2);background:var(--panel-2);border-radius:999px;padding:4px 10px 4px 5px;color:var(--fg);font-size:12px;cursor:pointer;min-height:30px}
 .header-userchip:hover{border-color:var(--brand)}
 .user-label{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -33,7 +33,7 @@
 
 ## EN. CSP 安全加固（Report-Only → 正式）
 
-**状态：待开发**
+**状态：** 已实现待发版（2026-11-24；`src/server.js` 三档 CSP（正式/观察/关闭）+ per-request nonce 放行内联脚本，`src/settings.js` 开关，`test/csp.test.js` 11 条并注册 test:3；规格见 docs/CSP-HARDENING.md）
 **类型：** 🧹 技术债
 **优先级：** 中 —— 安全排查三件套中唯一未落地项（信任门、ip-api 开关已做）
 **依赖：** 无
@@ -49,7 +49,7 @@
   ③ `npm test`（分段）+ `frontend:build` + `scan` 全绿。
 
 ## EO. 首页工具栏 1100–1300px 挤成一行
-**状态：** 已实现待发版（2026-11-24，实现 31138c1；测试 test/frontend-toolbar.test.js 6/6 + frontend-mobile/docs 绿）
+**状态：** 质检通过（2026-11-24，QA docs/QA-EO.md 第 1 轮 ✅ 6/0/0/2；实现 31138c1；测试 test/frontend-toolbar.test.js 6/6 + frontend-mobile/docs 绿）
 **类型：** 🐞 缺陷
 **优先级：** 高（用户已反馈）
 **依赖：** 无
@@ -144,7 +144,7 @@
 ## FB. 待开发（⚙️ 调整）：后台顶栏——去重「返回网站」+ 版本徽标所有登录用户可见（含更新提示）
 
 **类型：** ⚙️ 调整（后台顶栏）
-**状态：** 待开发（2026-11-23 所有者截图反馈）
+**状态：** 已实现待发版（2026-11-24；顶栏删除「返回网站」按钮保留菜单项，版本徽标所有登录用户可见，/api/admin/version 改登录可读、force=1 仅管理员）
 **优先级：** P2
 **依赖：** 无
 **解锁：** 无

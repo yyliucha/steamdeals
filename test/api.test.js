@@ -833,29 +833,44 @@ test('系统设置：敏感字段默认不回显，可单独查看明文，非�
   }
 });
 
-test('版本接口：返回当前版本，可关闭出网检查，匿名 401', async () => {
+test('版本接口：登录用户可读、force=1 仅管理员、匿名 401，可关闭出网检查', async () => {
   const { store, q, srv, base } = await setup();
   const pkg = (await import('node:fs')).readFileSync(new URL('../package.json', import.meta.url), 'utf8');
   const expected = JSON.parse(pkg).version;
   const oldCheck = process.env.UPDATE_CHECK;
   try {
     const admin = await login(base, 'admin', 'admin123456');
+    const alice = await login(base, 'alice', 'alice123456');
 
     process.env.UPDATE_CHECK = '0';
-    const off = await (await fetch(`${base}/api/admin/version`, { headers: { cookie: admin.cookie } })).json();
-    assert.equal(off.current, expected, '当前版本来自 package.json');
+    // FB（docs/CONSOLE-HEADER-FIX.md §2-2/§3-2）：版本徽标所有登录用户可见 → 普通用户也能读版本
+    const off = await (await fetch(`${base}/api/admin/version`, { headers: { cookie: alice.cookie } })).json();
+    assert.equal(off.current, expected, '当前版本来自 package.json（普通用户可读）');
     assert.equal(off.latest, null, '关闭检查时不出网');
     assert.equal(off.updateAvailable, false);
 
     delete process.env.UPDATE_CHECK;
     process.env.UPDATE_CHECK = '1';
-    const on = await fetch(`${base}/api/admin/version`, { headers: { cookie: admin.cookie } });
-    assert.equal(on.status, 200);
-    const body = await on.json();
-    assert.equal(body.current, expected);
-    assert.ok('updateAvailable' in body, '字段齐全（网络失败时 error 里给原因）');
+    // 版本检查有模块级缓存（成功 6h / 失败 10min）：先清空，让下面的 force 语义可观测
+    const { resetVersionCache } = await import('../src/version.js');
+    resetVersionCache();
+    // 管理员 force=1：真实检查一次（无网时写失败缓存），checkedAt 作为后续缓存的基准
+    const adminForce = await (await fetch(`${base}/api/admin/version?force=1`, { headers: { cookie: admin.cookie } })).json();
+    assert.equal(adminForce.current, expected);
+    assert.ok('updateAvailable' in adminForce, '字段齐全（网络失败时 error 里给原因）');
 
-    assert.equal((await fetch(`${base}/api/admin/version`)).status, 401);
+    // FB（规格 §2-3 取「忽略 force」）：普通用户带 force=1 也不触发外网检查——
+    // 可观测证据：checkedAt 与管理员刚写入的缓存完全一致；若 force 生效会重新出网产生新 checkedAt。
+    const asUser = await fetch(`${base}/api/admin/version?force=1`, { headers: { cookie: alice.cookie } });
+    assert.equal(asUser.status, 200, '普通用户读版本 200（不再是 403）');
+    const userBody = await asUser.json();
+    assert.equal(userBody.current, expected, '普通用户拿到当前版本');
+    assert.equal(userBody.checkedAt, adminForce.checkedAt, '普通用户 force=1 被忽略：命中缓存、不触发外网检查');
+    for (const key of ['current', 'latest', 'updateAvailable', 'url', 'checkedAt', 'error', 'repo', 'source', 'region']) {
+      assert.ok(key in userBody, `响应契约不变：字段 ${key} 保留`);
+    }
+
+    assert.equal((await fetch(`${base}/api/admin/version`)).status, 401, '未登录仍 401');
   } finally {
     if (oldCheck === undefined) delete process.env.UPDATE_CHECK;
     else process.env.UPDATE_CHECK = oldCheck;
