@@ -95,7 +95,7 @@
 
 ## ER. B4/cli 拆分遗留缺陷修复（3 项）
 
-**状态：待开发**
+**状态：** 已实现待发版（2026-11-24；①listBackfillCandidates 传 q、②cmdPrune 裸库 ensure 表、③syncPrices 回归锁；新增 test/cli-ops.test.js 并注册 test:4）
 **类型：** 🐞 缺陷
 **优先级：** 中 —— 均为拆分引入/暴露的运行期错误，cli 路径才会踩到
 **依赖：** 无（cli 域 #18/#19/#20 已拆完；与 B4 剩余 admin 域文件面不重叠）

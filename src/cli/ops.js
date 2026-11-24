@@ -521,7 +521,10 @@ export function createCliOps(ctx) {
       // BL-1（docs/BACKFILL-THROUGHPUT.md §3.1）：候选谓词统一走 db.backfillCandidateWhere——
       // 缺描述 / 无 Steam 报价 / 有价缺图，排除四态（free/coming_soon/region_locked/not_found），
       // 1 天冷却防同批重复选中；BL-3 的失败隔离（backfill_skip_until）已并入谓词。
-      const rows = await withStore((store) => db.listBackfillCandidates(store, { limit: size }));
+      // ER：listBackfillCandidates 的签名是 q 查询函数（不是 store 对象）——传 store 会
+      // TypeError: q is not a function，backfill 第一批就失败（与上面 countBackfillCandidates
+      // 的 v2.28.4 修复同一根因，当轮只修了计数那一半）。
+      const rows = await withStore((s) => db.listBackfillCandidates(s.query, { limit: size }));
       const appids = rows.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0);
       if (!appids.length) {
         console.log('没有需要回填的游戏了');
@@ -822,9 +825,14 @@ export function createCliOps(ctx) {
     const abuseDays = Math.max(1, Number(flag('abuse-days', '90')) || 90);
     // BK 批（docs/SESSION-MANAGEMENT.md §3.5）：会话清理并入 prune；空闲超时兜底（0=只清绝对过期行）
     const sessionIdleDays = Math.max(0, Number(flag('session-idle-days', process.env.AUTH_SESSION_IDLE_DAYS ?? '7')) || 0);
-    const result = await withStore((store) =>
-      db.purgeOldRows((sql, p) => store.query(sql, p), { visitorDays, runDays, emailDays, steamDays, abuseDays, sessionIdleDays }),
-    );
+    const result = await withStore(async (store) => {
+      // ER：purgeOldRows 要删 email_codes（email-auth.js 建）与 steam_account_logs（steam-login.js 建），
+      // 这两张表不在 migrate() 里。裸库（只跑过 migrate、从没起过 Web）直接 delete 会报 42P01；
+      // 与 serve/all 启动口径一致，清理前先幂等补建，再删。
+      await (await import('../email-auth.js')).ensureEmailSchema(store); // 邮箱验证码相关表
+      await (await import('../steam-login.js')).ensureSteamSchema(store); // Steam 登录与账号日志表
+      return db.purgeOldRows((sql, p) => store.query(sql, p), { visitorDays, runDays, emailDays, steamDays, abuseDays, sessionIdleDays });
+    });
     console.log(
       `清理完成：访问记录 ${result.visitorLogs} 条、采集记录 ${result.fetchRuns} 条、任务记录 ${result.syncRuns} 条、验证码 ${result.emailCodes} 条、Steam 账号日志 ${result.steamAccountLogs} 条、自动封禁记录 ${result.ipAbuse} 条、登录会话 ${result.sessions} 条` +
         `（保留：访问 ${visitorDays} 天 / 采集与任务 ${runDays} 天 / 验证码 ${emailDays} 天 / Steam 日志 ${steamDays} 天 / 自动封禁 ${abuseDays} 天 / 会话空闲 ${sessionIdleDays} 天）`,
