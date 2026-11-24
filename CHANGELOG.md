@@ -1,3 +1,18 @@
+## [2.28.11] - 2026-11-24
+
+EY 我的愿望单合并 Steam 愿望单 + EP 后台其余列表手机端卡片化（⚙️ 调整 2，无新功能面 → 小版本，2.28.10 → 2.28.11 连续递增）。本批只含站点（Web 前后端），不涉及 App 仓库。
+
+### 调整
+
+- **EY 我的愿望单合并 Steam 愿望单（0f7aa26）**：`/api/me/wishlist` 合并 `user_wishlist`（本站）与 `steam_wishlist`（该用户绑定账号导入）——`src/steam-accounts.js` 新增 `listMergedWishlists`（UNION 后按 `game_id` 聚合，返回 `sources`/`site_wishlist_id`/`steam_accounts`，搜索/分页/越权均覆盖两层；后台 `/api/admin/wishlists` 原查询零变化）；`frontend/src/pages/UserSections.vue` 加「来源」列（本站 / Steam / 本站 + Steam），**Steam-only 行标「只读」且无任何操作按钮**，合并行「移除」只删本站（确认框写明 Steam 侧不受影响），列表 key 改 `game_id`；站点对 Steam 愿望单保持只读（不写回）。
+- **EP 后台其余列表手机端卡片化（fddc422）**：`AdminModules.vue` 任务健康 / 价格变化 / 浏览排行 / 图片覆盖缺图 4 张表补 `<template v-if="!isMobile">` 表格 + `.game-card-list` 卡片（操作「立即运行/重置熔断」与分页保留）；`AdminExtras.vue`「未归属 Steam 账号」手机端不再整块消失、卡片内可认领；`AlignAdmin.vue` 对齐审核队列/已忽略两视图卡片化（勾选/批量确认/换候选/忽略/明细展开/记录/恢复全部可用）；`AdminLogs`/`UserSections`/`AppealsAdmin` 卡片按钮触摸目标统一 ≥44px；**断点统一 760**（删除另挂的 720px 监听，解决 720–760px 旋转后跳回表格）；桌面端表格列/排序/分页/批量逻辑不变。
+
+### 测试
+
+- QA：`docs/QA-EY.md` ✅ 放行（通过 5 / 缺失 0 / 偏差 0 / 需人工确认 2）与 `docs/QA-EP.md` ✅ 放行（通过 10 / 缺失 0 / 偏差 0 / 需人工确认 1）。
+- 相关测试：`wishlist-site-only` 14/14、`watchlist-user` 13/13、`wishlist` 6/6、`admin-console-mobile` 10/10、`frontend-mobile` 13/13、`align` 15/15、`admin-console-ia` 23/23、`api` 38/38；`npm run frontend:build` ✓；`npm run scan` 干净。
+- 人工目视项（部署后）：愿望单三种行（仅本站/仅 Steam/合并）来源与按钮显隐、后台 375px 下任务健康/价格变化/浏览排行/缺图/未归属账号/对齐审核卡片与操作。
+
 ## [2.28.10] - 2026-11-24
 
 FG 移除 18R 查询入口 + FH 成人内容统计 + ER CLI 遗留缺陷 + FF 卡片英文名占位 + FB 后台顶栏版本徽标 + EN CSP 加固（⚙️ 调整 5 / 🐞 缺陷 1 / 🧹 技术债 1，无新功能面 → 小版本，2.28.9 → 2.28.10 连续递增）。站点 + App 双仓库（App 提交 `67b0e78`）。
