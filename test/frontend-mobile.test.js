@@ -155,3 +155,13 @@ test('CP：服务端多信号检测（品牌特征 + 客户端提示）存在', 
   assert.match(serverSrc, /sec-ch-ua-mobile/, '客户端提示信号');
   assert.match(serverSrc, /signal: mobileSignal/, '跳转日志记录命中信号（ua|client_hint）');
 });
+
+// FF（docs/CARD-SUBTITLE-PLACEHOLDER.md §2/§3）：英文名行始终渲染 + 固定行高——
+// 无英文名（或与主名相同）时用空占位撑住，避免卡片少一行导致价格/标签错位。
+// 反向自检：把模板的 v-if="game.name_en && game.name_en !== game.name" 放回 → 用例 1 红；
+// 删掉 .game-subtitle 的 min-height → 用例 3 红。
+test('FF：游戏卡片英文名行始终渲染并固定行高（无英文名也不塌陷）', () => {
+  assert.doesNotMatch(home, /v-if="game\.name_en && game\.name_en !== game\.name"[^>]*class="game-subtitle/, '英文名行不能用 v-if 整体移除');
+  assert.match(home, /:class="isMobile \? 'game-subtitle m-subtitle' : 'game-subtitle'"/, '英文名行始终渲染（桌面/移动同一行结构）');
+  assert.match(home, /\.game-subtitle\{min-height:1\.4em;line-height:1\.4\}/, '固定行高撑住空占位（移动端共享同一 class）');
+});
