@@ -21,7 +21,7 @@
 | 类型 | 数量 | 编号 |
 |---|---|---|
 | 🐞 缺陷 | 4 | EO、ER、EU、EX |
-| ✨ 功能 | 1 | EQ |
+| ✨ 功能 | 0 | — |
 | ⚙️ 调整 | 9 | EP / EV / EW / EY / FB / FD / FF / FG / FH |
 | 🧹 技术债 | 2 | EN、FC |
 | 🧪 测试基建 | 0 | — |
@@ -38,7 +38,7 @@
 **优先级：** 中 —— 安全排查三件套中唯一未落地项（信任门、ip-api 开关已做）
 **依赖：** 无
 **解锁：** 无
-**规格**：[ROADMAP.md](ROADMAP.md)「安全排查结论」#2（原计划：先 Report-Only 再切正式）
+**规格**：[CSP-HARDENING.md](CSP-HARDENING.md)（所有者 2026-11-24 决策：切正式 + 按 Report-Only 日志收敛 allowlist）
 
 - **现状（2026-11-20 代码核实）**：`src/` 下无任何 `Content-Security-Policy` 相关代码（grep 零命中），
   ROADMAP 三件套里 `x-forwarded-host` 信任门（steam-login.js）与 `VISITOR_GEO=0` 开关（visitors.js）已落地，只剩 CSP。
