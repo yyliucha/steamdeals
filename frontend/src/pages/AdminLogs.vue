@@ -126,15 +126,25 @@
         <div class="module-card health-bar">
           <div class="health-head"><div><h3>任务健康</h3><p>最近一次运行 · 点任务筛选日志 · 每 60 秒自动刷新</p></div><el-button text :loading="loading.health" @click="loadHealth">刷新</el-button></div>
           <div class="health-chips">
-            <button v-for="j in jobs" :key="j.name" type="button" class="health-chip" :class="[jobState(j), { on: jobFilter === j.name }]" :title="jobFailTitle(j)" @click="toggleJobFilter(j.name)">
-              <span class="dot" /><strong>{{ jobLabel(j.name) }}</strong>
-              <span class="chip-state">{{ jobStateText(j) }}</span>
-              <span v-if="j.lastElapsedMs != null">{{ fmtDur(j.lastElapsedMs) }}</span>
-              <span class="chip-next">{{ nextRunText(j) }}</span>
-              <!-- CO-1/A5：失败 chip 显示失败原因（截断单行，悬停看全文） -->
-              <span v-if="jobState(j) === 'failed' && j.lastError" class="chip-reason">{{ j.lastError }}</span>
+            <!-- FJ 批（docs/SYNC-JOB-GROUPS.md）：健康条按 12 任务组渲染（点组 chip 过滤组内全部子步骤日志）；
+                 schedule.groups 缺失（后端未升级）时回退旧的按 jobs 渲染 -->
+            <button v-for="g in groups" :key="'g-' + g.name" type="button" class="health-chip" :class="[groupState(g), { on: jobFilter === g.name }]" :title="groupFailTitle(g)" @click="toggleJobFilter(g.name)">
+              <span class="dot" /><strong>{{ g.label || jobLabel(g.name) }}</strong>
+              <span class="chip-state">{{ groupStateText(g) }}</span>
+              <span class="chip-next">{{ groupNextRunText(g) }}</span>
+              <span v-if="groupState(g) === 'failed' && groupLastError(g)" class="chip-reason">{{ groupLastError(g) }}</span>
             </button>
-            <el-empty v-if="!jobs.length" description="调度器状态尚未生成（未启动？）" :image-size="40" />
+            <template v-if="!groups.length">
+              <button v-for="j in jobs" :key="j.name" type="button" class="health-chip" :class="[jobState(j), { on: jobFilter === j.name }]" :title="jobFailTitle(j)" @click="toggleJobFilter(j.name)">
+                <span class="dot" /><strong>{{ jobLabel(j.name) }}</strong>
+                <span class="chip-state">{{ jobStateText(j) }}</span>
+                <span v-if="j.lastElapsedMs != null">{{ fmtDur(j.lastElapsedMs) }}</span>
+                <span class="chip-next">{{ nextRunText(j) }}</span>
+                <!-- CO-1/A5：失败 chip 显示失败原因（截断单行，悬停看全文） -->
+                <span v-if="jobState(j) === 'failed' && j.lastError" class="chip-reason">{{ j.lastError }}</span>
+              </button>
+            </template>
+            <el-empty v-if="!jobs.length && !groups.length" description="调度器状态尚未生成（未启动？）" :image-size="40" />
           </div>
         </div>
 
@@ -414,9 +424,13 @@ async function loadSyncRuns() {
 }
 async function loadLogs() {
   try {
-    const q = new URLSearchParams({ limit: '300', grep: logQuery.value.trim(), scope: logScope.value, minutes: logMinutes.value });
+    // FJ 批（docs/SYNC-JOB-GROUPS.md）：组筛选时后端 grep 只能单值，改为拉全量后按组内全部 mode 客户端过滤
+    const modes = activeFilterModes();
+    const q = new URLSearchParams({ limit: String(modes.length ? 1000 : 300), grep: modes.length ? '' : logQuery.value.trim(), scope: logScope.value, minutes: logMinutes.value });
     const d = await api(`/api/admin/logs?${q}`);
-    logEntries.value = (d.entries || []).slice().reverse();
+    let entries = d.entries || [];
+    if (modes.length) entries = entries.filter((e) => modes.some((m) => JSON.stringify(e).includes(m)));
+    logEntries.value = entries.slice().reverse();
     logFiles.value = d.files || [];
     loaded.run = true;
   } catch (e) { notify(e); }
@@ -440,6 +454,8 @@ function logDetails(entry) {
 
 // BA 批（docs/RUN-SYNC-REDESIGN.md §3）：任务健康条 + 记录精简 + 固定高度日志面板
 const jobs = ref([]);
+// FJ 批（docs/SYNC-JOB-GROUPS.md）：健康条按 12 任务组渲染；groups 为空时模板回退 jobs 渲染
+const groups = ref([]);
 const showAllRuns = ref(false);
 const jobFilter = ref('');
 const expandedLogs = ref(new Set());
@@ -449,7 +465,11 @@ const JOB_LABELS = {
   images: '图片预取', sonkwo: '杉果', itad: 'ITAD', gog: 'GOG', humble: 'Humble', alerts: '到价提醒',
   prune: '清理', backup: '备份', logs: '日志清理', report: '静态页', readmodel: '读模型对账', 'proxy-probe': '代理探测',
 };
-const jobLabel = (n) => JOB_LABELS[n] || n || '—';
+const jobLabel = (n) => {
+  const g = groups.value.find((x) => x.name === n);
+  if (g) return g.label || JOB_LABELS[n] || n;
+  return JOB_LABELS[n] || n || '—';
+};
 const visibleRuns = computed(() => (showAllRuns.value ? syncRuns.value : syncRuns.value.slice(0, 5)));
 function jobState(j) {
   if (j.running) return 'idle';
@@ -466,6 +486,47 @@ function jobStateText(j) {
   if (j.lastResult === 'interrupted') return '被重启中断';
   if (j.lastResult === 'failed') return '失败';
   return j.lastRunAt ? '待运行' : '未运行';
+}
+// FJ 批（docs/SYNC-JOB-GROUPS.md）：组 chip 聚合——任一 running → 运行中；任一未过期的熔断 → 熔断；
+// 任一失败 → 失败；否则按组内步骤状态给成功/被重启中断/待运行/未运行
+function groupState(g) {
+  const steps = g.steps || [];
+  if (steps.some((s) => s.running)) return 'running';
+  if (steps.some((s) => s.openUntil && new Date(s.openUntil).getTime() > Date.now())) return 'failed';
+  if (steps.some((s) => s.lastResult === 'failed')) return 'failed';
+  if (steps.some((s) => s.lastResult === 'ok')) return 'ok';
+  if (steps.some((s) => s.lastResult === 'interrupted')) return 'interrupted';
+  return 'idle';
+}
+function groupStateText(g) {
+  const steps = g.steps || [];
+  if (steps.some((s) => s.running)) return '运行中';
+  const opens = steps.map((s) => s.openUntil).filter((t) => t && new Date(t).getTime() > Date.now()).map((t) => new Date(t).getTime()).sort((a, b) => a - b);
+  if (opens.length) return '熔断至 ' + dateTime(new Date(opens[0]).toISOString());
+  if (steps.some((s) => s.lastResult === 'failed')) return '失败';
+  if (steps.some((s) => s.lastResult === 'ok')) return '成功';
+  if (steps.some((s) => s.lastResult === 'interrupted')) return '被重启中断';
+  return steps.some((s) => s.lastRunAt) ? '待运行' : '未运行';
+}
+function groupFailTitle(g) {
+  const failed = (g.steps || []).find((s) => s.lastResult === 'failed' && s.lastError);
+  return failed ? '失败原因：' + failed.lastError : (g.label || jobLabel(g.name));
+}
+function groupLastError(g) {
+  const failed = (g.steps || []).find((s) => s.lastResult === 'failed' && s.lastError);
+  return failed ? failed.lastError : '';
+}
+// 组 chip 的「下次运行」取组内最早的 nextRunAt
+function groupNextRunText(g) {
+  const nexts = (g.steps || []).map((s) => s.nextRunAt).filter(Boolean).map((t) => new Date(t).getTime()).filter((t) => Number.isFinite(t));
+  if (!nexts.length) return '—';
+  const ms = Math.min(...nexts) - Date.now();
+  if (!Number.isFinite(ms)) return '—';
+  if (ms <= 0) return '即将';
+  const min = Math.round(ms / 60000);
+  if (min < 60) return min + ' 分后';
+  const h = Math.round(min / 60);
+  return h < 24 ? h + ' 小时' : Math.round(h / 24) + ' 天';
 }
 // EU-1：sync_runs 状态 → el-tag 类型（interrupted 用 info 而不是 danger，不吓人）
 function runStatusTag(status) {
@@ -501,12 +562,21 @@ async function loadHealth() {
   try {
     const d = await api('/api/admin/sync/status');
     jobs.value = d.schedule && Array.isArray(d.schedule.jobs) ? d.schedule.jobs : [];
+    groups.value = d.schedule && Array.isArray(d.schedule.groups) ? d.schedule.groups : [];
   } catch (e) { notify(e); } finally { loading.health = false; }
+}
+// 当前任务筛选对应的日志 mode 列表：组 chip = 组内全部子步骤 mode；job chip = 单个 mode；无筛选 = []
+function activeFilterModes() {
+  if (!jobFilter.value) return [];
+  const g = groups.value.find((x) => x.name === jobFilter.value);
+  if (g) return (g.steps || []).map((s) => s.name || s.mode).filter(Boolean);
+  return [jobFilter.value];
 }
 function toggleJobFilter(name) {
   if (jobFilter.value === name) return clearJobFilter();
   jobFilter.value = name;
-  logQuery.value = name;
+  const g = groups.value.find((x) => x.name === name);
+  logQuery.value = g ? '' : name;
   loadLogs();
 }
 function clearJobFilter() { jobFilter.value = ''; logQuery.value = ''; loadLogs(); }
@@ -591,6 +661,7 @@ onBeforeUnmount(() => {
 .health-chip:hover{border-color:var(--brand)}
 .health-chip.on{border-color:var(--brand);background:var(--brand-soft)}
 .health-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--fg-subtle);flex:none}
+.health-chip.running .dot{background:var(--brand)}
 .health-chip.ok .dot{background:var(--success)}
 .health-chip.failed .dot{background:var(--danger)}
 .health-chip.interrupted .dot{background:var(--fg-subtle);outline:1px solid var(--border-strong,var(--border))}

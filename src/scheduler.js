@@ -24,8 +24,27 @@ const num = (value, fallback) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
+// FJ 批（docs/SYNC-JOB-GROUPS.md）：同步服务合并为 12 个任务组——后台不再显示 25 行碎片，
+// 而是组行 + 展开子步骤。组只是调度层：组内到期子步骤按声明顺序（= 优先级）串行执行，
+// 子步骤仍按原 mode 写 sync_runs（历史/告警/健康面板/熔断恢复不变）。steam-claim 移出定时，
+// 改后台「Steam 账号」组手动按钮触发（steamClaimArgs 取参数，未配置时返回 null）。
+export const JOB_GROUPS = [
+  { name: 'steam-prices', label: 'Steam 价格', steps: ['steam-prices'] },
+  { name: 'steam-meta', label: 'Steam 元数据', steps: ['steam-status', 'rating-backfill', 'backfill', 'rename'] },
+  { name: 'multi-platform', label: '多平台报价', steps: ['sonkwo', 'itad', 'gog', 'humble'] },
+  { name: 'catalog-discovery', label: '目录与发现', steps: ['catalog', 'steam-discovery', 'discover'] },
+  { name: 'images', label: '图片同步', steps: ['images', 'images-backfill'] },
+  { name: 'index', label: '索引维护', steps: ['readmodel', 'search-tokens-rebuild'] },
+  { name: 'system', label: '系统维护', steps: ['prune', 'logs', 'backup'] },
+  { name: 'steam-accounts', label: 'Steam 账号', steps: ['steam-accounts'] },
+  { name: 'heat', label: '热度回填', steps: ['heat'] },
+  { name: 'app-release', label: 'App 版本同步', steps: ['app-release-sync'] },
+  { name: 'align-snapshot', label: '对齐快照', steps: ['align-snapshot'] },
+  { name: 'proxy-alerts', label: '代理与提醒', steps: ['proxy-probe', 'alerts', 'report'] },
+];
+
 export function jobsFromEnv(env = process.env) {
-  return [
+  const flat = [
     {
       name: 'catalog',
       // 每周同步一次 Steam 全量目录（幂等：已存在的 appid 跳过）——新游戏自动进库，
@@ -142,18 +161,7 @@ export function jobsFromEnv(env = process.env) {
       initialDelaySec: num(env.STEAM_ACCOUNTS_INITIAL_DELAY_SEC, 1500),
       enabled: env.STEAM_ENABLED !== '0' && String(env.STEAM_API_KEY ?? '').trim().length > 10,
     },
-    {
-      name: 'steam-claim',
-      // 一次性迁移：把历史未归属的 Steam 账号认领到指定用户（幂等，已归属则秒退）。
-      // 只在配置了 STEAM_CLAIM_USERNAME + STEAM_CLAIM_STEAM_ID 时出现，认领完成后可删配置。
-      args: ['steam-claim', String(env.STEAM_CLAIM_USERNAME ?? ''), String(env.STEAM_CLAIM_STEAM_ID ?? '')],
-      intervalMin: num(env.STEAM_CLAIM_INTERVAL_MIN, 1440),
-      initialDelaySec: num(env.STEAM_CLAIM_INITIAL_DELAY_SEC, 60),
-      enabled:
-        env.STEAM_CLAIM_ENABLED !== '0' &&
-        Boolean(String(env.STEAM_CLAIM_USERNAME ?? '').trim()) &&
-        Boolean(String(env.STEAM_CLAIM_STEAM_ID ?? '').trim()),
-    },
+    // FJ 批：steam-claim 已移出定时任务——后台「Steam 账号」组的手动按钮触发（steamClaimArgs 取参数）。
     {
       name: 'prune',
       // 每周清理：访问记录 180 天、采集/任务记录 90 天、验证码 7 天
@@ -293,6 +301,28 @@ export function jobsFromEnv(env = process.env) {
       enabled: env.REPORT_ENABLED !== '0' && hasNotifier(env),
     },
   ].filter((j) => j.enabled && j.intervalMin > 0);
+  // FJ 批：按 JOB_GROUPS 的组顺序与组内优先级重排（组只是调度层，子步骤原 mode 不变），
+  // 每个 job 带上 group 字段供组串行调度/状态文件/后台组行使用。
+  const byName = new Map(flat.map((j) => [j.name, j]));
+  return JOB_GROUPS.flatMap((g) => g.steps.map((name) => byName.get(name)).filter(Boolean).map((j) => ({ ...j, group: g.name })));
+}
+
+/** FJ 批：把带 group 字段的扁平 jobs 按 JOB_GROUPS 聚合回组结构（含 label，供状态文件 groups 字段）。 */
+export function groupsFromJobs(jobs) {
+  return JOB_GROUPS.map((g) => ({ name: g.name, label: g.label, steps: (jobs ?? []).filter((j) => j.group === g.name) }));
+}
+
+/** FJ 批：按 env 构建 12 个任务组（steps 只含启用且间隔 >0 的子步骤）。 */
+export function jobGroupsFromEnv(env = process.env) {
+  return groupsFromJobs(jobsFromEnv(env));
+}
+
+/** FJ 批：steam-claim 手动按钮的命令参数；未配置用户名/SteamID 返回 null（按钮提示未配置）。 */
+export function steamClaimArgs(env = process.env) {
+  const username = String(env.STEAM_CLAIM_USERNAME ?? '').trim();
+  const steamId = String(env.STEAM_CLAIM_STEAM_ID ?? '').trim();
+  if (!username || !steamId) return null;
+  return ['steam-claim', username, steamId];
 }
 
 /** 熔断参数：连续失败 threshold 次后，暂停该任务 cooldownMs。 */
@@ -446,18 +476,34 @@ export function lightConcurrency(env = process.env) {
  * - 重任务：`heavySlot` 非空或已在 running 时一个都不排（全局单槽，串行互斥）；
  * - 轻任务：**不受重任务槽影响**（steam-prices 跑 90 分钟期间 sonkwo/alerts 照常发），
  *   只受 running 去重与 lightMax 并行上限约束；非重非轻的任务（如 prune）不受上限约束（与旧行为一致）。
+ * - FJ 批（docs/SYNC-JOB-GROUPS.md）：组内串行——传 `jobs`（带 group 字段）后，某组已有子步骤在跑
+ *   （或本 tick 已选中一个）时，该组其它到期子步骤不派发；不传 jobs 则退化为旧行为（组不生效）。
  */
-export function planTick({ due, heavySlot = null, running = new Set(), lightMax = 3, heavyJobs = STEAM_HEAVY, lightJobs = LIGHT_JOBS }) {
+export function planTick({ due, heavySlot = null, running = new Set(), lightMax = 3, heavyJobs = STEAM_HEAVY, lightJobs = LIGHT_JOBS, jobs = null }) {
   const light = [];
   const heavy = [];
+  const groupOf = jobs ? new Map(jobs.map((j) => [j.name, j.group])) : null;
+  const groupBusy = new Set();
+  if (groupOf) {
+    for (const name of running) {
+      const g = groupOf.get(name);
+      if (g) groupBusy.add(g);
+    }
+  }
   const lightRunning = [...running].filter((name) => lightJobs.has(name)).length;
   for (const job of due) {
+    const g = groupOf?.get(job.name) ?? null;
+    if (g && groupBusy.has(g)) continue;
     if (heavyJobs.has(job.name)) {
-      if (!heavySlot && !running.has(job.name)) heavy.push(job);
+      if (!heavySlot && !running.has(job.name)) {
+        heavy.push(job);
+        if (g) groupBusy.add(g);
+      }
       continue;
     }
     if (running.has(job.name)) continue;
     if (lightJobs.has(job.name) && light.length + lightRunning >= lightMax) continue;
+    if (g) groupBusy.add(g);
     light.push(job);
   }
   return { light, heavy };
@@ -670,39 +716,44 @@ export function auditJobs(env = process.env) {
  * 把调度器状态写到文件，Web 进程读它来展示「定时任务 / 下次运行」。
  * 跨进程通信不值得上 IPC：一个小 JSON 足够，读不到就当没有。
  */
-export function writeStatusFile(jobs, { lastRunMs, health, running, tickMs = 60000, lastOutcome = null, waitingSince = null, retry = null, estimates = null, file = process.env.SCHEDULER_STATUS_FILE || 'data/scheduler-status.json' } = {}) {
+export function writeStatusFile(jobs, { lastRunMs, health, running, tickMs = 60000, lastOutcome = null, waitingSince = null, retry = null, estimates = null, groups = null, file = process.env.SCHEDULER_STATUS_FILE || 'data/scheduler-status.json' } = {}) {
   try {
     const now = Date.now();
+    // FJ 批：单行状态构造复用——jobs 与 groups[].steps 用同一口径（group 字段随行输出）
+    const row = (j) => {
+      const last = lastRunMs?.get?.(j.name) ?? null;
+      const h = health?.get?.(j.name) ?? {};
+      const outcome = lastOutcome?.get?.(j.name) ?? null;
+      const waiting = waitingSince?.get?.(j.name) ?? null;
+      return {
+        name: j.name,
+        group: j.group ?? null,
+        intervalMin: j.intervalMin,
+        lastRunAt: last ? new Date(last).toISOString() : null,
+        // 从未跑过的任务，下一次是「首轮延迟」；跑过的按间隔。之前这里一律按间隔算，
+        // 导致首轮任务（如 rename 首轮 +7200s）在状态文件里显示成一周后。
+        nextRunAt: new Date((last ?? now) + (last == null ? j.initialDelaySec * 1000 : j.intervalMin * 60_000)).toISOString(),
+        running: Boolean(running?.has?.(j.name)),
+        failures: Number(h.failures ?? 0),
+        openUntil: h.openUntil ? new Date(h.openUntil).toISOString() : null,
+        // AC11（docs/SYNC-FAILURE-MODES.md）：任务健康面板字段
+        lastElapsedMs: outcome ? outcome.elapsedMs : null,
+        lastResult: outcome ? outcome.result : null,
+        lastError: outcome ? outcome.error : null,
+        // AC5：重任务排队等待（被谁占用、从何时开始等）
+        waitingFor: waiting ? { occupiedBy: waiting.occupiedBy, since: new Date(waiting.at).toISOString() } : null,
+        // BL-2：429 软退出后的重排时间（后台「状态」列显示重试于 HH:mm）
+        retryAt: retry?.[j.name]?.at ?? null,
+        // B3 批（docs/DESIGN-AUDIT.md B3）：单轮耗时估算（理论）与实测（sync_runs 平均秒）——任务卡显示实际与估算差
+        estimate: estimates?.get?.(j.name) ?? null,
+      };
+    };
     const payload = {
       updatedAt: new Date(now).toISOString(),
       tickMs,
-      jobs: jobs.map((j) => {
-        const last = lastRunMs?.get?.(j.name) ?? null;
-        const h = health?.get?.(j.name) ?? {};
-        const outcome = lastOutcome?.get?.(j.name) ?? null;
-        const waiting = waitingSince?.get?.(j.name) ?? null;
-        return {
-          name: j.name,
-          intervalMin: j.intervalMin,
-          lastRunAt: last ? new Date(last).toISOString() : null,
-          // 从未跑过的任务，下一次是「首轮延迟」；跑过的按间隔。之前这里一律按间隔算，
-          // 导致首轮任务（如 rename 首轮 +7200s）在状态文件里显示成一周后。
-          nextRunAt: new Date((last ?? now) + (last == null ? j.initialDelaySec * 1000 : j.intervalMin * 60_000)).toISOString(),
-          running: Boolean(running?.has?.(j.name)),
-          failures: Number(h.failures ?? 0),
-          openUntil: h.openUntil ? new Date(h.openUntil).toISOString() : null,
-          // AC11（docs/SYNC-FAILURE-MODES.md）：任务健康面板字段
-          lastElapsedMs: outcome ? outcome.elapsedMs : null,
-          lastResult: outcome ? outcome.result : null,
-          lastError: outcome ? outcome.error : null,
-          // AC5：重任务排队等待（被谁占用、从何时开始等）
-          waitingFor: waiting ? { occupiedBy: waiting.occupiedBy, since: new Date(waiting.at).toISOString() } : null,
-          // BL-2：429 软退出后的重排时间（后台「状态」列显示重试于 HH:mm）
-          retryAt: retry?.[j.name]?.at ?? null,
-          // B3 批（docs/DESIGN-AUDIT.md B3）：单轮耗时估算（理论）与实测（sync_runs 平均秒）——任务卡显示实际与估算差
-          estimate: estimates?.get?.(j.name) ?? null,
-        };
-      }),
+      jobs: jobs.map(row),
+      // FJ 批：12 组（组名/label/子步骤状态）——后台组行数据源；旧 jobs 字段保留（兼容）
+      groups: groups ? groups.map((g) => ({ name: g.name, label: g.label, steps: g.steps.map(row) })) : undefined,
     };
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, JSON.stringify(payload, null, 2));
@@ -939,7 +990,7 @@ export async function main() {
       retryState = applyRetry(retryState, { job: job.name, code, nowMs: Date.now() });
       writeRetryState(retryState);
       waitingSince.delete(job.name);
-      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, lastOutcome, waitingSince, retry: retryState, estimates });
+      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, lastOutcome, waitingSince, retry: retryState, estimates, groups: groupsFromJobs(jobs) });
       const followUp = followUpArgs(job.name, code, process.env);
       if (followUp && !stopping) {
         followUpChain = followUpChain
@@ -1054,7 +1105,7 @@ export async function main() {
       setupCompleted: initialized.completed,
       lightConcurrency: lightMax,
     });
-    writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, retry: retryState, estimates });
+    writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, retry: retryState, estimates, groups: groupsFromJobs(jobs) });
 
     while (!stopping) {
       // 设置页保存后 revision +1：重新水合 env 并重建任务表，无需重启容器
@@ -1077,7 +1128,8 @@ export async function main() {
       const due = dueJobs(jobs, { nowMs: now, startedMs, lastRunMs, retry: retryState });
 
       // 每 tick 的派发计划（X 批 P0-1）：重任务槽被占只挡重任务，轻任务照常发。
-      const plan = planTick({ due, heavySlot, running, lightMax });
+      // FJ 批：传 jobs（带 group 字段）启用组内串行——组内子步骤同一时刻最多一个在跑。
+      const plan = planTick({ due, heavySlot, running, lightMax, jobs });
 
       // 1) 轻任务：非阻塞并行发射（上限 lightMax）。heat/steam-prices 等长任务运行时它们照常跑，
       //    不会出现"steam-prices 90 分钟饿死杉果/提醒"这类排队。
@@ -1129,7 +1181,7 @@ export async function main() {
       if (stopping) break;
       // P2（X 批）：状态文件每个 tick 都写一次，updatedAt 才能反映调度器存活
       // （此前只在启动与任务完成时写，长任务运行期间看起来像卡死）。
-      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, lastOutcome, waitingSince, estimates });
+      writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, lastOutcome, waitingSince, estimates, groups: groupsFromJobs(jobs) });
       await sleepInterruptible(TICK_MS);
     }
 

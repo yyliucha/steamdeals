@@ -37,8 +37,27 @@
 //   · 跨域共用 SQL（insertSyncRun/finishSyncRun/runningSyncRun/markStaleSyncRuns/
 //     sourceSyncStats 等）留 pg.js（见 admin-sync-repository.js 头部归属判定）。
 import * as db from '../store/pg.js';
-import { auditJobs as auditSchedulerJobs, resetCircuit } from '../scheduler.js';
+import { auditJobs as auditSchedulerJobs, resetCircuit, jobsFromEnv, steamClaimArgs, syncRunModeFor } from '../scheduler.js';
 import { readFileSync } from 'node:fs';
+
+/**
+ * FJ 批：组级立即运行的到期判定（纯函数，便于单测）——
+ * 状态文件里没有 lastRunAt（从未跑过）视为到期；跑过的按 lastRunAt + intervalMin 到期。
+ * 返回 { due: [...到期子步骤], skipped: [...未到期子步骤名] }。
+ */
+export function dueGroupSteps(steps, schedule) {
+  const lastBy = new Map();
+  for (const j of schedule?.jobs ?? []) {
+    const ms = Date.parse(j.lastRunAt);
+    if (Number.isFinite(ms)) lastBy.set(j.name, ms);
+  }
+  const now = Date.now();
+  const due = steps.filter((s) => {
+    const last = lastBy.get(s.name);
+    return last == null ? true : now >= last + s.intervalMin * 60_000;
+  });
+  return { due, skipped: steps.filter((s) => !due.includes(s)).map((s) => s.name) };
+}
 
 /**
  * 管理段：server.js 在 requireAdmin 就绪之后调用——后台同步任务全部路由。
@@ -99,6 +118,71 @@ export async function handleAdminSyncAdmin(ctx) {
     }
   }
 
+  // ---- FJ 批（docs/SYNC-JOB-GROUPS.md）：组级立即运行 + steam-claim 手动分支 ----
+
+  // 组级立即运行：跑组内到期子步骤（组内串行、顺序执行）。HTTP 立即返回 202，
+  // 后台链式逐个启动（每个子步骤结束才启动下一个），前端轮询 /api/admin/sync/status 看进度。
+  if (path.startsWith('/api/admin/sync/groups/') && path.endsWith('/run') && req.method === 'POST') {
+    if (!requireAdmin()) return true;
+    const groupName = path.slice('/api/admin/sync/groups/'.length, -'/run'.length);
+    const steps = jobsFromEnv(process.env).filter((j) => j.group === groupName);
+    if (!steps.length) {
+      json(res, 404, { error: '未知任务组' });
+      return true;
+    }
+    // 到期判定：状态文件里没有 lastRunAt（从未跑过）视为到期；跑过的按 lastRunAt + intervalMin
+    let schedule = null;
+    try {
+      schedule = JSON.parse(readFileSync(process.env.SCHEDULER_STATUS_FILE ?? 'data/scheduler-status.json', 'utf8'));
+    } catch {
+      schedule = null;
+    }
+    const { due: dueSteps, skipped } = dueGroupSteps(steps, schedule);
+    if (!dueSteps.length) {
+      json(res, 200, { started: false, group: groupName, reason: '组内没有到期的子步骤', skipped });
+      return true;
+    }
+    // 后台链式顺序执行（组内串行，不并发抢同一目标源）；用户手动停止后不再启动组内下一个
+    void (async () => {
+      for (const step of dueSteps) {
+        const mode = syncRunModeFor(step);
+        try {
+          await startSteamJob({ mode, args: ['src/cli.js', ...step.args], by: user.username });
+        } catch (err) {
+          logger?.error('api.group_run_step_failed', { group: groupName, mode, err: String(err?.message ?? err) });
+          return;
+        }
+        while (!syncState.settled) await new Promise((r) => setTimeout(r, 1000));
+        if (syncState.stopRequested) return;
+      }
+    })();
+    invalidateSyncStatusCache();
+    json(res, 202, { started: true, group: groupName, queued: dueSteps.map((s) => syncRunModeFor(s)), skipped });
+    return true;
+  }
+
+  // steam-claim 手动分支：把历史未归属账号认领给指定用户一次（幂等，原 FJ 批移出的定时任务）
+  if (path === '/api/admin/steam-claim' && req.method === 'POST') {
+    if (!requireAdmin()) return true;
+    const args = steamClaimArgs(process.env);
+    if (!args) {
+      json(res, 400, { error: '未配置 STEAM_CLAIM_USERNAME / STEAM_CLAIM_STEAM_ID' });
+      return true;
+    }
+    try {
+      const job = await startSteamJob({ mode: 'steam-claim', args: ['src/cli.js', ...args], by: user.username });
+      invalidateSyncStatusCache();
+      json(res, 202, { started: true, runId: job.runId, pid: job.pid });
+      return true;
+    } catch (err) {
+      if (err.code === 'BUSY') {
+        json(res, 409, { error: err.message, run: err.run });
+        return true;
+      }
+      throw err;
+    }
+  }
+
   // （CO-4/B4：DR 批 /api/admin/app-sync、/api/admin/app-sync/status 已随 App 域抽到 src/routes/app.js）
 
   if (path === '/api/admin/sync/status' && req.method === 'GET') {
@@ -117,6 +201,11 @@ export async function handleAdminSyncAdmin(ctx) {
       schedule = JSON.parse(readFileSync(file, 'utf8'));
     } catch {
       schedule = null;
+    }
+    // FJ 批（docs/SYNC-JOB-GROUPS.md）：schedule 上补 steamClaimConfigured——后台「Steam 账号」组
+    // 「认领未归属账号」按钮据此启用/禁用（未配置 STEAM_CLAIM_USERNAME/STEAM_CLAIM_STEAM_ID 时置灰）。
+    if (schedule && typeof schedule === 'object' && !Array.isArray(schedule)) {
+      schedule.steamClaimConfigured = Boolean(steamClaimArgs(process.env));
     }
     // BL-2（docs/BACKFILL-THROUGHPUT.md §3.4）：合并回填进度文件（只读文件，不加 DB 查询）
     const { readBackfillProgress } = await import('../backfill.js');

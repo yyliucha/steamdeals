@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { jobsFromEnv, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, theoreticalRunSeconds, jobRuntimeEstimates, registerCircuitReset, resetCircuit, applyRetry, syncRunModeFor, jobFailureError, jobFailedReason, outcomeFor } from '../src/scheduler.js';
+import { jobsFromEnv, jobGroupsFromEnv, groupsFromJobs, steamClaimArgs, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, theoreticalRunSeconds, jobRuntimeEstimates, registerCircuitReset, resetCircuit, applyRetry, syncRunModeFor, jobFailureError, jobFailedReason, outcomeFor } from '../src/scheduler.js';
 
 test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），默认 3，非法回落默认', () => {
   assert.equal(lightConcurrency({}), 3);
@@ -66,11 +66,12 @@ test('AC11：状态文件带健康面板字段（耗时/结果/失败原因）�
   }
 });
 
-test('默认任务表（含 Steam 日更/热度/重写名字/增量回填、清理、gog / humble / discover / backup / alerts / images / readmodel），各自间隔', () => {
+test('默认任务表（FJ 批：按 12 组顺序重排，steam-claim 已移出定时），各自间隔', () => {
   const jobs = jobsFromEnv({});
   assert.deepEqual(jobs.map((j) => j.name), [
-    'steam-prices', 'heat', 'steam-status', 'steam-discovery', 'app-release-sync', 'align-snapshot', 'rename', 'rating-backfill', 'backfill', 'prune', 'proxy-probe', 'readmodel', 'search-tokens-rebuild', 'sonkwo', 'itad', 'gog', 'humble',
-    'discover', 'backup', 'logs', 'alerts', 'images', 'images-backfill',
+    'steam-prices', 'steam-status', 'rating-backfill', 'backfill', 'rename', 'sonkwo', 'itad', 'gog', 'humble',
+    'steam-discovery', 'discover', 'images', 'images-backfill', 'readmodel', 'search-tokens-rebuild', 'prune', 'logs', 'backup',
+    'heat', 'app-release-sync', 'align-snapshot', 'proxy-probe', 'alerts',
   ]);
   const interval = (name) => jobs.find((j) => j.name === name).intervalMin;
   assert.equal(interval('steam-prices'), 1440, 'Steam 价格默认每天刷新');
@@ -181,28 +182,19 @@ test('Steam 账号同步任务：有 STEAM_API_KEY 才出现，间隔/首轮延�
   assert.equal(custom.initialDelaySec, 30);
 });
 
-test('steam-claim 迁移任务：只在配置了用户名与 SteamID 时出现，认领幂等', () => {
-  assert.ok(!jobsFromEnv({}).some((j) => j.name === 'steam-claim'), '未配置不出现');
-  assert.ok(!jobsFromEnv({ STEAM_CLAIM_USERNAME: 'admin' }).some((j) => j.name === 'steam-claim'), '缺 SteamID 不出现');
+test('FJ steam-claim：已移出定时任务，steamClaimArgs 只在配置齐全时返回命令（后台手动按钮用）', () => {
   assert.ok(
-    !jobsFromEnv({ STEAM_CLAIM_STEAM_ID: '76561198000000000' }).some((j) => j.name === 'steam-claim'),
-    '缺用户名不出现',
+    !jobsFromEnv({ STEAM_CLAIM_USERNAME: 'admin', STEAM_CLAIM_STEAM_ID: '76561198000000000' }).some((j) => j.name === 'steam-claim'),
+    'FJ 批：steam-claim 不再出现在定时任务表',
   );
-  const job = jobsFromEnv({
-    STEAM_CLAIM_USERNAME: 'admin',
-    STEAM_CLAIM_STEAM_ID: '76561198000000000',
-  }).find((j) => j.name === 'steam-claim');
-  assert.ok(job, '两者都配了才出现');
-  assert.deepEqual(job.args, ['steam-claim', 'admin', '76561198000000000']);
-  assert.equal(job.intervalMin, 1440);
-  assert.equal(job.initialDelaySec, 60);
-
-  const off = jobsFromEnv({
-    STEAM_CLAIM_USERNAME: 'admin',
-    STEAM_CLAIM_STEAM_ID: '76561198000000000',
-    STEAM_CLAIM_ENABLED: '0',
-  });
-  assert.ok(!off.some((j) => j.name === 'steam-claim'), 'STEAM_CLAIM_ENABLED=0 可关闭');
+  assert.equal(steamClaimArgs({}), null, '未配置返回 null');
+  assert.equal(steamClaimArgs({ STEAM_CLAIM_USERNAME: 'admin' }), null, '缺 SteamID 返回 null');
+  assert.equal(steamClaimArgs({ STEAM_CLAIM_STEAM_ID: '76561198000000000' }), null, '缺用户名返回 null');
+  assert.deepEqual(
+    steamClaimArgs({ STEAM_CLAIM_USERNAME: 'admin', STEAM_CLAIM_STEAM_ID: '76561198000000000' }),
+    ['steam-claim', 'admin', '76561198000000000'],
+    '配置齐全返回 CLI 命令（trim 后）',
+  );
 });
 
 test('重写名字任务：参数与间隔可用环境变量覆盖，STEAM_ENABLED=0 一并关闭', () => {
@@ -275,7 +267,7 @@ test('显式禁用或间隔为 0 的任务会被剔除', () => {
     READMODEL_ENABLED: '0',
     PROXY_PROBE_ENABLED: '0',
   });
-  assert.deepEqual(jobs.map((j) => j.name), ['heat', 'steam-discovery', 'app-release-sync', 'align-snapshot', 'rename', 'rating-backfill', 'backfill', 'prune', 'search-tokens-rebuild', 'sonkwo', 'alerts', 'images-backfill']);
+  assert.deepEqual(jobs.map((j) => j.name), ['rating-backfill', 'backfill', 'rename', 'sonkwo', 'steam-discovery', 'images-backfill', 'search-tokens-rebuild', 'prune', 'heat', 'app-release-sync', 'align-snapshot', 'alerts']);
 });
 
 test('从未跑过的任务在 initialDelay 之后才算到点', () => {
@@ -424,10 +416,10 @@ test('X 批：重任务占用单槽期间轻任务照常派发（P0-1 回归）'
   assert.ok(plan2.heavy.some((j) => j.name === 'steam-prices'), '空槽时重任务可派发');
   assert.ok(plan2.heavy.some((j) => j.name === 'steam-status'), 'steam-status 走重任务槽');
 
-  // 并行上限只约束轻任务：lightMax=1 时只发一个轻任务（prune 非重非轻，不受上限）
+  // 并行上限只约束轻任务：lightMax=1 时只发一个轻任务（prune/app-release-sync 等非重非轻不受上限）
   const plan3 = planTick({ due, heavySlot: 'heat', running: new Set(['heat']), lightMax: 1 });
   const lightJobs3 = plan3.light.filter((j) =>
-    ['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'backup', 'logs', 'alerts', 'images', 'app-release-sync'].includes(j.name),
+    ['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'backup', 'logs', 'alerts', 'images', 'images-backfill'].includes(j.name),
   );
   assert.equal(lightJobs3.length, 1, 'lightMax=1 只发一个轻任务');
   assert.equal(plan3.heavy.length, 0, 'heat 占槽时不排其它重任务');
@@ -712,4 +704,105 @@ test('EU 批静态锁：scheduler 停机语义 + 前端「被重启中断」显�
   // 数据层：重启残留 running 记录标 interrupted 而不是 failed
   const pg = readFileSync(new URL('../src/store/pg.js', import.meta.url), 'utf8');
   assert.match(pg, /status = 'interrupted', finished_at = now\(\)/, 'markStaleSyncRuns 标 interrupted');
+});
+
+// ============================================================ FJ 批（docs/SYNC-JOB-GROUPS.md）
+// 同步服务合并为 12 个任务组：组行 + 展开子步骤；组只是调度层（组内到期子步骤串行），
+// sync_runs 仍按子步骤原 mode 记录；steam-claim 移出定时改后台手动按钮。
+// 反向自检口径：删掉 planTick 的 groupBusy 检查 → 组内串行断言红；删掉 JOB_GROUPS 某组 → 12 组断言红。
+
+test('FJ：12 个任务组——组名/顺序固定，组内子步骤按优先级；扁平 jobs 带 group 字段', () => {
+  const groups = jobGroupsFromEnv({});
+  assert.equal(groups.length, 12, '固定 12 组');
+  assert.deepEqual(
+    groups.map((g) => g.name),
+    ['steam-prices', 'steam-meta', 'multi-platform', 'catalog-discovery', 'images', 'index', 'system', 'steam-accounts', 'heat', 'app-release', 'align-snapshot', 'proxy-alerts'],
+    '组顺序固定（后台组行顺序）',
+  );
+  assert.equal(groups[0].label, 'Steam 价格', '组带中文 label');
+  assert.deepEqual(
+    groups.find((g) => g.name === 'steam-meta').steps.map((s) => s.name),
+    ['steam-status', 'rating-backfill', 'backfill', 'rename'],
+    '元数据组优先级：未探测 → 缺分级 → 缺说明 → 缺中文名',
+  );
+  assert.deepEqual(
+    groups.find((g) => g.name === 'proxy-alerts').steps.map((s) => s.name),
+    ['proxy-probe', 'alerts'],
+    '无提醒通道时 report 不进组（启用才出现）',
+  );
+  const jobs = jobsFromEnv({});
+  assert.ok(jobs.every((j) => typeof j.group === 'string' && j.group), '每个 job 都带 group 字段');
+  assert.equal(jobs.find((j) => j.name === 'backfill').group, 'steam-meta');
+  assert.equal(jobs.find((j) => j.name === 'proxy-probe').group, 'proxy-alerts');
+  assert.equal(jobs.find((j) => j.name === 'app-release-sync').group, 'app-release');
+  // 空组保留：无 key 时 Steam 账号组 steps 为空但组仍在（后台固定显示 12 组）
+  assert.equal(groups.find((g) => g.name === 'steam-accounts').steps.length, 0, '无 STEAM_API_KEY 时账号组无子步骤');
+});
+
+test('FJ：planTick 组内串行——同组多个到期子步骤只派发优先级最高的一个', () => {
+  const jobs = jobsFromEnv({});
+  const meta = jobs.filter((j) => j.group === 'steam-meta');
+  assert.equal(meta.length, 4, '元数据组 4 步');
+  const plan = planTick({ due: meta, heavySlot: null, running: new Set(), lightMax: 3, jobs });
+  assert.equal(plan.heavy.length, 1, '同组 4 步同 tick 只发一个');
+  assert.equal(plan.heavy[0].name, 'steam-status', '按组内优先级发 steam-status（未探测最优先）');
+
+  // 组内已有子步骤在跑：该组本 tick 不派发任何子步骤（不并发抢 appdetails）
+  const plan2 = planTick({ due: meta, heavySlot: null, running: new Set(['steam-status']), lightMax: 3, jobs });
+  assert.equal(plan2.heavy.length, 0, 'steam-status 在跑时组内其它步骤不并发');
+  assert.equal(plan2.light.length, 0);
+});
+
+test('FJ：多平台报价组——组内串行（轻任务也不并发同组）', () => {
+  const jobs = jobsFromEnv({});
+  const multi = jobs.filter((j) => j.group === 'multi-platform');
+  assert.equal(multi.length, 4);
+  const plan = planTick({ due: multi, heavySlot: null, running: new Set(), lightMax: 8, jobs });
+  assert.equal(plan.light.length, 1, '组内 4 步同 tick 只发一个');
+  assert.equal(plan.light[0].name, 'sonkwo', '按组内顺序发 sonkwo');
+  const plan2 = planTick({ due: multi, heavySlot: null, running: new Set(['sonkwo']), lightMax: 8, jobs });
+  assert.equal(plan2.light.length, 0, 'sonkwo 在跑时 itad/gog/humble 不并发');
+});
+
+test('FJ：不传 jobs 时 planTick 退化为旧行为（组约束不生效，跨组并行照旧）', () => {
+  const due = jobsFromEnv({}).filter((j) => ['sonkwo', 'itad', 'gog', 'humble'].includes(j.name));
+  const plan = planTick({ due, heavySlot: null, running: new Set(), lightMax: 8 });
+  assert.equal(plan.light.length, 4, '无组信息时四个平台任务都可并行（旧行为兼容）');
+});
+
+test('FJ：组内串行不影响跨组并行——不同组的轻任务照常并发', () => {
+  const jobs = jobsFromEnv({});
+  const due = jobs.filter((j) => ['sonkwo', 'images', 'alerts'].includes(j.name));
+  const plan = planTick({ due, heavySlot: null, running: new Set(), lightMax: 8, jobs });
+  assert.equal(plan.light.length, 3, '三个不同组的轻任务可同 tick 并发');
+});
+
+test('FJ：writeStatusFile 输出 groups（12 组含 label 与子步骤状态），jobs 保留且行带 group', () => {
+  const file = join(tmpdir(), `fj-status-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
+  const jobs = jobsFromEnv({});
+  writeStatusFile(jobs, { lastRunMs: new Map(), health: new Map(), running: new Set(), groups: groupsFromJobs(jobs), file });
+  try {
+    const payload = JSON.parse(readFileSync(file, 'utf8'));
+    assert.equal(payload.groups.length, 12, '状态文件含 12 组');
+    const meta = payload.groups.find((g) => g.name === 'steam-meta');
+    assert.equal(meta.label, 'Steam 元数据');
+    assert.deepEqual(meta.steps.map((s) => s.name), ['steam-status', 'rating-backfill', 'backfill', 'rename'], '组内子步骤状态');
+    assert.ok(meta.steps[0].nextRunAt, '子步骤行含 nextRunAt');
+    assert.equal(payload.jobs.find((j) => j.name === 'backfill').group, 'steam-meta', 'jobs 行带 group（兼容旧字段）');
+    const sonkwo = payload.jobs.find((j) => j.name === 'sonkwo');
+    assert.equal(sonkwo.intervalMin, 60, '子步骤间隔不变（组不引入新参数）');
+  } finally {
+    rmSync(file, { force: true });
+  }
+});
+
+test('FJ：groupsFromJobs 空组保留（12 组固定，steps 可为空）', () => {
+  const groups = groupsFromJobs(jobsFromEnv({ STEAM_API_KEY: '' }));
+  assert.equal(groups.length, 12);
+  assert.equal(groups.find((g) => g.name === 'steam-accounts').steps.length, 0, '无 key 时账号组空');
+  assert.deepEqual(
+    groups.find((g) => g.name === 'catalog-discovery').steps.map((s) => s.name),
+    ['steam-discovery', 'discover'],
+    '无 key 时目录组只剩 discovery/discover',
+  );
 });

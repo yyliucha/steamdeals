@@ -1880,3 +1880,99 @@ test('DR：立即同步失败 → 502 + 明确 reason，日志与审计带 reaso
     await store.close();
   }
 });
+
+// ============================================================ FJ 批（docs/SYNC-JOB-GROUPS.md）
+// 组级立即运行（POST /api/admin/sync/groups/:name/run）与 steam-claim 手动端点：
+// 权限（匿名 401）、未知组 404、未配置 claim 400、无到期子步骤 200 started:false；
+// 到期判定纯函数 dueGroupSteps 单独锁（从未跑过视为到期 / 跑过的按 lastRunAt + intervalMin）。
+
+test('FJ：组级立即运行与 steam-claim 端点——权限/错误路径/无到期子步骤', async () => {
+  const { store, srv, base } = await setup();
+  const anonPost = (p) =>
+    fetch(`${base}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+  try {
+    // 匿名 401
+    assert.equal((await anonPost('/api/admin/sync/groups/steam-meta/run')).status, 401, '组级立即运行匿名 401');
+    assert.equal((await anonPost('/api/admin/steam-claim')).status, 401, 'steam-claim 匿名 401');
+
+    const admin = await login(base, 'admin', 'admin123456');
+    const adminPost = (p) =>
+      fetch(`${base}${p}`, { method: 'POST', headers: { 'content-type': 'application/json', cookie: admin.cookie }, body: '{}' });
+
+    // 未知任务组 404
+    const unknown = await adminPost('/api/admin/sync/groups/not-a-group/run');
+    assert.equal(unknown.status, 404, '未知任务组 404');
+    assert.match((await unknown.json()).error, /未知任务组/);
+
+    // steam-claim 未配置 → 400（测试环境没有 STEAM_CLAIM_USERNAME/STEAM_CLAIM_STEAM_ID）
+    const claim = await adminPost('/api/admin/steam-claim');
+    assert.equal(claim.status, 400, '未配置 STEAM_CLAIM_* 返回 400');
+    assert.match((await claim.json()).error, /STEAM_CLAIM_USERNAME/);
+
+    // 组内全部未到期 → 200 started:false（写临时状态文件：所有子步骤 lastRunAt=now）
+    const file = join(tmpdir(), `fj-sched-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
+    const prevEnv = process.env.SCHEDULER_STATUS_FILE;
+    process.env.SCHEDULER_STATUS_FILE = file;
+    try {
+      const nowIso = new Date().toISOString();
+      writeFileSync(
+        file,
+        JSON.stringify({
+          updatedAt: nowIso,
+          jobs: [
+            { name: 'steam-status', lastRunAt: nowIso },
+            { name: 'rating-backfill', lastRunAt: nowIso },
+            { name: 'backfill', lastRunAt: nowIso },
+            { name: 'rename', lastRunAt: nowIso },
+          ],
+        }),
+      );
+      const none = await adminPost('/api/admin/sync/groups/steam-meta/run');
+      assert.equal(none.status, 200, '无到期子步骤返回 200');
+      const body = await none.json();
+      assert.equal(body.started, false);
+      assert.match(body.reason, /没有到期/);
+      assert.deepEqual(body.skipped, ['steam-status', 'rating-backfill', 'backfill', 'rename'], '四个未到期子步骤全部跳过');
+    } finally {
+      if (prevEnv == null) delete process.env.SCHEDULER_STATUS_FILE;
+      else process.env.SCHEDULER_STATUS_FILE = prevEnv;
+    }
+  } finally {
+    await srv.close();
+    await store.close();
+  }
+});
+
+test('FJ：dueGroupSteps 到期判定纯函数——从未跑过视为到期，跑过的按 lastRunAt + intervalMin', async () => {
+  const { dueGroupSteps } = await import('../src/routes/admin-sync.js');
+  const steps = [
+    { name: 'steam-status', intervalMin: 1440 },
+    { name: 'rating-backfill', intervalMin: 1440 },
+  ];
+  // 状态文件缺失 → 全部视为到期
+  let r = dueGroupSteps(steps, null);
+  assert.equal(r.due.length, 2, '无状态文件时全部视为到期（从未跑过）');
+  assert.deepEqual(r.skipped, []);
+
+  // 只有部分子步骤有 lastRunAt：刚跑过的不算到期
+  const nowMs = Date.now();
+  r = dueGroupSteps(steps, {
+    jobs: [
+      { name: 'steam-status', lastRunAt: new Date(nowMs - 60_000).toISOString() }, // 1 分钟前 → 未到期
+      { name: 'rating-backfill', lastRunAt: null }, // 从未跑过 → 到期
+    ],
+  });
+  assert.equal(r.due.length, 1);
+  assert.equal(r.due[0].name, 'rating-backfill', '从未跑过的子步骤视为到期');
+  assert.deepEqual(r.skipped, ['steam-status'], '刚跑过的不算到期');
+
+  // 过了间隔才到期
+  r = dueGroupSteps(steps, {
+    jobs: [{ name: 'steam-status', lastRunAt: new Date(nowMs - 1440 * 60_000 - 1000).toISOString() }],
+  });
+  assert.equal(r.due.length, 2, '过了间隔后到期（另一个从未跑过同样到期）');
+
+  // 非法 lastRunAt 视为没跑过（到期）
+  r = dueGroupSteps(steps, { jobs: [{ name: 'steam-status', lastRunAt: 'not-a-date' }] });
+  assert.equal(r.due.length, 2, '非法时间视为没跑过');
+});

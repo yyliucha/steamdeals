@@ -60,3 +60,29 @@ images / images-backfill / report。
 3. 「立即运行」组级/子步骤级可用；steam-claim 手动分支可触发；
 4. steam-meta 组 4 步不并发、共用限速；
 5. `npm test`（分段）+ `frontend:build` + `scan` 全绿；截图对照（合并前后）。
+
+## 6. 实现（2026-11-24，监工接力轮）
+
+- **组定义**：`src/scheduler.js` 顶部 `JOB_GROUPS`（12 组 name/label/steps，steps 顺序 = 组内优先级）；
+  `jobsFromEnv` 的 25 个任务字面量不变，末尾按 JOB_GROUPS 组序重排并给每个 job 打 `group` 字段；
+  `groupsFromJobs`/`jobGroupsFromEnv` 聚合回组结构（空组保留——无 `STEAM_API_KEY` 时 Steam 账号组 steps 为空但组仍在）。
+- **组内串行**：`planTick` 新增 `jobs` 参数——传了就启用组内串行（某组已有子步骤在跑或本 tick 已选中一个时，
+  该组其它到期子步骤不派发）；不传退化为旧行为（组约束不生效）。main() tick 传 `jobs`。
+  跨组行为不变：重任务全局单槽、轻任务 lightMax 并行上限照旧。
+- **sync_runs 兼容**：子步骤原 mode 不变（`steam-status`/`rating-backfill`/… 照旧写历史/告警/健康面板）；
+  组只是调度层，不引入新参数、间隔沿用各子步骤原环境变量。
+- **状态文件**：`writeStatusFile` 输出 `groups`（12 组 name/label/steps，行结构与 jobs 同口径、带 group 字段）；
+  旧 `jobs` 字段保留（AdminLogs 健康条等兼容方继续可用）。
+- **API**：`GET /api/admin/sync/status` 的 schedule 补 `steamClaimConfigured`（是否有
+  `STEAM_CLAIM_USERNAME` + `STEAM_CLAIM_STEAM_ID`，后台按钮据此置灰）；
+  `POST /api/admin/sync/groups/:name/run` 组级立即运行——读状态文件判到期（从未跑过视为到期；
+  跑过的按 `lastRunAt + intervalMin`），到期子步骤按组内顺序**链式串行**执行（每个结束才启动下一个，
+  HTTP 立即返回 202；用户手动停止后不再启动下一个）；无到期子步骤返回 200 `started:false`；
+  `POST /api/admin/steam-claim` 手动认领（复用 startSteamJob 槽位，未配置返回 400）。
+- **steam-claim 移出定时**：原定时任务对象删除；`steamClaimArgs(env)` 导出供 API 取参数
+  （`['steam-claim', username, steamId]`，未配置 null）。CLI 命令保留（cli-dispatch 测试锁定）。
+- **后台 UI**：AdminModules.vue「同步与回填」任务表改 12 组行（expand 展开子步骤）+ 组级「立即运行」+
+  子步骤级立即运行（沿用现有端点）+ Steam 账号组「认领未归属账号」按钮；AdminLogs.vue 健康条按组 chip。
+- **测试**：`test/scheduler.test.js` FJ 7 项（组定义与优先级、planTick 组内串行、跨组并行、
+  无 jobs 退化兼容、状态文件 groups、空组保留、steamClaimArgs）+ 旧断言随组序更新；
+  scheduler 48/48、sync-runs 9/9、cli-dispatch 12/12、api 38/38。
