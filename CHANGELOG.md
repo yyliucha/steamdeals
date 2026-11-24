@@ -9,7 +9,7 @@ FE 个人资料 Steam 账号同步按钮 + 按钮样式（⚙️ 调整 1，无�
 
 ### 测试
 
-- QA [docs/QA-FE.md](docs/QA-FE.md) 第 1 轮 ✅ 放行（通过 5 / 缺失 0 / 偏差 0 / 需人工确认 2 = 真实 Steam 成功链路、截图目视）。
+- QA docs/QA-FE.md 第 1 轮 ✅ 放行（通过 5 / 缺失 0 / 偏差 0 / 需人工确认 2 = 真实 Steam 成功链路、截图目视）。
 - `test/profile.test.js` 16/16（含 FE 编译级静态锁：轮询参数 60000、无 Key 文案、手机端网格，双向反向自检）；`test/steam-accounts.test.js` 18/18；主链分段 test:1~4 全绿；`npm run frontend:build` ✓；`npm run scan` 干净（829 文件）。
 
 ## [2.28.8] - 2026-11-23
