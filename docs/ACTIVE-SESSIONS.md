@@ -18,7 +18,6 @@
 |---|---|---|---|---|---|
 | FG + FH（开发完成，质检中） | gameprice：frontend/src/pages/{Home,AdminModules}.vue、src/store/admin-games-repository.js、test/{remove-18r-entry,admin-ux-security}.test.js、package.json、docs/{TODO,REQUIREMENTS-INDEX,PROJECT-OVERVIEW}.md；steamdeals-app：ui/home、ui/search、ui/AppViewModel.kt、res/values/strings.xml、test/HomeFilterParamsTest.kt | 无 | 2026-11-24 09:35 | 2026-11-24 | lead（站点已提交 7e0387d 推 main，App 待提交；QA 进行中） |
 | 监工批次 ER/EP/EY/FB/FF/EN + 批量构建 v2.28.10 起 | gameprice：src/cli*、src/routes/*、src/{server,serve,settings}.js、frontend/src/pages/*、test/*.test.js、docs/{TODO,REQUIREMENTS-INDEX,DONE,PROJECT-OVERVIEW,DELIVERY,CHANGELOG,B4-QUEUE}.md、package.json、package-lock.json；工人 worktree F:\dsh\wt\{ER,EN} | **打 tag 构建**（等 v2.28.9 CI 双绿后接） | 2026-11-24 10:05 | 2026-11-24 13:30 | lead（夜班监工：调度 ≤2 工人 + 构建） |
-| EO（首页工具栏断点修复，开发中） | gameprice：frontend/src/styles/main.css（必要时 frontend/src/pages/Home.vue）、docs/{TODO,REQUIREMENTS-INDEX,PROJECT-OVERVIEW}.md | 本地 pglite serve（只读 UI 验证，自跑 headless 截图，共用 Chrome 但不做报告） | 2026-11-24 10:25 | 2026-11-24 12:00 | lead（独立开发会话 EO） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 

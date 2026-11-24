@@ -33,7 +33,7 @@
 
 ## EN. CSP 安全加固（Report-Only → 正式）
 
-**状态：** 已实现待发版（2026-11-24；`src/server.js` 三档 CSP（正式/观察/关闭）+ per-request nonce 放行内联脚本，`src/settings.js` 开关，`test/csp.test.js` 11 条并注册 test:3；规格见 docs/CSP-HARDENING.md）
+**状态：** 已发布 v2.28.10（2026-11-24；`src/server.js` 三档 CSP（正式/观察/关闭）+ per-request nonce 放行内联脚本，`src/settings.js` 开关，`test/csp.test.js` 11 条并注册 test:3；QA ✅ 放行；规格见 [CSP-HARDENING.md](CSP-HARDENING.md)）
 **类型：** 🧹 技术债
 **优先级：** 中 —— 安全排查三件套中唯一未落地项（信任门、ip-api 开关已做）
 **依赖：** 无
@@ -98,7 +98,7 @@
 
 ## ER. B4/cli 拆分遗留缺陷修复（3 项）
 
-**状态：** 已实现待发版（2026-11-24；①listBackfillCandidates 传 q、②cmdPrune 裸库 ensure 表、③syncPrices 回归锁；新增 test/cli-ops.test.js 并注册 test:4）
+**状态：** 已发布 v2.28.10（2026-11-24；①listBackfillCandidates 传 q、②cmdPrune 裸库 ensure 表、③syncPrices 回归锁；新增 test/cli-ops.test.js 并注册 test:4；QA ✅ 放行）
 **类型：** 🐞 缺陷
 **优先级：** 中 —— 均为拆分引入/暴露的运行期错误，cli 路径才会踩到
 **依赖：** 无（cli 域 #18/#19/#20 已拆完；与 B4 剩余 admin 域文件面不重叠）
@@ -144,7 +144,7 @@
 ## FB. 待开发（⚙️ 调整）：后台顶栏——去重「返回网站」+ 版本徽标所有登录用户可见（含更新提示）
 
 **类型：** ⚙️ 调整（后台顶栏）
-**状态：** 已实现待发版（2026-11-24；顶栏删除「返回网站」按钮保留菜单项，版本徽标所有登录用户可见，/api/admin/version 改登录可读、force=1 仅管理员）
+**状态：** 已发布 v2.28.10（2026-11-24；顶栏删除「返回网站」按钮保留菜单项，版本徽标所有登录用户可见，/api/admin/version 改登录可读、force=1 仅管理员；QA ✅ 放行）
 **优先级：** P2
 **依赖：** 无
 **解锁：** 无
@@ -172,7 +172,7 @@
 ## FF. 待开发（⚙️ 调整）：游戏卡片英文名缺失保持占位（不影响布局）
 
 **类型：** ⚙️ 调整（前台卡片布局）
-**状态：** 已实现待发版（2026-11-24；英文名行始终渲染 + `.game-subtitle` 固定行高，移动端同 class，test/frontend-mobile.test.js 加锁）
+**状态：** 已发布 v2.28.10（2026-11-24；英文名行始终渲染 + `.game-subtitle` 固定行高，移动端同 class，test/frontend-mobile.test.js 加锁；QA ✅ 放行）
 **优先级：** P2
 **依赖：** 无
 **解锁：** 无
@@ -187,7 +187,7 @@
 ## FG. 待开发（⚙️ 调整）：移除 18R 查询入口（保留数据/同步能力）
 
 **类型：** ⚙️ 调整（合规：大陆不展示 18R 查询）
-**状态：** 已实现待发版（2026-11-24；站点 Home.vue/AdminModules.vue + App HomeScreen/SearchScreen 入口移除，测试 test/remove-18r-entry.test.js）
+**状态：** 已发布 v2.28.10（2026-11-24；站点 Home.vue/AdminModules.vue + App HomeScreen/SearchScreen 入口移除，测试 test/remove-18r-entry.test.js；QA ✅ 放行）
 **优先级：** P1 —— 合规
 **依赖：** 无（EF 已发布，本次为移除入口）
 **解锁：** 无
@@ -202,7 +202,7 @@
 ## FH. 待开发（⚙️ 调整）：成人内容统计（只读数字）
 
 **类型：** ⚙️ 调整（后台统计）
-**状态：** 已实现待发版（2026-11-24；/api/admin/games/stats 加 ratingBackfilled/ratingPending，后台「同步与回填」页只读统计卡）
+**状态：** 已发布 v2.28.10（2026-11-24；/api/admin/games/stats 加 ratingBackfilled/ratingPending，后台「同步与回填」页只读统计卡；QA ✅ 放行）
 **优先级：** P2
 **依赖：** FG（入口移除后统计替代）
 **解锁：** 无

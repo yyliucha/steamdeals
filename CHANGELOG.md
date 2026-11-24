@@ -1,3 +1,26 @@
+## [2.28.10] - 2026-11-24
+
+FG 移除 18R 查询入口 + FH 成人内容统计 + ER CLI 遗留缺陷 + FF 卡片英文名占位 + FB 后台顶栏版本徽标 + EN CSP 加固（⚙️ 调整 5 / 🐞 缺陷 1 / 🧹 技术债 1，无新功能面 → 小版本，2.28.9 → 2.28.10 连续递增）。站点 + App 双仓库（App 提交 `67b0e78`）。
+
+### 调整
+
+- **FG 移除 18R 查询入口（7e0387d、89d5eb4；App 67b0e78）**：Web 前台删除 PC「18R」按钮、移动端 chip、筛选抽屉 18R 分组、`adultFilter` 状态与 `toggleAdult`，请求不再构造 `adult=badge&rating=adult`；后台游戏管理删除「内容分级」筛选下拉与成人/成熟点击 chip（更多指标 12→10）。**能力保留**：`/api/games` 的 `adult`/`rating` 与 `/api/admin/games` 的 `rating` 参数、`adult_flag`/`mature_flag` 数据、`rating-backfill` 任务、`SITE_ADULT_DISPLAY`（默认 `hide`，`badge` 时仍出 18+ 角标）。App 删除首页/搜索 18R chip 与年龄确认弹窗，`HomeFilterParams` 固定 `adult=hide` 且不带 `rating`，DataStore `adultEnabled` 字段保留（升级兼容）。
+- **FH 成人内容统计（7e0387d、89d5eb4）**：后台「游戏管理 → 同步与回填」新增「内容分级统计」只读卡片——成人/成熟总数、分级已回填/未回填（口径 `required_age` 已采到/未采到，与 `listRatingBackfillCandidates` 候选一致）、最近回填时间（调度状态 `rating-backfill.lastRunAt`）；`adminGameStats` 加 `ratingBackfilled`/`ratingPending` 经 `/api/admin/games/stats` 透传，无成人内容列表/查询入口（全库计数，含未上架/禁用，与前台可见数可能不同）。
+- **FF 游戏卡片英文名占位（fcd0263）**：英文名行改为始终渲染 + `.game-subtitle{min-height:1.4em;line-height:1.4}`，无英文名（或与主名相同）时用空占位撑住，有/无英文名的卡片等高、价格与标签不再错位；移动端同 class 生效。
+- **FB 后台顶栏（bce21bd）**：删除顶栏「返回网站 ↗」按钮，保留用户菜单单一入口；版本徽标从仅管理员改为**所有登录用户可见**（移动端隐藏）；`GET /api/admin/version` 从 `requireAdmin()` 改登录用户可读（未登录仍 401），`force=1` 仅管理员生效、普通用户静默忽略（不触发外网检查），响应契约不变。
+- **EN CSP 安全加固（5c637a1 → bce21bd）**：`src/server.js` 输出三档 CSP（默认 `enforce` 正式 / `report-only` 观察 / `off` 关闭），SPA 严格档用 `'self'` + per-request nonce + 内联样式 hash（不放 `script-src 'unsafe-inline'`），旧 `web/` 回退页兼容档，封禁页/申诉页注入脚本带 nonce；新增 `POST /api/csp-report` 上报 → `csp.violation` 日志；`src/settings.js` 加 CSP 模式设置项（保存即热加载）。
+
+### 修复
+
+- **ER B4/cli 拆分遗留 3 项（92ac6a0）**：① `cli backfill` 把 store 传给 `countBackfillCandidates`/`listBackfillCandidates`（签名要 q）→ 改传 `s.query`；② `cli prune` 在未跑 ensure 的裸库报 `42P01` → purge 前幂等 ensure `email_codes`/`steam_account_logs`；③ #18 拆分遗留 `cmdBackfill` 价格回退分支调用 `syncPrices` 断引用 → import 已补并加回归锁；新增 `test/cli-ops.test.js`（3 条行为/回归锁，注册 test:4）。
+
+### 测试
+
+- QA：`docs/QA-FG-FH.md` 第 2 轮 + `docs/QA-BATCH-2026-11-24.md` → FG/FH/ER/FF/FB/EN **全部 ✅ 放行**（0 功能打回项；23 条用户视角功能清单）。
+- 相关测试：`cli-ops` 3/3、`frontend-mobile` 13/13、`admin-console-ia` 23/23、`mail-templates` 17/17、`settings` 15/15、`csp` 11/11、`api` 38/38、`version` 11/11、`remove-18r-entry` 6/6、`serve` 12/12、`http-guard` 7/7、`admin-ux-security` 6/6、`admin-games` 6/6；主链分段 test:3/test:4 相关段全绿；`npm run frontend:build` ✓；`npm run scan` 干净。
+- App：`gradlew :app:testDebugUnitTest --tests "cn.yyliucha.steamdeals.HomeFilterParamsTest"` → BUILD SUCCESSFUL（1m22s），测试报告 `tests=11 failures=0 errors=0`。
+- 人工目视项（部署后）：前台/App 无 18R 入口截图、后台统计卡截图、普通用户版本徽标截图、FF 两种卡片并排、CSP 正式档下登录/列表/后台/App WebView 功能正常。
+
 ## [2.28.9] - 2026-11-24
 
 FE 个人资料 Steam 账号同步按钮 + 按钮样式（⚙️ 调整 1，无新功能面 → 小版本，2.28.8 → 2.28.9 连续递增）。本批只含 Web 前端，不涉及 App 仓库。

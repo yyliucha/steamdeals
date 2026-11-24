@@ -154,19 +154,19 @@
 | **FC** | 🧹 技术债：调度器 compose 文件级拆分（app/scheduler 两文件独立发布；命令归属表） | [SCHEDULER-COMPOSE-SPLIT.md](SCHEDULER-COMPOSE-SPLIT.md) | 已发布 v2.28.8（2026-11-23 P1） | ✅ 本次已给 |
 | **FD** | ⚙️ 调整：部署稳定性——nginx upstream 跟随容器 IP（resolver 自动解析，发版不再 502） | [NGINX-UPSTREAM-FIX.md](NGINX-UPSTREAM-FIX.md) | 待开发（2026-11-23 P1） | ✅ 本轮已给 |
 | **FE** | ⚙️ 调整：个人资料 Steam 账号——同步游戏库/愿望单按钮（普通用户可用）+ 按钮样式统一 | [PROFILE-STEAM-ACTIONS.md](PROFILE-STEAM-ACTIONS.md) | 已发布 v2.28.9（2026-11-24，0bc2733；QA docs/QA-FE.md 第 1 轮 ✅） | ✅ 本轮已给 |
-| **FF** | ⚙️ 调整：游戏卡片英文名缺失保持占位（固定行高，不影响布局） | [CARD-SUBTITLE-PLACEHOLDER.md](CARD-SUBTITLE-PLACEHOLDER.md) | 已实现待发版（2026-11-24） | ✅ 本轮已给 |
-| **FG** | ⚙️ 调整：移除 18R 查询入口（Web/App/后台；保留 API 参数与同步能力，默认 hide） | [REMOVE-18R-ENTRY.md](REMOVE-18R-ENTRY.md) | 已实现待发版（2026-11-24） | ✅ 本轮已给 |
-| **FH** | ⚙️ 调整：成人内容统计（adult/mature 数量 + 回填覆盖，只读数字） | [ADULT-STATS.md](ADULT-STATS.md) | 已实现待发版（2026-11-24） | ✅ 本轮已给 |
+| **FF** | ⚙️ 调整：游戏卡片英文名缺失保持占位（固定行高，不影响布局） | [CARD-SUBTITLE-PLACEHOLDER.md](CARD-SUBTITLE-PLACEHOLDER.md) | 已发布 v2.28.10（2026-11-24） | ✅ 本轮已给 |
+| **FG** | ⚙️ 调整：移除 18R 查询入口（Web/App/后台；保留 API 参数与同步能力，默认 hide） | [REMOVE-18R-ENTRY.md](REMOVE-18R-ENTRY.md) | 已发布 v2.28.10（2026-11-24） | ✅ 本轮已给 |
+| **FH** | ⚙️ 调整：成人内容统计（adult/mature 数量 + 回填覆盖，只读数字） | [ADULT-STATS.md](ADULT-STATS.md) | 已发布 v2.28.10（2026-11-24） | ✅ 本轮已给 |
 | **EY** | ⚙️ 调整：我的愿望单合并 Steam 愿望单（两层展示、Steam 行只读无操作、同游戏合并一行） | [MY-WISHLIST-MERGED.md](MY-WISHLIST-MERGED.md) | 待开发（2026-11-23 P2） | ✅ 本轮已给 |
 | **EZ** | ⚙️ 调整：个人资料页精简（el-tabs 三 Tab：基本信息 / Steam 账号（绑定+游戏库合并）/ 偏好与统计；保存固定底部；手机端 Tab 横向滚动；全 el-button） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 已发布 v2.28.7（2026-11-23，8eeb1f4；QA-EZ-FA 第 1 轮 ✅） | ✅ demo 已给 |
 | **FA** | ⚙️ 调整：用户菜单新增「切换账户」（退出会话 → /login?switch=1 → 登录后回 Console；保留退出登录） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 已发布 v2.28.7（2026-11-23，8eeb1f4；QA-EZ-FA 第 1 轮 ✅） | ✅ demo 已给 |
-| **FB** | ⚙️ 调整：后台顶栏去重「返回网站」+ 版本徽标普通用户可见（显示当前版本，管理员保留检查） | [CONSOLE-HEADER-FIX.md](CONSOLE-HEADER-FIX.md) | 已实现待发版（2026-11-24） | ✅ 本轮已给 |
+| **FB** | ⚙️ 调整：后台顶栏去重「返回网站」+ 版本徽标普通用户可见（显示当前版本，管理员保留检查） | [CONSOLE-HEADER-FIX.md](CONSOLE-HEADER-FIX.md) | 已发布 v2.28.10（2026-11-24） | ✅ 本轮已给 |
 | **DX** | 🧹 技术债：列表/站点接口性能优化（count 合并 + 短 TTL 缓存 + /api/site 缓存 + 压测） | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DX | 已发布 v2.27.8（2026-11-20，实现 090af4c；QA docs/QA-DX.md 第 1 轮 ✅ 6/0/0/1） | ✅ 本轮已给 |
-| **EN** | CSP 安全加固（三档：正式/观察/关闭，per-request nonce；默认正式） | [CSP-HARDENING.md](CSP-HARDENING.md) | 已实现待发版（2026-11-24） | ✅ 本轮已给 |
+| **EN** | CSP 安全加固（三档：正式/观察/关闭，per-request nonce；默认正式） | [CSP-HARDENING.md](CSP-HARDENING.md) | 已发布 v2.28.10（2026-11-24） | ✅ 本轮已给 |
 | **EO** | 首页工具栏 1100–1300px 挤成一行 | [ROADMAP.md](ROADMAP.md)「体验与性能优化」#1 | 质检通过（2026-11-24，31138c1；QA docs/QA-EO.md 第 1 轮 ✅ 6/0/0/2） | ✅ |
 | **EP** | 后台其余列表手机端卡片化（游戏目录/访问记录已做） | [ROADMAP.md](ROADMAP.md)「未排期想法」 | 待开发 | ✅ 本轮已给 |
 | **EQ** | 提醒通道：多收件人分组（范围待确认后补规格） | [ROADMAP.md](ROADMAP.md)「未排期想法」 | 待决策 | ✅ 本轮已给 |
-| **ER** | B4/cli 拆分遗留缺陷修复（backfill q is not a function / prune 42P01 / #18 syncPrices 断引用） | 本条目 + [B4-QUEUE.md](B4-QUEUE.md) 备注 | 已实现待发版（2026-11-24） | ✅ 本轮已给 |
+| **ER** | B4/cli 拆分遗留缺陷修复（backfill q is not a function / prune 42P01 / #18 syncPrices 断引用） | 本条目 + [B4-QUEUE.md](B4-QUEUE.md) 备注 | 已发布 v2.28.10（2026-11-24） | ✅ 本轮已给 |
 | **ES** | 生产 pg_trgm 索引命中复核（EXPLAIN，部署侧执行） | [ROADMAP.md](ROADMAP.md)「体验与性能优化」段尾注 | 待排查 | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
