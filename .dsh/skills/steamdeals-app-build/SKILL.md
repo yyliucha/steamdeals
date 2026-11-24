@@ -1,6 +1,6 @@
 ---
 name: steamdeals-app-build
-description: SteamDeals App（F:\dsh\steamdeals-app，yyliucha/steamdeals-app）的发版技能：收到所有者「发 app-vX.Y.Z」指令后加载执行——版本号必须单调递增（versionCode = major*10000+minor*100+patch，覆盖安装不倒退）、构建 APK（gradlew assembleRelease，同 keystore 签名，密钥不入库）、生成 latest.json 作为 Release 资产（CJ 契约：versionCode 无法从 tag 推算，站点 app-release-sync 从资产读）、打 annotated tag 推 tag、建 GitHub Release（APK/sha256/latest.json 三资产）、验证站点 /api/app/latest 返回新版本、模拟器覆盖安装自测、按 §6 汇报；不擅自发版、不碰服务器；与 steamdeals-build 联动（双仓库条目站点构建时同步发 App）。
+description: SteamDeals App（F:\dsh\steamdeals-app，yyliucha/steamdeals-app）的发版技能：收到所有者「发 app-vX.Y.Z」指令后加载执行——版本号必须单调递增（versionCode = major*10000+minor*100+patch，覆盖安装不倒退）、构建 APK（gradlew assembleRelease，同 keystore 签名，密钥不入库）、生成 latest.json 作为 Release 资产（CJ 契约：versionCode 无法从 tag 推算，站点 app-release-sync 从资产读）、打 annotated tag 推 tag、建 GitHub Release（APK/sha256/latest.json 三资产）、**双上传到腾讯云 COS（FK 批：站点换源后从 COS 同步，GitHub 保留为备用）**、验证站点 /api/app/latest 返回新版本、模拟器覆盖安装自测、按 §6 汇报；不擅自发版、不碰服务器；与 steamdeals-build 联动（双仓库条目站点构建时同步发 App）。
 ---
 
 # App 发版（SteamDeals / steamdeals-app）
@@ -48,30 +48,56 @@ description: SteamDeals App（F:\dsh\steamdeals-app，yyliucha/steamdeals-app）
 5. **打 tag 推 tag**：`git tag -a app-vX.Y.Z -m "SteamDeals App vX.Y.Z：<摘要>"` → 推送。
 6. **建 Release**：`gh release create app-vX.Y.Z <apk> <sha256 文件> <latest.json> --title "SteamDeals App X.Y.Z" --notes "<摘要>"`；
    三资产缺一不可（站点 `app-release-sync` 从 Release 资产读 versionCode 与下载链接）。
-7. **站点同步验证（DR 批：发版后即刻可更新，docs/APP-INSTANT-UPDATE.md §3.3）**：Release 建好后
+7. **COS 双上传（FK 批，docs/APP-SYNC-COS.md）**：站点服务器直连 GitHub 资产会被中断（curl 56），生产同步源
+   已可切到腾讯云 COS——GitHub Release 照建（备用通道），**同一套三资产必须同步上传 COS**，否则切源后站点
+   拉不到新版。凭证只配在所有者本机（coscli 配置文件），**不入库、不写明文到命令/日志**：
+
+   ```powershell
+   # 一次性配置（所有者本机执行；SecretId/SecretKey 由所有者提供，不提交到仓库）
+   coscli config add -b <bucket> -r <region> -i <SecretId> -k <SecretKey>
+
+   # 桶目录必须与站点设置 network.appSyncCosBase 完全对应：
+   #   https://<bucket>.cos.<region>.myqcloud.com/steamdeals-app   →  cos://<bucket>/steamdeals-app
+   $COS = 'cos://<bucket>/steamdeals-app'
+   # 顺序不可反：先传 APK + sha256，最后传 latest.json——latest.json 一上线站点就会去拉同名 APK
+   coscli cp .\steamdeals-X.Y.Z.apk        "$COS/steamdeals-X.Y.Z.apk"
+   coscli cp .\steamdeals-X.Y.Z.apk.sha256 "$COS/steamdeals-X.Y.Z.apk.sha256"
+   coscli cp .\latest.json                 "$COS/latest.json"
+   ```
+
+   - 前置：COS 桶/目录为**公有读私有写**（站点 `source=cos` 匿名 GET latest.json/APK；不要发临时签名 URL）；
+   - 上传后本机只读核对：`curl.exe -s "https://<bucket>.cos.<region>.myqcloud.com/steamdeals-app/latest.json"`
+     —— 返回的 `version`/`versionCode` 必须与本次 APK 一致；
+   - 没配 coscli / 拿不到密钥时**不得跳过**：在汇报里写「COS 上传未做（原因）」，并提示所有者补传或改用
+     `source=github` + 代理（站点 EK 批 `network.appSyncProxy`）。
+8. **站点同步验证（DR 批：发版后即刻可更新，docs/APP-INSTANT-UPDATE.md §3.3）**：Release 建好后
    **提示所有者**「打开后台 → 游戏管理 → 同步与回填 → App 版本卡点『立即同步』」——点完数十秒内
    手机打开 App（或「我的 → 检查更新」）即可看到更新提示；不点则 15 分钟自动同步（站点
    `app.syncIntervalMin` 默认 15 分钟）+ 手机 1h 节流兜底。也可站点仓库 `node src/cli.js app-sync --force`；
    然后在汇报里给出本机只读核对命令：`curl -s https://sd.yyliucha.cn/api/app/latest`
    （或本地起站点 `GET /api/app/latest`），确认返回新 versionCode。
-8. **自测**：模拟器（steamdeals35）安装新 APK 覆盖安装成功、版本号显示正确。
+9. **自测**：模拟器（steamdeals35）安装新 APK 覆盖安装成功、版本号显示正确。
 
 ## 4. 验证与验收
 
 - tag 已推送且指向本次构建提交；Release 含 **APK / sha256 / latest.json 三资产**；
+- **COS 目录同名三资产齐全且 latest.json 的 version 指向本次 APK**（`curl` 只读核对；桶为公有读）；
 - latest.json 的 versionCode/version/minVersionCode 与 APK 一致；
 - 站点 `/api/app/latest`（app-sync 后）返回新 versionCode；`/app/dl/<file>` 可下载；
 - 模拟器覆盖安装 + 启动正常；旧版本下次检查会看到更新提示（minVersionCode 逻辑由 App 内置）。
 
 ## 5. 纪律
 
-- 只收指令才发；不碰服务器/生产数据（部署由部署人员执行）；身份 yyliucha；Release 资产齐全才算发完。
+- 只收指令才发；不碰服务器/生产数据（部署由部署人员执行）；身份 yyliucha；Release 资产齐全才算发完；
+- COS 上传凭证只存在所有者本机 coscli 配置里——命令模板只写 `<bucket>/<region>` 占位，**禁止把 SecretId/SecretKey
+  写进仓库、README、报告或提交信息**。
 
 ## 6. 汇报格式
 
 ```
 📦 App 版本：app-vX.Y.Z（versionCode NNNNN；站点联动版本 vX.Y.Z 如有）
 🔖 tag：app-vX.Y.Z 已推送（<短哈希>）；Release 已建，三资产齐全
+☁️ COS：steamdeals-app/ 下 APK + sha256 + latest.json 已上传（version 核对通过）／未上传（原因）
 ✅ 验证：模拟器覆盖安装 OK；站点 /api/app/latest = 新 versionCode（后台「立即同步」后）
 🔎 核对：curl -s https://sd.yyliucha.cn/api/app/latest（本机只读，发版后即刻可更新）
 🖥 服务器：站点版本待部署（如本批依赖站点接口）

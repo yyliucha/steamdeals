@@ -13,6 +13,10 @@
 // network.appSyncProxy（env APP_RELEASE_SYNC_PROXY）——有代理走 undici.ProxyAgent（复用 http.js
 // proxyAgentOptions，零新依赖）且该次下载超时 30s；留空保持现状（直连、10s）。仅作用于资产下载，
 // releases 列表/latest 接口请求保持现状。
+// FK 批（docs/APP-SYNC-COS.md，所有者 2026-11-24 选方案 B）：同步换源——source=cos 时从腾讯云 COS
+// 同步同一套资产（GET ${cosBase}/latest.json → steamdeals-<version>.apk + .sha256），source=github
+// 保持 CT/EK/DK 原逻辑；cos 失败且 fallbackGithub 为真时回退 GitHub 一次（日志 app.release_fallback），
+// 失败原因区分 cos_download / cos_404 / apk_download。COS 下载超时 60s（国内直连、APK 大，比 GitHub 直连 10s 宽）。
 import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync, readdirSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -33,13 +37,41 @@ function pickStableRelease(payload) {
 }
 
 /**
- * 同步一次。返回 { synced: true, version, apk, latest } | { synced: false, reason, version? }。
+ * FK 批（docs/APP-SYNC-COS.md）：同步入口——按 source 选源（github 默认 / cos）。
+ * 返回 { synced: true, version, apk, latest, source } | { synced: false, reason, version?, source }。
+ *   - source=github：CT/EK/DK 原逻辑不变（helper 见下方 syncFromGithub）；
+ *   - source=cos：COS 拉取失败（除 same_version 外）且 fallbackGithub 为真 → 回退 GitHub 一次，
+ *     结果额外带 fallbackFrom='cos' / fallbackReason，日志 app.release_fallback；
+ *   - source 非法值按 github 处理（前端 enum 已拦，仅 env 陈旧兜底）。
+ * source / cosBase / fallbackGithub 默认读 process.env（设置热加载 hydrate 写回，调度子进程继承）。
+ */
+export async function syncAppRelease(options = {}) {
+  const {
+    source = process.env.APP_RELEASE_SYNC_SOURCE || 'github',
+    cosBase = process.env.APP_RELEASE_SYNC_COS_BASE ?? '',
+    fallbackGithub = envBool(process.env.APP_RELEASE_SYNC_FALLBACK, true),
+    logger = null,
+  } = options;
+  const src = String(source).trim().toLowerCase() || 'github';
+  if (src !== 'cos') return { ...(await syncFromGithub(options)), source: 'github' };
+  const cos = await syncFromCos({ ...options, cosBase, logger });
+  if (cos.synced || cos.reason === 'same_version') return cos;
+  if (!fallbackGithub) return cos;
+  logger?.info?.('app.release_fallback', {
+    from: 'cos', to: 'github', reason: cos.reason, version: cos.version ?? null,
+  });
+  const gh = await syncFromGithub(options);
+  return { source: 'github', ...gh, fallbackFrom: 'cos', fallbackReason: cos.reason };
+}
+
+/**
+ * GitHub Release 源（原 syncAppRelease 主体，CT/EK/DK 语义不变）。
  * fetchImpl 可注入（测试）；token 默认读 GITHUB_TOKEN（可选，公开仓库匿名可用）。
  * 目录默认 data/app（相对 process.cwd()）。
  * proxy（EK 批）默认读 env APP_RELEASE_SYNC_PROXY（设置热加载写回 env，调度子进程继承）：
  * 非空且为合法 http/https 时，资产下载走 ProxyAgent、超时 30s；空/非法 = 直连（现状，10s）。
  */
-export async function syncAppRelease({
+async function syncFromGithub({
   repo = 'yyliucha/steamdeals-app',
   keep = 3,
   dir = 'data/app',
@@ -55,6 +87,7 @@ export async function syncAppRelease({
   mkdirSync(root, { recursive: true });
   const latestFile = join(root, 'latest.json');
   const log = (event, fields) => logger?.info?.(`app.${event}`, fields);
+  log('release_source', { source: 'github', repo });
   // CT 批：token 可选——配了才带认证头（留私有化口子），没配匿名请求
   const headers = { accept: 'application/vnd.github+json', ...(token ? { authorization: `token ${token}` } : {}) };
   const apiFetch = async (url) => {
@@ -200,6 +233,126 @@ export async function syncAppRelease({
 
   log('release_synced', { version, apk: apkAsset?.name ?? null });
   return { synced: true, version, apk: apkAsset?.name ?? null };
+}
+
+// ---- FK 批（docs/APP-SYNC-COS.md）：腾讯云 COS 源 ----
+// COS 目录结构（与 GitHub Release 三资产同名，站点 /app 落盘格式完全一致）：
+//   ${base}/latest.json
+//   ${base}/steamdeals-<version>.apk
+//   ${base}/steamdeals-<version>.apk.sha256
+const APP_VERSION_RE = /^\d+\.\d+\.\d+$/;
+
+/** 宽松布尔：'0'/'false'/'off'/'no' 为假，其余非空为真；空值用默认值（hydrate 写 '1'/'0'）。 */
+function envBool(value, fallback) {
+  const s = String(value ?? '').trim().toLowerCase();
+  if (!s) return fallback;
+  return !['0', 'false', 'off', 'no'].includes(s);
+}
+
+/** COS base 归一化：去两端空白与末尾斜杠（`${base}/latest.json` 拼接不出现双斜杠）。 */
+function normalizeCosBase(value) {
+  return String(value ?? '').trim().replace(/\/+$/, '');
+}
+
+/**
+ * COS 源同步一次。语义与 GitHub 源对齐，差异点：
+ *   - version 直接来自 COS 的 latest.json（不是 tag），必须严格 x.y.z + versionCode 整数才落盘
+ *     （version 会拼进文件名，防 `../` 路径注入）；
+ *   - APK 与 sha256 先下载并校验，全部成功后才原子写 latest.json + APK——不留「latest 指向缺失 APK」中间态；
+ *   - 失败原因：latest.json 404 → cos_404；latest 其它失败 → cos_download；APK/sha 失败 → apk_download；
+ *   - 下载超时 60s（cosTimeoutMs），不走 GitHub 专用代理（COS 国内直连）。
+ * 返回 { synced, version?, apk?, reason?, source: 'cos' }。
+ */
+async function syncFromCos({
+  dir = 'data/app',
+  keep = 3,
+  force = false,
+  logger = null,
+  fetchImpl = null,
+  cosBase = process.env.APP_RELEASE_SYNC_COS_BASE ?? '',
+  cosTimeoutMs = 60000,
+} = {}) {
+  const root = resolve(process.cwd(), dir);
+  mkdirSync(root, { recursive: true });
+  const latestFile = join(root, 'latest.json');
+  const log = (event, fields) => logger?.info?.(`app.${event}`, fields);
+  const base = normalizeCosBase(cosBase);
+  // 日志只留 origin+path：COS 预签名地址的查询串带签名，不能进日志。
+  log('release_source', { source: 'cos', base: base.split('?')[0].split('#')[0].slice(0, 200) });
+  if (!base) {
+    log('release_failed', { reason: 'cos_no_base', source: 'cos' });
+    return { synced: false, reason: 'cos_no_base', source: 'cos' };
+  }
+  const doFetch = fetchImpl ?? ((u, opts) => fetch(u, opts));
+  const get = async (url) => {
+    const res = await doFetch(url, { signal: AbortSignal.timeout(cosTimeoutMs) });
+    if (!res.ok) {
+      const err = new Error(`http_${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return Buffer.from(await res.arrayBuffer());
+  };
+
+  // 1) latest.json —— 404 与其它失败分开报（路径填错/还没上传 vs 网络/5xx 处理方式不同）
+  let latestBuf;
+  try {
+    latestBuf = await get(`${base}/latest.json`);
+  } catch (err) {
+    const reason = Number(err?.status) === 404 ? 'cos_404' : 'cos_download';
+    log('release_failed', { reason, source: 'cos', message: String(err?.message ?? err).slice(0, 120) });
+    return { synced: false, reason, source: 'cos' };
+  }
+
+  // 2) 解析 + 严格校验（与 GitHub 源同口径：version 必须匹配、versionCode 必须整数）
+  let latest = null;
+  try { latest = JSON.parse(latestBuf.toString('utf8')); } catch { latest = null; }
+  const version = String(latest?.version ?? '');
+  if (!APP_VERSION_RE.test(version) || !Number.isInteger(Number(latest?.versionCode))) {
+    log('release_failed', { reason: 'bad_latest', source: 'cos', version: version || null });
+    return { synced: false, reason: 'bad_latest', version: version || null, source: 'cos' };
+  }
+
+  // 3) 同版本且 APK 已落盘 → 跳过（DK D 语义：APK 缺失不跳过、重新下载补齐）
+  let localVersion = null;
+  try { localVersion = JSON.parse(readFileSync(latestFile, 'utf8'))?.version ?? null; } catch { /* 无本地文件 */ }
+  const apkName = `steamdeals-${version}.apk`;
+  const apkFile = join(root, apkName);
+  if (!force && localVersion === version && existsSync(apkFile)) {
+    log('release_skipped', { version, source: 'cos' });
+    return { synced: false, reason: 'same_version', version, source: 'cos' };
+  }
+
+  // 4) 先下 APK + sha256 校验，全部成功后再落盘
+  let apkBuf;
+  let expect = null;
+  try {
+    apkBuf = await get(`${base}/${apkName}`);
+    try {
+      expect = (await get(`${base}/${apkName}.sha256`)).toString('utf8').trim().split(/\s+/)[0].toLowerCase();
+    } catch (err) {
+      // sha256 缺失（404）不阻断同步（与 GitHub 源一致：没 sha 就跳过校验），其它失败照常报 apk_download。
+      if (Number(err?.status) !== 404) throw err;
+      log('release_sha_missing', { version, name: `${apkName}.sha256` });
+    }
+  } catch (err) {
+    log('release_failed', { reason: 'apk_download', source: 'cos', version, message: String(err?.message ?? err).slice(0, 120) });
+    return { synced: false, reason: 'apk_download', version, source: 'cos' };
+  }
+  const actual = sha256Of(apkBuf);
+  if (expect && expect !== actual) {
+    log('release_failed', { reason: 'sha_mismatch', source: 'cos', version, expect, actual });
+    return { synced: false, reason: 'sha_mismatch', version, source: 'cos' };
+  }
+
+  // 5) 原子落盘：两个 .tmp 都写完再 rename，latest.json 最后 rename（版本公告晚于 APK 就绪）
+  writeFileSync(`${latestFile}.tmp`, latestBuf);
+  writeFileSync(`${apkFile}.tmp`, apkBuf);
+  renameSync(`${apkFile}.tmp`, apkFile);
+  renameSync(`${latestFile}.tmp`, latestFile);
+  pruneApks(root, keep, version);
+  log('release_synced', { version, apk: apkName, source: 'cos' });
+  return { synced: true, version, apk: apkName, source: 'cos' };
 }
 
 /** 只保留最近 KEEP 个 steamdeals-*.apk（按版本号排序，旧的全删）。 */

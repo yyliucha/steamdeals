@@ -195,3 +195,32 @@ test('EK 接线：专用代理设置项 + hydrate 写回 env + 下载默认读 e
   assert.match(appRelease, /new ProxyAgent\(proxyAgentOptions\(proxyUrl\)\)/, '下载走 undici ProxyAgent（复用 http.js proxyAgentOptions，零新依赖）');
   assert.match(appRelease, /proxyAgent \? 30000 : timeoutMs \* 2/, '走代理 30s / 直连保持 10s');
 });
+
+// FK 批（docs/APP-SYNC-COS.md）：App 资产同步换源接线——三项设置（enum/string/bool，网络组平铺自动渲染）
+// + app-release 按 source 分流（GitHub 原逻辑保留）+ COS 三件套 URL 形态/60s 超时/回退日志 + App 构建
+// 技能的 COS 双上传命令模板。反向自检：把 fallbackGithub 默认值改成 false → 设置/回退接线断言红。
+test('FK 接线：换源三项设置 + COS 分流/60s 超时/回退日志 + 构建技能双上传', () => {
+  const root = join(process.cwd());
+  const appRelease = readFileSync(join(root, 'src', 'app-release.js'), 'utf8');
+  const settingsSrc = readFileSync(join(root, 'src', 'settings.js'), 'utf8');
+  const skill = readFileSync(join(root, '.dsh', 'skills', 'steamdeals-app-build', 'SKILL.md'), 'utf8');
+  assert.match(settingsSrc, /def\('network\.appSyncSource', 'APP_RELEASE_SYNC_SOURCE', 'network', 'App 同步源', 'enum', 'github'/, 'FK：来源设置项（enum、默认 github、网络组）');
+  assert.match(settingsSrc, /def\('network\.appSyncCosBase', 'APP_RELEASE_SYNC_COS_BASE', 'network', 'App 同步 COS 目录', 'string'/, 'FK：COS 目录设置项（string）');
+  assert.match(settingsSrc, /def\('network\.appSyncFallbackGithub', 'APP_RELEASE_SYNC_FALLBACK', 'network', 'COS 源失败回退 GitHub', 'bool', true/, 'FK：回退开关（bool、默认开）');
+  assert.match(appRelease, /source = process\.env\.APP_RELEASE_SYNC_SOURCE \|\| 'github'/, 'FK：source 默认读 env（hydrate 写回 → 调度子进程继承）');
+  assert.match(appRelease, /cosBase = process\.env\.APP_RELEASE_SYNC_COS_BASE/, 'FK：COS 目录默认读 env');
+  assert.match(appRelease, /fallbackGithub = envBool\(process\.env\.APP_RELEASE_SYNC_FALLBACK, true\)/, 'FK：回退默认读 env 且默认开');
+  assert.match(appRelease, /async function syncFromGithub\(/, 'FK：GitHub 源逻辑保留为独立 helper（不删旧通道）');
+  assert.match(appRelease, /async function syncFromCos\(/, 'FK：COS 源独立 helper');
+  assert.match(appRelease, /get\(`\$\{base\}\/latest\.json`\)/, 'FK：COS latest.json URL 形态');
+  assert.match(appRelease, /steamdeals-\$\{version\}\.apk/, 'FK：COS APK 命名与 GitHub 同格式');
+  assert.match(appRelease, /cosTimeoutMs = 60000/, 'FK：COS 下载 60s（比 GitHub 直连 10s 宽）');
+  assert.match(appRelease, /'app\.release_fallback'/, 'FK：回退日志事件 app.release_fallback');
+  assert.match(appRelease, /cos_download/, 'FK：失败原因 cos_download');
+  assert.match(appRelease, /cos_404/, 'FK：失败原因 cos_404');
+  assert.match(appRelease, /apk_download/, 'FK：失败原因 apk_download');
+  assert.match(skill, /coscli cp/, 'FK：App 构建技能含 COS 上传命令模板');
+  assert.match(skill, /cos:\/\/<bucket>\/steamdeals-app/, 'FK：桶目录与 network.appSyncCosBase 对应');
+  assert.match(skill, /先传 APK \+ sha256，最后传 latest\.json/, 'FK：上传顺序（latest.json 最后）写进技能');
+  assert.ok(!/SECRET_KEY|SecretKey=|SecretId=/.test(skill.replace(/<SecretId>|<SecretKey>/g, '')), 'FK：技能里不写真实密钥');
+});

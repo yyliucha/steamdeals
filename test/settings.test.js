@@ -20,8 +20,8 @@ async function fresh() {
   return { store, q };
 }
 
-test('设置定义完整：97 项、8 个密钥、关键分组都在', () => {
-  assert.equal(settings.SETTINGS.length, 97, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项 + DR app.syncIntervalMin 1 项 + EI 同步区域 3 项 + EK appSyncProxy 1 项 + EN CSP 模式 1 项');
+test('设置定义完整：100 项、8 个密钥、关键分组都在', () => {
+  assert.equal(settings.SETTINGS.length, 100, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项 + DR app.syncIntervalMin 1 项 + EI 同步区域 3 项 + EK appSyncProxy 1 项 + EN CSP 模式 1 项 + FK App 同步换源 3 项');
   assert.equal(settings.SETTINGS.filter((d) => d.secret).length, 8);
   const appSync = settings.SETTINGS.find((d) => d.key === 'app.syncIntervalMin');
   assert.ok(appSync, 'DR 批：app.syncIntervalMin 设置项存在');
@@ -43,6 +43,9 @@ test('设置定义完整：97 项、8 个密钥、关键分组都在', () => {
     'alerts.ingestAlertPct',
     'network.steamProxy',
     'network.appSyncProxy',
+    'network.appSyncSource',
+    'network.appSyncCosBase',
+    'network.appSyncFallbackGithub',
     'system.circuitThreshold',
     'system.logLevel',
     'site.adultDisplay',
@@ -75,6 +78,27 @@ test('设置定义完整：97 项、8 个密钥、关键分组都在', () => {
   assert.equal(appSyncProxy.group, 'network', 'EK：网络组由 def 自动渲染');
   assert.equal(appSyncProxy.default, '', 'EK：默认留空 = 直连');
   assert.equal(appSyncProxy.env, 'APP_RELEASE_SYNC_PROXY', 'env 兜底 APP_RELEASE_SYNC_PROXY');
+  // FK 批（docs/APP-SYNC-COS.md）：App 资产同步换源——来源 enum + COS 目录 + 回退开关，
+  // 都在 network 平铺组内（schema 驱动自动渲染，无需前端改动）。
+  const appSyncSource = settings.SETTINGS.find((d) => d.key === 'network.appSyncSource');
+  assert.ok(appSyncSource, 'FK：network.appSyncSource 设置项存在');
+  assert.equal(appSyncSource.type, 'enum', 'FK：来源是 enum');
+  assert.deepEqual(appSyncSource.options, ['github', 'cos'], 'FK：只允许 github/cos 两源');
+  assert.equal(appSyncSource.default, 'github', 'FK：默认仍走 GitHub（换源由所有者显式开启）');
+  assert.equal(appSyncSource.env, 'APP_RELEASE_SYNC_SOURCE', 'FK：env 兜底 APP_RELEASE_SYNC_SOURCE');
+  assert.equal(appSyncSource.group, 'network', 'FK：网络与代理组（平铺）自动渲染');
+  const cosBase = settings.SETTINGS.find((d) => d.key === 'network.appSyncCosBase');
+  assert.ok(cosBase, 'FK：network.appSyncCosBase 设置项存在');
+  assert.equal(cosBase.type, 'string', 'FK：COS 目录是普通字符串（非密钥，域名不含凭据）');
+  assert.equal(cosBase.default, '', 'FK：默认留空（切 cos 后必须填）');
+  assert.equal(cosBase.env, 'APP_RELEASE_SYNC_COS_BASE');
+  assert.equal(cosBase.group, 'network');
+  const fallbackGithub = settings.SETTINGS.find((d) => d.key === 'network.appSyncFallbackGithub');
+  assert.ok(fallbackGithub, 'FK：network.appSyncFallbackGithub 设置项存在');
+  assert.equal(fallbackGithub.type, 'bool', 'FK：回退开关是布尔');
+  assert.equal(fallbackGithub.default, true, 'FK：默认开启自动回退（规格 §2）');
+  assert.equal(fallbackGithub.env, 'APP_RELEASE_SYNC_FALLBACK');
+  assert.equal(fallbackGithub.group, 'network');
   const jobFailure = settings.SETTINGS.find((d) => d.key === 'alerts.jobFailureEmail');
   assert.equal(jobFailure.type, 'bool', '任务失败邮件告警是布尔开关');
   assert.equal(jobFailure.default, false, 'CO-1/A5：默认关闭，不新增 SMTP 依赖');
@@ -113,6 +137,19 @@ test('EK 批：App 同步专用代理校验（仅 http/https，合法值归一�
   assert.equal(settings.validateSetting(d, 'not a url').ok, false, '非法地址拒绝');
   assert.deepEqual(settings.validateSetting(d, 'steam-proxy:8888'), { ok: true, value: 'http://steam-proxy:8888' }, '无协议自动补 http://（parseProxy 既有语义）');
   assert.deepEqual(settings.validateSetting(d, ''), { ok: true, value: '' }, '留空 = 直连');
+});
+
+test('FK 批：COS 目录校验（仅 http/https、去末尾斜杠、拒绝查询串）', () => {
+  const d = settings.SETTING_MAP.get('network.appSyncCosBase');
+  assert.deepEqual(
+    settings.validateSetting(d, 'https://bucket.cos.ap-guangzhou.myqcloud.com/steamdeals-app/'),
+    { ok: true, value: 'https://bucket.cos.ap-guangzhou.myqcloud.com/steamdeals-app' },
+    '合法 https 归一化（去末尾斜杠，拼接不出现 //latest.json）',
+  );
+  assert.deepEqual(settings.validateSetting(d, ''), { ok: true, value: '' }, '留空允许（运行期报 cos_no_base）');
+  assert.equal(settings.validateSetting(d, 'bucket.cos.ap-guangzhou.myqcloud.com/steamdeals-app').ok, false, '缺协议拒绝（不自动补 http——COS 一律 https）');
+  assert.equal(settings.validateSetting(d, 'ftp://bucket/steamdeals-app').ok, false, '仅 http/https');
+  assert.equal(settings.validateSetting(d, 'https://bucket/steamdeals-app?sign=abc').ok, false, '带查询串拒绝（签名不进设置/日志）');
 });
 
 test('默认值 + 密钥加密：库里不存明文，公开接口只给 hasValue', async () => {
@@ -418,6 +455,9 @@ test('CQ 前端接线（静态）：只看非默认/折叠/恢复本组默认/�
   assert.match(admin, /settings-card-head/, '平台卡头');
   assert.match(admin, /settings-fold/, '折叠行');
   assert.match(admin, /foldAutoOpen/, '搜索命中折叠项自动展开');
+  assert.match(admin, /foldAutoOpenAll/, '搜索命中无高级字段的折叠组也自动展开（FL 修复）');
+  assert.match(admin, /foldTitle \|\| entry\.sec\.title/, '折叠行标题回退到分组标题（FL 修复）');
+  assert.match(admin, /else if\(prim\.length\)\{entries\.push/, '无高级字段的分组也生成折叠按钮与折叠体（FL 修复）');
   assert.match(admin, /fieldHit/, '搜索命中高亮');
   assert.match(admin, /api\/admin\/settings\/restore/, '恢复默认接口接线（二次确认在 restoreField/restoreSection）');
   assert.match(admin, /ElMessageBox\.confirm/, '恢复默认二次确认');

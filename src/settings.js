@@ -117,7 +117,7 @@ export const SETTINGS_SECTIONS = [
   { group: 'sources', id: 'sonkwo', title: '杉果', icon: '🛒', foldTitle: '高级' },
   { group: 'sources', id: 'itad', title: 'ITAD', icon: '🔗', foldTitle: '高级' },
   { group: 'sources', id: 'gog-humble', title: 'GOG / Humble', icon: '🕹️', hint: '两个平台', compact: 3, foldTitle: '高级' },
-  { group: 'sources', id: 'discovery', title: '发现与热度', icon: '📈', hint: 'steam-discovery', foldTitle: '高级' },
+  { group: 'sources', id: 'discovery', title: '发现与热度', icon: '📈', hint: 'steam-discovery', foldTitle: '高级设置' },
   // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：跨组 keys（site.baseRegion/baseCurrency 属 site 组，
   // 但展示归「同步区域」卡）——与 system.timezone 进「站点与内容」卡同款机制。
   { group: 'sources', id: 'sync-region', title: '同步区域', icon: '🌍', hint: '内容统一美国 · 价格本位币', keys: ['sync.contentRegion', 'site.baseRegion', 'site.baseCurrency'] },
@@ -397,6 +397,19 @@ export const SETTINGS = [
   def('network.appSyncProxy', 'APP_RELEASE_SYNC_PROXY', 'network', 'App 同步专用代理', 'secret', '', {
     help: '只作用于 GitHub Release 资产下载（latest.json/APK/sha256）；留空直连。仅支持 http/https。',
   }),
+  // FK 批（docs/APP-SYNC-COS.md，所有者 2026-11-24 选方案 B）：服务器直连 GitHub Release 资产会被中断
+  // （curl 56），改从腾讯云 COS 同步同一套资产；GitHub Release 保留为备用通道。三项都在「网络与代理」
+  // 平铺组内（PLAIN_GROUPS，schema 驱动自动渲染，无需前端改动）。
+  def('network.appSyncSource', 'APP_RELEASE_SYNC_SOURCE', 'network', 'App 同步源', 'enum', 'github', {
+    options: ['github', 'cos'],
+    help: 'github=GitHub Release（默认）；cos=腾讯云 COS（国内服务器可直连，建议国内部署选它）。发版后 App 更新检查读的就是这里的产物。',
+  }),
+  def('network.appSyncCosBase', 'APP_RELEASE_SYNC_COS_BASE', 'network', 'App 同步 COS 目录', 'string', '', {
+    help: 'COS 桶访问域名 + 目录，如 https://<bucket>.cos.<region>.myqcloud.com/steamdeals-app；末尾斜杠自动去掉。同步源选 cos 时必填。',
+  }),
+  def('network.appSyncFallbackGithub', 'APP_RELEASE_SYNC_FALLBACK', 'network', 'COS 源失败回退 GitHub', 'bool', true, {
+    help: '同步源选 cos 且拉取失败时，自动改走 GitHub Release 一次（日志 app.release_fallback）。国内直连 GitHub 资产不稳定，仅作兜底。',
+  }),
 
   // ---- 高级 ----
   def('system.circuitThreshold', 'CIRCUIT_THRESHOLD', 'advanced', '熔断阈值（连续失败次数）', 'int', 3, { min: 1, max: 100 }),
@@ -589,6 +602,18 @@ export function validateSetting(d, input) {
     const normalized = parseProxy(value);
     if (!normalized) return { ok: false, error: `${d.label} 需要 http/https 代理地址（不支持 socks5）` };
     value = normalized;
+  }
+  // FK 批（docs/APP-SYNC-COS.md）：COS 目录必须带协议（不自动补 http——COS 域名一律 https），
+  // 去掉末尾斜杠便于 `${base}/latest.json` 拼接；带查询串/锚点会拼进资产 URL，直接拒绝。
+  if (d.key === 'network.appSyncCosBase' && value) {
+    if (!/^https?:\/\//i.test(value)) return { ok: false, error: `${d.label} 需要以 http:// 或 https:// 开头的地址` };
+    try {
+      const u = new URL(value);
+      if (u.search || u.hash) return { ok: false, error: `${d.label} 不能带查询串或锚点` };
+    } catch {
+      return { ok: false, error: `${d.label} 不是合法的 URL` };
+    }
+    value = value.replace(/\/+$/, '');
   }
   if (d.key === 'sources.itad.apiKey' && value && value.length < 8) {
     return { ok: false, error: 'ITAD API Key 看起来过短' };

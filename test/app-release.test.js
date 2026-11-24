@@ -5,7 +5,7 @@
 // 失败原因日志区分 app.sync_http_404 / app.sync_no_release / app.sync_no_assets。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -30,7 +30,8 @@ const fakeFetch = (handlers) => {
     const handler = handlers[url] ?? handlers['*'];
     if (!handler) return { ok: false, status: 404, json: async () => null };
     if (handler.error) throw handler.error;
-    return { ok: true, status: handler.status ?? 200, json: async () => handler.json, arrayBuffer: async () => handler.buf };
+    const status = handler.status ?? 200;
+    return { ok: status < 400, status, json: async () => handler.json, arrayBuffer: async () => handler.buf };
   };
   fn.calls = calls;
   return fn;
@@ -271,5 +272,220 @@ test('EK 代理不可用：reason 仍 latest_download / apk_download 且 message
   const f2 = logger2.events.find((e) => e.event === 'app.release_failed' && e.fields.reason === 'apk_download');
   assert.ok(f2, 'apk_download 失败事件保留');
   assert.match(f2.fields.message, /timeout/, 'apk 失败 message 可见');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ---- FK 批（docs/APP-SYNC-COS.md §2/§4）：App 资产同步换源——source=cos 从腾讯云 COS 拉
+// latest.json / steamdeals-<v>.apk / .sha256（与 GitHub 同落盘格式），超时 60s；cos 失败且
+// fallbackGithub 为真时回退 GitHub 一次（日志 app.release_fallback）；失败原因区分
+// cos_download / cos_404 / apk_download。反向自检：把 fallback 分支删掉 → 回退用例红（返回 cos_404）。
+
+/** 组装一组 COS 成功下载的 handler（base 不含末尾斜杠）。 */
+const cosHandlers = (base, { version = '2.30.0', apk = Buffer.from('cos-apk'), withSha = true } = {}) => {
+  const sha = createHash('sha256').update(apk).digest('hex');
+  const latestJson = JSON.stringify({ version, versionCode: Number(version.replaceAll('.', '')) , notes: ['fk'] });
+  const handlers = {
+    [`${base}/latest.json`]: { buf: Buffer.from(latestJson) },
+    [`${base}/steamdeals-${version}.apk`]: { buf: apk },
+  };
+  if (withSha) handlers[`${base}/steamdeals-${version}.apk.sha256`] = { buf: Buffer.from(`${sha}  steamdeals-${version}.apk`) };
+  return { handlers, sha, apk, latestJson };
+};
+
+test('FK cos 源：latest.json/APK/sha256 落盘、超时 60s、不请求 GitHub，末尾斜杠归一化', async () => {
+  const dir = tmp();
+  const base = 'https://bucket.cos.ap-guangzhou.myqcloud.com/steamdeals-app';
+  const { handlers, apk, latestJson } = cosHandlers(base);
+  const f = fakeFetch(handlers);
+  const logger = collectLogger();
+  // 传带末尾斜杠的 base：必须归一化，否则会拼出 //latest.json 而 404
+  const r = await withTimeoutProbe((seen) =>
+    syncAppRelease({ dir, fetchImpl: f, logger, source: 'cos', cosBase: `${base}/` }).then((res) => ({ res, seen })));
+  assert.equal(r.res.synced, true);
+  assert.equal(r.res.version, '2.30.0');
+  assert.equal(r.res.apk, 'steamdeals-2.30.0.apk');
+  assert.equal(r.res.source, 'cos', '结果标注来源，便于排障');
+  assert.ok(existsSync(join(dir, 'steamdeals-2.30.0.apk')), 'APK 落盘（与 GitHub 源同格式）');
+  assert.equal(readFileSync(join(dir, 'latest.json'), 'utf8'), latestJson, 'latest.json 原文落盘');
+  assert.ok(readFileSync(join(dir, 'latest.json'), 'utf8').includes('2.30.0'), '版本一致');
+  assert.ok(f.calls.every((c) => !c.url.includes('github.com')), 'source=cos 不请求 GitHub');
+  assert.ok(f.calls.every((c) => c.url.startsWith(`${base}/`)), 'URL 不带双斜杠（base 归一化）');
+  assert.equal(r.seen.length, 3, '三件套各一次请求');
+  assert.ok(r.seen.every((ms) => ms === 60000), 'COS 下载超时统一 60s（比 GitHub 直连 10s 宽）');
+  const srcLog = logger.events.find((e) => e.event === 'app.release_source');
+  assert.equal(srcLog.fields.source, 'cos', '日志标注来源 cos');
+  assert.equal(logger.events.find((e) => e.event === 'app.release_synced').fields.source, 'cos');
+  assert.ok(apk.length > 0);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('FK cos sha 缺失：不阻断同步（与 GitHub 源一致，跳过校验）', async () => {
+  const dir = tmp();
+  const base = 'https://cos.example.com/app';
+  const { handlers } = cosHandlers(base, { withSha: false });
+  const logger = collectLogger();
+  const r = await syncAppRelease({ dir, fetchImpl: fakeFetch(handlers), logger, source: 'cos', cosBase: base });
+  assert.equal(r.synced, true);
+  assert.ok(logger.events.some((e) => e.event === 'app.release_sha_missing'), '记录 sha 缺失（可观测）');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('FK cos 失败回退 GitHub：cos_404 → GitHub 成功，日志 app.release_fallback 带原因', async () => {
+  const dir = tmp();
+  const base = 'https://cos.example.com/app';
+  const latestJson = JSON.stringify({ version: '2.20.0', versionCode: 22000, notes: ['x'] });
+  const handlers = {
+    [`${base}/latest.json`]: { status: 404 },
+    [LIST]: { json: [release('2.20.0', { assets: [{ name: 'latest.json', url: 'x-latest' }, { name: 'steamdeals-2.20.0.apk', url: 'x-apk' }] })] },
+    'x-latest': { buf: Buffer.from(latestJson) },
+    'x-apk': { buf: Buffer.from('apk') },
+  };
+  const f = fakeFetch(handlers);
+  const logger = collectLogger();
+  const r = await syncAppRelease({ dir, fetchImpl: f, logger, source: 'cos', cosBase: base });
+  assert.equal(r.synced, true, 'cos 404 后回退 GitHub 成功');
+  assert.equal(r.source, 'github', '实际数据来自 GitHub');
+  assert.equal(r.fallbackFrom, 'cos');
+  assert.equal(r.fallbackReason, 'cos_404', '回退原因保留（与普通 GitHub 同步可区分）');
+  assert.ok(f.calls.some((c) => c.url === LIST), '确实发起了 GitHub 列表请求');
+  const fb = logger.events.find((e) => e.event === 'app.release_fallback');
+  assert.ok(fb, '日志 app.release_fallback');
+  assert.deepEqual(fb.fields, { from: 'cos', to: 'github', reason: 'cos_404', version: null });
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('FK cos 网络失败：fallbackGithub=false 直接返回 cos_download，不请求 GitHub', async () => {
+  const dir = tmp();
+  const base = 'https://cos.example.com/app';
+  const f = fakeFetch({ [`${base}/latest.json`]: { error: new Error('cos timeout after 60000ms') } });
+  const logger = collectLogger();
+  const r = await syncAppRelease({ dir, fetchImpl: f, logger, source: 'cos', cosBase: base, fallbackGithub: false });
+  assert.equal(r.synced, false);
+  assert.equal(r.reason, 'cos_download', 'latest.json 非 404 失败归 cos_download');
+  assert.ok(f.calls.every((c) => !c.url.includes('github.com')), '关闭回退时绝不请求 GitHub');
+  const failed = logger.events.find((e) => e.event === 'app.release_failed');
+  assert.equal(failed.fields.reason, 'cos_download');
+  assert.match(failed.fields.message, /timeout/, '失败 message 可见');
+  assert.ok(!existsSync(join(dir, 'latest.json')), '失败不落盘');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('FK cos APK 失败：apk_download + 不留半成品；回退开启时改走 GitHub', async () => {
+  const base = 'https://cos.example.com/app';
+  const { handlers } = cosHandlers(base);
+  handlers[`${base}/steamdeals-2.30.0.apk`] = { error: new Error('apk stream aborted') };
+  // 不开回退：直接 apk_download，且 latest.json/APK 都不落盘（先下后写，不留 latest 指向缺失 APK 的中间态）
+  const dir1 = tmp();
+  const r1 = await syncAppRelease({ dir: dir1, fetchImpl: fakeFetch(handlers), source: 'cos', cosBase: base, fallbackGithub: false, logger: collectLogger() });
+  assert.equal(r1.synced, false);
+  assert.equal(r1.reason, 'apk_download');
+  assert.ok(!existsSync(join(dir1, 'latest.json')), 'APK 失败时 latest.json 不落盘');
+  assert.ok(!existsSync(join(dir1, 'steamdeals-2.30.0.apk')), 'APK 失败时无半成品');
+  rmSync(dir1, { recursive: true, force: true });
+  // 开回退（默认 true）：GitHub 兜底成功，lastError 原因保留 apk_download
+  const dir2 = tmp();
+  const ghLatest = JSON.stringify({ version: '2.20.0', versionCode: 22000, notes: ['x'] });
+  const withGithub = {
+    ...handlers,
+    [LIST]: { json: [release('2.20.0', { assets: [{ name: 'latest.json', url: 'x-latest' }] })] },
+    'x-latest': { buf: Buffer.from(ghLatest) },
+  };
+  const r2 = await syncAppRelease({ dir: dir2, fetchImpl: fakeFetch(withGithub), source: 'cos', cosBase: base, logger: collectLogger() });
+  assert.equal(r2.synced, true);
+  assert.equal(r2.fallbackReason, 'apk_download', '回退原因区分 apk_download');
+  assert.ok(existsSync(join(dir2, 'latest.json')), 'GitHub 兜底产物落盘');
+  rmSync(dir2, { recursive: true, force: true });
+});
+
+test('FK cos latest 不合法：version 非 x.y.z / versionCode 非整数 → bad_latest 且不落盘（防路径注入）', async () => {
+  const dir = tmp();
+  const base = 'https://cos.example.com/app';
+  const cases = [
+    JSON.stringify({ version: '../../evil', versionCode: 1 }),
+    JSON.stringify({ version: '2.30.0', versionCode: 'abc' }),
+  ];
+  for (const body of cases) {
+    const f = fakeFetch({
+      [`${base}/latest.json`]: { buf: Buffer.from(body) },
+      [`${base}/steamdeals-2.30.0.apk`]: { buf: Buffer.from('x') },
+    });
+    const logger = collectLogger();
+    const r = await syncAppRelease({ dir, fetchImpl: f, logger, source: 'cos', cosBase: base, fallbackGithub: false });
+    assert.equal(r.reason, 'bad_latest', `非法 latest 拒绝：${body}`);
+    assert.ok(!existsSync(join(dir, 'latest.json')), '非法 latest 不落盘');
+    assert.equal(f.calls.length, 1, '校验失败后不再下载 APK');
+  }
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('FK cos same_version：本地同版本 + APK 在 → 只下 latest.json，不重复下 APK', async () => {
+  const dir = tmp();
+  const base = 'https://cos.example.com/app';
+  const { handlers } = cosHandlers(base);
+  const f = fakeFetch(handlers);
+  await syncAppRelease({ dir, fetchImpl: f, source: 'cos', cosBase: base, logger: { info() {} } });
+  const apkCallsBefore = f.calls.filter((c) => c.url.endsWith('.apk')).length;
+  const r2 = await syncAppRelease({ dir, fetchImpl: f, source: 'cos', cosBase: base, logger: { info() {} } });
+  assert.equal(r2.reason, 'same_version');
+  assert.equal(f.calls.filter((c) => c.url.endsWith('.apk')).length, apkCallsBefore, '同版本不再下载 APK');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('FK cos 未配目录：reason cos_no_base（不回退时不请求任何 URL）', async () => {
+  const dir = tmp();
+  const f = fakeFetch({});
+  const r = await syncAppRelease({ dir, fetchImpl: f, source: 'cos', cosBase: '', fallbackGithub: false, logger: collectLogger() });
+  assert.equal(r.reason, 'cos_no_base');
+  assert.equal(f.calls.length, 0, '没有 base 不发请求');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('FK env 默认：APP_RELEASE_SYNC_SOURCE/COS_BASE/FALLBACK 生效（hydrate 写回后子进程继承）', async () => {
+  const base = 'https://cos.example.com/app';
+  const prev = {
+    source: process.env.APP_RELEASE_SYNC_SOURCE,
+    cosBase: process.env.APP_RELEASE_SYNC_COS_BASE,
+    fallback: process.env.APP_RELEASE_SYNC_FALLBACK,
+  };
+  process.env.APP_RELEASE_SYNC_SOURCE = 'cos';
+  process.env.APP_RELEASE_SYNC_COS_BASE = base;
+  process.env.APP_RELEASE_SYNC_FALLBACK = '0';
+  try {
+    const dir1 = tmp();
+    const { handlers } = cosHandlers(base);
+    const f1 = fakeFetch(handlers);
+    const r1 = await syncAppRelease({ dir: dir1, fetchImpl: f1, logger: { info() {} } });
+    assert.equal(r1.source, 'cos', '未传 source 时读 env → 走 COS');
+    assert.ok(f1.calls.every((c) => !c.url.includes('github.com')));
+    rmSync(dir1, { recursive: true, force: true });
+    // env 关闭回退：COS 404 时不请求 GitHub
+    const dir2 = tmp();
+    const f2 = fakeFetch({ [`${base}/latest.json`]: { status: 404 } });
+    const r2 = await syncAppRelease({ dir: dir2, fetchImpl: f2, logger: { info() {} } });
+    assert.equal(r2.reason, 'cos_404');
+    assert.ok(f2.calls.every((c) => !c.url.includes('github.com')), 'env APP_RELEASE_SYNC_FALLBACK=0 关闭回退');
+    rmSync(dir2, { recursive: true, force: true });
+  } finally {
+    for (const [k, v] of [
+      ['APP_RELEASE_SYNC_SOURCE', prev.source],
+      ['APP_RELEASE_SYNC_COS_BASE', prev.cosBase],
+      ['APP_RELEASE_SYNC_FALLBACK', prev.fallback],
+    ]) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+});
+
+test('FK 非法 source（env 陈旧/手填）：按 github 处理，行为不崩', async () => {
+  const dir = tmp();
+  const latestJson = JSON.stringify({ version: '2.20.0', versionCode: 22000, notes: ['x'] });
+  const handlers = {
+    [LIST]: { json: [release('2.20.0', { assets: [{ name: 'latest.json', url: 'x-latest' }] })] },
+    'x-latest': { buf: Buffer.from(latestJson) },
+  };
+  const r = await syncAppRelease({ dir, fetchImpl: fakeFetch(handlers), source: 'gitee', logger: { info() {} } });
+  assert.equal(r.synced, true);
+  assert.equal(r.source, 'github');
   rmSync(dir, { recursive: true, force: true });
 });
