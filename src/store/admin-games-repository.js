@@ -44,6 +44,11 @@ export async function adminGameStats(q) {
            -- 内容分级计数（docs/STEAM-SYNC-STATUS-AND-RATING.md §13.2）：成人/成熟（未标注 = total-deleted 减这两项）
            count(*) filter (where not g.deleted and g.adult_flag)::int as adult,
            count(*) filter (where not g.deleted and g.mature_flag)::int as mature,
+           -- FH（docs/ADULT-STATS.md）：rating-backfill 回填覆盖——口径与候选谓词一致
+           -- （docs/STEAM-SYNC-STATUS-AND-RATING.md §9 listRatingBackfillCandidates）：
+           -- required_age 已采到（含 0）= 已回填；仍为 null = 未回填
+           count(*) filter (where g.steam_appid is not null and not g.deleted and g.required_age is not null)::int as rating_backfilled,
+           count(*) filter (where g.steam_appid is not null and not g.deleted and g.required_age is null)::int as rating_pending,
            -- BL 批（docs/BACKFILL-THROUGHPUT.md §3.4）：回填队列口径
            -- 待回填 = 新候选谓词（缺描述/无报价/有价缺图，排除四态与跳过中，不带 1 天冷却——那是运行期游标不是队列口径）
            count(*) filter (where ${backfillCandidateWhere({ includeCooldown: false })} )::int as backfill_pending,
@@ -72,6 +77,9 @@ export async function adminGameStats(q) {
     // 内容分级计数
     adult: num('adult'),
     mature: num('mature'),
+    // FH（docs/ADULT-STATS.md）：rating-backfill 回填覆盖（required_age 口径）
+    ratingBackfilled: num('rating_backfilled'),
+    ratingPending: num('rating_pending'),
     // BL 批（docs/BACKFILL-THROUGHPUT.md §3.4）：回填队列口径
     backfillPending: num('backfill_pending'),
     backfillExcluded: num('backfill_excluded'),

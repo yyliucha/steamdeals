@@ -29,16 +29,20 @@ test('CF 图二：Steam 账号移动卡片分支改为 v-else-if="isMobile"，�
   assert.ok(after, '移动卡片紧跟桌面游戏库分支之后');
 });
 
-test('CF 图三：游戏管理 4 主指标 + 更多指标折叠（12 项 chips）', () => {
+test('CF 图三：游戏管理 4 主指标 + 更多指标折叠（10 项 chips；FG 移除成人/成熟分级筛选 chip）', () => {
   const main = modules.match(/<div class="metric-grid clickable-grid">([\s\S]*?)<\/div><details class="more-metrics">/)?.[1] ?? '';
   for (const label of ['目录游戏', '已同步', '有报价', '待回填']) {
     assert.ok(main.includes(label), `主指标含「${label}」`);
   }
   assert.ok(!main.includes('未探测'), '未探测不在主指标');
-  assert.match(modules, /<details class="more-metrics"><summary>更多指标（12）/, '更多指标折叠区（12 项）');
-  for (const label of ['未探测', '免费', '未发售', '锁国区', '国区无价', '国区不可售', '其他', '成人', '成熟', '已删除', '已排除', '跳过中']) {
+  assert.match(modules, /<details class="more-metrics"><summary>更多指标（10）/, '更多指标折叠区（10 项）');
+  for (const label of ['未探测', '免费', '未发售', '锁国区', '国区无价', '国区不可售', '其他', '已删除', '已排除', '跳过中']) {
     assert.ok(modules.includes(label), `折叠区含「${label}」`);
   }
+  // FG（docs/REMOVE-18R-ENTRY.md）：成人/成熟点击筛选 chip 已移除——数字改由
+  // 「同步与回填」页「内容分级统计」卡片（FH）只读展示，不再作为列表筛选入口
+  assert.doesNotMatch(modules, /clickMetric\('adult'\)/, '无成人点击筛选 chip');
+  assert.doesNotMatch(modules, /clickMetric\('mature'\)/, '无成熟点击筛选 chip');
   assert.match(modules, /\.metric-chips/, 'chips 样式存在');
 });
 

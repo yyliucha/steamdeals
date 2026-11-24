@@ -155,8 +155,8 @@
 | **FD** | ⚙️ 调整：部署稳定性——nginx upstream 跟随容器 IP（resolver 自动解析，发版不再 502） | [NGINX-UPSTREAM-FIX.md](NGINX-UPSTREAM-FIX.md) | 待开发（2026-11-23 P1） | ✅ 本轮已给 |
 | **FE** | ⚙️ 调整：个人资料 Steam 账号——同步游戏库/愿望单按钮（普通用户可用）+ 按钮样式统一 | [PROFILE-STEAM-ACTIONS.md](PROFILE-STEAM-ACTIONS.md) | 已发布 v2.28.9（2026-11-24，0bc2733；QA docs/QA-FE.md 第 1 轮 ✅） | ✅ 本轮已给 |
 | **FF** | ⚙️ 调整：游戏卡片英文名缺失保持占位（固定行高，不影响布局） | [CARD-SUBTITLE-PLACEHOLDER.md](CARD-SUBTITLE-PLACEHOLDER.md) | 待开发（2026-11-23 P2） | ✅ 本轮已给 |
-| **FG** | ⚙️ 调整：移除 18R 查询入口（Web/App/后台；保留 API 参数与同步能力，默认 hide） | [REMOVE-18R-ENTRY.md](REMOVE-18R-ENTRY.md) | 待开发（2026-11-23 P1） | ✅ 本轮已给 |
-| **FH** | ⚙️ 调整：成人内容统计（adult/mature 数量 + 回填覆盖，只读数字） | [ADULT-STATS.md](ADULT-STATS.md) | 待开发（2026-11-23 P2） | ✅ 本轮已给 |
+| **FG** | ⚙️ 调整：移除 18R 查询入口（Web/App/后台；保留 API 参数与同步能力，默认 hide） | [REMOVE-18R-ENTRY.md](REMOVE-18R-ENTRY.md) | 已实现待发版（2026-11-24） | ✅ 本轮已给 |
+| **FH** | ⚙️ 调整：成人内容统计（adult/mature 数量 + 回填覆盖，只读数字） | [ADULT-STATS.md](ADULT-STATS.md) | 已实现待发版（2026-11-24） | ✅ 本轮已给 |
 | **EY** | ⚙️ 调整：我的愿望单合并 Steam 愿望单（两层展示、Steam 行只读无操作、同游戏合并一行） | [MY-WISHLIST-MERGED.md](MY-WISHLIST-MERGED.md) | 待开发（2026-11-23 P2） | ✅ 本轮已给 |
 | **EZ** | ⚙️ 调整：个人资料页精简（el-tabs 三 Tab：基本信息 / Steam 账号（绑定+游戏库合并）/ 偏好与统计；保存固定底部；手机端 Tab 横向滚动；全 el-button） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 已发布 v2.28.7（2026-11-23，8eeb1f4；QA-EZ-FA 第 1 轮 ✅） | ✅ demo 已给 |
 | **FA** | ⚙️ 调整：用户菜单新增「切换账户」（退出会话 → /login?switch=1 → 登录后回 Console；保留退出登录） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 已发布 v2.28.7（2026-11-23，8eeb1f4；QA-EZ-FA 第 1 轮 ✅） | ✅ demo 已给 |
