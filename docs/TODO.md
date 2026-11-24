@@ -22,7 +22,7 @@
 |---|---|---|
 | 🐞 缺陷 | 4 | EO、ER、EU、EX |
 | ✨ 功能 | 0 | — |
-| ⚙️ 调整 | 10 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FL |
+| ⚙️ 调整 | 11 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FL / FK |
 | 🧹 技术债 | 2 | EN、FC |
 | 🧪 测试基建 | 0 | — |
 | 📝 文档流程 | 0 | — |
@@ -225,3 +225,16 @@
 - **修复（0f22937）**：所有分组统一生成折叠按钮 + 折叠体（无 advanced 的组也折叠）；默认收起，状态 localStorage 记忆，与「调度与熔断」等一致。
 - **验收**：设置页各分组（高级 tab 的调度与熔断/备份与日志/缓存与图片/时区与显示，及站点/数据源各组）均可折叠/展开；
   `frontend:build` 通过；admin-console-ia / style-tokens 测试 fail 0；截图对照（全部分组均有折叠箭头）。
+
+## FK. 待开发（⚙️ 调整）：App 资产同步换源（GitHub → 腾讯云 COS，双通道 + 自动回退）
+
+**类型：** ⚙️ 调整（App 发布链路：服务器无法直连 GitHub Release 资产）
+**状态：** 待开发（2026-11-24 所有者选方案 B「直接落实」）
+**优先级：** P1 —— App 更新同步被阻断
+**依赖：** 所有者提供 COS 桶/凭证（部署时）
+**解锁：** 无
+**规格**：[APP-SYNC-COS.md](APP-SYNC-COS.md)
+
+- **需求**：新增 `network.appSyncSource`（github/cos）与 `network.appSyncCosBase`；`syncAppRelease` 支持从 COS
+  拉 latest.json/APK/sha256（与 GitHub 同落盘格式）；cos 失败自动回退 GitHub；App 构建技能增加 COS 双上传。
+- **验收**：见规格 §4（COS 源同步成功、GitHub 备用、回退可见、测试全绿、截图）。
