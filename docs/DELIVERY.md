@@ -919,3 +919,11 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 - 待探测（需服务器）：线上 heat 逐 appid 返回全 `success:false`（[TODO.md C1](TODO.md#c-线上问题--需要探测)）、
   服务器 compose 真实文件名（C2）。
 - 已知事项：`web/*.html` 旧回退页（无 Vue 构建产物时才使用）的 Steam 区块未同步新接口，生产走 Vue 构建不受影响。
+
+### 2026-11-24 nginx upstream 根治（FD 落地，服务器侧配置）
+- 现象：每次发版重建 app 后 502（nginx 缓存旧容器 IP）。
+- 修复（服务器 `/home/ubuntu/nginx/conf.d/steamdeals.conf`）：
+  - 顶部 `resolver 127.0.0.11 valid=10s ipv6=off;`；
+  - 两处 `proxy_pass http://steamdeals$request_uri;` → `set $steamdeals_upstream steamdeals:8080; proxy_pass http://$steamdeals_upstream$request_uri;`；
+- 验证：`docker compose up -d --force-recreate app` → 15 秒后域名自动 200（无需 restart nginx）。
+- 备份：`steamdeals.conf.bak-*`（同目录）。
