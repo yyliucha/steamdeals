@@ -932,3 +932,4 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 - **根因**：CHANGELOG 的 v2.28.9 条目把 QA 报告写成 Markdown 链接（`docs/QA-FE.md` 为 QA 产物、不入库）→ 断链。
 - **修复**：该引用改纯文本（main 提交 b07b644；tag 侧由修复提交 04159dde 携带，干净检出下 docs 测试 5/5 绿）。
 - **发布处理（所有者 2026-11-24 决定：重打 v2.28.9，不升 2.28.10）**：删除旧 tag → 在 3f45cee 上追加修复提交 **04159dde** → 重推 tag **v2.28.9**；镜像只含 FE，**不含** main 上未质检的 FG/FH（7e0387d）。重跑双绿：docker-hub **45311706854**（test/smoke/publish 全 success）、docker-tcr **45311706752**（test/publish 全 success）。原「由 v2.28.10 覆盖发布」的记录作废（2026-11-24 10:55 更正）。
+- **test-main**：主干同期被其它会话连续推送（FG/FH、ER、FF、EO 等），运行被 concurrency 取消（手动触发 45315881851 ❌取消、main afae71a 的 45317333999 ❌取消）；本批以两条 tag run 内的 `npm test`（tag 提交 04159dde，与镜像完全一致）+ baseline-gate 全绿为准；主干全链由夜班监工的 v2.28.10 构建兜底。
