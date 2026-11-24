@@ -76,6 +76,34 @@ test('watchCandidates 带上当前价与史低', async () => {
   }
 });
 
+// FM（docs/ALERT-HISTLOW-FIX.md §2.1、§2.4）：史低只算「今天以前」的日聚合，
+// 并带当前最低价对应报价的原价（模板据此判「未降价」）。
+// 反向自检：把 watchCandidates SQL 里的 `and d.day < current_date` 去掉 → hist_low 断言必红
+//（当天日价 5000 会把自己顶成史低，正是「恒标新史低」的误报根源）。
+test('FM：watchCandidates 史低只算今天以前，并带当前最低价的原价', async () => {
+  const store = await openStore('pglite:', {});
+  try {
+    await db.migrate(store);
+    await ensureSteamSchema(store);
+    const q = (sql, p) => store.query(sql, p);
+    const gameId = await seed(store, 5000, 6000); // 今天 5000（ingest 写 current_date）+ 30 天前 6000
+    await db.upsertWatch(q, { gameId, targetCents: null });
+
+    const [row] = await db.watchCandidates(q);
+    assert.equal(Number(row.current_cents), 5000);
+    assert.equal(Number(row.hist_low), 6000, '当天 5000 不进史低：史低 = 30 天前的 6000');
+    assert.equal(Number(row.original_cents), 29800, '带当前最低价对应报价的原价（未降价判定用）');
+
+    // 只有今天的日价（新入库/刚关注）→ 没有「今天以前」的史低依据，不猜也不误报
+    await q('delete from daily_prices where day < current_date');
+    const [fresh] = await db.watchCandidates(q);
+    assert.equal(fresh.hist_low, null, '没有昨天以前的日价：史低为空');
+    assert.equal(evaluateAlerts([fresh]).length, 0, '没有史低依据时不提醒');
+  } finally {
+    await store.close();
+  }
+});
+
 test('markNotified 之后同价位不再重复提醒', async () => {
   const store = await openStore('pglite:', {});
   try {

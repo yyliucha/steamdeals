@@ -34,6 +34,48 @@ test('CI-1 接线：cli 提醒路径传 html；alerts.js 纯文本口径不变',
   assert.match(alerts, /export function renderDigest/, '纯文本兜底保留');
 });
 
+// FM（docs/ALERT-HISTLOW-FIX.md §2.3/§2.4、§3）：标签区分「新史低 / 跌至史低」；
+// 史低价与当前价相同不重复显示；未降价（价格=原价）不显示史低段。
+// 反向自检：去掉 shouldShowHistLow 的「同价」分支 → 第 1 条「同价只出现一次」红；
+// 去掉「未降价」分支 → 第 2 条「价格=原价 → 无史低段」红。
+const fmHit = (over = {}) => ({
+  name: '游戏',
+  steamAppid: 100,
+  currentCents: 9900,
+  targetCents: null,
+  histLowCents: 9900,
+  originalCents: 19900,
+  reason: 'hist_low_tie',
+  ...over,
+});
+
+test('FM 标签区分：跌破=新史低，持平=跌至史低，且同价不重复显示史低', () => {
+  const fresh = renderAlertsHtml([fmHit({ currentCents: 8800, histLowCents: 9900, reason: 'hist_low' })]);
+  assert.match(fresh.html, /新史低/, '真跌破标「新史低」');
+  assert.ok(!fresh.html.includes('跌至史低'), '跌破不标「跌至史低」');
+  assert.match(fresh.html, /史低 ¥99\.00/, '历史低与当前价不同 → 显示昨天以前的旧低');
+
+  const tie = renderAlertsHtml([fmHit({ currentCents: 9900, histLowCents: 9900, reason: 'hist_low_tie' })]);
+  assert.match(tie.html, /跌至史低/, '持平标「跌至史低」');
+  assert.ok(!tie.html.includes('新史低'), '持平不能叫「新史低」');
+  assert.equal((tie.html.match(/¥99\.00/g) ?? []).length, 1, '同价只出现一次（旧版会「新史低 ¥99.00 史低 ¥99.00」）');
+  assert.ok(!tie.text.includes('史低 ¥99.00'), '纯文本兜底同样不重复');
+});
+
+test('FM 未降价不显示史低段：价格=原价不谈史低，有折扣才显示', () => {
+  const undiscounted = renderAlertsHtml(
+    [fmHit({ currentCents: 14900, targetCents: 14900, histLowCents: 9900, originalCents: 14900, reason: 'target' })],
+  );
+  assert.match(undiscounted.html, /达到目标价/);
+  assert.ok(!undiscounted.html.includes('史低'), '价格=原价 → 不显示史低段');
+  assert.ok(!undiscounted.text.includes('史低'), '纯文本兜底同样不显示');
+
+  const discounted = renderAlertsHtml(
+    [fmHit({ currentCents: 14900, targetCents: 14900, histLowCents: 9900, originalCents: 29800, reason: 'target' })],
+  );
+  assert.match(discounted.html, /史低 ¥99\.00/, '有折扣时保留史低信息');
+});
+
 test('CI-2 申诉页：分段控件主色选中/卡片空态/到期并入封禁原因/移动卡片不变', () => {
   const vue = readFileSync(join(process.cwd(), 'frontend', 'src', 'components', 'AppealsAdmin.vue'), 'utf8');
   assert.match(vue, /seg-tabs/, '分段控件容器');

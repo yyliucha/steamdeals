@@ -2071,7 +2071,16 @@ export async function listWatches(q, { region = 'cn' } = {}) {
   return r.rows;
 }
 
-/** 关注列表 + 当前价 + 史低 + user_id/邮箱，供 alerts 判定与分组。 */
+/**
+ * 关注列表 + 当前价 + 史低 + 原价 + user_id/邮箱，供 alerts 判定与分组。
+ *
+ * FM（docs/ALERT-HISTLOW-FIX.md §2）：`hist_low` 只算「今天以前」的日聚合。
+ * 口径说明：`daily_prices.day` 由 `upsertDaily` 写 `current_date`，而连接池会话时区固定
+ * 站点时区（默认 Asia/Shanghai，见 src/store/index.js 的 `set_config timezone`），
+ * 所以 `d.day < current_date` 就是 Asia/Shanghai 日历日的「昨天及以前」。
+ * 旧口径含当天时，当天现价自己就是史低 → `current == hist_low` 恒成立、邮件恒标「新史低」。
+ * `original_cents` 取当前最低价那条官方在售报价的原价，用于「未降价（价格=原价）不显示史低段」。
+ */
 export async function watchCandidates(q, { region = 'cn' } = {}) {
   const r = await q(
     `select w.id as watch_id, w.user_id, u.email as user_email,
@@ -2085,8 +2094,14 @@ export async function watchCandidates(q, { region = 'cn' } = {}) {
                 and p.kind in ${OFFICIAL_KINDS}) as current_cents,
             (select min(d.min_price_cents) from daily_prices d
                join platforms p on p.code = d.platform_code
-              where d.game_id = g.id and d.region = $1
-                and p.kind in ${OFFICIAL_KINDS}) as hist_low
+              where d.game_id = g.id and d.region = $1 and d.day < current_date
+                and p.kind in ${OFFICIAL_KINDS}) as hist_low,
+            (select o.original_cents from offers o
+               join platforms p on p.code = o.platform_code
+              where o.game_id = g.id and o.region = $1 and o.in_stock
+                and p.kind in ${OFFICIAL_KINDS}
+              order by o.price_cents asc, o.original_cents asc nulls last
+              limit 1) as original_cents
        from watchlist w
        join games g on g.id = w.game_id
        left join users u on u.id = w.user_id

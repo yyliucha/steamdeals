@@ -5,15 +5,46 @@ import { yuanAmount } from './format.js';
 
 export const REASON = {
   TARGET: 'target', // 到设定的目标价
-  HIST_LOW: 'hist_low', // 没设目标，跌到史低
+  HIST_LOW: 'hist_low', // 没设目标，跌破「今天以前」史低（真·新史低）
+  // FM（docs/ALERT-HISTLOW-FIX.md §2）：没设目标、与「今天以前」史低持平——仍提醒，
+  // 但不能叫「新」，否则邮件会出现「新史低 ¥349 史低 ¥349」这种自相矛盾的文案。
+  HIST_LOW_TIE: 'hist_low_tie',
   MANUAL: 'manual', // DF 批：管理员手动推送（强制推送未达条件时）
 };
 
 export const REASON_LABEL = {
   [REASON.TARGET]: '已达目标价',
-  [REASON.HIST_LOW]: '跌至史低',
+  [REASON.HIST_LOW]: '新史低',
+  [REASON.HIST_LOW_TIE]: '跌至史低',
   [REASON.MANUAL]: '手动推送',
 };
+
+/**
+ * 无目标价时的史低判定（FM §2）：
+ * current < hist → 新史低；current == hist → 跌至史低；current > hist / 没有历史价 → 不提醒。
+ * hist 是 `watchCandidates` 给的「今天以前」史低，所以持平不会被误当成「跌破」。
+ */
+function histLowReason(current, hist) {
+  if (hist == null) return null; // 没有昨天以前的日价：无法判定史低，不猜也不误报
+  if (current < hist) return REASON.HIST_LOW;
+  if (current === hist) return REASON.HIST_LOW_TIE;
+  return null;
+}
+
+/**
+ * 邮件 / 简报里的「史低 ¥X」是否要显示（FM §2.3、§2.4）：
+ * · 与当前价相同 → 不重复（相同价说两遍就是误报的来源）；
+ * · 当前价 ≥ 原价（没打折，价格=原价）→ 不显示史低段（谈史低没有意义）。
+ */
+export function shouldShowHistLow(hit) {
+  const hist = hit?.histLowCents;
+  if (hist == null) return false;
+  const current = hit?.currentCents == null ? null : Number(hit.currentCents);
+  if (current != null && current === Number(hist)) return false;
+  const original = hit?.originalCents == null ? null : Number(hit.originalCents);
+  if (original != null && current != null && current >= original) return false;
+  return true;
+}
 
 const yuan = (cents) => (cents == null ? '—' : `¥${yuanAmount(cents)}`);
 
@@ -33,8 +64,9 @@ export function evaluateAlerts(rows, { now = new Date() } = {}) {
     let reason = null;
     if (target != null) {
       if (current <= target) reason = REASON.TARGET;
-    } else if (hist != null && current <= hist) {
-      reason = REASON.HIST_LOW;
+    } else {
+      // FM：无目标时只能靠「今天以前」的史低判定，跌不破就不打扰
+      reason = histLowReason(current, hist);
     }
     if (!reason) continue;
 
@@ -53,6 +85,7 @@ export function evaluateAlerts(rows, { now = new Date() } = {}) {
       currentCents: current,
       targetCents: target,
       histLowCents: hist,
+      originalCents: row.original_cents == null ? null : Number(row.original_cents),
       atHistLow: hist != null && current <= hist,
       reason,
       note: row.note ?? null,
@@ -84,8 +117,9 @@ export function buildPushHits(rows, { force = false, now = new Date() } = {}) {
     let reason = null;
     if (target != null) {
       if (current <= target) reason = REASON.TARGET;
-    } else if (hist != null && current <= hist) {
-      reason = REASON.HIST_LOW;
+    } else {
+      // 与 evaluateAlerts 同口径（FM）：跌破=新史低、持平=跌至史低、跌不破=未达标
+      reason = histLowReason(current, hist);
     }
     if (!reason && !force) {
       skipped.push({
@@ -110,6 +144,7 @@ export function buildPushHits(rows, { force = false, now = new Date() } = {}) {
       currentCents: current,
       targetCents: target,
       histLowCents: hist,
+      originalCents: row.original_cents == null ? null : Number(row.original_cents),
       atHistLow: hist != null && current <= hist,
       reason,
       manual: true, // DF：手动推送标记（digest/邮件文案标注「手动推送」）
@@ -128,7 +163,8 @@ export function renderDigest(hits, { now = new Date() } = {}) {
     const bits = [
       `${h.name}  ${yuan(h.currentCents)}`,
       h.targetCents != null ? `目标 ${yuan(h.targetCents)}` : null,
-      h.histLowCents != null ? `史低 ${yuan(h.histLowCents)}` : null,
+      // FM：同价不重复、未降价不显示史低段（与 HTML 邮件共用同一判定）
+      shouldShowHistLow(h) ? `史低 ${yuan(h.histLowCents)}` : null,
       REASON_LABEL[h.reason] ?? h.reason,
       h.manual === true ? '手动推送' : null, // DF 批：手动推送的文案标注（§4.3）
     ].filter(Boolean);

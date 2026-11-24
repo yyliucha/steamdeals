@@ -1,7 +1,10 @@
 // CI-1（docs/ALERT-MAIL-APPEAL-UX.md §3）：价格提醒邮件 HTML 化——
 // 复用 CB 批每日报表的品牌风格（600px 内联 CSS + table 布局），每条提醒一张卡片；
 // 所有动态字段 HTML 转义、无外部资源；webhook/企微仍用纯文本（调用方只多传 html）。
+// FM（docs/ALERT-HISTLOW-FIX.md §2.3/§2.4）：标签区分「新史低 / 跌至史低」，
+// 史低价与当前价相同不重复显示、未降价（价格=原价）不显示史低段——判定与纯文本共用 alerts.js。
 import { formatDayUtc, yuanAmount } from './format.js';
+import { shouldShowHistLow } from './alerts.js';
 
 const esc = (value) =>
   String(value ?? '')
@@ -13,7 +16,13 @@ const esc = (value) =>
 
 const money = (cents) => (cents == null ? null : `¥${yuanAmount(cents)}`);
 
-const REASON_LABEL = { target: '达到目标价', hist_low: '新史低', wishlist: '愿望单', manual: '手动推送' };
+const REASON_LABEL = {
+  target: '达到目标价',
+  hist_low: '新史低',
+  hist_low_tie: '跌至史低',
+  wishlist: '愿望单',
+  manual: '手动推送',
+};
 
 export function renderAlertsHtml(hits, { now = new Date(), siteUrl = 'https://sd.yyliucha.cn' } = {}) {
   const dateStr = formatDayUtc(now);
@@ -23,7 +32,7 @@ export function renderAlertsHtml(hits, { now = new Date(), siteUrl = 'https://sd
       `<span style="color:#8b82f5;font-size:11px;font-weight:700">${esc(REASON_LABEL[h.reason] ?? h.reason ?? '到价')}</span>`,
       `<strong style="font-size:15px;color:#0f172a">${money(h.currentCents) ?? '—'}</strong>`,
       h.targetCents != null ? `<span style="color:#64748b;font-size:12px">目标 ${money(h.targetCents)}</span>` : '',
-      h.histLowCents != null ? `<span style="color:#64748b;font-size:12px">史低 ${money(h.histLowCents)}</span>` : '',
+      shouldShowHistLow(h) ? `<span style="color:#64748b;font-size:12px">史低 ${money(h.histLowCents)}</span>` : '',
       url ? `<a href="${esc(url)}" style="color:#8b82f5;text-decoration:none;font-size:12px">Steam 商店 ↗</a>` : '',
     ].filter(Boolean).join(' &nbsp; ');
     return `
@@ -49,7 +58,7 @@ export function renderAlertsHtml(hits, { now = new Date(), siteUrl = 'https://sd
 </body></html>`;
 
   const text = (hits ?? []).map((h) =>
-    [`${h.name}  ${money(h.currentCents)}`, h.targetCents != null ? `目标 ${money(h.targetCents)}` : null, h.histLowCents != null ? `史低 ${money(h.histLowCents)}` : null, h.steamAppid ? `https://store.steampowered.com/app/${h.steamAppid}/` : null].filter(Boolean).join(' · '),
+    [`${h.name}  ${money(h.currentCents)}`, h.targetCents != null ? `目标 ${money(h.targetCents)}` : null, shouldShowHistLow(h) ? `史低 ${money(h.histLowCents)}` : null, h.steamAppid ? `https://store.steampowered.com/app/${h.steamAppid}/` : null].filter(Boolean).join(' · '),
   ).join('\n');
 
   return { subject: `游戏价格提醒：${hits?.length ?? 0} 款到价`, html, text };
