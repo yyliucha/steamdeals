@@ -215,13 +215,22 @@
 ## FI. 待开发（⚙️ 调整）：内容分级——后台可筛 + 前台/App 按 site.adultDisplay 参数控制
 
 **类型：** ⚙️ 调整（后台管理能力，前台合规不变）
-**状态：** 待开发（2026-11-24 所有者要求「后台没有限制」）
+**状态：** 已实现待发版（2026-11-24）
 **优先级：** P2
 **依赖：** FG（前台入口已移除）、FH（统计卡片已上）
 **解锁：** 无
+**涉及 App 仓库**：是（app-vX.Y.Z 随本批）
 **规格**：[ADMIN-RATING-FILTER.md](ADMIN-RATING-FILTER.md)
 
-- **需求**：① 后台恢复「内容分级」筛选（不受参数影响）；② **前台/App 按 `site.adultDisplay` 控制**：\n  hide（默认）=无入口/不展示；badge/show=显示 18R 入口可查（合规默认 hide，国外部署可开）；③ FH 统计卡片保留。
+- **需求**：① 后台恢复「内容分级」筛选（不受参数影响）；② **前台/App 按 `site.adultDisplay` 控制**：
+  hide（默认）=无入口/不展示；badge/show=显示 18R 入口可查（合规默认 hide，国外部署可开）；③ FH 统计卡片保留。
+- **实现（2026-11-24）**：后台 AdminModules.vue 恢复「内容分级」下拉（全部/成人 18+/成熟/未分级 → rating=adult|mature|none，不读 adultDisplay）；
+  前台 Home.vue 18R 入口按 siteAdultDisplay 三态显隐（hide 无入口 + adult=hide；badge/show 显示入口、选中 adult=badge|show&rating=adult；
+  18+ 角标仅 badge 红色；策略变化重置开关重载）；修 games-repository.js compact 响应缺分级/状态字段（既有缺陷，角标渲染前提）；
+  测试 test/adult-display-control.test.js 8 条替换 FG 旧测试并注册 test:3；App 仓库同步（chip 显隐/参数/角标/年龄确认）。
+- **验证（2026-11-24）**：站点相关测试全绿（adult-display-control 8/8、api 38/38、game-search-filter 10/10、读模型 16/16、baseline-gate 5/5 等）+
+  frontend:build ✓ + scan 干净；headless Chrome 三态 DOM 断言 18/18（截图 F:\dsh\fi-shots\，不入库）；
+  后台 headless 下拉存在 + 成人筛选条数与 rating 一致；App testDebugUnitTest + assembleDebug 成功。
 - **验收**：见规格 §3（筛选生效、默认不过滤、前台回归无入口、测试全绿、截图）。
 
 ## FJ. 待开发（⚙️ 调整）：同步服务合并为任务组（25 → 12）
