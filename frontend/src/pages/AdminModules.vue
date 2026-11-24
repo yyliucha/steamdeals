@@ -19,7 +19,7 @@
         <div class="notice-card"><strong>数据任务由服务器自动执行</strong><p>下表是调度计划与运行状态；需要立即执行时点「立即运行」（使用默认参数）。任务之间自动互斥，不会同时抢占 Steam 配额。价格刷新间隔可在「系统设置 → 数据源与采集」调整。</p></div>
         <!-- FH（docs/ADULT-STATS.md）：内容分级统计——只读数字。FG（docs/REMOVE-18R-ENTRY.md）移除
              前台/App/游戏目录的 18R 查询入口后，成人内容量由这里统计（无列表/查询入口）。 -->
-        <div class="module-card adult-stats-card"><div class="card-heading"><div><h3>内容分级统计</h3><p>只读计数：成人/成熟内容数量与 rating-backfill 分级回填覆盖；最近回填时间读调度任务记录。</p></div><el-button text @click="loadGamesStats">刷新</el-button></div>
+        <div class="module-card adult-stats-card"><div class="card-heading"><div><h3>内容分级统计</h3><p>只读计数：成人/成熟内容数量与 rating-backfill 分级回填覆盖（全库口径，含未上架/已禁用游戏，与前台可见数可能不同）；最近回填时间读调度任务记录。</p></div><el-button text @click="loadGamesStats">刷新</el-button></div>
           <div class="metric-grid">
             <div class="metric-card"><span>成人（18+）</span><strong>{{ gameStats.adult||0 }}</strong></div>
             <div class="metric-card"><span>成熟内容</span><strong>{{ gameStats.mature||0 }}</strong></div>
