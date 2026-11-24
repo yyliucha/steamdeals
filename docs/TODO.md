@@ -49,7 +49,7 @@
   ③ `npm test`（分段）+ `frontend:build` + `scan` 全绿。
 
 ## EO. 首页工具栏 1100–1300px 挤成一行
-**状态：** 质检通过（2026-11-24，QA docs/QA-EO.md 第 1 轮 ✅ 6/0/0/2；实现 31138c1；测试 test/frontend-toolbar.test.js 6/6 + frontend-mobile/docs 绿）
+**状态：** 已发布 v2.29.0（2026-11-24，31138c1；代码随 v2.28.10 镜像成像，发布记录归本版；QA docs/QA-EO.md 第 1 轮 ✅ 6/0/0/2；测试 test/frontend-toolbar.test.js 6/6 + frontend-mobile 13/13 + style-tokens 3/3 + serve 12/12 绿）
 **类型：** 🐞 缺陷
 **优先级：** 高（用户已反馈）
 **依赖：** 无
@@ -72,7 +72,7 @@
 
 ## EP. 后台其余列表手机端卡片化
 
-**状态：** 已发布 v2.28.11（2026-11-24；任务健康/价格变化/浏览排行/缺图 4 表 + 未归属账号 + 对齐审核两视图卡片化，断点统一 760，卡片按钮 ≥44px；测试 admin-console-mobile 10/10；QA ✅ 放行）
+**状态：** 已发布 v2.29.0（2026-11-24；任务健康/价格变化/浏览排行/缺图 4 表 + 未归属账号 + 对齐审核两视图卡片化，断点统一 760，卡片按钮 ≥44px；测试 admin-console-mobile 10/10；QA ✅ 放行）
 **类型：** ⚙️ 调整
 **优先级：** 低
 **依赖：** 无（纯前端改动；开工前查 ACTIVE-SESSIONS 确认与在跑会话文件面不重叠）
@@ -128,7 +128,7 @@
 ## EY. 待开发（⚙️ 调整）：我的愿望单合并 Steam 愿望单展示（Steam 行只读）
 
 **类型：** ⚙️ 调整（前台愿望单：两层合并展示，操作仅限本站）
-**状态：** 已发布 v2.28.11（2026-11-24；`listMergedWishlists` 合并视图 + `include=steam`，UserSections.vue 来源列/只读行，测试 wishlist-site-only 14/14；QA ✅ 放行）
+**状态：** 已发布 v2.29.0（2026-11-24；`listMergedWishlists` 合并视图 + `include=steam`，UserSections.vue 来源列/只读行，测试 wishlist-site-only 14/14；合并展示按新功能定档 → 本版大版本依据；QA ✅ 放行）
 **优先级：** P2
 **依赖：** EW（账号列已发布）
 **解锁：** 无

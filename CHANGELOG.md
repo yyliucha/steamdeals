@@ -1,17 +1,24 @@
-## [2.28.11] - 2026-11-24
+## [2.29.0] - 2026-11-24
 
-EY 我的愿望单合并 Steam 愿望单 + EP 后台其余列表手机端卡片化（⚙️ 调整 2，无新功能面 → 小版本，2.28.10 → 2.28.11 连续递增）。本批只含站点（Web 前后端），不涉及 App 仓库。
+EO 首页工具栏窄屏断点修复 + EP 后台其余列表手机端卡片化 + EY 我的愿望单合并 Steam 愿望单（✨ 新增 1 / ⚙️ 调整 1 / 🐞 修复 1 —— EY 带来「本站 + Steam 合并展示」新功能面，所有者 2026-11-24 11:25 确认按新功能定档 → 大版本，2.28.10 → 2.29.0 连续递增、不跳号）。本批只含站点（Web 前后端），不涉及 App 仓库。
+
+### 新增
+
+- **EY 我的愿望单合并 Steam 愿望单（0f7aa26）**：`/api/me/wishlist` 合并 `user_wishlist`（本站）与 `steam_wishlist`（该用户绑定账号导入）——`src/steam-accounts.js` 新增 `listMergedWishlists`（UNION 后按 `game_id` 聚合，返回 `sources`/`site_wishlist_id`/`steam_accounts`，搜索/分页/越权均覆盖两层；后台 `/api/admin/wishlists` 原查询零变化）；`frontend/src/pages/UserSections.vue` 加「来源」列（本站 / Steam / 本站 + Steam），**Steam-only 行标「只读」且无任何操作按钮**，合并行「移除」只删本站（确认框写明 Steam 侧不受影响），列表 key 改 `game_id`；站点对 Steam 愿望单保持只读（不写回）。
 
 ### 调整
 
-- **EY 我的愿望单合并 Steam 愿望单（0f7aa26）**：`/api/me/wishlist` 合并 `user_wishlist`（本站）与 `steam_wishlist`（该用户绑定账号导入）——`src/steam-accounts.js` 新增 `listMergedWishlists`（UNION 后按 `game_id` 聚合，返回 `sources`/`site_wishlist_id`/`steam_accounts`，搜索/分页/越权均覆盖两层；后台 `/api/admin/wishlists` 原查询零变化）；`frontend/src/pages/UserSections.vue` 加「来源」列（本站 / Steam / 本站 + Steam），**Steam-only 行标「只读」且无任何操作按钮**，合并行「移除」只删本站（确认框写明 Steam 侧不受影响），列表 key 改 `game_id`；站点对 Steam 愿望单保持只读（不写回）。
 - **EP 后台其余列表手机端卡片化（fddc422）**：`AdminModules.vue` 任务健康 / 价格变化 / 浏览排行 / 图片覆盖缺图 4 张表补 `<template v-if="!isMobile">` 表格 + `.game-card-list` 卡片（操作「立即运行/重置熔断」与分页保留）；`AdminExtras.vue`「未归属 Steam 账号」手机端不再整块消失、卡片内可认领；`AlignAdmin.vue` 对齐审核队列/已忽略两视图卡片化（勾选/批量确认/换候选/忽略/明细展开/记录/恢复全部可用）；`AdminLogs`/`UserSections`/`AppealsAdmin` 卡片按钮触摸目标统一 ≥44px；**断点统一 760**（删除另挂的 720px 监听，解决 720–760px 旋转后跳回表格）；桌面端表格列/排序/分页/批量逻辑不变。
+
+### 修复
+
+- **EO 首页工具栏 1100–1300px 挤成一行（31138c1；代码随 v2.28.10 镜像成像，发布记录归本版）**：`frontend/src/styles/main.css` 2 列断点 `@media(max-width:1200px)` → `1360px`（搜索框整行 + 下拉 2 列 `flex:1 1 calc(50% - 5px);min-width:118px`），补 900/600 两档；根因是末尾无媒体查询的全局 `.toolbar .el-select{flex:0 0 132px}` 覆盖窄屏，改包进 `@media(min-width:1361px)`；420px 一列规则保持最后（层叠顺序锁）。headless Chrome 实测 1100/1200/1300/900 四档无横向溢出、6 个下拉三行两列、placeholder 完整，1440 保持单行 6×132px；新增 `test/frontend-toolbar.test.js`（6 条含反向自检，进主链 test:3）。
 
 ### 测试
 
-- QA：`docs/QA-EY.md` ✅ 放行（通过 5 / 缺失 0 / 偏差 0 / 需人工确认 2）与 `docs/QA-EP.md` ✅ 放行（通过 10 / 缺失 0 / 偏差 0 / 需人工确认 1）。
-- 相关测试：`wishlist-site-only` 14/14、`watchlist-user` 13/13、`wishlist` 6/6、`admin-console-mobile` 10/10、`frontend-mobile` 13/13、`align` 15/15、`admin-console-ia` 23/23、`api` 38/38；`npm run frontend:build` ✓；`npm run scan` 干净。
-- 人工目视项（部署后）：愿望单三种行（仅本站/仅 Steam/合并）来源与按钮显隐、后台 375px 下任务健康/价格变化/浏览排行/缺图/未归属账号/对齐审核卡片与操作。
+- QA：`docs/QA-EO.md` ✅ 放行（通过 6 / 缺失 0 / 偏差 0 / 需人工确认 2）+ `docs/QA-EP.md` ✅ 放行（通过 10 / 缺失 0 / 偏差 0 / 需人工确认 1）+ `docs/QA-EY.md` ✅ 放行（通过 5 / 缺失 0 / 偏差 0 / 需人工确认 2）。
+- 相关测试：`frontend-toolbar` 6/6、`admin-console-mobile` 10/10、`wishlist-site-only` 14/14、`watchlist-user` 13/13、`wishlist` 6/6、`frontend-mobile` 13/13、`align` 15/15、`admin-console-ia` 23/23、`api` 38/38；`npm run frontend:build` ✓；`npm run scan` 干净。
+- 人工目视项（部署后）：首页 1100–1300px 工具栏分行与下拉文字；愿望单三种行（仅本站/仅 Steam/合并）来源与按钮显隐；后台 375px 下任务健康/价格变化/浏览排行/缺图/未归属账号/对齐审核卡片与操作。
 
 ## [2.28.10] - 2026-11-24
 
