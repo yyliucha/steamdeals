@@ -16,6 +16,7 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
+| FI+FJ 构建（站点 v2.29.1 + App app-v2.25.0） | docs/（CHANGELOG/DONE/TODO/DELIVERY/INDEX/PROJECT-OVERVIEW）、package.json、steamdeals-app 构建产物 | **打 tag 构建**（站点 + App） | 2026-11-24 17:10 | 2026-11-24 20:00 | 构建会话（独立） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 

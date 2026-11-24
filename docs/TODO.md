@@ -22,7 +22,7 @@
 |---|---|---|
 | 🐞 缺陷 | 4 | EO、ER、EU、EX |
 | ✨ 功能 | 0 | — |
-| ⚙️ 调整 | 11 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FI / FJ |
+| ⚙️ 调整 | 9 | EP / EV / EW / EY / FB / FD / FF / FG / FH |
 | 🧹 技术债 | 2 | EN、FC |
 | 🧪 测试基建 | 0 | — |
 | 📝 文档流程 | 0 | — |
@@ -211,39 +211,3 @@
 - **需求**：后台统计卡片显示 adult_flag 总数 / mature_flag 总数 / 回填覆盖 / 最近回填时间——**只显示数字**，
   无成人内容列表（配合 FG）。
 - **验收**：见规格 §2（数字与 API 一致；无内容列表；测试全绿）。
-
-## FI. 待开发（⚙️ 调整）：内容分级——后台可筛 + 前台/App 按 site.adultDisplay 参数控制
-
-**类型：** ⚙️ 调整（后台管理能力，前台合规不变）
-**状态：** 质检通过（2026-11-24；站点 31126db + App 仓库 4266359；QA docs/QA-FI.md 第 1 轮 ✅ 9/0/0/2）
-**优先级：** P2
-**依赖：** FG（前台入口已移除）、FH（统计卡片已上）
-**解锁：** 无
-**涉及 App 仓库**：是（app-vX.Y.Z 随本批）
-**规格**：[ADMIN-RATING-FILTER.md](ADMIN-RATING-FILTER.md)
-
-- **需求**：① 后台恢复「内容分级」筛选（不受参数影响）；② **前台/App 按 `site.adultDisplay` 控制**：
-  hide（默认）=无入口/不展示；badge/show=显示 18R 入口可查（合规默认 hide，国外部署可开）；③ FH 统计卡片保留。
-- **实现（2026-11-24）**：后台 AdminModules.vue 恢复「内容分级」下拉（全部/成人 18+/成熟/未分级 → rating=adult|mature|none，不读 adultDisplay）；
-  前台 Home.vue 18R 入口按 siteAdultDisplay 三态显隐（hide 无入口 + adult=hide；badge/show 显示入口、选中 adult=badge|show&rating=adult；
-  18+ 角标仅 badge 红色；策略变化重置开关重载）；修 games-repository.js compact 响应缺分级/状态字段（既有缺陷，角标渲染前提）；
-  测试 test/adult-display-control.test.js 8 条替换 FG 旧测试并注册 test:3；App 仓库同步（chip 显隐/参数/角标/年龄确认）。
-- **验证（2026-11-24）**：站点相关测试全绿（adult-display-control 8/8、api 38/38、game-search-filter 10/10、读模型 16/16、baseline-gate 5/5 等）+
-  frontend:build ✓ + scan 干净；headless Chrome 三态 DOM 断言 18/18（截图 F:\dsh\fi-shots\，不入库）；
-  后台 headless 下拉存在 + 成人筛选条数与 rating 一致；App testDebugUnitTest + assembleDebug 成功。
-- **验收**：见规格 §3（筛选生效、默认不过滤、前台回归无入口、测试全绿、截图）。
-
-## FJ. 待开发（⚙️ 调整）：同步服务合并为任务组（25 → 12）
-
-**类型：** ⚙️ 调整（调度与后台展示合并）
-**状态：** 质检通过（2026-11-24；站点 0ec74d2 + 复检修复 3029238；QA docs/QA-FJ.md 第 1 轮 ✅ 14/0/1 修/2）
-**优先级：** P2 —— 后台任务页碎片化
-**依赖：** 无（子步骤 mode 保留，不影响历史）
-**解锁：** 无
-**规格**：[SYNC-JOB-GROUPS.md](SYNC-JOB-GROUPS.md)
-
-- **分组**：Steam 价格 / Steam 元数据（status+rating-backfill+backfill+rename）/ 多平台报价（sonkwo+itad+gog+humble）/
-  目录与发现 / 图片同步 / 索引维护 / 系统维护 / Steam 账号（claim 改手动）/ 热度 / App 版本 / 对齐快照 / 代理与提醒。
-- **实现**：组调度器（组内到期子步骤串行、heavy slot 互斥）；子步骤保留原 mode 写 sync_runs（历史/告警不变）；
-  后台组行 + 展开子步骤 + 立即运行（组级/子步骤级）；steam-claim 移出定时改手动按钮；API 加 groups 字段兼容。
-- **验收**：见规格 §5（12 组展示、子步骤串行、mode 记录一致、立即运行、测试全绿、截图）。

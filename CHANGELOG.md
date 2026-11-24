@@ -1,3 +1,18 @@
+## [2.29.1] - 2026-11-24
+
+FI 内容分级——后台可筛 + 前台/App 按 `site.adultDisplay` 三态控制 + FJ 同步服务合并为 12 个任务组（⚙️ 调整 2，无新功能面 → 小版本，2.29.0 → 2.29.1 连续递增）。站点 + App 双仓库（App 提交 `4266359`，随本批发 app-v2.25.0/22500）。
+
+### 调整
+
+- **FI 内容分级：后台恢复筛选 + 前台/App 按参数控制（31126db；App 4266359）**：后台游戏管理恢复「内容分级」筛选下拉（全部 / 成人（18+）/ 成熟 / 未分级 → `rating=adult|mature|none`，`loadGames` 带 `rating`，**不读 site.adultDisplay**，管理端始终可筛）；前台 `Home.vue` 18R 入口按 `/api/site` 的 `adultDisplay` 三态显隐——hide（默认）无入口且 `adult=hide`（大陆合规），badge/show 显示入口、选中 `adult=badge|show&rating=adult`，18+ 角标仅 badge 渲染（show 普通展示无角标），策略变化重置开关并重载；`src/store/games-repository.js` compact 列表补 `steam_status/adult_flag/mature_flag` 三字段（18+/成熟/状态角标渲染前提，既有缺陷，读模型与 legacy 双路径）；`test/adult-display-control.test.js` 8 条替换 `remove-18r-entry.test.js` 旧测试并注册 test:3。App 仓库同步（18R chip 按 `adultDisplay!=='hide'` 显隐、`adult` 恒传站点策略、年龄确认弹窗恢复、`GameCard` 角标仅 badge、`HomeFilterParamsTest` 六组映射）。FH 统计卡片保留。
+- **FJ 同步服务合并为任务组 25→12（0ec74d2；复检修复 3029238）**：`src/scheduler.js` 新增 `JOB_GROUPS` 12 组定义（Steam 价格 / Steam 元数据 / 多平台报价 / 目录与发现 / 图片同步 / 索引维护 / 系统维护 / Steam 账号 / 热度 / App 版本 / 对齐快照 / 代理与提醒）+ `jobsFromEnv` 按组序重排带 `group` 字段 + `planTick` 组内到期子步骤按声明顺序串行（`groupBusy`，heavy slot 互斥，不传 jobs 退化为旧行为）+ `writeStatusFile` 输出 groups；子步骤保留原 mode 写 `sync_runs`（历史/告警口径不变）；`steam-claim` 移出定时改手动按钮（`POST /api/admin/steam-claim`，未配置 400）；后台「同步与回填」12 组行 + 展开子步骤 + 组级/子步骤级立即运行（`POST /api/admin/sync/groups/:name/run` 组内链式串行、HTTP 立即 202）；status 响应补 `groups` 字段（旧字段保留兼容）；`test/scheduler.test.js` FJ 7 项（组定义与优先级 / 组内串行 / 跨组并行 / 无 jobs 退化 / 状态文件 groups / 空组保留）。
+
+### 测试
+
+- QA：`docs/QA-FI.md` 第 1 轮 ✅ 放行（通过 9 / 缺失 0 / 偏差 0 / 需人工确认 2）+ `docs/QA-FJ.md` 第 1 轮 ✅ 放行（通过 14 / 缺失 0 / 偏差 1 已修 / 需人工确认 2）。
+- 相关测试：`adult-display-control` 8/8、`scheduler` 7/7（FJ）、`api` 38/38、`game-search-filter` 10/10、`game-search-read-model` 16/16、`baseline-gate` 5/5；`npm run frontend:build` ✓；`npm run scan` 干净；headless Chrome 三态 DOM 断言 18/18（QA 轮）+ 后台成人筛选条数与 rating 一致；App `gradlew testDebugUnitTest` + `assembleDebug` 成功。
+- 人工目视项（部署后）：后台「内容分级」筛选与 12 组任务行/展开子步骤、前台/App 三态 18R 入口与角标（默认 hide 无入口）。
+
 ## [2.29.0] - 2026-11-24
 
 EO 首页工具栏窄屏断点修复 + EP 后台其余列表手机端卡片化 + EY 我的愿望单合并 Steam 愿望单（✨ 新增 1 / ⚙️ 调整 1 / 🐞 修复 1 —— EY 带来「本站 + Steam 合并展示」新功能面，所有者 2026-11-24 11:25 确认按新功能定档 → 大版本，2.28.10 → 2.29.0 连续递增、不跳号）。本批只含站点（Web 前后端），不涉及 App 仓库。
