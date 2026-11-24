@@ -157,7 +157,7 @@
 | **FF** | ⚙️ 调整：游戏卡片英文名缺失保持占位（固定行高，不影响布局） | [CARD-SUBTITLE-PLACEHOLDER.md](CARD-SUBTITLE-PLACEHOLDER.md) | 已发布 v2.28.10（2026-11-24） | ✅ 本轮已给 |
 | **FG** | ⚙️ 调整：移除 18R 查询入口（Web/App/后台；保留 API 参数与同步能力，默认 hide） | [REMOVE-18R-ENTRY.md](REMOVE-18R-ENTRY.md) | 已发布 v2.28.10（2026-11-24） | ✅ 本轮已给 |
 | **FH** | ⚙️ 调整：成人内容统计（adult/mature 数量 + 回填覆盖，只读数字） | [ADULT-STATS.md](ADULT-STATS.md) | 已发布 v2.28.10（2026-11-24） | ✅ 本轮已给 |
-| **FI** | ⚙️ 调整：内容分级——后台恢复「内容分级」筛选（不受 adultDisplay 影响）+ 前台/App 按 site.adultDisplay 控制 18R 入口（hide 无入口 / badge 角标 / show 普通展示） | [ADMIN-RATING-FILTER.md](ADMIN-RATING-FILTER.md) | 已实现待发版（2026-11-24 P2） | ✅ 本轮已给 |
+| **FI** | ⚙️ 调整：内容分级——后台恢复「内容分级」筛选（不受 adultDisplay 影响）+ 前台/App 按 site.adultDisplay 控制 18R 入口（hide 无入口 / badge 角标 / show 普通展示） | [ADMIN-RATING-FILTER.md](ADMIN-RATING-FILTER.md) | 质检通过（2026-11-24；站点 31126db + App 4266359） | ✅ 本轮已给 |
 | **FJ** | ⚙️ 调整：同步服务合并为任务组（25→12 组：元数据/报价/目录/图片/索引/维护/账号等；claim 改手动） | [SYNC-JOB-GROUPS.md](SYNC-JOB-GROUPS.md) | 待开发（2026-11-24 P2） | ✅ 本轮已给 |
 | **EY** | ⚙️ 调整：我的愿望单合并 Steam 愿望单（两层展示、Steam 行只读无操作、同游戏合并一行） | [MY-WISHLIST-MERGED.md](MY-WISHLIST-MERGED.md) | 已发布 v2.29.0（2026-11-24，合并展示按新功能定档 → 大版本） | ✅ 本轮已给 |
 | **EZ** | ⚙️ 调整：个人资料页精简（el-tabs 三 Tab：基本信息 / Steam 账号（绑定+游戏库合并）/ 偏好与统计；保存固定底部；手机端 Tab 横向滚动；全 el-button） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 已发布 v2.28.7（2026-11-23，8eeb1f4；QA-EZ-FA 第 1 轮 ✅） | ✅ demo 已给 |
