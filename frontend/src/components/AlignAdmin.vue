@@ -223,6 +223,24 @@ const chips = computed(() => {
 const alignTable = ref(null);
 const selectedRows = ref([]);
 function onSelection(rows) { selectedRows.value = rows; }
+// EP 批：≤760px 用卡片渲染（对齐队列表格在手机端横向滚动不可用）；卡片自选不依赖表格 ref
+const mobileQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 760px)') : null;
+const isMobile = ref(Boolean(mobileQuery && mobileQuery.matches));
+function onMobileChange(e) { isMobile.value = e.matches; }
+function isPicked(row) { return selectedRows.value.includes(row); }
+function togglePickRow(row) {
+  const i = selectedRows.value.indexOf(row);
+  if (i >= 0) selectedRows.value.splice(i, 1);
+  else selectedRows.value.push(row);
+}
+// 卡片视图的「明细」展开（桌面用表格 expand，手机卡片没有 expand，改成行内展开同一份候选/SKU 详情）
+const cardOpenKeys = ref([]);
+function isCardOpen(row) { return cardOpenKeys.value.includes(row.key); }
+function toggleCardDetail(row) {
+  const i = cardOpenKeys.value.indexOf(row.key);
+  if (i >= 0) cardOpenKeys.value.splice(i, 1);
+  else cardOpenKeys.value.push(row.key);
+}
 function toggleDetail(row) { alignTable.value?.toggleRowExpansion(row); }
 watch(displayedRows, () => {
   page.value = 1;
@@ -477,8 +495,8 @@ async function openHistory(row) {
   }
 }
 
-onMounted(() => { load(); loadIgnored(); });
-onUnmounted(() => { clearTimeout(firstRunTimer); clearTimeout(dirtyTimer); });
+onMounted(() => { load(); loadIgnored(); if (mobileQuery) { if (mobileQuery.addEventListener) mobileQuery.addEventListener('change', onMobileChange); else mobileQuery.addListener(onMobileChange); } });
+onUnmounted(() => { clearTimeout(firstRunTimer); clearTimeout(dirtyTimer); if (mobileQuery) { if (mobileQuery.removeEventListener) mobileQuery.removeEventListener('change', onMobileChange); else mobileQuery.removeListener(onMobileChange); } });
 </script>
 
 <template>
@@ -531,7 +549,7 @@ onUnmounted(() => { clearTimeout(firstRunTimer); clearTimeout(dirtyTimer); });
     </div>
 
     <!-- 表格：队列视图 / 已忽略视图（DH 批：已忽略 chip 切换视图，恢复为待处理需二次确认） -->
-    <div class="module-card table-card align-card" v-loading="loading">
+    <div class="module-card table-card align-card" v-loading="loading"><template v-if="!isMobile">
       <el-table v-if="view === 'queue' && displayedRows.length > 0" ref="alignTable" class="align-table" row-key="key" :data="pagedRows" :empty-text="' '" stripe
         @selection-change="onSelection">
         <el-table-column type="expand" width="30">
@@ -643,7 +661,7 @@ onUnmounted(() => { clearTimeout(firstRunTimer); clearTimeout(dirtyTimer); });
             <el-button link @click="openHistory(row)">记录</el-button>
           </template>
         </el-table-column>
-      </el-table>
+      </el-table></template><div v-else class="game-card-list"><template v-if="view === 'queue'"><div v-for="row in pagedRows" :key="row.key" class="admin-card"><div class="admin-card-pick"><el-checkbox :model-value="isPicked(row)" @change="togglePickRow(row)">选择</el-checkbox></div><div class="admin-card-main"><strong>{{ row.name }}</strong><small v-if="row.nameEn">{{ row.nameEn }}</small><small>{{ row.skuCount }} 个 SKU<template v-if="row.method"> · {{ row.method }}</template></small><div class="admin-card-tags"><el-tag :type="suggest(row).type" size="small" effect="light">{{ suggest(row).text }}</el-tag><div v-if="row.score != null" class="align-score"><div class="b" :class="scoreClass(row.score)"><i :class="scoreClass(row.score)" :style="{ width: scoreBarPct(row.score) + '%' }" /></div><span>{{ row.score.toFixed(2) }}</span></div></div><small v-if="row.candidate">候选：{{ row.candidate.name }}（appid {{ row.candidate.steamAppid }}）</small><small v-else class="muted">无候选</small><small v-if="row.lastReviewed">{{ row.lastReviewed.action }} · {{ row.lastReviewed.by || '系统' }} · {{ fmtMin(row.lastReviewed.at) }}</small></div><div class="admin-card-foot"><span class="align-links"><a v-if="row.candidate?.steamUrl" :href="row.candidate.steamUrl" target="_blank" rel="noopener noreferrer" class="lnk">Steam ↗</a><a v-if="row.skuUrls[0]" :href="row.skuUrls[0]" target="_blank" rel="noopener noreferrer" class="lnk">杉果 ↗</a></span><span class="align-card-actions"><el-button link type="primary" :disabled="!row.candidate" @click="openConfirm(row)">确认</el-button><el-button link @click="openSearch(row)">换候选</el-button><el-button link type="danger" @click="ignoreGroup(row)">忽略</el-button><el-button link @click="toggleCardDetail(row)">明细</el-button><el-button link @click="openHistory(row)">记录</el-button></span></div><div v-if="isCardOpen(row)" class="align-card-detail"><div class="align-detail-skus"><span class="muted">该组全部 SKU 杉果链接：</span><a v-for="(u, i) in row.skuUrls" :key="row.skuIds[i]" :href="u" target="_blank" rel="noopener noreferrer">SKU {{ row.skuIds[i] }} ↗</a></div><div class="align-detail-cands"><div v-for="c in row.candidates" :key="c.steamAppid ?? c.name" class="align-detail-cand"><div class="n"><a :href="c.steamUrl" target="_blank" rel="noopener noreferrer">{{ c.name }}</a><span class="muted mono">appid {{ c.steamAppid }}</span></div><div class="m"><span class="align-detail-score" :class="scoreClass(c.score)">{{ c.score.toFixed(2) }}</span><span class="muted" v-if="reasonText(c.reasons)">· {{ reasonText(c.reasons) }}</span><span class="muted">· 来源 Steam（命中 {{ c.matchedField }}）</span></div></div><div v-if="!row.candidates.length" class="muted">无候选（可点「换候选」手动搜索指定目标）。</div></div></div></div></template><template v-else><div v-for="row in ignored.rows" :key="row.key" class="admin-card"><div class="admin-card-main"><strong>{{ row.name }}</strong><el-tag v-if="row.method === 'content_word'" type="info" size="small" class="align-cw-tag">内容词自动归档</el-tag><small class="align-links"><a v-for="id in row.skus" :key="id" class="lnk" :href="'https://www.sonkwo.hk/sku/' + id" target="_blank" rel="noopener noreferrer">SKU {{ id }} ↗</a></small><small class="muted">忽略于 {{ row.ignoredAt ? fmtMin(row.ignoredAt) : '—' }} · {{ row.ignoredBy || '系统' }}</small></div><div class="admin-card-foot"><span></span><span class="align-card-actions"><el-button link type="primary" @click="restoreIgnored(row)">恢复</el-button><el-button link @click="openHistory(row)">记录</el-button></span></div></div></template></div>
 
       <!-- 分页（前端分页：翻页保留筛选；仅队列视图） -->
       <PaginationBar v-if="view === 'queue' && displayedRows.length > 0" v-model:page="page" v-model:page-size="pageSize" :total="filteredRows.length" />
@@ -835,4 +853,20 @@ onUnmounted(() => { clearTimeout(firstRunTimer); clearTimeout(dirtyTimer); });
 .history-list{display:flex;flex-direction:column;gap:8px}
 .history-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;font-size:12px;flex-wrap:wrap}
 .history-item .muted{margin-left:auto}
+/* EP 批：≤760px 卡片视图（与后台既有 .admin-card 同款结构/视觉） */
+.game-card-list{display:flex;flex-direction:column;gap:var(--space-8)}
+.admin-card{border:1px solid var(--border);border-radius:var(--radius-12);padding:var(--space-10) var(--space-12);background:var(--panel)}
+.admin-card-pick{display:flex;align-items:center;min-height:32px}
+.admin-card-main{display:flex;flex-direction:column;gap:var(--space-4);min-width:0}
+.admin-card-main strong{font-size:var(--font-13);display:flex;align-items:center;gap:var(--space-6);flex-wrap:wrap;overflow-wrap:anywhere}
+.admin-card-main small{font-size:var(--font-11);color:var(--fg-muted);overflow-wrap:anywhere}
+.admin-card-tags{display:flex;flex-wrap:wrap;gap:var(--space-4);align-items:center}
+.admin-card-foot{display:flex;justify-content:space-between;align-items:center;gap:var(--space-8);margin-top:var(--space-8);font-size:var(--font-12);color:var(--fg-muted);flex-wrap:wrap}
+.align-card-actions{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.align-card-actions .el-button{margin-left:0}
+.align-card-detail{margin-top:var(--space-8);border-top:1px dashed var(--border-2);padding-top:var(--space-8);display:flex;flex-direction:column;gap:var(--space-6)}
+/* EP 批：手机端卡片内操作按钮触摸目标 ≥44px（与 BulkBar/个人资料页同一验收口径） */
+@media (max-width: 760px) {
+  .admin-card .el-button { min-height: 44px; }
+}
 </style>

@@ -164,7 +164,7 @@
 | **DX** | 🧹 技术债：列表/站点接口性能优化（count 合并 + 短 TTL 缓存 + /api/site 缓存 + 压测） | [SEARCH-FIX-PERF.md](SEARCH-FIX-PERF.md) §DX | 已发布 v2.27.8（2026-11-20，实现 090af4c；QA docs/QA-DX.md 第 1 轮 ✅ 6/0/0/1） | ✅ 本轮已给 |
 | **EN** | CSP 安全加固（三档：正式/观察/关闭，per-request nonce；默认正式） | [CSP-HARDENING.md](CSP-HARDENING.md) | 已发布 v2.28.10（2026-11-24） | ✅ 本轮已给 |
 | **EO** | 首页工具栏 1100–1300px 挤成一行 | [ROADMAP.md](ROADMAP.md)「体验与性能优化」#1 | 质检通过（2026-11-24，31138c1；QA docs/QA-EO.md 第 1 轮 ✅ 6/0/0/2） | ✅ |
-| **EP** | 后台其余列表手机端卡片化（游戏目录/访问记录已做） | [ROADMAP.md](ROADMAP.md)「未排期想法」 | 待开发 | ✅ 本轮已给 |
+| **EP** | 后台其余列表手机端卡片化（游戏目录/访问记录已做） | [ROADMAP.md](ROADMAP.md)「未排期想法」 | 已实现待发版（2026-11-24） | ✅ 本轮已给 |
 | **EQ** | 提醒通道：多收件人分组（范围待确认后补规格） | [ROADMAP.md](ROADMAP.md)「未排期想法」 | 待决策 | ✅ 本轮已给 |
 | **ER** | B4/cli 拆分遗留缺陷修复（backfill q is not a function / prune 42P01 / #18 syncPrices 断引用） | 本条目 + [B4-QUEUE.md](B4-QUEUE.md) 备注 | 已发布 v2.28.10（2026-11-24） | ✅ 本轮已给 |
 | **ES** | 生产 pg_trgm 索引命中复核（EXPLAIN，部署侧执行） | [ROADMAP.md](ROADMAP.md)「体验与性能优化」段尾注 | 待排查 | ✅ 本轮已给 |

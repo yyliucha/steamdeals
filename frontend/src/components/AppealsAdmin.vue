@@ -197,4 +197,8 @@ onMounted(() => loadAppeals());
 <style scoped>
 .appeal-filter-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:2px}.appeal-filter-row .module-tabs{border-bottom:0;padding:0}.seg-tabs{display:inline-flex;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--panel-2)}.seg-tabs button{border:0;background:transparent;padding:7px 14px;color:var(--fg-muted);font-size:12px;cursor:pointer}.seg-tabs button.on{background:var(--brand);color:#fff;font-weight:650}.appeal-reason{display:block;font-weight:600}.appeal-reason+small{display:block;margin-top:2px;font-size:10px}.appeal-empty-card{padding:18px;background:var(--panel-2);border-radius:12px;margin:14px}
 .appeal-detail dl{margin:0;border:1px solid var(--border);border-radius:12px;overflow:hidden}.appeal-detail dl div{display:flex;gap:10px;padding:9px 13px;border-bottom:1px solid var(--border);font-size:13px}.appeal-detail dl div:last-child{border-bottom:0}.appeal-detail dt{min-width:76px;color:var(--fg-muted);flex:none}.appeal-detail dd{margin:0;overflow-wrap:anywhere}.appeal-detail a{color:var(--brand);text-decoration:none}.appeal-message{white-space:pre-wrap}.resolve-title{margin:18px 0 10px;font-size:14px}.resolve-actions{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-bottom:12px}
+/* EP 批：手机端卡片内操作按钮触摸目标 ≥44px（与其它已卡片化后台页统一） */
+@media (max-width: 760px) {
+  .admin-card .el-button { min-height: 44px; }
+}
 </style>

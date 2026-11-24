@@ -66,3 +66,89 @@ test('BW：级联修复——旧 ≤760 压缩规则不得命中 ☰ 抽屉与�
   assert.match(extras, /max-width: 768px/, 'AdminExtras 断点 768');
   assert.match(logs, /max-width: 768px/, 'AdminLogs 断点 768');
 });
+
+// ---------------------------------------------------------------- EP 批（docs/TODO.md EP）
+// 后台其余列表手机端卡片化：任务健康/价格变化/浏览排行/图片覆盖缺图 + 未归属 Steam 账号 + 对齐审核，
+// 统一 `<template v-if="!isMobile">表格</template><div v-else class="game-card-list">…admin-card…</div>`；
+// 桌面表格不动，操作按钮全部保留（含勾选/批量/确认/忽略/恢复），触摸目标 ≥44px。
+const modules = readFileSync(ROOT + 'frontend/src/pages/AdminModules.vue', 'utf8');
+const align = readFileSync(ROOT + 'frontend/src/components/AlignAdmin.vue', 'utf8');
+const userSections = readFileSync(ROOT + 'frontend/src/pages/UserSections.vue', 'utf8');
+const appeals = readFileSync(ROOT + 'frontend/src/components/AppealsAdmin.vue', 'utf8');
+
+test('EP：AdminModules 任务健康/价格变化/浏览排行/缺图列表都有手机卡片分支（桌面表格保留）', () => {
+  for (const [name, dataExpr, cardVFor] of [
+    ['任务健康', 'taskRows', 'v-for="row in taskRows"'],
+    ['价格变化', 'priceRows', 'v-for="row in priceRows"'],
+    ['浏览排行', 'viewRowsPage', 'v-for="(row, i) in viewRowsPage"'],
+    ['图片覆盖缺图', 'coverage.list.items', 'v-for="row in coverage.list.items"'],
+  ]) {
+    assert.ok(
+      modules.includes(`<template v-if="!isMobile"><el-table :data="${dataExpr}"`),
+      `${name}：桌面表格包在 v-if="!isMobile" 内（桌面行为不变）`,
+    );
+    assert.ok(modules.includes(`${cardVFor} `) || modules.includes(cardVFor), `${name}：卡片按同一数据源渲染`);
+    assert.match(modules, new RegExp(`${cardVFor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^]{0,240}?class="admin-card"`), `${name}：卡片用既有 .admin-card 结构`);
+  }
+  // EP 前 9 个分支（游戏/访问/待审/设备/黑白名单/自动封禁）+ EP 新增 4 个 = ≥13
+  const branches = (modules.match(/v-else class="game-card-list"/g) || []).length;
+  assert.ok(branches >= 13, `AdminModules 卡片分支 ≥13（实际 ${branches}）`);
+  // 断点统一到 760（旧代码在 onMounted 里另挂了 720 监听，旋转后会在 720–760 之间跳回表格）
+  assert.match(modules, /matchMedia\('\(max-width: 760px\)'\)/, 'isMobile 断点 760');
+  assert.match(modules, /mobileQuery\.addEventListener\('change',onMobileChange\)/, '断点变化监听 760（不另挂 720）');
+  assert.ok(!modules.includes("matchMedia('(max-width: 720px)')"), '不得残留 720 监听');
+});
+
+test('EP：未归属 Steam 账号手机端可认领（原 v-if 只给桌面，手机看不到）', () => {
+  assert.ok(!extras.includes('v-if="!isMobile && unownedAccounts.length"'), '容器不再整体排除手机');
+  assert.match(extras, /v-if="unownedAccounts\.length"[^>]*class="module-card table-card"/, '容器两种宽度都渲染');
+  assert.ok(
+    extras.includes('<template v-if="!isMobile"><div class="table-scroll"><el-table :data="unownedAccounts"'),
+    '桌面表格保留 v-if="!isMobile"',
+  );
+  assert.match(extras, /v-for="row in unownedAccounts"[^]{0,240}?class="admin-card"/, '手机卡片分支');
+  assert.match(extras, /v-for="row in unownedAccounts"[^]{0,600}?claimSteam\(row\)/, '卡片内保留认领操作');
+});
+
+test('EP：对齐审核队列/已忽略两个视图都有手机卡片，勾选与操作不丢', () => {
+  assert.match(align, /matchMedia\('\(max-width: 760px\)'\)/, '对齐审核断点 760');
+  assert.ok(align.includes('<div class="module-card table-card align-card" v-loading="loading"><template v-if="!isMobile">'), '两个桌面表格包进 v-if="!isMobile"');
+  assert.match(align, /v-else class="game-card-list"/, '手机卡片容器');
+  assert.match(align, /v-for="row in pagedRows"[^]{0,240}?class="admin-card"/, '队列卡片');
+  assert.match(align, /v-for="row in ignored\.rows"[^]{0,240}?class="admin-card"/, '已忽略卡片');
+  for (const fn of ['openConfirm(row)', 'openSearch(row)', 'ignoreGroup(row)', 'openHistory(row)', 'restoreIgnored(row)']) {
+    assert.ok(align.includes(fn), `卡片保留操作 ${fn}`);
+  }
+  assert.match(align, /togglePickRow/, '卡片勾选（不依赖桌面表格 ref，批量确认/忽略仍可用）');
+  assert.match(align, /isPicked\(row\)/, '卡片勾选回显');
+  // 桌面表格的 expand 明细在卡片里换成行内展开（SKU 链接 + 全部候选），操作不丢
+  assert.match(align, /toggleCardDetail/, '卡片「明细」行内展开');
+  assert.match(align, /isCardOpen\(row\)/, '明细展开状态回显');
+  assert.ok(align.includes('align-card-detail'), '明细详情块存在');
+  assert.match(align, /align-detail-cands/, '明细里保留候选列表');
+});
+
+test('EP：卡片操作按钮触摸目标 ≥44px（全部已卡片化后台页统一）', () => {
+  for (const [name, src] of [
+    ['AdminModules', modules],
+    ['AdminExtras', extras],
+    ['AdminLogs', logs],
+    ['UserSections', userSections],
+    ['AlignAdmin', align],
+    ['AppealsAdmin', appeals],
+  ]) {
+    const compact = src.replace(/\s+/g, '');
+    assert.ok(
+      compact.includes('@media(max-width:760px){.admin-card.el-button{min-height:44px;}}'),
+      `${name}：卡片内按钮 ≥44px`,
+    );
+  }
+});
+
+test('EP：控制台普通用户列表（会话/到价提醒/愿望单）既有卡片分支不回归', () => {
+  const branches = (userSections.match(/v-else class="game-card-list"/g) || []).length;
+  assert.ok(branches >= 3, `UserSections 三个列表卡片分支（实际 ${branches}）`);
+  for (const anchor of ['v-for="s in sessions"', 'v-for="w in watches"', 'v-for="w in wishItems"']) {
+    assert.ok(userSections.includes(anchor), `卡片循环存在：${anchor}`);
+  }
+});

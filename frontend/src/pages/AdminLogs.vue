@@ -623,4 +623,5 @@ onBeforeUnmount(() => {
 .admin-card-tags{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0 0}
 .admin-card-actions{display:flex;flex-wrap:wrap;gap:2px;align-items:center}
 .admin-card-actions .el-button{margin-left:0}
-.admin-card-actions .muted{font-size:12px;color:var(--fg-muted);overflow-wrap:anywhere}</style>
+.admin-card-actions .muted{font-size:12px;color:var(--fg-muted);overflow-wrap:anywhere}
+@media (max-width: 760px){.admin-card .el-button{min-height:44px;}}</style>

@@ -380,4 +380,9 @@ onMounted(() => {
   .wish-actions{width:100%}
   .wish-actions .el-input{width:100%!important;flex:1}
 }
+
+/* EP 批：手机端卡片内操作按钮触摸目标 ≥44px（与其它已卡片化后台页统一） */
+@media (max-width: 760px) {
+  .admin-card .el-button { min-height: 44px; }
+}
 </style>

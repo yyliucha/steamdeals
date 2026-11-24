@@ -58,9 +58,9 @@
         </el-table></div>
         <el-empty v-else-if="!isMobile" description="还没有绑定 Steam 账号，点右上角「绑定新账号」开始"/>
       </div>
-      <div v-if="!isMobile && unownedAccounts.length" class="module-card table-card">
+      <div v-if="unownedAccounts.length" class="module-card table-card">
         <div class="card-heading padded"><div><h3>未归属的 Steam 账号（迁移认领）</h3><p>历史登录留下的账号还没有归属任何站点用户，认领后即可同步游戏库与愿望单。</p></div></div>
-        <div class="table-scroll"><el-table :data="unownedAccounts" stripe><el-table-column label="账号" min-width="240"><template #default="{row}"><div class="steam-account-cell"><div><strong>{{ row.persona_name||row.steam_id }}</strong><small>{{ row.steam_id }}</small></div></div></template></el-table-column><el-table-column label="已同步游戏" width="120" align="right"><template #default="{row}">{{ row.games }}</template></el-table-column><el-table-column label="操作" width="130" fixed="right"><template #default="{row}"><el-button link type="primary" @click="claimSteam(row)">认领到当前管理员</el-button></template></el-table-column></el-table></div>
+        <template v-if="!isMobile"><div class="table-scroll"><el-table :data="unownedAccounts" stripe><el-table-column label="账号" min-width="240"><template #default="{row}"><div class="steam-account-cell"><div><strong>{{ row.persona_name||row.steam_id }}</strong><small>{{ row.steam_id }}</small></div></div></template></el-table-column><el-table-column label="已同步游戏" width="120" align="right"><template #default="{row}">{{ row.games }}</template></el-table-column><el-table-column label="操作" width="130" fixed="right"><template #default="{row}"><el-button link type="primary" @click="claimSteam(row)">认领到当前管理员</el-button></template></el-table-column></el-table></div></template><div v-else class="game-card-list"><div v-for="row in unownedAccounts" :key="row.steam_id" class="admin-card"><div class="admin-card-main"><strong>{{ row.persona_name||row.steam_id }}</strong><small>{{ row.steam_id }} · 已同步 {{ row.games }} 款</small></div><div class="admin-card-foot"><span></span><span><el-button link type="primary" @click="claimSteam(row)">认领到当前管理员</el-button></span></div></div></div>
       </div>
       <div v-if="!isMobile && activeAccount && libraryGames.length" class="module-card table-card">
         <div class="card-heading padded"><div><h3>{{ activeAccount.alias||activeAccount.persona_name||activeAccount.steam_id }} 的游戏库</h3><p>最多显示 500 条，按游玩时长排序。</p></div><el-button text @click="activeAccount=null;libraryGames=[]">收起</el-button></div>
@@ -410,4 +410,8 @@ onBeforeUnmount(()=>{if(mobileQuery){if(mobileQuery.removeEventListener)mobileQu
 .admin-card-actions{display:flex;flex-wrap:wrap;gap:var(--space-2)}
 .admin-card-actions .el-button{margin-left:0}
 :global(.admin-content){overflow-y:auto}
+/* EP 批：手机端卡片内操作按钮触摸目标 ≥44px（与 BulkBar/个人资料页同一验收口径） */
+@media (max-width: 760px) {
+  .admin-card .el-button { min-height: 44px; }
+}
 </style>
