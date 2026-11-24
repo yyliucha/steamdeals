@@ -860,7 +860,8 @@ async function runGroup(name){
   saving.value=true;
   try{
     const d=await api(`/api/admin/sync/groups/${name}/run`,json('POST',{}));
-    if(d.started){const labels=(d.steps||[]).map(s=>TASK_META[s.mode]?.label||s.mode);ElMessage.success(labels.length?`已启动：${labels.join('、')}`:'已启动组内到期子步骤');}
+    // FJ 批：202 响应字段为 queued（到期子步骤的 mode 列表，组内顺序），不是 steps
+    if(d.started){const labels=(d.queued||[]).map(m=>TASK_META[m]?.label||m);ElMessage.success(labels.length?`已启动：${labels.join('、')}`:'已启动组内到期子步骤');}
     else{ElMessage.info(d.reason||'无到期子步骤');}
     await loadSyncStatus();
   }catch(e){const m=e?.message||String(e);if(m==='HTTP 409'||m==='BUSY')ElMessage.warning('组内有任务正在运行，请稍后再试');else notifyError(e);}
