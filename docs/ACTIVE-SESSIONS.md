@@ -16,7 +16,8 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| （空——FE 会话 2026-11-23 收尾注销：QA 第 1 轮 ✅ 放行；FC 会话 2026-11-23 收尾注销：v2.28.8 已发布（release ecf2362，CI 三绿）） | | | | | |
+| FG + FH | gameprice：frontend/src/pages/{Home,AdminModules}.vue、src/store/admin-games-repository.js、test/remove-18r-entry.test.js、package.json、docs/{TODO,REQUIREMENTS-INDEX,PROJECT-OVERVIEW}.md；steamdeals-app：ui/home、ui/search、ui/AppViewModel.kt、res/values/strings.xml、test/HomeFilterParamsTest.kt | 无 | 2026-11-24 09:35 | 2026-11-24 | lead（FG 移除 18R 入口 + FH 成人内容统计） |
+| v2.28.9 构建（FE 发版） | gameprice：docs/{CHANGELOG,DONE,TODO,REQUIREMENTS-INDEX,DELIVERY,PROJECT-OVERVIEW,PROFILE-STEAM-ACTIONS,ACTIVE-SESSIONS}.md、package.json、package-lock.json | **打 tag 构建** | 2026-11-24 09:48 | 2026-11-24 | lead（独立构建会话） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 

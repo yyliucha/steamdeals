@@ -1,3 +1,17 @@
+## [2.28.9] - 2026-11-24
+
+FE 个人资料 Steam 账号同步按钮 + 按钮样式（⚙️ 调整 1，无新功能面 → 小版本，2.28.8 → 2.28.9 连续递增）。本批只含 Web 前端，不涉及 App 仓库。
+
+### 调整
+
+- **个人资料 Steam 账号「同步游戏库 / 同步愿望单」按钮（0bc2733）**：`frontend/src/pages/ProfilePage.vue` Steam 账号 Tab 每个账号操作区新增两个按钮（普通用户本人可用）——点击 → POST `.../library|wishlist/sync`（EM 批异步 202）→ 按钮「同步中…」禁用 → 2s 轮询 `GET .../sync-status` 最长 60s → 完成后 `loadLibrary` 刷新该页已拥有/愿望单统计并提示结果；无 API Key 账号点同步按后端 400 映射为「该账号缺少 API Key，请先配置」（不再报 500）；手机端操作区 6 按钮 2×N 网格、触摸目标 ≥44px。后端接口与权限未改（仍 `requireUser` + `requireAccountOwner`）。
+- **个人资料页按钮样式统一（0bc2733）**：排查确认模板全部为 `el-button`（源码/组件注册/样式导入/构建产物均正常），线上原生观感为旧构建/缓存 → 本版重建产物即修复；headless Chrome 断言锁住（12 个按钮全部 el-button、无未注册自定义标签、计算样式圆角 3px + 边框 + 白底）。
+
+### 测试
+
+- QA [docs/QA-FE.md](docs/QA-FE.md) 第 1 轮 ✅ 放行（通过 5 / 缺失 0 / 偏差 0 / 需人工确认 2 = 真实 Steam 成功链路、截图目视）。
+- `test/profile.test.js` 16/16（含 FE 编译级静态锁：轮询参数 60000、无 Key 文案、手机端网格，双向反向自检）；`test/steam-accounts.test.js` 18/18；主链分段 test:1~4 全绿；`npm run frontend:build` ✓；`npm run scan` 干净（829 文件）。
+
 ## [2.28.8] - 2026-11-23
 
 FC 调度器 compose 文件级拆分——app 与 scheduler 两个文件独立发布（🧹 技术债，业务不剥离 → 无新功能面 → 小版本，2.28.7 → 2.28.8 连续递增）。本批不涉及 App 仓库。
