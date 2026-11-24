@@ -16,9 +16,10 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| FI+FJ 构建（站点 v2.29.1 + App app-v2.25.0） | docs/（CHANGELOG/DONE/TODO/DELIVERY/INDEX/PROJECT-OVERVIEW）、package.json、steamdeals-app 构建产物 | **打 tag 构建**（站点 + App） | 2026-11-24 17:10 | 2026-11-24 20:00 | 构建会话（独立） |
 
 | FL（设置折叠统一，直接修复补登） | gameprice：frontend/src/pages/AdminModules.vue（displaySettingsFields） | 无 | 2026-11-24 17:45 | 2026-11-24 | lead（直接修复 0f22937，未先立项——事后补 TODO/INDEX，QA 待做） |
+| FK（App 资产同步换源 GitHub→COS） | gameprice：src/settings.js、src/app-release.js、test/app-release.test.js、test/app-release-sync.test.js、test/settings.test.js、test/setup.test.js、.dsh/skills/steamdeals-app-build/SKILL.md、docs/PROJECT-OVERVIEW.md、docs/APP-SYNC-COS.md、docs/QA-FK.md | 无 | 2026-11-24 18:05 | 2026-11-24 19:30 | lead（定时任务会话） |
+| FM（价格提醒史低误报） | gameprice：src/store/pg.js（watchCandidates）、src/alerts.js、src/alerts-html.js、test/alerts.test.js、test/alerts-html.test.js、test/watchlist.test.js、docs/QA-FM.md | 无 | 2026-11-24 18:20 | 2026-11-24 19:30 | lead（FM 独立开发会话） |
 ## 独占资源一览（同一时刻只允许一个会话持有）
 
 | 资源 | 说明 | 典型操作 |
