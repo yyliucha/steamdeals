@@ -49,7 +49,7 @@
   ③ `npm test`（分段）+ `frontend:build` + `scan` 全绿。
 
 ## EO. 首页工具栏 1100–1300px 挤成一行
-**状态：待开发（2026-11-24 排查完成，根因与修复方案见条目）**
+**状态：** 已实现待发版（2026-11-24，实现 31138c1；测试 test/frontend-toolbar.test.js 6/6 + frontend-mobile/docs 绿）
 **类型：** 🐞 缺陷
 **优先级：** 高（用户已反馈）
 **依赖：** 无
@@ -63,9 +63,12 @@
   - 1100–1200 虽有 2 列规则，但 6 个下拉 + min-width 118px 在部分宽度仍拥挤。
 - **修复方案**：把 2 列断点扩到 1360px（覆盖 1100–1300）；搜索框整行 + 下拉 2 列（`flex:1 1 calc(50% - 5px);min-width:118px`）；
   补 900/600 两档（ROADMAP 批次 2）；验收 1100/1200/1300 三档不溢出、下拉文字完整。
-- **现状（2026-11-20 代码核实）**：`frontend/src/styles/main.css` 无 1100/1300 断点；
-  `.toolbar-filters` 仅 flex 布局（Home.vue），未针对该区间做换行/收纳——是否仍复现需先目视确认。
-- **待排查动作**：在 1100–1300px 窗口确认是否复现 → 截图存档 → 若复现转入开发（断点换行或收纳策略，不新增功能面）。
+- **实现（2026-11-24）**：`frontend/src/styles/main.css` ①2 列断点 `@media(max-width:1200px)` → `1360px`（搜索整行 + 下拉 `flex:1 1 calc(50% - 5px);width:auto;min-width:118px`）；
+  ②补 `@media(max-width:900px)`（平板）与 `600px`（小屏）两档；③修复根因：原末尾全局 `.toolbar .el-select{flex:0 0 132px;width:132px}` 包进 `@media(min-width:1361px)`，不再覆盖窄屏；
+  ④`760px` 档的 45% 两列统一为 `calc(50% - 5px)`；420px 一列规则保持在最后（层叠顺序锁）。Home.vue 未改（纯 CSS 解决）。
+- **验证（2026-11-24）**：headless Chrome（CDP）在 1100/1200/1300/900/1440 五档实测——1100/1200/1300/900 无横向溢出（`scrollWidth<=clientWidth`）、6 个下拉 3 行 2 列、`min-width 118` 生效、placeholder 文字完整不截断；
+  1440 单行 6×132px；反向自检注入修复前全局 132px 规则后断言变红（1 行 6 列）。截图 `F:\dsh\eo-shots\home-{1100,1200,1300,900,1440}.png`（不入库）。
+  测试：`test/frontend-toolbar.test.js`（6 条，含反向自检）已进主链 `test:3`；相关单测 frontend-mobile 13/13、style-tokens 3/3、serve 12/12 全绿。
 
 ## EP. 后台其余列表手机端卡片化
 
