@@ -248,6 +248,10 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
+### 当前状态（2026-11-25，待发版：FT + FV 已实现待发版——质检通过，等「构建」指令）
+
+**FV 站点 head/foot 注入已实现待发版（2026-11-25，实现 66a7046 + 修复 b445771；QA docs/QA-FV.md 第 2 轮 ✅ 通过 5/缺失 0/偏差 0/需人工确认 1）**：后台「站点与内容」新增「Head 注入（</head> 前）/ Foot 注入（</body> 前）」两个多行输入框（text 类型、20KB 上限、仅管理员）；保存即热加载（无需改代码发版）——SPA 页面注入到 `</head>`/`</body>` 前，注入内容里的内联与外链 `<script>` 自动打 per-request CSP nonce（严格档可执行），响应 `cache-control: no-cache` 防旧 HTML；单段超 20KB 拒绝注入并记 `http.head_injection_skipped`；无配置时页面字节级不变；/api、/assets、/app/*.apk 不注入。⚙️ 调整、无 schema 变更。验证：head-foot-injection 8/8（新主链）+ 主链 test:1~4 全绿 + api 40/40 + `frontend:build` ✓ + `scan` 干净 + headless Chrome 实测（CSP enforce 下注入脚本执行 window 变量=42、Console 0 报错；外链 script 修复后 CSP 放行）+ 真实 HTTP 保存→热加载验证。截图（后台两个输入框 + 前台）：`F:\dsh\fv-shots\fv-admin-settings.png`、`F:\dsh\fv-shots\fv-frontpage.png`（供所有者目视）。
+
 ### 当前状态（2026-11-25，待发版：FT 已实现待发版——质检通过，等「构建」指令）
 
 **FT 成人内容分级细分（宽/严格两级）已实现待发版（2026-11-25，站点 cd2829e + App 2916dc3；QA docs/QA-FT.md 第 1 轮 ✅ 通过 10/缺失 0/偏差 0/需人工确认 2）**：新增 `games.explicit_flag`（严格=descriptor 4 或 ESRB AO；`adult_flag` 宽口径不变）与 `classifyContentRating.explicitFlag`；前台/App 筛选入口「18R」→「**色情游戏**」（`rating=explicit`）、18+ 角标仅 explicit、hide 仍排除全部成人内容（宽）；后台「内容分级统计」拆「成人内容（宽）/色情游戏（严格）」两行 + 「内容分级」筛选加「色情游戏（严格）」；新增 `explicit-backfill` 存量回填命令（候选≈4759 个、限速 1.5s/款、1 天冷却、429 收轮；调度器 steam-meta 组子步骤 + 后台任务卡「立即运行」）。⚙️ 调整、含新 schema 列 → 按功能面定档。验证：主链 test:1~4 共 1263 项全绿 + api 40/40 + headless Chrome DOM 断言 11/11（后台两行 宽=2 严格=1、后台筛选、前台按钮/角标/筛选）+ `frontend:build` ✓ + `scan` 干净；App testDebugUnitTest 全绿 + assembleDebug 成功。**部署后操作**：执行 `node src/cli.js explicit-backfill --limit 5000 --rate 1500`（约 2 小时）或在后台「游戏管理 → 同步与回填 → 色情游戏回填 → 立即运行」；回填完成后 `explicit_flag` 数量应 < `adult_flag`（2077 为宽成人、非色情游戏）。截图（后台两行/后台筛选/前台按钮角标筛选）：`F:\dsh\ft-verify\shots\`（供所有者目视）。

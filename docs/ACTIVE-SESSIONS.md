@@ -17,7 +17,6 @@
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
 
-| FV（head/foot 注入） | gameprice：src/settings.js、src/server.js、frontend/src/pages/AdminModules.vue、test/head-foot-injection.test.js、test/settings.test.js、package.json、docs/FV 相关 | 无（验证用 pglite 临时库 + 随机端口测试栈，不占真实服务栈） | 2026-11-25 14:10 | 2026-11-25 17:00 | lead（FV 定时任务；接管判定：FL 旧登记已超时 15h 且工作区无其未提交代码改动，实现已在 main；FP/FQ/FR/FT/FU 均已提交、工作区无 src 未提交改动，无文件面冲突） |
 ## 独占资源一览（同一时刻只允许一个会话持有）
 
 | 资源 | 说明 | 典型操作 |
