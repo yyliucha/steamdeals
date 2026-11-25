@@ -49,10 +49,24 @@ export function rawOfferShapeIssue(offer) {
   return null;
 }
 
+/**
+ * FP 批 P0（docs/SYNC-HARDENING.md §4.2）：「预期缺失」判定——免费/未发行/区域限制的合法游戏
+ * 没有 price_overview 是数据常态，不算契约漂移。返回缺失原因（'free' | 'coming_soon' |
+ * 'region_locked' | 'declared'）或 null。显式声明走 offer.expectedMissing / meta.noPrice。
+ */
+export function offerExpectedMissing(offer) {
+  const m = offer?.meta ?? {};
+  if (offer?.expectedMissing === true || m?.expectedMissing === true || m?.noPrice === true) return 'declared';
+  if (m?.isFree === true) return 'free';
+  if (m?.comingSoon === true || m?.releaseStatus === 'coming_soon') return 'coming_soon';
+  if (m?.regionLocked === true) return 'region_locked';
+  return null;
+}
+
 export async function ingestOffers(store, { platform, offers, logger = null, thresholds = null }) {
   const q = (sql, params) => store.query(sql, params);
   const alert = thresholds ?? ingestAlertThresholds();
-  const stats = { total: offers.length, inserted: 0, updated: 0, snapshots: 0, unchanged: 0, skipped: 0, noAppId: 0, shapeMismatch: 0, failed: 0 };
+  const stats = { total: offers.length, inserted: 0, updated: 0, snapshots: 0, unchanged: 0, skipped: 0, noAppId: 0, shapeMismatch: 0, expectedMissing: 0, failed: 0 };
   const platformCache = new Set();
 
   for (const offer of offers) {
@@ -62,16 +76,27 @@ export async function ingestOffers(store, { platform, offers, logger = null, thr
       logger?.warn('ingest.skip', { reason: 'missing_platform', title: offer.title });
       continue;
     }
-    // AC-4/AC7：关键字段缺失 → 记 shape_mismatch 并跳过，不写坏数据
+    // AC-4/AC7：关键字段缺失 → 记 shape_mismatch 并跳过，不写坏数据。
+    // FP 批 P0（docs/SYNC-HARDENING.md §4.2）：只有 priceCents 缺失且属「预期缺失」
+    //（免费/未发行/区域限制/显式声明）才不算契约漂移——分开统计，不触发 shape_threshold 告警。
     const shapeIssue = rawOfferShapeIssue(offer);
     if (shapeIssue) {
       stats.skipped += 1;
-      stats.shapeMismatch += 1;
-      logger?.warn(`adapter.${plat.code}.shape_mismatch`, {
-        field: shapeIssue,
-        reason: `shape_${shapeIssue}`,
-        title: String(offer?.title ?? '').slice(0, 120),
-      });
+      const expected = shapeIssue === 'priceCents' ? offerExpectedMissing(offer) : null;
+      if (expected) {
+        stats.expectedMissing += 1;
+        logger?.debug(`adapter.${plat.code}.expected_missing`, {
+          reason: `expected_${expected}`,
+          title: String(offer?.title ?? '').slice(0, 120),
+        });
+      } else {
+        stats.shapeMismatch += 1;
+        logger?.warn(`adapter.${plat.code}.shape_mismatch`, {
+          field: shapeIssue,
+          reason: `shape_${shapeIssue}`,
+          title: String(offer?.title ?? '').slice(0, 120),
+        });
+      }
       continue;
     }
     try {
@@ -184,7 +209,16 @@ export async function ingestOffers(store, { platform, offers, logger = null, thr
 
   // E4 批（docs/LOGGING-SCHEMA.md §4）：单轮聚合告警——批量解析失败（站点改版）与批量入库失败（DB/连接）
   // 各按 max(min, ⌈total×pct%⌉) 判线；日常单条失败只落上面的事件，不刷 error 级聚合。
+  // FP 批 P0（docs/SYNC-HARDENING.md §4.2）：shape 判线只用「契约漂移」（shapeMismatch）——
+  // 免费/未发行/区域限制的预期缺失（expectedMissing）单独统计，不触发告警。
   const breaches = ingestAlertBreaches(stats, alert);
+  if (stats.expectedMissing > 0) {
+    logger?.info('ingest.expected_missing', {
+      total: stats.total,
+      expectedMissing: stats.expectedMissing,
+      message: '本轮预期缺失（免费/未发行/区域限制等合法无价游戏），不计入 shape 告警',
+    });
+  }
   if (breaches.shape) {
     logger?.error('ingest.shape_threshold', {
       total: stats.total,

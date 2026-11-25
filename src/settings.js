@@ -217,11 +217,11 @@ export const SETTINGS = [
     advanced: true,
     help: 'steam-status 任务逐 appid 请求的间隔；与热度/回填共用 Steam 200 次/5 分钟配额。',
   }),
-  def('steamStatus.limit', 'STEAM_STATUS_LIMIT', 'sources', 'Steam 状态判定每轮上限', 'int', 6000, {
+  def('steamStatus.limit', 'STEAM_STATUS_LIMIT', 'sources', 'Steam 状态判定每轮上限', 'int', 20000, {
     min: 1000,
     max: 200000,
     advanced: true,
-    help: 'steam-status 每轮最多尝试多少款（每款平均 2 次请求；6000 ≈ 5 小时/轮，AB 批从 12000 下调，避免单轮拖过夜撞配额）；steam_checked_at 续跑游标，下轮继续。注意：库里已保存过的值会覆盖此默认，改默认需同步改「系统设置」。',
+    help: 'steam-status 每轮最多尝试多少款（每款平均 2 次请求；FP 批从 6000 提到 20000 ≈ 20 万目录 10 天一轮，可配 3–5 万加速）；steam_checked_at 续跑游标，下轮继续。注意：库里已保存过的值会覆盖此默认，改默认需同步改「系统设置」。',
   }),
   def('steamStatus.intervalMin', 'STEAM_STATUS_INTERVAL_MIN', 'sources', 'Steam 状态判定间隔（分钟）', 'int', 1440, {
     min: 0,

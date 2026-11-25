@@ -32,18 +32,20 @@ const PILOT_FILES = [
 // adapter.${plat.code}.shape_mismatch 是 ingest 域唯一的模板事件，按字面文本入快照。
 const EVENT_SNAPSHOT = {
   'src/scheduler.js': [
-    'scheduler.budget_exceeded', 'scheduler.circuit_reset', 'scheduler.circuit_reset_manual',
-    'scheduler.circuit_skip', 'scheduler.circuit_tripped', 'scheduler.crash', 'scheduler.exit',
+    'scheduler.budget_exceeded', 'scheduler.budget_skipped', 'scheduler.circuit_reset', 'scheduler.circuit_reset_manual',
+    'scheduler.circuit_skip', 'scheduler.circuit_tripped', 'scheduler.crash', 'scheduler.discovery_forbidden', 'scheduler.exit',
     'scheduler.failure_alert', 'scheduler.failure_alert_failed', 'scheduler.failure_alert_skipped',
-    'scheduler.failure_reason_failed', 'scheduler.followup', 'scheduler.heavy_slot_released',
+    'scheduler.failure_reason_failed', 'scheduler.followup', 'scheduler.forbidden_deferred', 'scheduler.heavy_slot_released',
     'scheduler.job_deferred_busy', 'scheduler.job_done', 'scheduler.job_failed', 'scheduler.job_interrupted', 'scheduler.job_partial',
     'scheduler.job_spawn_failed', 'scheduler.job_start', 'scheduler.job_unexpected', 'scheduler.job_wait_end',
     'scheduler.job_wait_slot', 'scheduler.lastrun_restore_failed', 'scheduler.lastrun_restored',
-    'scheduler.no_jobs', 'scheduler.observed_fetch_failed', 'scheduler.drain_timeout', 'scheduler.settings_reloaded', 'scheduler.start', 'scheduler.stop',
-    'scheduler.waiting_setup',
+    'scheduler.no_jobs', 'scheduler.observed_fetch_failed', 'scheduler.drain_timeout', 'scheduler.running_runs_interrupted',
+    'scheduler.settings_reloaded', 'scheduler.shutdown_cleanup_failed', 'scheduler.stale_cleanup_failed',
+    'scheduler.stale_run_interrupted', 'scheduler.start', 'scheduler.stop', 'scheduler.waiting_setup',
   ],
   'src/ingest.js': [
-    'adapter.${plat.code}.shape_mismatch', 'ingest.failure_threshold', 'ingest.offer',
+    'adapter.${plat.code}.expected_missing', 'adapter.${plat.code}.shape_mismatch', 'ingest.expected_missing',
+    'ingest.failure_threshold', 'ingest.offer',
     'ingest.offer_failed', 'ingest.platform_mismatch', 'ingest.price_changed', 'ingest.shape_threshold',
     'ingest.skip', 'ingest.summary',
   ],

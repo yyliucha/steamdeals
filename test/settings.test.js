@@ -112,7 +112,7 @@ test('设置定义完整：100 项、8 个密钥、关键分组都在', () => {
   const adult = settings.SETTINGS.find((d) => d.key === 'site.adultDisplay');
   assert.deepEqual(adult.options, ['hide', 'badge', 'show'], '成人内容策略三档');
   const ssl = settings.SETTINGS.find((d) => d.key === 'steamStatus.limit');
-  assert.equal(ssl.default, 6000, 'steam-status 每轮默认 6000（AB 批从 12000 下调，约 5 小时/轮）');
+  assert.equal(ssl.default, 20000, 'FP 批：steam-status 每轮默认 20000（20 万目录约 10 天一轮，env 可配 3–5 万）');
   const ssi = settings.SETTINGS.find((d) => d.key === 'steamStatus.intervalMin');
   assert.equal(ssi.default, 1440, 'steam-status 默认每天一轮（X 批：原每周）');
   const ssd = settings.SETTINGS.find((d) => d.key === 'steamStatus.initialDelaySec');

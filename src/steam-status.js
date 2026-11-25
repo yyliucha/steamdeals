@@ -210,6 +210,12 @@ export async function runSteamStatusRound(
         logger?.warn?.('steam-status.failed', { appid, message: String(err.message ?? err).slice(0, 160) });
         if (err.status && err.status >= 400 && err.status < 500) {
           if (err.status === 429) {
+            // FP 批 P2（docs/SYNC-HARDENING.md §2）：429 收轮——该 appid 入补跑队列（下一轮优先补）
+            try {
+              await db.record429Appids(q, [appid]);
+            } catch {
+              /* 队列写入失败不影响收轮 */
+            }
             aborted429 = true;
             break; // AB 批 §3-C：429 立即收轮，交给下轮续跑
           }
@@ -227,6 +233,12 @@ export async function runSteamStatusRound(
         wrote += 1;
         if (outcome.status) counts[outcome.status] = (counts[outcome.status] ?? 0) + 1;
         if (outcome.offerWritten) offers += 1;
+        // FP 批 P2：判定成功的 appid 从 429 补跑队列清除（收敛）
+        try {
+          await db.clear429Appids(q, [appid]);
+        } catch {
+          /* 队列清理失败不影响主流程 */
+        }
       } else {
         skipped += 1;
         if (outcome.status == null) {

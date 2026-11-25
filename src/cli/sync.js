@@ -918,8 +918,8 @@ export function createCliSync(ctx) {
    * AB 批：取值 .json、写入不可静默（wrote 只计真写入）、限速按每请求、429 立即收轮、整轮复用连接。
    */
   async function cmdSteamStatus() {
-    // 默认上限读设置（steamStatus.limit / STEAM_STATUS_LIMIT，默认 6000 ≈ 5 小时/轮，AB 批 §3-C）
-    const limit = Math.max(1, Math.min(Number(flag('limit', process.env.STEAM_STATUS_LIMIT ?? '6000')) || 6000, 200000));
+    // 默认上限读设置（steamStatus.limit / STEAM_STATUS_LIMIT；FP 批从 6000 提到 20000，env 可配 3–5 万）
+    const limit = Math.max(1, Math.min(Number(flag('limit', process.env.STEAM_STATUS_LIMIT ?? '20000')) || 20000, 200000));
     const batch = Math.max(1, Math.min(Number(flag('batch', '30')) || 30, 100));
     const rateMs = Math.max(0, Number(flag('rate', process.env.STEAM_STATUS_RATE_MS ?? '1500')) || 0);
     const startedMs = Date.now();

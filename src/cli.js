@@ -761,8 +761,17 @@ async function runSyncTracked(mode, fn, { fetchRun = true } = {}) {
     await finishSyncRunRecord(run, 'ok', syncNote.note || null);
     await finishFetchRunRecord(fetchRunId, { status: 'ok', note: syncNote.note });
   } catch (err) {
-    await finishSyncRunRecord(run, 'failed', String(err.message).slice(0, 500));
-    await finishFetchRunRecord(fetchRunId, { status: 'failed', note: String(err.message).slice(0, 300) });
+    // FP 批 P0/P1（docs/SYNC-HARDENING.md §2/§4）：软中断类错误——429 冷却超时（COOLDOWN_ABORT）
+    // 与备份超时（BACKUP_TIMEOUT）不记 failed：sync_runs 记 interrupted、exit 75（调度器不告警不熔断、
+    // 1 小时后自动重排、不占 heavy slot）。
+    const softAbort = err?.code === 'COOLDOWN_ABORT' || err?.code === 'BACKUP_TIMEOUT';
+    await finishSyncRunRecord(run, softAbort ? 'interrupted' : 'failed', String(err.message).slice(0, 500));
+    await finishFetchRunRecord(fetchRunId, { status: softAbort ? 'interrupted' : 'failed', note: String(err.message).slice(0, 300) });
+    if (softAbort) {
+      process.exitCode = 75;
+      logger.warn('process.soft_abort', { mode, code: err.code, message: String(err.message).slice(0, 200) });
+      return;
+    }
     throw err;
   } finally {
     activeSyncRun = null;

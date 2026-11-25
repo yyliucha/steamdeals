@@ -61,6 +61,16 @@ const rid = () => Math.random().toString(36).slice(2, 10);
 const STEAM_429_COOLDOWN_MS = 30 * 60 * 1000;
 let steamCooldownUntil = 0;
 
+/**
+ * FP 批 P0（docs/SYNC-HARDENING.md §4.1）：429 冷却等待上限（毫秒）——env SYNC_429_MAX_WAIT_MS，默认 5 分钟。
+ * 冷却剩余超过上限 → COOLDOWN_ABORT 中断本轮（调用方 exit 75 + interrupted，不占 heavy slot）；
+ * 短冷却（≤ 上限）保持等待。纯函数便于测试。
+ */
+export function sync429MaxWaitMs(env = process.env) {
+  const n = Number(env.SYNC_429_MAX_WAIT_MS ?? 5 * 60_000);
+  return Number.isFinite(n) && n > 0 ? n : 5 * 60_000;
+}
+
 // AC-4/AC6（docs/SYNC-FAILURE-MODES.md AC6）：429 全局退避预算——冷却时间落盘跨子进程共享
 // （每个任务都是独立子进程，内存态各睡各的 30 分钟；落盘后任何进程都会尊重最早的冷却）。
 // 测试可用 STEAM_429_FILE 覆盖路径。
@@ -102,6 +112,67 @@ export function readSteam429Info(nowMs = Date.now()) {
     return { until, at: data?.at ?? null, label: data?.label ?? null };
   } catch {
     return null;
+  }
+}
+
+// ---------------------------------------------------------------- FP 批 P0：403 单独退避（docs/SYNC-HARDENING.md §4.3）
+
+const STEAM_403_BASE_MS = 60_000; // 首次 403 冷却 1 分钟
+const STEAM_403_MAX_MS = 30 * 60_000; // 上限 30 分钟
+
+/** FP P0：403 冷却落盘路径（测试可用 STEAM_403_FILE 覆盖）。 */
+export const steam403FilePath = () => process.env.STEAM_403_FILE ?? 'data/steam-403.json';
+
+/** FP P0：连续第 count 次 403 的退避时长——指数退避 1m→2m→4m…上限 30m。纯函数。 */
+export function steam403BackoffMs(count) {
+  const n = Math.max(1, Math.trunc(Number(count) || 1));
+  return Math.min(STEAM_403_MAX_MS, STEAM_403_BASE_MS * 2 ** (n - 1));
+}
+
+/** FP P0：读 403 冷却 { until, count, at, label } | null（until 过期视为无冷却）。 */
+export function readSteam403Info(nowMs = Date.now()) {
+  try {
+    const raw = _fsRead(steam403FilePath());
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    const until = Date.parse(String(data?.until ?? ''));
+    if (!Number.isFinite(until) || until <= nowMs) return null;
+    return { until, count: Math.trunc(Number(data?.count) || 1), at: data?.at ?? null, label: data?.label ?? null };
+  } catch {
+    return null;
+  }
+}
+
+/** FP P0：写 403 冷却（原子：tmp + rename；失败不影响内存行为）。 */
+export function writeSteam403Until(untilMs, { count = 1, at = null, label = null } = {}) {
+  try {
+    const file = steam403FilePath();
+    _fsMkdir(_fsDirname(file), { recursive: true });
+    _fsWrite(
+      `${file}.tmp`,
+      JSON.stringify({ until: new Date(untilMs).toISOString(), count: Math.trunc(Number(count) || 1), at: at ?? new Date().toISOString(), label }),
+    );
+    _fsRename(`${file}.tmp`, file);
+  } catch {
+    /* 退避文件写失败不影响内存冷却 */
+  }
+}
+
+/**
+ * FP P0：读 403 连续次数（带衰减）——距上次 403 超过最大冷却（30 分钟）清零，
+ * 否则累计（冷却到期恢复请求后再 403 时退避继续翻倍，而不是永远从头 1 分钟）。
+ */
+export function readSteam403Streak(nowMs = Date.now()) {
+  try {
+    const raw = _fsRead(steam403FilePath());
+    if (!raw) return 0;
+    const data = JSON.parse(raw);
+    const count = Math.trunc(Number(data?.count) || 0);
+    const at = Date.parse(String(data?.at ?? ''));
+    if (!Number.isFinite(at)) return count;
+    return nowMs - at > STEAM_403_MAX_MS ? 0 : count;
+  } catch {
+    return 0;
   }
 }
 
@@ -316,8 +387,43 @@ export async function fetchText(url, opts = {}) {
     const effective429 = Math.max(steamCooldownUntil, readSteam429Until());
     if (isSteamHost(hostOf(url)) && effective429 > Date.now()) {
       const delayMs = effective429 - Date.now();
+      // FP 批 P0（docs/SYNC-HARDENING.md §4.1）：冷却剩余超 SYNC_429_MAX_WAIT_MS → 中断本轮
+      //（COOLDOWN_ABORT 带 status=429，调用方按 429 软退出 exit 75 + interrupted，不占 heavy slot）；
+      // 短冷却（≤ 上限）保持等待——批量任务不再睡满 30 分钟挂起占槽。
+      const maxWait = sync429MaxWaitMs(process.env);
+      if (delayMs > maxWait) {
+        logger?.warn('sync.cooldown_abort', {
+          label,
+          delayMs,
+          maxWaitMs: maxWait,
+          message: 'Steam 429 冷却剩余超过 SYNC_429_MAX_WAIT_MS，本轮中断（exit 75 + interrupted，不占槽）',
+        });
+        const err = new Error(
+          `Steam 429 冷却剩余约 ${Math.round(delayMs / 60000)} 分钟，超过上限 ${Math.round(maxWait / 60000)} 分钟，本轮中断（SYNC_429_MAX_WAIT_MS 可调）`,
+        );
+        err.status = 429;
+        err.code = 'COOLDOWN_ABORT';
+        throw err;
+      }
       logger?.warn('http.rate_limit_wait', { label, delayMs, message: 'Steam 处于 429 冷却期，等待后再请求' });
       await sleep(delayMs);
+    }
+    // FP 批 P0（docs/SYNC-HARDENING.md §4.3）：Steam 403 冷却期内不请求——直接按 403 失败
+    //（降速：调用方 403 收轮，不再打 Steam 加深风控；指数退避时长由连续次数决定）。
+    const steam403Info = isSteamHost(hostOf(url)) ? readSteam403Info() : null;
+    if (steam403Info) {
+      const err = new Error(
+        `Steam 处于 403 冷却期（连续 ${steam403Info.count} 次被拒），约 ${Math.max(1, Math.round((steam403Info.until - Date.now()) / 60000))} 分钟后可重试`,
+      );
+      err.status = 403;
+      err.code = 'FORBIDDEN_COOLDOWN';
+      logger?.warn('sync.forbidden_cooldown', {
+        label,
+        count: steam403Info.count,
+        until: new Date(steam403Info.until).toISOString(),
+        message: '403 冷却期内不再请求（指数退避 + 降速）',
+      });
+      throw err;
     }
     route = fetchImpl
       ? { dispatcher: null, via: 'custom', proxy: null }
@@ -442,6 +548,24 @@ export async function fetchText(url, opts = {}) {
         });
         await sleep(delayMs);
         continue;
+      }
+
+      // FP 批 P0（docs/SYNC-HARDENING.md §4.3）：Steam 403 单独退避——指数退避（1m→2m→4m…上限 30m）+ 降速。
+      // 连续次数落盘（steam-403.json），下一次请求前读到冷却直接失败，不再打 Steam；
+      // 告警口径在调度器侧：连续 ≥3 次才发失败邮件（单次 403 不刷屏）。
+      if (err.status === 403 && isSteamHost(hostOf(url))) {
+        // 连续次数按带衰减的 streak 累计（冷却过期后恢复请求、再 403 时退避继续翻倍）
+        const count = Math.min(readSteam403Streak() + 1, 20);
+        const backoffMs = steam403BackoffMs(count);
+        writeSteam403Until(Date.now() + backoffMs, { count, at: new Date().toISOString(), label });
+        logger?.warn('http.forbidden_backoff', {
+          label,
+          requestId,
+          status: 403,
+          count,
+          backoffMs,
+          message: 'Steam 403（风控/代理被拒）：已记录指数退避冷却，冷却期内不再请求',
+        });
       }
 
       // AM-1：代理层失败 → 记冷却并换下一条（docs/PROXY-POOL.md 决策 1/2）；

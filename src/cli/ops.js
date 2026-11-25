@@ -457,11 +457,13 @@ export function createCliOps(ctx) {
   /**
    * 批量回填：用 IStoreBrowseService/GetItems（一次最多 100 个 appid）把全量目录的
    * 元数据 + 国区价格补齐。失败/缺 key 时回退到单条 appdetails。
+   * FP 批 P2（docs/SYNC-HARDENING.md §2）：initMode=true 时为「初始化全量同步」参数口径
+   * （默认 20 万上限/单条回退 10）；429 收轮时本批 appid 入 sync_429_queue，下一轮优先补。
    */
-  async function cmdBackfill() {
-    const batch = Math.max(1, Math.min(Number(flag('batch', '50')) || 50, 100));
-    const sleepMs = Math.max(0, Number(flag('sleep', '1500')) || 0);
-    const limit = Math.max(1, Math.min(Number(flag('limit', '20000')) || 20000, 200000));
+  async function cmdBackfill(initMode = false) {
+    const batch = Math.max(1, Math.min(Number(flag('batch', initMode ? '100' : '50')) || (initMode ? 100 : 50), 100));
+    const sleepMs = Math.max(0, Number(flag('sleep', initMode ? '3000' : '1500')) || 0);
+    const limit = Math.max(1, Math.min(Number(flag('limit', initMode ? '200000' : '20000')) || (initMode ? 200000 : 20000), 200000));
     // 单条回退上限：大跑时设 0 可完全关掉，把"缺的少量游戏"留给小任务慢慢补
     const fallbackMax = Math.max(0, Math.min(Number(flag('fallback', '10')) || 0, 100));
     const { fetchStoreItems } = await import('../adapters/store-browse.js');
@@ -544,6 +546,10 @@ export function createCliOps(ctx) {
             abort('批量接口返回 405（POST 被拒）：当前镜像过旧，GetItems 需要 GET + input_json（0.25.2+），升级后再跑', { status: 405 });
           }
           if (err.status === 403 || err.status === 429) {
+            // FP 批 P2（docs/SYNC-HARDENING.md §2）：429 收轮——本批 appid 入补跑队列（下一轮优先补）；403 是风控不入队
+            if (err.status === 429) {
+              await withStore((s) => db.record429Appids(s.query, appids)).catch(() => {});
+            }
             softExit(err.status); // BL-2：不再整轮作废，收尾保留进度
           } else {
             logger.warn('backfill.batch_failed', { message: String(err.message).slice(0, 160) });
@@ -568,6 +574,10 @@ export function createCliOps(ctx) {
             fallback += 1;
           } catch (err) {
             if (err.status === 403 || err.status === 429) {
+              // FP 批 P2：429 单条回退收轮——该 appid 入补跑队列
+              if (err.status === 429) {
+                await withStore((s) => db.record429Appids(s.query, [appid])).catch(() => {});
+              }
               softExit(err.status);
               break;
             }
@@ -598,6 +608,10 @@ export function createCliOps(ctx) {
           });
         } catch (err) {
           if (err.status === 403 || err.status === 429) {
+            // FP 批 P2：429 价格回退收轮——缺价 appid 入补跑队列
+            if (err.status === 429) {
+              await withStore((s) => db.record429Appids(s.query, missing)).catch(() => {});
+            }
             softExit(err.status);
           } else {
             logger.warn('backfill.price_fallback_failed', { appids: missing.length, message: String(err.message).slice(0, 160) });
@@ -629,6 +643,8 @@ export function createCliOps(ctx) {
           }
           // 无论有没有拿到报价都记一笔，避免这批（尤其是免费/锁区的）下一批又被选中
           await db.markBackfilled(q, appids);
+          // FP 批 P2（docs/SYNC-HARDENING.md §2）：本批处理完从 429 补跑队列清除（成功补跑的收敛）
+          await db.clear429Appids(q, appids).catch(() => {});
           // BL-3（docs/BACKFILL-THROUGHPUT.md §3.3）：失败隔离——
           // 拿到元数据 = 成功（清零并解除跳过）；本批没拿到元数据的记一次失败，连续 3 次跳过 30 天
           const successIds = [...new Set(items.map((it) => Number(it.steamAppid)).filter((n) => Number.isFinite(n) && n > 0))];
@@ -715,6 +731,7 @@ export function createCliOps(ctx) {
           items = r.items;
           missed = r.failed;
         } catch (err) {
+          if (err.code === 'COOLDOWN_ABORT') throw err; // FP：429 冷却超时中断——runSyncTracked 记 interrupted + exit 75
           if (err.status === 405) {
             abort('批量接口返回 405（POST 被拒）：当前镜像过旧，GetItems 需要 GET + input_json，升级后再跑', { status: 405 });
           }
@@ -737,6 +754,7 @@ export function createCliOps(ctx) {
             if (one.items?.length) items.push(...one.items);
             fallback += 1;
           } catch (err) {
+            if (err.code === 'COOLDOWN_ABORT') throw err; // FP：429 冷却超时中断——runSyncTracked 记 interrupted + exit 75
             if (err.status === 403 || err.status === 429) {
               abort(`单条回退遇到 HTTP ${err.status}（限流），已立即中止重写名字`, { status: err.status, appid });
             }
@@ -781,7 +799,8 @@ export function createCliOps(ctx) {
    * 一轮逻辑在 src/steam-status.js 的 runRatingBackfillRound（可单测），本命令只负责参数与输出。
    */
   async function cmdRatingBackfill() {
-    const limit = Math.max(1, Math.min(Number(flag('limit', '200000')) || 200000, 200000));
+    // FP 批 P2（docs/SYNC-HARDENING.md §2）：默认上限 5000 → 20000（env 可配）
+    const limit = Math.max(1, Math.min(Number(flag('limit', '20000')) || 20000, 200000));
     const batch = Math.max(1, Math.min(Number(flag('batch', '30')) || 30, 100));
     // 硬约束 6：采集限速 ≥1 秒/请求；默认 1.5s（在 Steam 200 次/5 分钟配额内）
     const rateMs = Math.max(1000, Math.min(Number(flag('rate', '1500')) || 1500, 60000));
@@ -964,6 +983,8 @@ export function createCliOps(ctx) {
           }
         } catch (err) {
           failed += 1;
+          // FP 批 P0：429 冷却超时中断（COOLDOWN_ABORT）原样重抛——runSyncTracked 记 interrupted + exit 75
+          if (err.code === 'COOLDOWN_ABORT') throw err;
           if (err.status && err.status >= 400 && err.status < 500) {
             // 4xx：请求本身被拒（限流/风控/参数非法），继续重试没有意义，立刻中止避免烧配额
             logger.error('heat.aborted', {
@@ -1119,6 +1140,7 @@ export function createCliOps(ctx) {
   return {
     commands: {
       backfill: cmdBackfill,
+      'init-sync': () => cmdBackfill(true), // FP 批 P2：初始化全量同步（回填全量口径，sync_runs mode=init-sync）
       rename: cmdRename,
       heat: cmdHeat,
       'rating-backfill': cmdRatingBackfill,
@@ -1140,6 +1162,7 @@ export function createCliOps(ctx) {
       'rating-backfill': cmdRatingBackfill,
       'search-tokens': cmdSearchTokens,
       backfill: cmdBackfill,
+      'init-sync': () => cmdBackfill(true), // FP 批 P2：写 sync_runs（后台按钮可见进度与历史）
       images: cmdImages,
       backup: cmdBackup,
       prune: cmdPrune,

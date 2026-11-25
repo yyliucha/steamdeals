@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { jobsFromEnv, jobGroupsFromEnv, groupsFromJobs, steamClaimArgs, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, theoreticalRunSeconds, jobRuntimeEstimates, registerCircuitReset, resetCircuit, applyRetry, syncRunModeFor, jobFailureError, jobFailedReason, outcomeFor } from '../src/scheduler.js';
+import { jobsFromEnv, jobGroupsFromEnv, groupsFromJobs, steamClaimArgs, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, theoreticalRunSeconds, jobRuntimeEstimates, registerCircuitReset, resetCircuit, applyRetry, syncRunModeFor, jobFailureError, jobFailedReason, outcomeFor, STEAM_STATUS_LIMIT_DEFAULT } from '../src/scheduler.js';
 
 test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），默认 3，非法回落默认', () => {
   assert.equal(lightConcurrency({}), 3);
@@ -102,10 +102,10 @@ test('默认任务表（FJ 批：按 12 组顺序重排，steam-claim 已移出�
   assert.ok(!jobsFromEnv({ IMAGES_BACKFILL_ENABLED: '0' }).some((j) => j.name === 'images-backfill'), 'EC 批：IMAGES_BACKFILL_ENABLED=0 可关闭');
   assert.deepEqual(args('steam-prices'), ['sync', 'steam-prices', '--limit', '200000', '--batch', '5000'], 'EU-2：价格刷新默认每轮分批 5000（约 4–5 分钟，批间落断点）');
   assert.deepEqual(args('heat'), ['heat', '--limit', '20000', '--sleep', '1700']);
-  assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '6000', '--rate', '1500']);
+  assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '20000', '--rate', '1500'], 'FP 批：状态判定默认每轮 2 万（env 可配 3–5 万）');
   assert.deepEqual(args('rename'), ['rename', '--limit', '200000', '--batch', '100', '--sleep', '1500']);
-  assert.deepEqual(args('rating-backfill'), ['rating-backfill', '--limit', '5000', '--batch', '30', '--rate', '1500'], 'EF 批：分级回填默认每天上限 5000、限速 1.5s/款');
-  assert.deepEqual(args('backfill'), ['backfill', '--limit', '5000', '--batch', '100', '--sleep', '3000'], 'BL 批：回填默认每天上限 5000');
+  assert.deepEqual(args('rating-backfill'), ['rating-backfill', '--limit', '20000', '--batch', '30', '--rate', '1500'], 'FP 批：分级回填默认每天上限 2 万、限速 1.5s/款');
+  assert.deepEqual(args('backfill'), ['backfill', '--limit', '20000', '--batch', '100', '--sleep', '3000'], 'FP 批：回填默认每天上限 2 万');
   assert.deepEqual(args('prune'), ['prune']);
   assert.deepEqual(args('readmodel'), ['readmodel', 'check', '--sample', '200', '--fix'], 'B5 批：每日抽样 200 对账 + 自动修复（手动 check 默认仍只报告）');
   assert.equal(interval('search-tokens-rebuild'), 360, 'DS 批：搜索 token 增量重建默认每 6 小时一轮');
@@ -416,12 +416,13 @@ test('X 批：重任务占用单槽期间轻任务照常派发（P0-1 回归）'
   assert.ok(plan2.heavy.some((j) => j.name === 'steam-prices'), '空槽时重任务可派发');
   assert.ok(plan2.heavy.some((j) => j.name === 'steam-status'), 'steam-status 走重任务槽');
 
-  // 并行上限只约束轻任务：lightMax=1 时只发一个轻任务（prune/app-release-sync 等非重非轻不受上限）
+  // 并行上限只约束轻任务：lightMax=1 时只发一个受上限的轻任务（prune/app-release-sync 等非重非轻不受上限；
+  // FP 批：backup/logs 已移入 heavyMaint 槽，不再是轻任务——此处不传 heavyGroups 退化为旧行为验证）
   const plan3 = planTick({ due, heavySlot: 'heat', running: new Set(['heat']), lightMax: 1 });
   const lightJobs3 = plan3.light.filter((j) =>
-    ['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'backup', 'logs', 'alerts', 'images', 'images-backfill'].includes(j.name),
+    ['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'alerts', 'images', 'images-backfill'].includes(j.name),
   );
-  assert.equal(lightJobs3.length, 1, 'lightMax=1 只发一个轻任务');
+  assert.equal(lightJobs3.length, 1, 'lightMax=1 只发一个受上限的轻任务');
   assert.equal(plan3.heavy.length, 0, 'heat 占槽时不排其它重任务');
 });
 
@@ -449,23 +450,40 @@ test('X 批：重启后 lastRunMs 从 sync_runs 恢复，坏行跳过', () => {
   assert.equal(due2.length, 1, '到间隔后才重跑');
 });
 
-test('AC-4：默认配置的每日预算 <24h（不降频）；超预算时自动缩 steam-status 并告警', () => {
+test('AC-4/FP：默认声明 2 万后每日预算超 24h 自动缩 steam-status；显式配置（env/设置页）不缩', () => {
   const b = steamDailyBudgetMinutes({});
   assert.ok(b.total > 0);
-  assert.ok(b.total <= 1440, '默认五任务总量在预算内（' + Math.round(b.total) + ' 分钟）');
-  // 超预算：把 heat 拉到 3.6 万（加价格/回填/分级回填/状态后超过 24h），自动缩 steam-status 回到预算内
-  const env = { STEAM_HEAT_LIMIT: '36000', STEAM_STATUS_LIMIT: '6000', STEAM_STATUS_RATE_MS: '1500' };
+  assert.ok(b.total > 1440, 'FP 提速后默认声明值超预算（' + Math.round(b.total) + ' 分钟）——预算机制自动缩量保护串行槽');
   const events = [];
   const logger = { warn: (e, f) => events.push([e, f]) };
-  const { jobs, budget, adjusted } = applySteamBudget(jobsFromEnv(env), env, logger);
-  assert.equal(adjusted, true);
+
+  // 未显式配置（默认值）：自动缩 steam-status 回预算内并告警
+  const { jobs, budget, adjusted } = applySteamBudget(jobsFromEnv({}), {}, logger);
+  assert.equal(adjusted, true, '默认值超预算 → 自动缩量');
+  assert.ok(budget.total > 1440, '预算明细可供诊断');
   const status = jobs.find((j) => j.name === 'steam-status');
   const limitIdx = status.args.indexOf('--limit');
   const newLimit = Number(status.args[limitIdx + 1]);
-  assert.ok(newLimit < 6000, 'steam-status 被降频（' + newLimit + '）');
-  const after = steamDailyBudgetMinutes({ ...env, STEAM_STATUS_LIMIT: String(newLimit) });
+  assert.ok(newLimit < STEAM_STATUS_LIMIT_DEFAULT, 'steam-status 被降频（' + newLimit + '）');
+  const after = steamDailyBudgetMinutes({ STEAM_STATUS_LIMIT: String(newLimit) });
   assert.ok(after.total <= 1440, '调整后回到预算内（' + Math.round(after.total) + ' 分钟）');
   assert.ok(events.some(([e]) => e === 'scheduler.budget_exceeded'), '告警日志');
+
+  // 显式配置（env/设置页保存过非默认值）：尊重配置不自动缩量（FP 验收 4：env 可配 3–5 万）
+  const env4w = { STEAM_STATUS_LIMIT: '40000' };
+  const r2 = applySteamBudget(jobsFromEnv(env4w), env4w, logger, null, { explicitSteamStatusLimit: true });
+  assert.equal(r2.adjusted, false, '显式配置 4 万不被预算吞掉');
+  const status2 = r2.jobs.find((j) => j.name === 'steam-status');
+  assert.equal(status2.args[status2.args.indexOf('--limit') + 1], '40000', '显式配置的 limit 原样保留');
+
+  // heat 拉到 2.2 万（status 仍默认、未显式配置）：超预算自动缩（others 自身仍留在预算内，缩 status 可回预算）
+  const env2 = { STEAM_HEAT_LIMIT: '22000', STEAM_STATUS_RATE_MS: '1500' };
+  const r3 = applySteamBudget(jobsFromEnv(env2), env2, logger);
+  assert.equal(r3.adjusted, true);
+  const status3 = r3.jobs.find((j) => j.name === 'steam-status');
+  assert.ok(Number(status3.args[status3.args.indexOf('--limit') + 1]) < STEAM_STATUS_LIMIT_DEFAULT, '超预算仍自动缩 status');
+  const after3 = steamDailyBudgetMinutes({ ...env2, STEAM_STATUS_LIMIT: status3.args[status3.args.indexOf('--limit') + 1] });
+  assert.ok(after3.total <= 1440, '调整后回到预算内（' + Math.round(after3.total) + ' 分钟）');
 });
 
 test('B3：实测耗时优先——steamDailyBudgetMinutes 用 sync_runs 平均秒折算每日预算，缺样本回落理论值', () => {
@@ -513,10 +531,19 @@ test('B3：applySteamBudget 预算来源实测——实测超预算同样触发�
   assert.equal(events[0][1].source, 'observed', '告警标注预算来源=实测');
   const status = jobs.find((j) => j.name === 'steam-status');
   const limitIdx = status.args.indexOf('--limit');
-  assert.ok(Number(status.args[limitIdx + 1]) < 6000, 'steam-status 被降频');
-  // 未超预算时不动
-  const ok = applySteamBudget(jobsFromEnv({}), {}, logger);
-  assert.equal(ok.adjusted, false, '理论预算内不调整');
+  assert.ok(Number(status.args[limitIdx + 1]) < STEAM_STATUS_LIMIT_DEFAULT, 'steam-status 被降频（FP 默认声明 2 万，超预算仍缩）');
+  // 显式配置不缩（FP：env/设置页配置优先于预算）
+  const okExplicit = applySteamBudget(jobsFromEnv({ STEAM_STATUS_LIMIT: '40000' }), { STEAM_STATUS_LIMIT: '40000' }, logger, observed, { explicitSteamStatusLimit: true });
+  assert.equal(okExplicit.adjusted, false, '显式配置 4 万不缩');
+  // 实测全部在预算内时不动
+  const ok = applySteamBudget(jobsFromEnv({}), {}, logger, new Map([
+    ['steam-prices', 60],
+    ['heat', 120],
+    ['steam-status', 300],
+    ['backfill', 600],
+    ['rating-backfill', 30],
+  ]));
+  assert.equal(ok.adjusted, false, '实测预算内不调整');
 });
 
 test('B3：jobRuntimeEstimates 只覆盖五个 Steam 重任务，obsSec 来自实测、无实测为 null', () => {
@@ -560,11 +587,11 @@ test('AC-9/BL-1：回填候选新游戏优先 + 四态排除 + 默认每天 5000
   const cliSyncRepo = readFileSync(new URL('../src/store/cli-sync-repository.js', import.meta.url), 'utf8');
   assert.equal((cliSyncRepo.match(/order by g\.created_at desc nulls last, g\.id desc limit/g) || []).length, 1, '该排序只在 cli 同步域 repository（steamall 一处）');
   const pg = readFileSync(new URL('../src/store/pg.js', import.meta.url), 'utf8');
-  assert.match(pg, /order by g\.created_at desc nulls last, g\.id desc limit/, '回填按收录时间倒序（谓词在 pg.js）');
+  assert.match(pg, /order by \(sq\.steam_appid is not null\) desc, sq\.attempts asc nulls last, g\.created_at desc nulls last, g\.id desc limit/, 'FP 批：429 队列优先，其余回填按收录时间倒序（谓词在 pg.js）');
   assert.match(pg, /coalesce\(g\.steam_status, ''\) not in \('free', 'coming_soon', 'region_locked', 'not_found'\)/, 'BL-1：候选排除四态');
   assert.match(pg, /no_price/, 'BL 批：no_price 保留说明存在');
   const sched = readFileSync(new URL('../src/scheduler.js', import.meta.url), 'utf8');
-  assert.match(sched, /STEAM_BACKFILL_LIMIT, 5000/, 'BL 批：回填默认上限 5000');
+  assert.match(sched, /STEAM_BACKFILL_LIMIT, 20000/, 'FP 批：回填默认上限 20000（env 可配）');
   assert.match(sched, /STEAM_BACKFILL_INTERVAL_MIN, 1440/, 'BL 批：回填默认每天一轮');
 });
 

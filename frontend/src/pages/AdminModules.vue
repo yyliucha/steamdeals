@@ -32,6 +32,24 @@
         <div class="module-card app-version-card"><div class="card-heading"><div><h3>App 版本</h3><p>站点自托管的安卓最新版（App 内置更新读 /api/app/latest）；发版后点「立即同步」手机最快数十秒可检测到更新。</p></div><el-button type="primary" :loading="appSyncRunning" @click="syncAppNow">立即同步</el-button></div>
           <div class="app-version-grid"><div class="metric-card"><span>当前版本</span><strong>{{ appCard.latest ? `${appCard.latest.version}（${appCard.latest.versionCode}）` : '—' }}</strong></div><div class="metric-card"><span>上次同步时间</span><strong>{{ appCard.lastSyncAt ? dateTime(appCard.lastSyncAt) : '—' }}</strong></div><div class="metric-card"><span>失败原因</span><strong :class="{'text-danger':appCard.lastError}" class="app-version-reason">{{ appCard.lastError || '—' }}</strong></div><div class="metric-card"><span>状态</span><strong>{{ appSyncRunning || appCard.syncing ? '同步中…' : '就绪' }}</strong></div></div></div>
         <div v-if="runningJob && backfillProgress" class="notice-card"><strong>任务实时进度：{{ TASK_META[runningJob]?.label||runningJob }}</strong><p>{{ backfillProgress.done }} / {{ backfillProgress.limit }}（{{ backfillProgress.percent }}%）· 速度 {{ backfillProgress.ratePerMin }} 款/分钟<template v-if="backfillProgress.ratePerMin>0 && backfillProgress.limit>backfillProgress.done"> · 预计剩余约 {{ Math.max(1, Math.round((backfillProgress.limit-backfillProgress.done)/backfillProgress.ratePerMin)) }} 分钟</template></p></div>
+        <!-- FP 批 P2（docs/SYNC-HARDENING.md §2）：数据时效 / 429 补跑队列 / 初始化全量同步 -->
+        <div class="module-card fp-freshness-card"><div class="card-heading"><div><h3>数据时效</h3><p>四类数据「超 1/3/7 天未更新」的数量（卡片顺序 7/3/1 天）；点「补跑」立即触发对应任务，与下方调度任务共用槽位自动互斥。</p></div><el-button text @click="loadFreshness">刷新</el-button></div>
+          <div class="metric-grid">
+            <div class="metric-card"><span>价格超期（7/3/1 天）</span><strong>{{ freshness.prices?.d7||0 }} / {{ freshness.prices?.d3||0 }} / {{ freshness.prices?.d1||0 }}</strong><small class="muted">共 {{ freshness.prices?.total||0 }} 条报价</small><el-button link type="primary" size="small" :disabled="Boolean(runningJob)" @click="runFreshness('steam-prices')">补跑价格</el-button></div>
+            <div class="metric-card"><span>状态超期（7/3/1 天）</span><strong>{{ freshness.status?.d7||0 }} / {{ freshness.status?.d3||0 }} / {{ freshness.status?.d1||0 }}</strong><small class="muted">共 {{ freshness.status?.total||0 }} 款待判定</small><el-button link type="primary" size="small" :disabled="Boolean(runningJob)" @click="runFreshness('steam-status')">补跑状态</el-button></div>
+            <div class="metric-card"><span>中文名缺失（7/3/1 天）</span><strong>{{ freshness.names?.d7||0 }} / {{ freshness.names?.d3||0 }} / {{ freshness.names?.d1||0 }}</strong><small class="muted">共 {{ freshness.names?.total||0 }} 款英文名</small><el-button link type="primary" size="small" :disabled="Boolean(runningJob)" @click="runFreshness('rename')">补跑中文名</el-button></div>
+            <div class="metric-card"><span>缺封面（7/3/1 天）</span><strong>{{ freshness.images?.d7||0 }} / {{ freshness.images?.d3||0 }} / {{ freshness.images?.d1||0 }}</strong><small class="muted">共 {{ freshness.images?.total||0 }} 款无图</small><el-button link type="primary" size="small" :disabled="Boolean(runningJob)" @click="runFreshness('images')">补跑图片</el-button></div>
+          </div>
+        </div>
+        <div class="module-card fp-queue-card"><div class="card-heading"><div><h3>429 补跑队列</h3><p>撞 HTTP 429 收轮的 appid 自动入队，下一轮回填/状态判定优先补；补成功自动清队。</p></div><el-button text @click="loadFreshness">刷新</el-button></div>
+          <div class="metric-grid">
+            <div class="metric-card"><span>排队中</span><strong>{{ queue429.count||0 }}</strong></div>
+            <div class="metric-card"><span>最大重试次数</span><strong>{{ queue429.maxAttempts||0 }}</strong></div>
+            <div class="metric-card"><span>最早入队</span><strong class="adult-stats-time">{{ queue429.oldestAt ? dateTime(queue429.oldestAt) : '—' }}</strong></div>
+            <div class="metric-card"><span>操作</span><el-button type="primary" size="small" :disabled="Boolean(runningJob) || !(queue429.count>0)" @click="runFreshness('backfill')">立即补 429</el-button></div>
+          </div>
+        </div>
+        <div class="module-card fp-init-card"><div class="card-heading"><div><h3>初始化全量同步</h3><p>新部署/大规模补数专用：全量回填目录元数据与国区价格（默认 20 万上限、429 自动收尾保留进度）；日常增量维护请用下方任务表。</p></div><el-button type="warning" :loading="initSyncRunning" :disabled="Boolean(runningJob)" @click="runInitSync">初始化全量同步</el-button></div></div>
         <div class="module-card table-card"><el-alert v-if="syncWarnings.length" type="warning" :closable="false" class="task-warnings"><p v-for="w in syncWarnings" :key="w.name">任务 <strong>{{ w.name }}</strong> 缺失：{{ w.reason }}</p></el-alert>
           <!-- FJ 批（docs/SYNC-JOB-GROUPS.md）：25 个碎片任务合并为 12 个任务组——组行（expand 展开子步骤）+ 组级/子步骤级立即运行；
                schedule.groups 缺失（后端未升级）时回退旧的 9 行扁平任务表。 -->
@@ -811,7 +829,7 @@ async function restoreSection(sec){const all=[...(sec.primary||[]),...(sec.advan
 // 翻页清空选择（决策：常规列表只支持本页勾选）。这些表是客户端分页，翻页不会走 load 函数，
 // 所以单独 watch 页码；游戏目录 / 访问明细是服务端分页，已在 load 里清空。
 watch(mergedPage,()=>mergedPicked.value=new Set());watch(blacklistPage,()=>sel.blacklist.clear());watch(whitelistPage,()=>sel.whitelist.clear());watch(abusePage,()=>sel.abuse.clear());watch(devicesPage,()=>sel.devices.clear());watch(deviceBansPage,()=>sel.deviceBans.clear());watch(announcementsPage,()=>sel.announcements.clear());
-watch(gameView,(view)=>{if(view==='tasks'){loadSyncStatus();loadAppCard();loadGamesStats();}else loadGames(1);});
+watch(gameView,(view)=>{if(view==='tasks'){loadSyncStatus();loadAppCard();loadGamesStats();loadFreshness();}else loadGames(1);});
 
 const priceMetrics=computed(()=>[{label:'降价',value:priceReport.value.drops||0,tone:'metric-red'},{label:'涨价',value:priceReport.value.rises||0,tone:''},{label:'新史低',value:priceReport.value.newLows||0,tone:'metric-green'},{label:'价格变化',value:priceReport.value.changed||0,tone:''}]);
 const priceChanges=computed(()=>[...(priceReport.value.topDrops||[]),...(priceReport.value.topRises||[])]);
@@ -835,6 +853,22 @@ async function runImagesBackfill(){try{await ElMessageBox.confirm('扫描 header
 async function createBackup(){await run(async()=>{const d=await api('/api/admin/backup',json('POST',{}));backups.value=d.backups||backups.value;ElMessage.success(`备份完成：${d.result?.rows||0} 行`);});}
 
 async function loadSyncStatus(){try{syncStatus.value=await api('/api/admin/sync/status');if(syncStatus.value?.running){try{const d=await api('/api/admin/backfill/status');backfillProgress.value=d.progress||null;}catch{/* 忽略 */}}else backfillProgress.value=null;}catch(e){notifyError(e);}}
+
+// FP 批 P2（docs/SYNC-HARDENING.md §2）：数据时效 / 429 补跑队列 / 初始化全量同步
+const freshness=ref({});
+const queue429=ref({});
+const initSyncRunning=ref(false);
+async function loadFreshness(){try{const d=await api('/api/admin/sync/freshness');freshness.value=d.stats||{};queue429.value=await api('/api/admin/sync/429queue');}catch(e){notifyError(e);}}
+async function runFreshness(mode){await run(async()=>{
+  if(mode==='steam-prices'){await api('/api/admin/sync',json('POST',{mode:'steam-prices'}));}
+  else if(mode==='steam-status'){await api('/api/admin/steam-status',json('POST',{}));}
+  else if(mode==='images'){await api('/api/admin/images/backfill',json('POST',{}));}
+  else if(mode==='rename'){await api('/api/admin/rename',json('POST',{}));}
+  else if(mode==='backfill'){await api('/api/admin/backfill',json('POST',{}));}
+  else return;
+  ElMessage.success('补跑任务已提交到服务器（自动互斥，进度见上方任务表）');await loadSyncStatus();await loadFreshness();
+});}
+async function runInitSync(){try{await ElMessageBox.confirm('初始化全量同步将全量回填目录元数据与国区价格（默认 20 万上限，可能持续数小时；撞 429 自动收尾保留进度，1 小时后自动重排）。确认开始？','初始化全量同步',{type:'warning',confirmButtonText:'开始全量同步',cancelButtonText:'取消'});}catch{return;}await run(async()=>{initSyncRunning.value=true;try{await api('/api/admin/init-sync',json('POST',{}));ElMessage.success('初始化全量同步已提交，可在上方任务表与进度条查看');await loadSyncStatus();}catch(e){notifyError(e);}finally{initSyncRunning.value=false;}});}
 // FH（docs/ADULT-STATS.md）：内容分级统计卡——数字来自 /api/admin/games/stats 新增的
 // ratingBackfilled/ratingPending（口径 = rating-backfill 候选谓词：required_age 已采到 / 未采到，
 // 见 docs/STEAM-SYNC-STATUS-AND-RATING.md §9）；最近回填时间读调度状态文件里 rating-backfill
@@ -883,7 +917,7 @@ watch(()=>props.section,(section)=>{if(section==='games')loadGames(1);else if(se
 // AN 批（docs/UNSAVED-GUARD.md §4.4）：本组件注册三个编辑面——系统设置 / 站点通知 / 编辑游戏
 const unregisterUnsaved=[];
 onMounted(()=>{if(props.section==='games')loadGames(1);else if(props.section==='visitors')loadVisitorView();else if(props.section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(props.section==='wishlist')loadWishlists();else if(props.section==='settings'){loadSettings();loadProxyHealth();}else if(props.section==='stats'){loadStats();loadCoverage();}startProxyTimer();unregisterUnsaved.push(registerUnsavedSource({id:'settings',label:'系统设置',isDirty:()=>settingsDirty.value||proxyDialogDirty.value,save:submitSettings,discard:discardSettings}),registerUnsavedSource({id:'edit-game',label:'编辑游戏',isDirty:gameDirty,save:submitGameSave,discard:closeGameDialog}));if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',onMobileChange);else mobileQuery.addListener(onMobileChange);}});
-const statusTimer=setInterval(()=>{if(props.section==='games'&&gameView.value==='tasks'){loadSyncStatus();loadAppCard();}},8000);
+const statusTimer=setInterval(()=>{if(props.section==='games'&&gameView.value==='tasks'){loadSyncStatus();loadAppCard();loadFreshness();}},8000);
 onBeforeUnmount(()=>{clearInterval(statusTimer);if(proxyTimer){clearInterval(proxyTimer);proxyTimer=null;}unregisterUnsaved.forEach((fn)=>fn());if(mobileQuery){if(mobileQuery.removeEventListener)mobileQuery.removeEventListener('change',onMobileChange);else mobileQuery.removeListener(onMobileChange);}});
 if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',onMobileChange);else mobileQuery.addListener(onMobileChange);}
 </script>

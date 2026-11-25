@@ -441,5 +441,76 @@ export async function handleAdminSyncAdmin(ctx) {
     return true;
   }
 
+  // ---- FP 批 P2（docs/SYNC-HARDENING.md §2）：数据时效卡片 / 429 补跑队列 / 初始化全量同步 / steam-status 补跑 ----
+
+  // 数据时效统计：价格/状态/中文名/图片各自「超 1/3/7 天未更新」数量（卡片数据源）
+  if (path === '/api/admin/sync/freshness' && req.method === 'GET') {
+    if (!requireAdmin()) return true;
+    json(res, 200, { stats: await db.dataFreshnessStats(q) });
+    return true;
+  }
+
+  // 429 补跑队列统计（后台卡片可见：排队数/最早入队/最大重试次数）
+  if (path === '/api/admin/sync/429queue' && req.method === 'GET') {
+    if (!requireAdmin()) return true;
+    json(res, 200, await db.sync429QueueStats(q));
+    return true;
+  }
+
+  // 初始化全量同步：一次性全量回填元数据/价格（与同步/回填共用槽位；429 收轮 exit 75 进度保留）
+  if (path === '/api/admin/init-sync' && req.method === 'POST') {
+    if (!requireAdmin()) return true;
+    const body = await readBody(req);
+    const limit = Math.max(1, Math.min(Number(body.limit ?? 200000) || 200000, 200000));
+    try {
+      const job = await startSteamJob({
+        mode: 'init-sync',
+        args: ['init-sync', '--limit', String(limit)],
+        params: { limit },
+        by: user.username,
+      });
+      logger?.info('api.init_sync_started', { runId: job.runId, by: user.username, limit });
+      invalidateSyncStatusCache();
+      json(res, 202, { started: true, runId: job.runId, pid: job.pid, params: { limit } });
+      return true;
+    } catch (err) {
+      if (err.code === 'BUSY') {
+        json(res, 409, { error: err.message, run: err.run });
+        return true;
+      }
+      throw err;
+    }
+  }
+
+  // steam-status 手动补跑（数据时效卡片「状态」一键补跑；参数钳制与 heat 同款）
+  if (path === '/api/admin/steam-status' && req.method === 'POST') {
+    if (!requireAdmin()) return true;
+    const body = await readBody(req);
+    const pickNum = (v, def, min, max) => Math.max(min, Math.min(Number(v ?? def) || def, max));
+    const params = {
+      limit: pickNum(body.limit, 20000, 1000, 200000),
+      batch: pickNum(body.batch, 30, 1, 100),
+      rate: pickNum(body.rate, 1500, 0, 60000),
+    };
+    try {
+      const job = await startSteamJob({
+        mode: 'steam-status',
+        args: ['steam-status', '--limit', String(params.limit), '--batch', String(params.batch), '--rate', String(params.rate)],
+        params,
+        by: user.username,
+      });
+      logger?.info('api.steam_status_started', { runId: job.runId, by: user.username, ...params });
+      invalidateSyncStatusCache();
+      json(res, 202, { started: true, runId: job.runId, pid: job.pid, params });
+      return true;
+    } catch (err) {
+      if (err.code === 'BUSY') {
+        json(res, 409, { error: err.message, run: err.run });
+        return true;
+      }
+      throw err;
+    }
+  }
+
   return false;
 }

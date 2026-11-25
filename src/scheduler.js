@@ -24,6 +24,10 @@ const num = (value, fallback) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
+// FP 批 P2（docs/SYNC-HARDENING.md §2）：steam-status 每轮默认上限 20000（与 settings.steamStatus.limit 默认一致）。
+// 预算机制判定「显式配置」时拿它作基准：env/设置页保存过非默认值 → 尊重用户配置不自动缩量。
+export const STEAM_STATUS_LIMIT_DEFAULT = 20000;
+
 // FJ 批（docs/SYNC-JOB-GROUPS.md）：同步服务合并为 12 个任务组——后台不再显示 25 行碎片，
 // 而是组行 + 展开子步骤。组只是调度层：组内到期子步骤按声明顺序（= 优先级）串行执行，
 // 子步骤仍按原 mode 写 sync_runs（历史/告警/健康面板/熔断恢复不变）。steam-claim 移出定时，
@@ -87,8 +91,9 @@ export function jobsFromEnv(env = process.env) {
       // 每天判定一次 Steam 同步状态 + 内容分级（docs/STEAM-SYNC-STATUS-AND-RATING.md）：
       // 逐 appid 全量 appdetails（EH/EI 批 §10/§11：内容区 cc=contentRegion，默认 us；失败补 cc=hk），
       // 状态与分级共用同一次请求；免费已由迁移一次性置位；steam_checked_at 作续跑游标，失败不写游标下轮重试；
-      // 归入 STEAM_HEAVY 与价格/热度/回填互斥串行；每款平均 2 请求，6000 款 ≈ 5 小时/轮（AB 批从 12000 下调）。
-      args: ['steam-status', '--limit', String(num(env.STEAM_STATUS_LIMIT, 6000)), '--rate', String(num(env.STEAM_STATUS_RATE_MS, 1500))],
+      // 归入 STEAM_HEAVY 与价格/热度/回填互斥串行；每款平均 2 请求。
+      // FP 批（docs/SYNC-HARDENING.md §2 P2）：默认上限 6000 → 20000（20 万目录约 10 天一轮，env 可配 3–5 万）。
+      args: ['steam-status', '--limit', String(num(env.STEAM_STATUS_LIMIT, STEAM_STATUS_LIMIT_DEFAULT)), '--rate', String(num(env.STEAM_STATUS_RATE_MS, 1500))],
       intervalMin: num(env.STEAM_STATUS_INTERVAL_MIN, 1440),
       initialDelaySec: num(env.STEAM_STATUS_INITIAL_DELAY_SEC, 600),
       enabled: env.STEAM_ENABLED !== '0',
@@ -137,7 +142,8 @@ export function jobsFromEnv(env = process.env) {
       // 内容区 cc=contentRegion，默认 us——国区商店隐藏成人内容 → adult_flag 全库仅约 20 个）。
       // 与价格/热度/回填共用 200 次/5 分钟配额 → STEAM_HEAVY 互斥串行；候选自带收敛
       // （required_age 已采到即不再选），全量播完后日常增量由 steam-status 维护。429 收轮 exit 75，1 小时后自动重排续跑。
-      args: ['rating-backfill', '--limit', String(num(env.STEAM_RATING_BACKFILL_LIMIT, 5000)), '--batch', '30', '--rate', String(num(env.STEAM_RATING_BACKFILL_RATE_MS, 1500))],
+      // FP 批（docs/SYNC-HARDENING.md §2 P2）：默认上限 5000 → 20000（env 可配）。
+      args: ['rating-backfill', '--limit', String(num(env.STEAM_RATING_BACKFILL_LIMIT, 20000)), '--batch', '30', '--rate', String(num(env.STEAM_RATING_BACKFILL_RATE_MS, 1500))],
       intervalMin: num(env.STEAM_RATING_BACKFILL_INTERVAL_MIN, 1440),
       initialDelaySec: num(env.STEAM_RATING_BACKFILL_INITIAL_DELAY_SEC, 14400),
       enabled: env.STEAM_ENABLED !== '0',
@@ -147,7 +153,8 @@ export function jobsFromEnv(env = process.env) {
       // 每天增量回填（BL-1，docs/BACKFILL-THROUGHPUT.md §3.1）：给目录里新进的游戏补元数据/说明/价格
       // （GetItems + appdetails 回退）。选择条件自带收敛（有说明+报价的跳过），没活时秒退；
       // 与其它 Steam 任务串行不抢限流。BL-1：每周 → 每天、上限 5 万 → 5000（稳态小步收敛）。
-      args: ['backfill', '--limit', String(num(env.STEAM_BACKFILL_LIMIT, 5000)), '--batch', '100', '--sleep', '3000'],
+      // FP 批（docs/SYNC-HARDENING.md §2 P2）：默认上限 5000 → 20000（env 可配）。
+      args: ['backfill', '--limit', String(num(env.STEAM_BACKFILL_LIMIT, 20000)), '--batch', '100', '--sleep', '3000'],
       intervalMin: num(env.STEAM_BACKFILL_INTERVAL_MIN, 1440),
       initialDelaySec: num(env.STEAM_BACKFILL_INITIAL_DELAY_SEC, 10800),
       enabled: env.STEAM_ENABLED !== '0',
@@ -460,10 +467,21 @@ const SYNC_LIKE = new Set(['steam', 'sonkwo', 'itad', 'gog', 'humble', 'discover
 // steam-status 也在其中（X 批）：逐 appid 全量请求，与价格/热度/回填并列重任务槽。
 export const STEAM_HEAVY = new Set(['steam-prices', 'rename', 'backfill', 'rating-backfill', 'heat', 'steam-status', 'steam-discovery', 'catalog']);
 
-// 轻任务：目标站与配额都和重任务独立（杉果国内源、GOG/Humble catalog、备份/日志/提醒/图片），
+// FP 批（docs/SYNC-HARDENING.md §2 P1）：heavy 分两槽——heavySteam（价格/状态/回填/发现，STEAM_HEAVY）
+// 与 heavyMaint（backup/prune/logs）互不影响，同一时刻各槽最多一个任务。
+// backup/prune 额外受低峰窗口约束（maintWindow），logs 只占槽不限时段。
+export const HEAVY_MAINT = new Set(['backup', 'prune', 'logs']);
+
+/** FP 批：任务归属的 heavy 槽组名——maint（backup/prune/logs）或 steam（其余重任务）。 */
+export function heavyGroupFor(name) {
+  return HEAVY_MAINT.has(name) ? 'maint' : 'steam';
+}
+
+// 轻任务：目标站与配额都和重任务独立（杉果国内源、GOG/Humble catalog、提醒/图片），
 // 允许在 heat/steam-prices 等长任务运行时并行执行——否则 heat 首轮播种 9 小时会饿死所有其它源。
 // DL 批：align-snapshot 是本地库计算（不占外部配额），归轻任务受并行上限约束。
-const LIGHT_JOBS = new Set(['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'backup', 'logs', 'alerts', 'images', 'images-backfill', 'align-snapshot']);
+// FP 批：backup/logs 移出轻任务 → heavyMaint 独立槽（不再与价格/状态抢槽，也不受 lightMax 上限）。
+const LIGHT_JOBS = new Set(['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'alerts', 'images', 'images-backfill', 'align-snapshot']);
 
 /** 轻任务并行上限（环境变量 SCHEDULER_LIGHT_CONCURRENCY 可调，默认 3，范围 1–8）。 */
 export function lightConcurrency(env = process.env) {
@@ -473,13 +491,15 @@ export function lightConcurrency(env = process.env) {
 
 /**
  * 每 tick 的派发计划（纯函数，便于回归测试，X 批 P0-1）：
- * - 重任务：`heavySlot` 非空或已在 running 时一个都不排（全局单槽，串行互斥）；
+ * - 重任务：heavySlot 非空或已在 running 时一个都不排（全局单槽，串行互斥）；
  * - 轻任务：**不受重任务槽影响**（steam-prices 跑 90 分钟期间 sonkwo/alerts 照常发），
  *   只受 running 去重与 lightMax 并行上限约束；非重非轻的任务（如 prune）不受上限约束（与旧行为一致）。
  * - FJ 批（docs/SYNC-JOB-GROUPS.md）：组内串行——传 `jobs`（带 group 字段）后，某组已有子步骤在跑
  *   （或本 tick 已选中一个）时，该组其它到期子步骤不派发；不传 jobs 则退化为旧行为（组不生效）。
+ * - FP 批（docs/SYNC-HARDENING.md §2 P1）：传 `heavyGroups`（{ groupOf, busy:Set }）后 heavy 按槽组分槽——
+ *   某槽组 busy 只挡该槽组的重任务，另一槽组照常派发；不传 = 旧单槽行为（heavySlot）。
  */
-export function planTick({ due, heavySlot = null, running = new Set(), lightMax = 3, heavyJobs = STEAM_HEAVY, lightJobs = LIGHT_JOBS, jobs = null }) {
+export function planTick({ due, heavySlot = null, running = new Set(), lightMax = 3, heavyJobs = STEAM_HEAVY, lightJobs = LIGHT_JOBS, jobs = null, heavyGroups = null }) {
   const light = [];
   const heavy = [];
   const groupOf = jobs ? new Map(jobs.map((j) => [j.name, j.group])) : null;
@@ -495,7 +515,10 @@ export function planTick({ due, heavySlot = null, running = new Set(), lightMax 
     const g = groupOf?.get(job.name) ?? null;
     if (g && groupBusy.has(g)) continue;
     if (heavyJobs.has(job.name)) {
-      if (!heavySlot && !running.has(job.name)) {
+      // FP：分槽模式——只挡所属槽组 busy；旧单槽模式——heavySlot 非空即挡全部
+      const hg = heavyGroups ? heavyGroups.groupOf(job.name) : null;
+      const slotBusy = heavyGroups ? (hg ? heavyGroups.busy.has(hg) : false) : Boolean(heavySlot);
+      if (!slotBusy && !running.has(job.name)) {
         heavy.push(job);
         if (g) groupBusy.add(g);
       }
@@ -523,6 +546,80 @@ export function lastRunMsFromRows(rows) {
     if (Number.isFinite(ms)) map.set(row.mode, ms);
   }
   return map;
+}
+
+// ---------------------------------------------------------------- FP 批：同步机制完善（docs/SYNC-HARDENING.md）
+
+/** FP P0：僵尸运行阈值（小时）——env SYNC_STALE_RUN_HOURS，默认 2。 */
+export function syncStaleRunHours(env = process.env) {
+  return num(env.SYNC_STALE_RUN_HOURS, 2);
+}
+
+/**
+ * FP P0：sync_runs 的 running 记录是否已是僵尸（超过 staleHours 小时还没结束）。
+ * 纯函数：status 非 running / started_at 缺失或不可解析一律返回 false——不误杀正在跑或无法判定的记录。
+ */
+export function isStaleSyncRun(row, { nowMs = Date.now(), staleHours = 2 } = {}) {
+  if (!row || row.status !== 'running') return false;
+  if (row.started_at == null || row.started_at === '') return false;
+  const ms = new Date(row.started_at).getTime();
+  if (!Number.isFinite(ms)) return false;
+  const hours = Number.isFinite(Number(staleHours)) && Number(staleHours) > 0 ? Number(staleHours) : 2;
+  return nowMs - ms > hours * 3600_000;
+}
+
+/**
+ * FP P1：backup/prune 低峰窗口（默认 03:00–05:00，env 可配）。
+ * SYNC_MAINT_WINDOW_START_HOUR / SYNC_MAINT_WINDOW_END_HOUR（0–23）；时区 SYNC_MAINT_WINDOW_TZ（IANA，默认 Asia/Shanghai）。
+ * startHour > endHour 视为跨零点窗口（如 22–02）。
+ */
+export function maintWindow(env = process.env) {
+  const hour = (v, fallback) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 && n <= 23 ? Math.trunc(n) : fallback;
+  };
+  return {
+    startHour: hour(env.SYNC_MAINT_WINDOW_START_HOUR, 3),
+    endHour: hour(env.SYNC_MAINT_WINDOW_END_HOUR, 5),
+    tz: String(env.SYNC_MAINT_WINDOW_TZ ?? 'Asia/Shanghai'),
+  };
+}
+
+/** FP P1：nowMs 是否落在低峰窗口内（按窗口时区取小时；时区非法回落 false，宁可晚发不误发）。 */
+export function inMaintWindow(nowMs = Date.now(), win = maintWindow()) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: win.tz, hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(nowMs));
+    const h = Number(parts.find((p) => p.type === 'hour')?.value ?? NaN);
+    if (!Number.isFinite(h)) return false;
+    return win.startHour <= win.endHour ? h >= win.startHour && h < win.endHour : h >= win.startHour || h < win.endHour;
+  } catch {
+    return false;
+  }
+}
+
+/** FP P1：任务此刻能否派发——backup/prune 受低峰窗口约束，其余任务不受限。 */
+export function inMaintWindowFor(name, nowMs = Date.now(), env = process.env) {
+  if (name !== 'backup' && name !== 'prune') return true;
+  return inMaintWindow(nowMs, maintWindow(env));
+}
+
+// ---------------------------------------------------------------- FP 批 P0：403 告警口径（docs/SYNC-HARDENING.md §4.3）
+
+/** FP P0：discovery 类非核心任务——403 只日志、不发失败邮件。 */
+export const DISCOVERY_JOBS = new Set(['steam-discovery', 'discover']);
+
+/** FP P0：失败原因是否 403 类（sync_runs 里的 err.message，如「Steam 返回 HTTP 403…」）。纯函数。 */
+export function is403Failure(reason) {
+  return /403/.test(String(reason ?? ''));
+}
+
+/**
+ * FP P0：403 连续失败是否该告警——连续 ≥3 次才发失败邮件（单次 403 是风控常态，不刷屏）；
+ * discovery 类任务任何次数都不告警（仅日志）。纯函数。
+ */
+export function shouldAlert403(jobName, streak, { threshold = 3, discoveryJobs = DISCOVERY_JOBS } = {}) {
+  if (discoveryJobs.has(jobName)) return false;
+  return Number(streak ?? 0) >= threshold;
 }
 
 /**
@@ -571,13 +668,13 @@ export const STEAM_BUDGET_MODES = ['steam-prices', 'heat', 'steam-status', 'back
  *  - rating-backfill（EF 批）：每款 1 次请求 × rate（默认 1.5s）。
  */
 export function theoreticalRunSeconds(env = process.env) {
-  const backfillLimit = num(env.STEAM_BACKFILL_LIMIT, 5000);
+  const backfillLimit = num(env.STEAM_BACKFILL_LIMIT, 20000);
   return {
     'steam-prices': (num(env.STEAM_PRICE_LIMIT, 200000) / 30) * 1.1,
     heat: num(env.STEAM_HEAT_LIMIT, 20000) * 1.7,
-    'steam-status': num(env.STEAM_STATUS_LIMIT, 6000) * 2 * (num(env.STEAM_STATUS_RATE_MS, 1500) / 1000),
+    'steam-status': num(env.STEAM_STATUS_LIMIT, 20000) * 2 * (num(env.STEAM_STATUS_RATE_MS, 1500) / 1000),
     backfill: (backfillLimit / 100) * 3 + (backfillLimit / 100) * 10 * 0.4,
-    'rating-backfill': num(env.STEAM_RATING_BACKFILL_LIMIT, 5000) * (num(env.STEAM_RATING_BACKFILL_RATE_MS, 1500) / 1000),
+    'rating-backfill': num(env.STEAM_RATING_BACKFILL_LIMIT, 20000) * (num(env.STEAM_RATING_BACKFILL_RATE_MS, 1500) / 1000),
   };
 }
 
@@ -639,15 +736,25 @@ export function jobRuntimeEstimates(jobs, env = process.env, observed = null) {
  * AC-4：总时长超过 24 小时（1440 分钟）时自动降频——只缩 steam-status 的每日限额
  * （唯一可调的大项），把总量压回预算内并记 `scheduler.budget_exceeded` 告警。
  * B3 批：observed（sync_runs 实测平均秒）参与预算；缩量每款速率同样优先用实测折算（有实测按实测/限额，无实测按理论 2×rate）。
- * 返回 { jobs, budget, adjusted }，jobs 是调整后的副本。
+ * FP 批 P2（docs/SYNC-HARDENING.md §2）：`explicitSteamStatusLimit=true` 时（部署 env/设置页显式配置过
+ * STEAM_STATUS_LIMIT）尊重用户配置不自动缩量——否则提速验收「env 可配 3–5 万」会被预算机制吞掉；
+ * 只有运行默认值（未显式配置）时才自动缩量保护串行槽。返回 { jobs, budget, adjusted }，jobs 是调整后的副本。
  */
-export function applySteamBudget(jobs, env = process.env, logger = null, observed = null) {
+export function applySteamBudget(jobs, env = process.env, logger = null, observed = null, { explicitSteamStatusLimit = false } = {}) {
   const budget = steamDailyBudgetMinutes(env, observed);
   if (budget.total <= 1440) return { jobs, budget, adjusted: false };
+  if (explicitSteamStatusLimit) {
+    logger?.info?.('scheduler.budget_skipped', {
+      totalMin: Math.round(budget.total),
+      targetMin: 1440,
+      message: 'STEAM_STATUS_LIMIT 为显式配置（env/设置页），尊重用户配置不自动缩量',
+    });
+    return { jobs, budget, adjusted: false };
+  }
   const others = budget.priceMin + budget.heatMin + budget.backfillDailyMin + budget.ratingBackfillDailyMin;
   const statusTargetMin = Math.max(120, 1440 - others); // 至少给 status 留 2 小时
   // B3 批：每款速率优先用实测（observed 平均秒 ÷ 当前限额），没有实测才用理论 2×rate
-  const statusLimit = num(env.STEAM_STATUS_LIMIT, 6000);
+  const statusLimit = num(env.STEAM_STATUS_LIMIT, 20000);
   const obsStatus = observed?.get?.('steam-status');
   const statusPerGameMin =
     obsStatus != null && Number.isFinite(obsStatus) && obsStatus > 0
@@ -904,8 +1011,10 @@ export async function main() {
       }
     };
     let observed = await refreshObserved();
-    // AC-4（docs/SYNC-FAILURE-MODES.md AC4）：每日 Steam 配额预算——超 24h 自动缩 steam-status 并告警
-    const budget = applySteamBudget(jobs, process.env, logger, observed);
+    // AC-4（docs/SYNC-FAILURE-MODES.md AC4）：每日 Steam 配额预算——超 24h 自动缩 steam-status 并告警。
+    // FP 批 P2：STEAM_STATUS_LIMIT 为显式配置（env/设置页非默认值）时不自动缩量（尊重提速配置）。
+    const statusLimitIsExplicit = String(process.env.STEAM_STATUS_LIMIT ?? '') !== String(STEAM_STATUS_LIMIT_DEFAULT);
+    const budget = applySteamBudget(jobs, process.env, logger, observed, { explicitSteamStatusLimit: statusLimitIsExplicit });
     jobs = budget.jobs;
     let estimates = jobRuntimeEstimates(jobs, process.env, observed);
     let lastRevision = await settings.getRevision(q);
@@ -923,7 +1032,23 @@ export async function main() {
     } catch (err) {
       logger.warn('scheduler.lastrun_restore_failed', { ...failFields(err), err: serializeError(err) });
     }
+
+    // FP 批 P0（docs/SYNC-HARDENING.md §2）：启动清理僵尸 running——
+    // 1) 超过 SYNC_STALE_RUN_HOURS（默认 2）的记录 = 僵尸，单独标记并记 scheduler.stale_run_interrupted；
+    // 2) 剩余 running（上一进程非正常退出遗留）全部标记 interrupted（与 EU 批语义一致，不占 heavy slot）。
+    try {
+      const staleHours = syncStaleRunHours(process.env);
+      const staleCount = await db.interruptStaleSyncRuns(q, { staleHours });
+      if (staleCount > 0) {
+        logger.warn('scheduler.stale_run_interrupted', { count: staleCount, staleHours, message: '僵尸 running 记录已标记 interrupted（不再占 heavy slot）' });
+      }
+      const restCount = await db.markStaleSyncRuns(q);
+      if (restCount > 0) logger.info('scheduler.running_runs_interrupted', { count: restCount, reason: 'startup' });
+    } catch (err) {
+      logger.warn('scheduler.stale_cleanup_failed', { ...failFields(err), err: serializeError(err) });
+    }
     const health = new Map(); // job.name -> { failures, openUntil }
+    const http403Streak = new Map(); // FP P0：job.name -> 403 连续失败次数（≥3 才告警，成功/非 403 清零）
     // AC-4/AC2：熔断手动重置钩子（后台按钮 → resetCircuit → 清零该任务熔断）
     registerCircuitReset((name) => {
       const state = health.get(name);
@@ -937,7 +1062,8 @@ export async function main() {
     const startedAt = new Map(); // job.name -> 本次启动毫秒（AC11 耗时）
     const lastOutcome = new Map(); // job.name -> { elapsedMs, result, error }（AC11 健康面板）
     const waitingSince = new Map(); // job.name -> { at, occupiedBy }（AC5 重任务排队可观测）
-    let heavySlot = null; // 正在跑的 Steam 重任务名（全局单槽，X 批 P0-1：串行但不阻塞 tick）
+    // FP 批 P1：heavy 双槽（steam / maint）——backup/prune/logs 走 maint 槽，与价格/状态互不影响
+    const heavySlots = { steam: null, maint: null };
     const lightMax = lightConcurrency(process.env);
     // BL-2：429 软退出后的 1 小时重排状态（data/scheduler-retry.json）
     let retryState = readRetryState();
@@ -982,10 +1108,37 @@ export async function main() {
         logger.info('scheduler.job_interrupted', { job: job.name, code, elapsedMs: outcome.elapsedMs });
       }
       // CO-1/A5：失败邮件告警（开关 settings alerts.jobFailureEmail，默认关；收件人走告警回退链）
+      // FP 批 P0（docs/SYNC-HARDENING.md §4.3）：403 单独口径——连续 ≥3 次才告警（单次不刷失败邮件）；
+      // discovery 类任务（steam-discovery/discover）403 只日志、永不告警。
       if (outcome.result === 'failed') {
-        await alertJobFailure(job, code, outcome.error).catch((err) =>
-          logger.warn('scheduler.failure_alert_failed', { job: job.name, ...failFields(err), err: serializeError(err) }),
-        );
+        const is403 = is403Failure(outcome.error);
+        if (is403) {
+          http403Streak.set(job.name, (http403Streak.get(job.name) ?? 0) + 1);
+        } else {
+          http403Streak.delete(job.name);
+        }
+        if (is403 && !shouldAlert403(job.name, http403Streak.get(job.name))) {
+          const streak = http403Streak.get(job.name) ?? 0;
+          if (DISCOVERY_JOBS.has(job.name)) {
+            logger.info('scheduler.discovery_forbidden', {
+              job: job.name,
+              code,
+              streak,
+              message: 'discovery 类任务 403：仅记日志，不发失败邮件',
+            });
+          } else {
+            logger.info('scheduler.forbidden_deferred', {
+              job: job.name,
+              code,
+              streak,
+              message: '403 失败暂不告警（连续 ≥3 次才发失败邮件）',
+            });
+          }
+        } else {
+          await alertJobFailure(job, code, outcome.error).catch((err) =>
+            logger.warn('scheduler.failure_alert_failed', { job: job.name, ...failFields(err), err: serializeError(err) }),
+          );
+        }
       }
       retryState = applyRetry(retryState, { job: job.name, code, nowMs: Date.now() });
       writeRetryState(retryState);
@@ -1070,12 +1223,12 @@ export async function main() {
     };
 
     /**
-     * 非阻塞发射一个 Steam 重任务并占用全局单槽（X 批 P0-1）：
+     * 非阻塞发射一个 heavy 槽任务并占用对应槽组（X 批 P0-1 + FP 批 P1 双槽）：
      * tick 循环不再 await 它，子进程结束后才释放槽位——轻任务在它运行期间照常派发。
-     * 槽位释放放在 .finally，completeJob 之外再加一道保险，两个 Steam 重任务并行打配额是红线。
+     * 槽位释放放在 .finally，completeJob 之外再加一道保险，同槽组两个任务并行打配额是红线。
      */
-    const launchHeavy = (job) => {
-      heavySlot = job.name;
+    const launchHeavy = (job, group = 'steam') => {
+      heavySlots[group] = job.name;
       running.add(job.name);
       startedAt.set(job.name, Date.now());
       const waiting = waitingSince.get(job.name);
@@ -1090,8 +1243,8 @@ export async function main() {
           completeJob(job, { code: -1, spawnFailed: true });
         })
         .finally(() => {
-          heavySlot = null;
-          logger.info('scheduler.heavy_slot_released', { job: job.name });
+          if (heavySlots[group] === job.name) heavySlots[group] = null;
+          logger.info('scheduler.heavy_slot_released', { job: job.name, group });
           wake?.(); // 槽位一空立即唤醒 tick，不用等到下个 sleep 结束
         });
     };
@@ -1115,7 +1268,7 @@ export async function main() {
         await store.setTimezone?.(process.env.TZ);
         jobs = jobsFromEnv();
         observed = await refreshObserved(); // B3 批：设置变更后同样按实测耗时重算预算
-        jobs = applySteamBudget(jobs, process.env, logger, observed).jobs; // AC-4：设置变更后同样过预算
+        jobs = applySteamBudget(jobs, process.env, logger, observed, { explicitSteamStatusLimit: statusLimitIsExplicit }).jobs; // AC-4：设置变更后同样过预算
         estimates = jobRuntimeEstimates(jobs, process.env, observed);
         circuitThreshold = num(process.env.CIRCUIT_THRESHOLD, CIRCUIT.threshold);
         circuitCooldownMs = num(process.env.CIRCUIT_COOLDOWN_MIN, CIRCUIT.cooldownMs / 60_000) * 60_000;
@@ -1127,9 +1280,22 @@ export async function main() {
       // BL-2：重排状态参与 due 判定（正常到期 || retry.at 已到）
       const due = dueJobs(jobs, { nowMs: now, startedMs, lastRunMs, retry: retryState });
 
+      // FP 批 P1：backup/prune 低峰窗口过滤——窗口外不派发（任务保持 due，窗口一到即发）
+      const dueInWindow = due.filter((j) => inMaintWindowFor(j.name, now, process.env));
+
       // 每 tick 的派发计划（X 批 P0-1）：重任务槽被占只挡重任务，轻任务照常发。
       // FJ 批：传 jobs（带 group 字段）启用组内串行——组内子步骤同一时刻最多一个在跑。
-      const plan = planTick({ due, heavySlot, running, lightMax, jobs });
+      // FP 批 P1：heavyJobs 扩为 STEAM_HEAVY ∪ HEAVY_MAINT，按 heavyGroups 分槽互不影响。
+      const heavyJobsAll = new Set([...STEAM_HEAVY, ...HEAVY_MAINT]);
+      const busyGroups = new Set(['steam', 'maint'].filter((g) => heavySlots[g]));
+      const plan = planTick({
+        due: dueInWindow,
+        running,
+        lightMax,
+        jobs,
+        heavyJobs: heavyJobsAll,
+        heavyGroups: { groupOf: heavyGroupFor, busy: busyGroups },
+      });
 
       // 1) 轻任务：非阻塞并行发射（上限 lightMax）。heat/steam-prices 等长任务运行时它们照常跑，
       //    不会出现"steam-prices 90 分钟饿死杉果/提醒"这类排队。
@@ -1138,27 +1304,42 @@ export async function main() {
         launch(job, now);
       }
 
-      // 2) Steam 重任务：非阻塞发射 + 全局单槽（heavySlot 被占时本 tick 不再派发新的）。
+      // 2) heavy 任务：非阻塞发射 + 双槽（steam/maint，槽组被占时本 tick 该组不再派发）。
       for (const job of plan.heavy) {
         if (stopping) break;
-        if (heavySlot) {
-          // AC5：被正在跑的重任务占槽——只在进入排队时记一次，面板可看到占用者与等待时长
+        const group = heavyGroupFor(job.name);
+        if (heavySlots[group]) {
+          // AC5：被同槽组正在跑的任务占槽——只在进入排队时记一次，面板可看到占用者与等待时长
           if (!waitingSince.has(job.name)) {
-            waitingSince.set(job.name, { at: now, occupiedBy: heavySlot });
-            logger.info('scheduler.job_wait_slot', { job: job.name, occupiedBy: heavySlot });
+            waitingSince.set(job.name, { at: now, occupiedBy: heavySlots[group] });
+            logger.info('scheduler.job_wait_slot', { job: job.name, occupiedBy: heavySlots[group], group });
           }
-          break;
+          continue;
         }
 
-        // 后台手动回填/同步也写 sync_runs；让 Steam 重任务等它结束再执行，避免并行冲击 Steam。
+        // 后台手动回填/同步也写 sync_runs；让 heavy 任务等它结束再执行，避免并行冲击 Steam。
         const activeSync = await db.runningSyncRun(q).catch(() => null);
         if (activeSync) {
-          if (!waitingSince.has(job.name)) {
-            waitingSince.set(job.name, { at: now, occupiedBy: activeSync.mode });
-            logger.info('scheduler.job_wait_slot', { job: job.name, occupiedBy: activeSync.mode, runId: activeSync.id });
+          // FP 批 P0：runningSyncRun 恢复时校验僵尸——running 超时自动 interrupted，不占槽（不 continue，清完直接派发）
+          const staleHours = syncStaleRunHours(process.env);
+          if (isStaleSyncRun(activeSync, { nowMs: now, staleHours })) {
+            const n = await db.interruptStaleSyncRuns(q, { staleHours }).catch(() => 0);
+            logger.warn('scheduler.stale_run_interrupted', {
+              runId: activeSync.id,
+              mode: activeSync.mode,
+              startedAt: activeSync.started_at,
+              count: n,
+              staleHours,
+              message: 'runningSyncRun 恢复时判为僵尸，已自动 interrupted（不占 heavy slot）',
+            });
+          } else {
+            if (!waitingSince.has(job.name)) {
+              waitingSince.set(job.name, { at: now, occupiedBy: activeSync.mode });
+              logger.info('scheduler.job_wait_slot', { job: job.name, occupiedBy: activeSync.mode, runId: activeSync.id });
+            }
+            logger.info('scheduler.job_deferred_busy', { job: job.name, runId: activeSync.id, mode: activeSync.mode });
+            continue;
           }
-          logger.info('scheduler.job_deferred_busy', { job: job.name, runId: activeSync.id, mode: activeSync.mode });
-          continue;
         }
 
         const state = health.get(job.name) ?? { failures: 0, openUntil: null };
@@ -1176,13 +1357,24 @@ export async function main() {
           continue;
         }
 
-        launchHeavy(job);
+        launchHeavy(job, group);
       }
       if (stopping) break;
       // P2（X 批）：状态文件每个 tick 都写一次，updatedAt 才能反映调度器存活
       // （此前只在启动与任务完成时写，长任务运行期间看起来像卡死）。
       writeStatusFile(jobs, { lastRunMs, health, running, tickMs: TICK_MS, lastOutcome, waitingSince, estimates, groups: groupsFromJobs(jobs) });
       await sleepInterruptible(TICK_MS);
+    }
+
+    // FP 批 P0：SIGTERM/SIGINT 排空结束——把 DB 里残留的 running 记录标记 interrupted
+    //（与 EU 批对内存任务一致；子进程退出前已各自收尾，这里兜底清理并发/异常遗留）。
+    if (stopping) {
+      try {
+        const n = await db.markStaleSyncRuns(q);
+        if (n > 0) logger.info('scheduler.running_runs_interrupted', { count: n, reason: 'shutdown' });
+      } catch (err) {
+        logger.warn('scheduler.shutdown_cleanup_failed', { ...failFields(err), err: serializeError(err) });
+      }
     }
 
     logger.info('scheduler.exit', {});
