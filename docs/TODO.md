@@ -299,14 +299,12 @@
 ## FR. 待开发（⚙️ 调整）：backup 默认关闭（保留参数控制）
 
 **类型：** ⚙️ 调整（功能默认值，避免备份卡死影响主链路）
-**状态：** 待开发（2026-11-25 所有者要求：backup 没啥用，参数控制保留）
+**状态：** 待开发（2026-11-25 修订：backup 改为后台功能，移除调度任务/CLI 自动跑；默认不自动）
 **优先级：** P2（配合 FP 僵尸锁缓解）
 **依赖：** FP（backup 稳定性）
 **解锁：** 无
-**规格**：本条目（`system.backupEnabled` 已存在；改默认 false + 服务器临时 env 关闭）
+**规格**：[ANDROID-APP-BACKUP-FEATURE.md](ANDROID-APP-BACKUP-FEATURE.md)（backup 改为后台功能：移除调度任务 + 按钮/列表/下载/删除）
 
-- **现状**：`settings.js` 已有 `system.backupEnabled`（env BACKUP_ENABLED，bool，默认 **true**）；scheduler backup 任务
-  `enabled: env.BACKUP_ENABLED !== '0'`。
-- **需求**：默认值改 **false**（不自动备份）；后台设置页「每日备份」可手动开启（功能保留）；文档注明开启后注意
-  FP 的流式/超时保护。
-- **验收**：默认不跑 backup（后台任务显示「已停用」）；开启后正常跑（FP 修复后）；测试断言默认值 false。
+- **现状**：backup 为调度任务（scheduler.js）+ CLI 命令；后台已有 API（/api/admin/backup）+ 「统计→图片与备份」卡片。
+- **需求**：移除调度任务（不再自动/不走命令）；保留并完善后台手动功能（按钮+列表+下载+删除）；默认不自动备份。
+- **验收**：调度任务列表无 backup；后台可手动备份/下载/删除；默认不自动；测试全绿。
