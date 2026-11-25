@@ -119,20 +119,6 @@
   后台统计拆「成人内容（宽）/色情游戏（严格）」。
 - **验收**：见规格 §3（explicit < adult、2077 不出现、后台两行、回填可跑、测试全绿）。
 
-## FU. ~~接入腾讯云 APM（OpenTelemetry OTLP，Docker Compose 手动接入）~~ → 已发布 v2.30.0
-
-**类型：** ⚙️ 调整（可观测性）
-**状态：** 已发布 v2.30.0（2026-11-25；实现 07db9a9；QA docs/QA-FU.md 第 1 轮 ✅ 4/0/0/1）
-**优先级：** P2
-**依赖：** 无
-**解锁：** 无
-**规格**：[APM-TENCENT.md](APM-TENCENT.md)
-
-- **背景**：Docker Compose 部署（非 TKE），不能 Operator 自动注入；用 OpenTelemetry SDK 手动接入，
-  OTLP HTTP 上报到 `plap-shanghai.apm.tencentcs.com:4319`（token 由服务器 compose env 注入）。
-- **改动**：加 OTel 依赖 + `src/otel.js`（ESM，`--import` 加载，**采样率 APM_SAMPLE_RATE 默认 0.1**）+ Dockerfile/entrypoint 启动注入 + 无 token 时自动跳过。
-- **验收**：见规格 §3（控制台有 Trace、功能不受影响、token 不入库、本地跳过）。
-
 ## FV. ~~站点 head/foot 注入（后台可配置，RUM/统计脚本等免改代码）~~ → 已发布 v2.30.0
 
 **类型：** ⚙️ 调整（可配置化）
