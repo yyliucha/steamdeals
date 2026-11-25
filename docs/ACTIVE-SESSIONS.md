@@ -17,6 +17,8 @@
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
 
+| 构建 v2.30.0 + app-v2.25.1（最终构建协调） | gameprice 全仓（发布文档 CHANGELOG/DONE/DELIVERY/INDEX/TODO/PROJECT-OVERVIEW/package.json、android/build.gradle.kts、frontend/public/app/latest.json） | 打 tag 构建（同一时刻唯一） | 2026-11-25 15:15 | 2026-11-25 19:00 | lead（构建协调 schedule-a42e23dd；FL 复检第 2 轮已完成并回写，门禁 8/8 全过 → 进入一次性构建） |
+
 ## 独占资源一览（同一时刻只允许一个会话持有）
 
 | 资源 | 说明 | 典型操作 |
