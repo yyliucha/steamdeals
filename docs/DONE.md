@@ -119,6 +119,27 @@
   后台统计拆「成人内容（宽）/色情游戏（严格）」。
 - **验收**：见规格 §3（explicit < adult、2077 不出现、后台两行、回填可跑、测试全绿）。
 
+## FU. ~~接入腾讯云 APM（OpenTelemetry OTLP，Docker Compose 手动接入）~~ → 已发布 v2.30.1
+
+**类型：** ⚙️ 调整（可观测性）
+**状态：** 已发布 v2.30.1（2026-11-25；gRPC 修正实现 6e23406 + 默认接入点域名修正 b594eaf；QA docs/QA-FU2.md 第 2 轮 ✅ 9/0/0/1；首发 v2.30.0 = 07db9a9，QA-FU 第 1 轮 ✅ 4/0/0/1）
+**优先级：** P2
+**依赖：** 无
+**解锁：** 无
+**规格**：[APM-TENCENT.md](APM-TENCENT.md)
+
+- **背景**：Docker Compose 部署（非 TKE），不能 Operator 自动注入；用 OpenTelemetry SDK 手动接入。
+  v2.30.0 按最初规格用 OTLP HTTP 往 4319 发 `POST /v1/traces`、token 放 `x-tps-token` header；
+  但腾讯云 APM 的 4319 只接受 HTTP/2（h2c）、h1 被关闭，且要求 token 以 Resource 属性上报。
+- **改动（v2.30.1）**：① `package.json` 依赖 `exporter-trace-otlp-http` → `exporter-trace-otlp-grpc`（自动带 `@grpc/grpc-js`）；
+  ② `src/otel.js` 换 gRPC exporter（`url` 只给 host:port，`http://` → h2c 明文，`timeoutMillis` 1.5s），
+  Resource 增加 `APM_TOKEN` + 官方 `token`（同值）、`SERVICE_NAME`、`APP_ID`/`SERVER_ID`（可选，`OTEL_SERVICE_NAME` 兜底）、
+  `host.name`，删除 `x-tps-token` header；默认接入点纠正为 `http://pl.ap-shanghai.apm.tencentcs.com:4319`
+  （`plap-`/`pl-ap-` 均 NXDOMAIN），旧笔误域名自动纠正；③ `test/otel.test.js` 重写 4 用例（含假 OTLP gRPC 服务端到端）；
+  ④ 文档 APM-TENCENT.md / PROJECT-OVERVIEW / README / CHANGELOG 同步。
+- **验收**：见规格 §3（控制台有 Trace、功能不受影响、token 不入库、本地跳过、假 gRPC 可验证）；本地 otel 4/4 +
+  deploy 24/24 + docs 5/5 + isolation 7/7 + 主链 test:4 全绿 + scan 干净；全量主链由 CI 兜底。
+
 ## FV. ~~站点 head/foot 注入（后台可配置，RUM/统计脚本等免改代码）~~ → 已发布 v2.30.0
 
 **类型：** ⚙️ 调整（可配置化）

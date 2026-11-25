@@ -1,3 +1,24 @@
+## [2.30.1] - 2026-11-25
+
+FU 腾讯云 APM 接入改用 OTLP **gRPC**（修正 v2.30.0 的 HTTP 上报在 4319 上不成立）+ 默认接入点域名笔误纠正（⚙️ 修复/调整，无新功能 → 小版本，2.30.0 → 2.30.1 连续递增、不跳号）。站点单仓库，App 无改动。
+
+### 修复
+
+- **FU APM 接入改 gRPC（6e23406）**：腾讯云 APM 的 4319 只接受 HTTP/2（h2c），v2.30.0 的 `@opentelemetry/exporter-trace-otlp-http` 往 `POST /v1/traces` 上报会被拒；换 `@opentelemetry/exporter-trace-otlp-grpc`（自动带 `@grpc/grpc-js`），`url` 只给 `host:port`（`http://` 前缀 → h2c 明文，`timeoutMillis` 1.5s 限时不拖慢短命 CLI）。
+- **token 改 Resource 属性上报**：Resource 增加 `APM_TOKEN` + 官方 `token`（同值，避免只认小写 key 的服务端丢数据）、`SERVICE_NAME`、`APP_ID`/`SERVER_ID`（可选，`OTEL_SERVICE_NAME` 兜底）、`host.name`；删除 `x-tps-token` header（gRPC 走 metadata，header 那套不生效）。无 token 静默跳过、`APM_SAMPLE_RATE` 采样、`HttpInstrumentation` 行为不变。
+- **默认接入点域名纠正（b594eaf）**：内网接入点是 `pl.<region>.apm.tencentcs.com`（点分隔）——`plap-shanghai…`（v2.30.0 文档笔误）与 `pl-ap-shanghai…` 均 NXDOMAIN，实测只有 `pl.ap-shanghai.apm.tencentcs.com` 解析到 169.254.0.177；默认值改对，并把历史笔误 `plap-shanghai…` 在 `normalizeEndpoint` 里自动纠正（照抄旧文档的 `APM_ENDPOINT` 也不会静默连不上）。
+
+### 测试
+
+- `test/otel.test.js` 重写为 4 用例（主链 test:4）：配置组装/端点归一化（含历史笔误纠正）/资源属性、无 token `--import` 跳过、**假 OTLP gRPC 服务端到端**（报文 body 含 token 与资源属性键、gRPC metadata 无 `x-tps-token`）、端点不可达不中断且 <5s 退出。
+- 本机验证（构建会话）：`node test/otel.test.js` 4/4、`test/deploy.test.js` 24/24、`test/docs.test.js` 5/5、`test/isolation.test.js` 7/7、主链 `test:4` exit 0、`scan` 干净；反向自检（v2.30.0 旧 HTTP 实现跑同一端到端断言）必红，证明测试真锁住 gRPC + Resource 属性；全量主链由 CI 兜底。
+- QA：FU 第 2 轮 ✅ 放行（通过 9 / 缺失 0 / 偏差 0 / 需人工确认 1——腾讯云控制台需部署后确认）；轮内自检发现并修复域名缺陷（b594eaf）。
+
+### 部署提示
+
+- 服务器 compose env：`APM_TOKEN`（必填）、`OTEL_SERVICE_NAME`（app 用 `steamdeals-app` / scheduler 用 `steamdeals-scheduler`）、可选 `APM_ENDPOINT`（默认即 `http://pl.ap-shanghai.apm.tencentcs.com:4319`，**注意是 `pl.` 不是 `plap-`**）、`APM_SAMPLE_RATE`（默认 0.1）、可选 `APM_APP_ID`/`APM_SERVER_ID`；4319 是 h2c 明文，**无需** NODE_TLS 开关。
+- 本版无 schema 变更、无接口变更、无前端改动，升级只需重建 app/scheduler 容器。
+
 ## [2.30.0] - 2026-11-25
 
 FK App 资产同步 COS 换源 + FM 史低误报修复 + FL 设置页全分组折叠 + FP 同步机制完善 + FQ 按钮点击反馈 + FR backup 后台功能化 + FT 成人内容分级细分（色情游戏）+ FU 腾讯云 APM 接入 + FV 站点 head/foot 注入（✨ 新功能面 4：FT 分级细分 / FP 同步机制 / FU APM / FV 注入 → 大版本，2.29.1 → 2.30.0 连续递增、不跳号）。站点 + App 双仓库（App 提交 b924926 + 2916dc3，随本批发 app-v2.25.1/22501）。

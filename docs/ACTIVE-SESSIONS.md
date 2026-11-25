@@ -16,6 +16,7 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
+| v2.30.1 | `package.json`、`package-lock.json`、`CHANGELOG.md`、`README.md`、`docs/TODO.md`、`docs/DONE.md`、`docs/REQUIREMENTS-INDEX.md`、`docs/DELIVERY.md`、`docs/PROJECT-OVERVIEW.md` | **打 tag 构建** | 2026-11-25 17:55 | 2026-11-25 18:40 | 构建会话（FU gRPC 修正） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 

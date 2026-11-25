@@ -1,4 +1,4 @@
-# 接入腾讯云 APM（OpenTelemetry）（FU，已发布 v2.30.0；v2.30.1 为 gRPC 修正，待发版）
+# 接入腾讯云 APM（OpenTelemetry）（FU，已发布 v2.30.0；v2.30.1 gRPC 修正已发布）
 
 > 所有者要求（2026-11-25）：项目接入腾讯云 APM（应用性能监控）——Node.js 应用，OpenTelemetry 协议。
 > 我们的部署是 Docker Compose（不是 TKE），不能用 Operator 自动注入；用 OpenTelemetry SDK 手动接入。

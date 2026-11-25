@@ -2,7 +2,7 @@
 
 > 最后更新：2026-11-25（本批 FK/FM/FL/FO/FP/FQ/FR/FT/FU/FV 已发布 v2.30.0 / app-v2.25.1，移入 [DONE.md](DONE.md)；本清单只保留未完成条目）。
 > 2026-11-25 晚补：FU 的 **gRPC 修正**（v2.30.0 用 OTLP HTTP 上报 4319 不成立，腾讯云要求 gRPC + token 走 Resource 属性）
-> 已回到本清单，状态「已实现待发版」→ 随 **v2.30.1** 发版。
+> 已随 **v2.30.1** 发布，FU 条目整段移入 [DONE.md](DONE.md)。
 > 接手会话先看本清单，再看 [REQUIREMENTS-INDEX.md](REQUIREMENTS-INDEX.md)（**需求批次总账**：全部批次的规格 + 状态 + 是否已有开发描述）、
 > [DONE.md](DONE.md)（**已完成/已过时条目存档**）、[DELIVERY.md](DELIVERY.md)（流程/发版）与 [UI-FIXES.md](UI-FIXES.md)（界面缺陷细节）。
 > **清单分工（2026-11-18 所有者新规）**：本清单**只放待办**；条目变为 `已发布 vX.Y.Z` 或 `已过时` 后**整段移入 [DONE.md](DONE.md)**
@@ -24,7 +24,7 @@
 |---|---|---|
 | 🐞 缺陷 | 4 | EO、ER、EU、EX |
 | ✨ 功能 | 0 | — |
-| ⚙️ 调整 | 10 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FU |
+| ⚙️ 调整 | 9 | EP / EV / EW / EY / FB / FD / FF / FG / FH |
 | 🧹 技术债 | 2 | EN、FC |
 | 🧪 测试基建 | 0 | — |
 | 📝 文档流程 | 0 | — |
@@ -32,27 +32,6 @@
 | 已过时 | 0 | — |
 
 ---
-
-## FU. APM 接入改用 gRPC（修正 v2.30.0 的 OTLP HTTP 接入）
-
-**状态：** 质检通过（gRPC 修正，v2.30.1；实现 6e23406 + 域名修正 b594eaf；QA docs/QA-FU2.md 第 2 轮 ✅ 9/0/0/1）
-**类型：** ⚙️ 调整（可观测性）
-**优先级：** P2 —— v2.30.0 的 HTTP 上报在 4319 上不成立（该端口只接受 HTTP/2），不修则 APM 收不到数据
-**依赖：** 无
-**解锁：** 无
-**规格**：[APM-TENCENT.md](APM-TENCENT.md)（§1 接入方案、§3 验收第 5 条、§5 变更记录）
-
-- **背景**：v2.30.0（07db9a9）按最初规格用 `@opentelemetry/exporter-trace-otlp-http` 往
-  `plap-shanghai.apm.tencentcs.com:4319` 发 `POST /v1/traces`、token 放 `x-tps-token` header。腾讯云要求：
-  4319 是 gRPC（h2c）端口、h1 被关闭；官方示例用 `@opentelemetry/exporter-trace-otlp-grpc` +
-  `url: 'http://pl.ap-shanghai.apm.tencentcs.com:4319'`，token 以 **Resource 属性**上报。
-- **改动**：① `package.json` 依赖 `exporter-trace-otlp-http` → `exporter-trace-otlp-grpc`（带 `@grpc/grpc-js`）；
-  ② `src/otel.js` 换 gRPC exporter（url 只给 host:port，不拼 `/v1/traces`；`http://` 前缀 → h2c 明文），
-  Resource 增加 `APM_TOKEN` + 官方 `token`（同值）、`SERVICE_NAME`、`APP_ID`/`SERVER_ID`（可选，`OTEL_SERVICE_NAME` 兜底）、
-  `host.name`，删除 `x-tps-token` header；保留无 token 静默跳过、`APM_SAMPLE_RATE` 采样、`HttpInstrumentation`、
-  exporter deadline 1.5s；③ `test/otel.test.js` 重写：新增假 OTLP gRPC 服务端到端用例（报文 body 含 token、
-  metadata 无 `x-tps-token`），端点归一化与资源属性断言；④ 文档 APM-TENCENT.md / PROJECT-OVERVIEW / README 同步。
-- **验收**：见规格 §3；本地 `node test/otel.test.js` 4/4、`npm run test:4`、`npm run scan` 全绿。
 
 ## EN. CSP 安全加固（Report-Only → 正式）
 
