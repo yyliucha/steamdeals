@@ -22,7 +22,7 @@
 |---|---|---|
 | 🐞 缺陷 | 5 | EO、ER、EU、EX、FM |
 | ✨ 功能 | 0 | — |
-| ⚙️ 调整 | 17 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FL / FK / FO / FP / FQ / FR / FT / FU |
+| ⚙️ 调整 | 18 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FL / FK / FO / FP / FQ / FR / FT / FU / FV |
 | 🧹 技术债 | 2 | EN、FC |
 | 🧪 测试基建 | 0 | — |
 | 📝 文档流程 | 0 | — |
@@ -337,3 +337,16 @@
   OTLP HTTP 上报到 `plap-shanghai.apm.tencentcs.com:4319`（token 由服务器 compose env 注入）。
 - **改动**：加 OTel 依赖 + `src/otel.js`（ESM，`--import` 加载）+ Dockerfile/entrypoint 启动注入 + 无 token 时自动跳过。
 - **验收**：见规格 §3（控制台有 Trace、功能不受影响、token 不入库、本地跳过）。
+
+## FV. 待开发（⚙️ 调整）：站点 head/foot 注入（后台可配置，RUM/统计脚本等免改代码）
+
+**类型：** ⚙️ 调整（可配置化）
+**状态：** 待开发（2026-11-25 所有者建议：类似 Halo 主题的 head/footer 注入）
+**优先级：** P2
+**依赖：** 无
+**解锁：** 无
+**规格**：[HEAD-FOOT-INJECTION.md](HEAD-FOOT-INJECTION.md)
+
+- **需求**：settings 加 `site.headInjection`/`site.footInjection`；SPA 页面（dist/index.html）注入到 `</head>`/`</body>` 前；
+  内联 script 自动打 CSP nonce；输 no-cache 防旧 HTML；仅管理员可配。
+- **验收**：见规格 §3（后台可填、前台生效、无配置时零变化、CSP 兼容、RUM 脚本可用、测试全绿）。
