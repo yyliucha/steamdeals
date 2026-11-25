@@ -28,6 +28,15 @@ description: F:\dsh\gameprice（SteamDeals 跨平台游戏比价）的开发规�
 项目：包名 `steamdeals`（当前版本以 `package.json` 为准）。Node ≥22.5（ESM）+ PostgreSQL 15 + Vue 3/Vite/Element Plus + Docker Compose。
 
 ## 0. 范围边界（先看这条，越界就是错）
+### 0.1 双端拆分与依赖顺序（2026-11-25 所有者要求）
+
+- 接到「App + Web 都要改」的需求 → **拆成两个开发任务**：站点任务（F:\dsh\gameprice）与 App 任务
+  （F:\dsh\steamdeals-app）分别开工/提交/QA，不混在一个改动里；
+- **依赖顺序**：App 依赖站点新 API 时——站点任务先完成并提交（API 就绪）→ App 任务再引用/提交；
+  **不得让 App 先引用尚未发布的接口**（联调时可用临时 mock，但提交前必须确认站点侧已合入）；
+- 发布由构建会话执行：**站点版本先发，确认线上接口可用后，App 版本再发**（见 steamdeals-build §3.8）；
+- 涉及双端的需求，规格/验收里必须写清「站点改动 / App 改动 / 依赖接口 / 联调版本」四项。
+
 
 **只做：代码 + 测试用例。**
 

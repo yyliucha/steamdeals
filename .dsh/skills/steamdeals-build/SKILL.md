@@ -150,6 +150,9 @@ gh auth switch --user boxiang-sun_shortcut          # 切回默认账号
 - 汇报（§4）。服务器升级由**部署人员**按 [docs/DEPLOY.md](../../../docs/DEPLOY.md) 执行，开发侧不碰服务器。
 
 ### 3.8 App 联动发版（2026-11-19 起）
+- **发布顺序硬规则（2026-11-25）**：若 App 依赖站点的新 API/接口，**必须站点版本先发布并验证线上接口可用，再发布 App**；
+  严禁 App 先发（App 调不到新接口会直接报错）。站点与 App 的联调版本号写进 DELIVERY（如站点 v2.30.0 API ↔ App v2.25.1）。
+
 
 本批发布范围里存在「**涉及 App 仓库**：是」的条目 → 加载 `steamdeals-app-build` 技能，按它的流程发对应
 `app-vX.Y.Z`（打 tag + Release 三资产 + 站点 app-sync 验证 + 模拟器覆盖安装自测）；

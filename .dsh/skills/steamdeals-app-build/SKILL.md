@@ -29,6 +29,10 @@ description: SteamDeals App（F:\dsh\steamdeals-app，yyliucha/steamdeals-app）
 - 「发 App」自动推算：直接发当前 main 里的 versionCode/versionName（发版前核对它大于已发布 tag 的 versionCode）。
 
 ## 2. 联动规则（与 steamdeals-build / steamdeals-dev）
+- **依赖站点 API 的发布顺序（2026-11-25 所有者要求）**：App 构建前必须确认「App 依赖的站点接口/字段已在生产可用」；
+  若站点版本尚未发布 → **先通知/等待站点发版**，再发 App；严禁 App 先于站点发布。
+- App 与站点同批需求的联调版本号记录在 latest.json/发布说明（如依赖站点 v2.30.0）。
+
 
 - **双仓库条目**：TODO 条目带「**涉及 App 仓库**：是」的（如 CX/DA/CZ/DC），站点构建时本技能被同步调用，
   两版一起汇报（站点 vX.Y.Z + app-vX.Y.Z）。
