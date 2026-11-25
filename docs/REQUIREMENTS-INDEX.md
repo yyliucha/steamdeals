@@ -164,6 +164,8 @@
 | **FM** | 🐞 缺陷：价格提醒史低误报（hist_low 含当天→恒标新史低；相同价重复显示史低） | [ALERT-HISTLOW-FIX.md](ALERT-HISTLOW-FIX.md) | 质检通过（2026-11-24，b497566；QA-FM 第 1 轮 ✅ 通过 5/缺失 0/偏差 0/需人工确认 2） | ✅ 本轮已给 |
 | **FO** | ⚙️ 调整：App 搜索框回车即搜（ImeAction.Search；先记录，后续一起开发） | 本条目 | 待开发（2026-11-25 记录） | ✅ 已记录 |
 | **FP** | ⚙️ 调整：同步机制完善（僵尸锁 P0 / backup 稳定性 / 分槽 / 提速 / 429 队列 / 时效监控） | [SYNC-HARDENING.md](SYNC-HARDENING.md) | 待开发（2026-11-25 P0） | ✅ 本轮已给（僵尸锁已服务器手工修复） |
+| **FQ** | ⚙️ 调整：按钮点击反馈规范（所有刷新/操作按钮 loading+成功/失败提示） | [UI-BUTTON-FEEDBACK.md](UI-BUTTON-FEEDBACK.md) | 待开发（2026-11-25 P2） | ✅ 本轮已给 |
+| **FR** | ⚙️ 调整：backup 默认关闭（参数控制保留，可后台开启） | 本条目 | 待开发（2026-11-25 P2） | ✅ 本轮已给 |
 | **EY** | ⚙️ 调整：我的愿望单合并 Steam 愿望单（两层展示、Steam 行只读无操作、同游戏合并一行） | [MY-WISHLIST-MERGED.md](MY-WISHLIST-MERGED.md) | 已发布 v2.29.0（2026-11-24，合并展示按新功能定档 → 大版本） | ✅ 本轮已给 |
 | **EZ** | ⚙️ 调整：个人资料页精简（el-tabs 三 Tab：基本信息 / Steam 账号（绑定+游戏库合并）/ 偏好与统计；保存固定底部；手机端 Tab 横向滚动；全 el-button） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 已发布 v2.28.7（2026-11-23，8eeb1f4；QA-EZ-FA 第 1 轮 ✅） | ✅ demo 已给 |
 | **FA** | ⚙️ 调整：用户菜单新增「切换账户」（退出会话 → /login?switch=1 → 登录后回 Console；保留退出登录） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 已发布 v2.28.7（2026-11-23，8eeb1f4；QA-EZ-FA 第 1 轮 ✅） | ✅ demo 已给 |
