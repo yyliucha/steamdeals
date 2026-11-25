@@ -155,7 +155,7 @@ Get-Content docs/ACTIVE-SESSIONS.md -Encoding UTF8   # 2026-11-19 起：先读�
    只读图，不改代码。")`——父会话按返回描述判断，**禁止让子代理改代码**。
 3. **交给支持读图的会话/所有者**：把截图绝对路径贴给 lead 或所有者人工验收（lead 会话支持读图）。
 
-**执行要求（2026-11-25 所有者强调）**：走第 2 条前先 `list_subagent_models(provider="deepseek-official")` 查路由——
+**强制要求（MUST，所有者 2026-11-25 明确）：违反 = 质检打回 / 交付不合格**：走第 2 条前先 `list_subagent_models(provider="deepseek-official")` 查路由——
 只要 `deepseek-flash` 在列表里就**必须用它**（不许跳过直接交所有者）；只有列表里查不到或调用失败才走第 3 条，
 且汇报必须写明「已查 list_subagent_models，flash 不可用：<原因>」。禁止「没试第 2 条就说模型不支持读图」。
 
