@@ -19,15 +19,22 @@ import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace';
 
 // 腾讯云 APM 内网 gRPC 接入点（h2c，4319）。别改成 HTTP 的 :4320 或拼 /v1/traces。
-export const DEFAULT_APM_ENDPOINT = 'http://pl-ap-shanghai.apm.tencentcs.com:4319';
+// 域名是 `pl.<region>.apm.tencentcs.com`（pl 与 region 之间是点，v2.30.0 文档误写成 plap-shanghai…）；
+// 本机实测只有这个名字能解析（内网解析到 169.254.0.177），`plap-` / `pl-ap-` 都是 NXDOMAIN。
+export const DEFAULT_APM_ENDPOINT = 'http://pl.ap-shanghai.apm.tencentcs.com:4319';
+const DEFAULT_APM_HOST = 'pl.ap-shanghai.apm.tencentcs.com';
+// v2.30.0 规格/文档里的历史笔误域名：照抄旧值部署会拿到 NXDOMAIN，升级后自动纠正回来。
+const LEGACY_APM_HOST = 'plap-shanghai.apm.tencentcs.com';
 
 // 归一化接入点：去空格与尾斜杠；容忍沿用旧 HTTP 接入地址时多出来的 /v1/traces
-// （gRPC exporter 只取 host:port，路径会被它警告并忽略，这里提前清掉免得刷日志）。
+// （gRPC exporter 只取 host:port，路径会被它警告并忽略，这里提前清掉免得刷日志）；
+// 并把历史笔误域名纠正为官方格式。
 export function normalizeEndpoint(raw) {
   return String(raw || DEFAULT_APM_ENDPOINT)
     .trim()
     .replace(/\/+$/, '')
-    .replace(/\/v1\/traces$/, '');
+    .replace(/\/v1\/traces$/, '')
+    .replace(LEGACY_APM_HOST, DEFAULT_APM_HOST);
 }
 
 // Resource 属性组装独立成纯函数，供测试锁住「token 走资源属性 / 服务名 / APP_ID·SERVER_ID 兜底」。

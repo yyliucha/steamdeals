@@ -5,7 +5,7 @@
 >
 > **v2.30.1 修正（2026-11-25 晚，本轮）**：腾讯云 APM 的 4319 接入点**只接受 HTTP/2（h2c），h1 被关闭**，
 > 原有 `@opentelemetry/exporter-trace-otlp-http` 的 `POST /v1/traces` 上报不成立；官方示例要求用
-> `@opentelemetry/exporter-trace-otlp-grpc` + `url: 'http://pl-ap-shanghai.apm.tencentcs.com:4319'`，
+> `@opentelemetry/exporter-trace-otlp-grpc` + `url: 'http://pl.ap-shanghai.apm.tencentcs.com:4319'`，
 > 且 **token 必须以 Resource 属性上报**（不是 header）。详见 §5 变更记录。
 
 ## 1. 接入方案
@@ -34,7 +34,7 @@ import { defaultResource, resourceFromAttributes } from '@opentelemetry/resource
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace';
 
-const endpoint = (process.env.APM_ENDPOINT || 'http://pl-ap-shanghai.apm.tencentcs.com:4319')
+const endpoint = (process.env.APM_ENDPOINT || 'http://pl.ap-shanghai.apm.tencentcs.com:4319')
   .replace(/\/+$/, '').replace(/\/v1\/traces$/, '');   // gRPC 只接受 host:port，路径由 exporter 自带
 const token = process.env.APM_TOKEN || '';
 const serviceName = process.env.OTEL_SERVICE_NAME || 'steamdeals';
@@ -75,7 +75,7 @@ sdk.start();
 environment:
   APM_TOKEN: "<腾讯云 token>"                    # 必填；真实值只放服务器 compose
   OTEL_SERVICE_NAME: "steamdeals-app"            # 或 steamdeals-scheduler
-  APM_ENDPOINT: "http://pl-ap-shanghai.apm.tencentcs.com:4319"   # 可省（默认值就是这个）
+  APM_ENDPOINT: "http://pl.ap-shanghai.apm.tencentcs.com:4319"   # 可省（默认值就是这个）
   APM_SAMPLE_RATE: "0.1"                         # 可省，默认 0.1
   APM_APP_ID: "<业务系统 ID>"                     # 可选，默认取 OTEL_SERVICE_NAME
   APM_SERVER_ID: "<实例 ID>"                      # 可选，默认取 OTEL_SERVICE_NAME
@@ -114,4 +114,4 @@ node test/otel.test.js        # 4/4：配置组装 / 无 token 跳过 / 假 gRPC
 | 版本 | 变更 | 原因 |
 |---|---|---|
 | v2.30.0（07db9a9） | OTLP **HTTP** exporter，`POST {endpoint}/v1/traces`，token 走 `x-tps-token` header，默认端点 `plap-shanghai…:4319` | 初版接入（按当时的规格示例） |
-| v2.30.1（本轮） | 换 **OTLP gRPC** exporter（`@opentelemetry/exporter-trace-otlp-grpc`），url 只给 `http://pl-ap-shanghai.apm.tencentcs.com:4319`，token 改 Resource 属性（`APM_TOKEN` + 官方 `token`），新增 `SERVICE_NAME`/`APP_ID`/`SERVER_ID`/`host.name`，删除 `x-tps-token` header | 腾讯云 APM 的 4319 只接受 HTTP/2（h2c），h1 被关闭；官方要求 gRPC + Resource 属性上报 token；顺带修正默认域名拼写（`plap-` → `pl-ap-`） |
+| v2.30.1（本轮） | 换 **OTLP gRPC** exporter（`@opentelemetry/exporter-trace-otlp-grpc`），url 只给 `http://pl.ap-shanghai.apm.tencentcs.com:4319`，token 改 Resource 属性（`APM_TOKEN` + 官方 `token`），新增 `SERVICE_NAME`/`APP_ID`/`SERVER_ID`/`host.name`，删除 `x-tps-token` header | 腾讯云 APM 的 4319 只接受 HTTP/2（h2c），h1 被关闭；官方要求 gRPC + Resource 属性上报 token；顺带修正默认域名拼写（`plap-` → `pl.`：本机实测 `plap-shanghai…` 与 `pl-ap-shanghai…` 都是 NXDOMAIN，只有 `pl.ap-shanghai.apm.tencentcs.com` 解析到 169.254.0.177） |

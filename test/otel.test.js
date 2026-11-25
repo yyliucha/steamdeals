@@ -1,7 +1,7 @@
 // FU 批：OpenTelemetry 接入（src/otel.js）的行为锁。
 // 锁住四条约束：
 //   1) 无 APM_TOKEN 时完全跳过（本地/CI 不受影响、不报错）；
-//   2) 配置组装正确：接入点为 gRPC host:port（默认 pl-ap-shanghai…:4319，去尾斜杠/容忍旧
+//   2) 配置组装正确：接入点为 gRPC host:port（默认 pl.ap-shanghai…:4319，去尾斜杠/容忍旧
 //      /v1/traces 后缀）、服务名取 OTEL_SERVICE_NAME（默认 steamdeals）、采样率默认 0.1；
 //   3) v2.30.1 gRPC 修正：token 必须以 **Resource 属性**上报（APM_TOKEN 与官方 key token 同值），
 //      不能再走 `x-tps-token` header——端到端起一个假 OTLP gRPC 服务，断言报文 body 里有 token、
@@ -24,7 +24,7 @@ test('buildOtelOptions：默认值、token 守卫、gRPC 端点归一化与资�
 
   const off = buildOtelOptions({});
   assert.equal(off.enabled, false, '无 APM_TOKEN 时探针必须关闭');
-  assert.equal(off.endpoint, 'http://pl-ap-shanghai.apm.tencentcs.com:4319', '默认接入点必须是 gRPC h2c 的 4319');
+  assert.equal(off.endpoint, 'http://pl.ap-shanghai.apm.tencentcs.com:4319', '默认接入点必须是 gRPC h2c 的 4319（pl.<region> 是点分隔，实测唯一可解析）');
   assert.equal(off.serviceName, 'steamdeals', '默认服务名');
   assert.equal(off.sampleRate, 0.1, '采样率默认 0.1（控制上报量与费用）');
   assert.equal(off.url, undefined, 'gRPC 接入不再拼 /v1/traces 这种 HTTP 路径');
@@ -55,7 +55,13 @@ test('buildOtelOptions：默认值、token 守卫、gRPC 端点归一化与资�
   assert.equal(normalizeEndpoint('http://example.com:4319/'), 'http://example.com:4319', '尾斜杠必须去除');
   assert.equal(normalizeEndpoint('http://example.com:4319/v1/traces'), 'http://example.com:4319', '旧 HTTP 路径必须去掉');
   assert.equal(normalizeEndpoint('http://example.com:4319/v1/traces/'), 'http://example.com:4319', '路径+尾斜杠也要归一化');
-  assert.equal(normalizeEndpoint(''), 'http://pl-ap-shanghai.apm.tencentcs.com:4319', '空值回退默认接入点');
+  assert.equal(normalizeEndpoint(''), 'http://pl.ap-shanghai.apm.tencentcs.com:4319', '空值回退默认接入点');
+  // v2.30.0 文档的笔误域名照抄到 compose 会 NXDOMAIN：必须自动纠正回官方格式
+  assert.equal(
+    normalizeEndpoint('http://plap-shanghai.apm.tencentcs.com:4319'),
+    'http://pl.ap-shanghai.apm.tencentcs.com:4319',
+    '历史笔误域名 plap-shanghai 必须纠正为 pl.ap-shanghai',
+  );
 
   // 采样率三态：env 覆盖 / 0 回退默认 / 非法值回退默认
   assert.equal(buildOtelOptions({ APM_TOKEN: 't', APM_SAMPLE_RATE: '0.5' }).sampleRate, 0.5, 'APM_SAMPLE_RATE 可覆盖');

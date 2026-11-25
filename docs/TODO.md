@@ -45,7 +45,7 @@
 - **背景**：v2.30.0（07db9a9）按最初规格用 `@opentelemetry/exporter-trace-otlp-http` 往
   `plap-shanghai.apm.tencentcs.com:4319` 发 `POST /v1/traces`、token 放 `x-tps-token` header。腾讯云要求：
   4319 是 gRPC（h2c）端口、h1 被关闭；官方示例用 `@opentelemetry/exporter-trace-otlp-grpc` +
-  `url: 'http://pl-ap-shanghai.apm.tencentcs.com:4319'`，token 以 **Resource 属性**上报。
+  `url: 'http://pl.ap-shanghai.apm.tencentcs.com:4319'`，token 以 **Resource 属性**上报。
 - **改动**：① `package.json` 依赖 `exporter-trace-otlp-http` → `exporter-trace-otlp-grpc`（带 `@grpc/grpc-js`）；
   ② `src/otel.js` 换 gRPC exporter（url 只给 host:port，不拼 `/v1/traces`；`http://` 前缀 → h2c 明文），
   Resource 增加 `APM_TOKEN` + 官方 `token`（同值）、`SERVICE_NAME`、`APP_ID`/`SERVER_ID`（可选，`OTEL_SERVICE_NAME` 兜底）、
