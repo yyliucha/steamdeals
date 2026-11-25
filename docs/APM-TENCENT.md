@@ -24,6 +24,7 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
+import { TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
 
 const endpoint = process.env.APM_ENDPOINT || 'http://plap-shanghai.apm.tencentcs.com:4319';
 const token = process.env.APM_TOKEN || '';
@@ -37,6 +38,7 @@ const sdk = new NodeSDK({
     url: `${endpoint.replace(/\/$/, '')}/v1/traces`,
     headers: token ? { 'x-tps-token': token } : {},   // token header 以腾讯云控制台示例为准
   }),
+  sampler: new TraceIdRatioBasedSampler(Number(process.env.APM_SAMPLE_RATE ?? 0.1) || 0.1),
   instrumentations: [new HttpInstrumentation()],
 });
 sdk.start();
