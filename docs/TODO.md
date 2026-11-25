@@ -22,7 +22,7 @@
 |---|---|---|
 | 🐞 缺陷 | 5 | EO、ER、EU、EX、FM |
 | ✨ 功能 | 0 | — |
-| ⚙️ 调整 | 15 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FL / FK / FO / FP / FQ / FR |
+| ⚙️ 调整 | 16 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FL / FK / FO / FP / FQ / FR / FT |
 | 🧹 技术债 | 2 | EN、FC |
 | 🧪 测试基建 | 0 | — |
 | 📝 文档流程 | 0 | — |
@@ -308,3 +308,17 @@
 - **现状**：backup 为调度任务（scheduler.js）+ CLI 命令；后台已有 API（/api/admin/backup）+ 「统计→图片与备份」卡片。
 - **需求**：移除调度任务（不再自动/不走命令）；保留并完善后台手动功能（按钮+列表+下载+删除）；默认不自动备份。
 - **验收**：调度任务列表无 backup；后台可手动备份/下载/删除；默认不自动；测试全绿。
+
+## FT. 待开发（⚙️ 调整）：成人内容分级细分（宽=成人内容 / 严格=色情游戏，descriptor 4 或 AO）
+
+**类型：** ⚙️ 调整（内容分级口径）
+**状态：** 待开发（2026-11-25 所有者要求：要的是色情游戏，2077 这类不算）
+**优先级：** P2
+**依赖：** FI（分级入口）、FH（统计）
+**解锁：** 无
+**规格**：[EXPLICIT-RATING.md](EXPLICIT-RATING.md)
+
+- **需求**：新增 `games.explicit_flag`（严格 = descriptor 4 或 ESRB AO）与 `classifyContentRating` 的 explicitFlag；
+  存量 adult_flag 游戏重采回填（explicit-backfill 命令）；前台筛选/角标改用 explicit（色情游戏）；
+  后台统计拆「成人内容（宽）/色情游戏（严格）」。
+- **验收**：见规格 §3（explicit < adult、2077 不出现、后台两行、回填可跑、测试全绿）。
