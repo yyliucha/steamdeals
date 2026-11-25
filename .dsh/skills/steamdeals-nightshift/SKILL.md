@@ -24,6 +24,8 @@ description: SteamDeals/gameprice 夜班自动化流水线（监工 + 工人）�
 - 不要因「权限受限」绕路（如改用只读命令、放弃写文件、要求所有者手动操作）；
 - 若某次工具调用被 sandbox 拒绝（报 workspace-write 拒绝）→ 用 `sandbox_permissions: "danger-full-access"` **原样重试一次**；
 - schedule 会话按 profile 级完全权限运行，监工 prompt 不必重复声明权限。
+- **DSH 默认权限已设置（2026-11-25 所有者确认）**：桌面设置里已把默认文件访问权限改为「完全权限」——此后 schedule
+  新建的监工/工人会话自动以完全权限运行；若某会话仍是「工作区内修改」，请所有者在会话顶部手动切换。
 
 ## 1. 队列与心跳（防卡死）
 
