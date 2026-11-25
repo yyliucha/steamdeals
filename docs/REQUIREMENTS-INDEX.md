@@ -163,7 +163,7 @@
 | **FK** | ⚙️ 调整：App 资产同步换源（GitHub→腾讯云 COS，双通道+自动回退；服务器无法直连 GitHub Release 资产） | [APP-SYNC-COS.md](APP-SYNC-COS.md) | 质检通过（2026-11-24，QA-FK 第 1 轮 ✅ 9/0/0/3；实现 5ad406b） | ✅ 本轮已给 |
 | **FM** | 🐞 缺陷：价格提醒史低误报（hist_low 含当天→恒标新史低；相同价重复显示史低） | [ALERT-HISTLOW-FIX.md](ALERT-HISTLOW-FIX.md) | 质检通过（2026-11-24，b497566；QA-FM 第 1 轮 ✅ 通过 5/缺失 0/偏差 0/需人工确认 2） | ✅ 本轮已给 |
 | **FO** | ⚙️ 调整：App 搜索框回车即搜（ImeAction.Search；先记录，后续一起开发） | 本条目 | 待开发（2026-11-25 记录） | ✅ 已记录 |
-| **FP** | ⚙️ 调整：同步机制完善（僵尸锁 P0 / backup 稳定性 / 分槽 / 提速 / 429 队列 / 时效监控） | [SYNC-HARDENING.md](SYNC-HARDENING.md) | 待开发（2026-11-25 P0） | ✅ 本轮已给（僵尸锁已服务器手工修复） |
+| **FP** | ⚙️ 调整：同步机制完善（僵尸锁 P0 / backup 稳定性 / 分槽 / 提速 / 429 队列 / 时效监控） | [SYNC-HARDENING.md](SYNC-HARDENING.md) | 质检通过（2026-11-25，QA-FP 第 1 轮 ✅ 22/0/0/3；实现 0cdddb1） | ✅ 本轮已给（僵尸锁已服务器手工修复） |
 | **FQ** | ⚙️ 调整：按钮点击反馈规范（所有刷新/操作按钮 loading+成功/失败提示） | [UI-BUTTON-FEEDBACK.md](UI-BUTTON-FEEDBACK.md) | 待开发（2026-11-25 P2） | ✅ 本轮已给 |
 | **FR** | ⚙️ 调整：backup 默认关闭（参数控制保留，可后台开启） | 本条目 | 待开发（2026-11-25 P2） | ✅ 本轮已给 |
 | **FT** | ⚙️ 调整：成人内容分级细分（宽=成人内容 / 严格=色情游戏 descriptor4/AO；2077 排除；存量重采回填） | [EXPLICIT-RATING.md](EXPLICIT-RATING.md) | 待开发（2026-11-25 P2） | ✅ 本轮已给 |
