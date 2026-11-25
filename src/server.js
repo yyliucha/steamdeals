@@ -2057,7 +2057,9 @@ export function buildCspPolicy({ scriptNonce = '', scriptHashes = [], allowInlin
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data:",
-    "connect-src 'self'",
+    // FV/RUM（腾讯云前端监控）上报域名：Head 注入的 Aegis SDK 用 fetch/XHR 发 rumt-zh.com，
+  // 严格档 connect-src 'self' 会把它整段拦掉（HAR 实测 8 个请求 status=0），必须显式放行。
+  "connect-src 'self' https://rumt-zh.com",
     "media-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",

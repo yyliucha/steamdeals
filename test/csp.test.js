@@ -106,7 +106,7 @@ test('策略内容：default/connect 同源、style 允许 inline、img 覆盖 d
     assert.ok(img.includes(src), `img-src 覆盖 ${src}（规格：图片走本站代理 + 少量外部图标；blob: 给头像本地裁剪预览）`);
   }
 
-  assert.equal(directive(policy, 'connect-src'), "'self'", '接口只连站点自身（前端无第三方 fetch）');
+  assert.equal(directive(policy, 'connect-src'), "'self' https://rumt-zh.com", '接口只连站点自身 + RUM 上报域名（FV 批，Head 注入的 Aegis 需上报 rumt-zh.com）');
   assert.equal(directive(policy, 'font-src'), "'self' data:");
   assert.equal(directive(policy, 'object-src'), "'none'", '禁 object/embed（老式 XSS 载体）');
   assert.equal(directive(policy, 'base-uri'), "'self'", '防 <base> 劫持相对路径');
