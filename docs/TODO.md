@@ -22,7 +22,7 @@
 |---|---|---|
 | 🐞 缺陷 | 5 | EO、ER、EU、EX、FM |
 | ✨ 功能 | 0 | — |
-| ⚙️ 调整 | 11 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FL / FK |
+| ⚙️ 调整 | 12 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FL / FK / FO |
 | 🧹 技术债 | 2 | EN、FC |
 | 🧪 测试基建 | 0 | — |
 | 📝 文档流程 | 0 | — |
@@ -253,3 +253,18 @@
 - **修复**：hist_low 改「今天以前」；`current < hist` 标「新史低」、`current == hist` 标「跌至史低」、否则不提醒；
   模板相同价不重复显示史低；未降价不显示史低段。
 - **验收**：见规格 §3（不再误报新史低/不重复/无折扣不显示；有 target 不变；测试全绿）。
+
+## FO. 待开发（⚙️ 调整）：App 搜索框回车即搜（ImeAction.Search）
+
+**类型：** ⚙️ 调整（App 交互）
+**状态：** 待开发（2026-11-25 所有者要求先记录，后续一起开发）
+**优先级：** P2
+**依赖：** 无（App 仓库 ui/search/SearchScreen.kt）
+**解锁：** 无
+**规格**：本条目（所有者 2026-11-25 手机端反馈：搜索必须点「搜索」按钮，回车无反应）
+
+- **现状**：`SearchScreen.kt` 的 `OutlinedTextField` 只有 `onValueChange`，没有 `keyboardOptions(ImeAction.Search)` /
+  `keyboardActions(onSearch = {...})`——软键盘回车不触发搜索。
+- **需求**：搜索框 IME 动作设为「搜索」，回车即提交（与「搜索」按钮同一逻辑：trim 非空 → 隐藏键盘 → submitKeyword）；
+  历史页/结果页一致；不改变按钮行为。
+- **验收**：手机端（模拟器/真机）回车即出结果；空关键词回车无动作；按钮仍可用；App 构建通过。
