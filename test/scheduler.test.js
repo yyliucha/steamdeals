@@ -23,7 +23,6 @@ const FULL_ENV = {
   GOG_ENABLED: '1',
   HUMBLE_ENABLED: '1',
   DISCOVER_ENABLED: '1',
-  BACKUP_ENABLED: '1',
   PRUNE_ENABLED: '1',
   LOGS_PRUNE_ENABLED: '1',
   ALERTS_ENABLED: '1',
@@ -70,9 +69,11 @@ test('默认任务表（FJ 批：按 12 组顺序重排，steam-claim 已移出�
   const jobs = jobsFromEnv({});
   assert.deepEqual(jobs.map((j) => j.name), [
     'steam-prices', 'steam-status', 'rating-backfill', 'backfill', 'rename', 'sonkwo', 'itad', 'gog', 'humble',
-    'steam-discovery', 'discover', 'images', 'images-backfill', 'readmodel', 'search-tokens-rebuild', 'prune', 'logs', 'backup',
+    'steam-discovery', 'discover', 'images', 'images-backfill', 'readmodel', 'search-tokens-rebuild', 'prune', 'logs',
     'heat', 'app-release-sync', 'align-snapshot', 'proxy-probe', 'alerts',
   ]);
+  // FR 批（docs/BACKUP-AS-FEATURE.md §2.1）：backup 已移出调度任务——不再定时自动跑、不再走 CLI 自动链路
+  assert.ok(!jobs.some((j) => j.name === 'backup'), 'FR：backup 不在调度任务表（改回手动后台功能）');
   const interval = (name) => jobs.find((j) => j.name === name).intervalMin;
   assert.equal(interval('steam-prices'), 1440, 'Steam 价格默认每天刷新');
   assert.equal(interval('heat'), 1440, '热度默认每天刷新（首轮自动播种，之后刷过期条目）');
@@ -87,7 +88,6 @@ test('默认任务表（FJ 批：按 12 组顺序重排，steam-claim 已移出�
   assert.equal(interval('gog'), 720);
   assert.equal(interval('humble'), 720);
   assert.equal(interval('discover'), 720);
-  assert.equal(interval('backup'), 1440, '备份每天一次');
   assert.equal(interval('logs'), 7 * 1440, '日志每 7 天清理一次');
   assert.equal(interval('alerts'), 360);
   assert.equal(interval('images'), 240, '封面图补缓存默认每 4 小时');
@@ -96,7 +96,6 @@ test('默认任务表（FJ 批：按 12 组顺序重排，steam-claim 已移出�
   assert.equal(interval('align-snapshot'), 30, 'DL 批：对齐审核快照后台生成默认每 30 分钟');
   const args = (name) => jobs.find((j) => j.name === name).args;
   assert.deepEqual(args('discover'), ['discover', 'sonkwo', '--ahead', '60', '--max-misses', '12']);
-  assert.deepEqual(args('backup'), ['backup']);
   assert.deepEqual(args('images'), ['images', 'pull', '--limit', '500', '--sleep', '300'], 'BC 批：每轮补图默认 500');
   assert.deepEqual(args('images-backfill'), ['images', 'backfill', '--limit', '100', '--sleep', '1200'], 'EC 批：缺图回填默认每轮 100 款、限速 1.2s/请求');
   assert.ok(!jobsFromEnv({ IMAGES_BACKFILL_ENABLED: '0' }).some((j) => j.name === 'images-backfill'), 'EC 批：IMAGES_BACKFILL_ENABLED=0 可关闭');
@@ -261,7 +260,6 @@ test('显式禁用或间隔为 0 的任务会被剔除', () => {
     GOG_ENABLED: '0',
     HUMBLE_ENABLED: '0',
     DISCOVER_ENABLED: '0',
-    BACKUP_ENABLED: '0',
     LOGS_PRUNE_ENABLED: '0',
     IMAGES_ENABLED: '0',
     READMODEL_ENABLED: '0',

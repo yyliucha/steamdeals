@@ -53,9 +53,16 @@ test('设置定义完整：100 项、8 个密钥、关键分组都在', () => {
     'steamStatus.limit',
     'steamStatus.intervalMin',
     'steamStatus.initialDelaySec',
+    'system.backupEnabled',
   ]) {
     assert.ok(keys.includes(key), `缺少 ${key}`);
   }
+  // FR 批（docs/BACKUP-AS-FEATURE.md §2.3）：backupEnabled 语义改为「允许后台手动备份」默认 false
+  // ——backup 已移出调度任务，默认不自动；关闭时后台「立即备份」按钮禁用 + POST 403。
+  const backupSwitch = settings.SETTINGS.find((d) => d.key === 'system.backupEnabled');
+  assert.equal(backupSwitch.default, false, 'FR：允许后台手动备份默认关闭（原每日备份默认开）');
+  assert.match(backupSwitch.label, /允许后台手动备份/, 'FR：label 改为「允许后台手动备份」');
+  assert.equal(backupSwitch.env, 'BACKUP_ENABLED', 'env 兜底名保留 BACKUP_ENABLED（老 .env 兼容）');
   assert.equal(new Set(keys).size, keys.length, 'key 不能重复');
   // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：双区域三项——内容默认 us、本位币默认 cn/CNY
   const contentRegion = settings.SETTINGS.find((d) => d.key === 'sync.contentRegion');
@@ -458,6 +465,8 @@ test('CQ 前端接线（静态）：只看非默认/折叠/恢复本组默认/�
   assert.match(admin, /foldAutoOpenAll/, '搜索命中无高级字段的折叠组也自动展开（FL 修复）');
   assert.match(admin, /foldTitle \|\| entry\.sec\.title/, '折叠行标题回退到分组标题（FL 修复）');
   assert.match(admin, /else if\(prim\.length\)\{entries\.push/, '无高级字段的分组也生成折叠按钮与折叠体（FL 修复）');
+  assert.match(admin, /else if\(prim\.length\)\{.*foldAutoOpenAll\(sec\)/, '无高级字段的分支用 foldAutoOpenAll 判定自动展开（命中常用项就展开，不误开高级折叠）');
+  assert.match(admin, /kind:'foldBody',sec,fields:prim/, '无高级字段分组的折叠体用过滤后的 prim（字段不丢、只看非默认生效）');
   assert.match(admin, /fieldHit/, '搜索命中高亮');
   assert.match(admin, /api\/admin\/settings\/restore/, '恢复默认接口接线（二次确认在 restoreField/restoreSection）');
   assert.match(admin, /ElMessageBox\.confirm/, '恢复默认二次确认');

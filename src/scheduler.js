@@ -39,7 +39,7 @@ export const JOB_GROUPS = [
   { name: 'catalog-discovery', label: '目录与发现', steps: ['catalog', 'steam-discovery', 'discover'] },
   { name: 'images', label: '图片同步', steps: ['images', 'images-backfill'] },
   { name: 'index', label: '索引维护', steps: ['readmodel', 'search-tokens-rebuild'] },
-  { name: 'system', label: '系统维护', steps: ['prune', 'logs', 'backup'] },
+  { name: 'system', label: '系统维护', steps: ['prune', 'logs'] },
   { name: 'steam-accounts', label: 'Steam 账号', steps: ['steam-accounts'] },
   { name: 'heat', label: '热度回填', steps: ['heat'] },
   { name: 'app-release', label: 'App 版本同步', steps: ['app-release-sync'] },
@@ -244,14 +244,9 @@ export function jobsFromEnv(env = process.env) {
       initialDelaySec: num(env.DISCOVER_INITIAL_DELAY_SEC, 900),
       enabled: env.DISCOVER_ENABLED !== '0',
     },
-    {
-      name: 'backup',
-      // 每日逻辑备份（gzip JSON），保留最近 7 份；顺带清理过期浏览记录
-      args: ['backup'],
-      intervalMin: num(env.BACKUP_INTERVAL_MIN, 1440),
-      initialDelaySec: num(env.BACKUP_INITIAL_DELAY_SEC, 3600),
-      enabled: env.BACKUP_ENABLED !== '0',
-    },
+    // FR 批（docs/BACKUP-AS-FEATURE.md §2.1）：backup 已移出调度任务——不再定时自动跑、
+    // 不再走 CLI 自动链路，改为后台「统计 → 图片与备份」手动功能（POST /api/admin/backup）。
+    // HEAVY_MAINT / 低峰窗口仍保留 backup 名字：手动触发经 runSyncTracked 的备份照旧走 maint 槽。
     {
       name: 'logs',
       // 每 7 天清理一次日志文件，避免无限增长
@@ -802,7 +797,6 @@ export function auditJobs(env = process.env) {
     ['gog', 'GOG_ENABLED'],
     ['humble', 'HUMBLE_ENABLED'],
     ['discover', 'DISCOVER_ENABLED'],
-    ['backup', 'BACKUP_ENABLED'],
     ['prune', 'PRUNE_ENABLED'],
     ['logs', 'LOGS_PRUNE_ENABLED'],
     ['alerts', 'ALERTS_ENABLED'],

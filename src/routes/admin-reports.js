@@ -1,9 +1,15 @@
 // CO-5/B4-2 第十五轮（docs/DESIGN-AUDIT.md B4）：admin-reports 域路由模块——从 src/server.js
 // 巨石抽出的第十五个域（B4 队列 #12：后台报表/备份/日志 reports/backup/backups/logs/steam-logs）。
+// FR 批（docs/BACKUP-AS-FEATURE.md §2）：backup 改为后台手动功能——列表带 mtime + backupEnabled、
+// POST 受 system.backupEnabled 开关校验、新增 :name 下载/删除两条路由。
 //
 // 域边界（外部契约零变化，路径/参数/响应/错误码与拆分前完全一致）：
-//   · GET  /api/admin/backups            备份文件列表（BACKUP_DIR，默认 data/backup）
-//   · POST /api/admin/backup             手动触发备份（createBackup 写库 + 返回最新列表）
+//   · GET  /api/admin/backups            备份文件列表（BACKUP_DIR，默认 data/backup；
+//                                        FR 批：带 mtime，响应含 backupEnabled）
+//   · POST /api/admin/backup             手动触发备份（createBackup 写库 + 返回最新列表；
+//                                        FR 批：backupEnabled=false 时 403「备份功能已关闭」）
+//   · GET  /api/admin/backups/:name      备份文件流式下载（FR 批；严格文件名校验，防路径穿越）
+//   · DELETE /api/admin/backups/:name    删除指定备份（FR 批；返回最新列表）
 //   · GET  /api/admin/logs               最近日志（LOG_DIR 最近 5 个 .jsonl + boot.log；
 //                                        limit/grep/scope/minutes 过滤，倒序截断）
 //   · GET  /api/admin/reports/price      价格变动报表（涨跌榜 + series 悬停线图序列，
@@ -12,7 +18,7 @@
 //   · GET  /api/admin/steam-logs         Steam 账号操作日志（limit/steamId/action/result/days）
 //
 // 单入口（位置语义，见 docs/ARCHITECTURE.md「域路由拆分模式」§15.3）：
-//   · handleAdminReportsAdmin(ctx)：requireAdmin 就绪后的管理段——本域全部 6 条路由
+//   · handleAdminReportsAdmin(ctx)：requireAdmin 就绪后的管理段——本域全部 8 条路由
 //     （管理段形态先例=admin-access 域 handleAdminAccessAdmin / admin-sync 域
 //     handleAdminSyncAdmin / admin-settings 域 handleAdminSettingsAdmin）。
 //   返回值约定：true = 已处理并结束响应；false = 未命中本域，宿主继续。凡写过响应的分支
@@ -21,7 +27,7 @@
 //
 // 留在 server.js 的中间件与未拆段（不属于本域）：
 //   · isTimeoutExemptPath 的 '/api/admin/backup' 超时豁免是中间件、留 server.js（§15.4，
-//     手动备份是长任务、豁免统一请求超时看门狗）；
+//     手动备份是长任务、豁免统一请求超时看门狗）；FR 批下载路径同样豁免（.gz 静态扩展名）；
 //   · /api/admin/wishlists（B4 #16）与其它 admin 域路由留 server.js；
 //   · 本域 SQL 全部跨模块共用、零搬家（判定见 src/store/admin-reports-repository.js 头部）：
 //     priceChanges/priceChangeRows/dailyMinSeriesBatch 留 pg.js（cli/sync.js、cli/report.js
@@ -30,7 +36,44 @@
 import * as db from '../store/pg.js';
 import { createBackup, listBackups } from '../backup.js';
 import { listSteamLogs } from '../steam-log.js';
+import { readSettings } from '../settings.js';
 import { yuanAmount } from '../format.js';
+import { statSync, rmSync, createReadStream, existsSync } from 'node:fs';
+
+// FR 批：备份文件名的白名单形态——由 createBackup 生成 backup-YYYY-MM-DD.json.gz。
+// 严格匹配 + 拒绝任何路径分隔符/编码绕行，:name 只做子串匹配兜底（防路径穿越）。
+const BACKUP_NAME_RE = /^backup-\d{4}-\d{2}-\d{2}\.json\.gz$/;
+const BACKUP_DIR = () => process.env.BACKUP_DIR ?? 'data/backup';
+
+/** FR 批：列表项补 mtime（ISO 字符串，前端按站点时区显示）。 */
+function withMtime(backups) {
+  return backups.map((b) => {
+    let mtime = null;
+    try {
+      mtime = statSync(b.path).mtime.toISOString();
+    } catch {
+      /* 文件刚被并发删除时时间取不到，列表仍保留该项 */
+    }
+    return { name: b.name, size: b.size, mtime };
+  });
+}
+
+/** FR 批：备份文件名 → 合法时返回绝对路径，非法返回 null（含 ../、反斜杠等一切非白名单形态）。 */
+function safeBackupFile(name) {
+  if (typeof name !== 'string' || !BACKUP_NAME_RE.test(name)) return null;
+  const file = `${BACKUP_DIR()}/${name}`;
+  if (!file.startsWith(BACKUP_DIR()) || file.includes('..')) return null;
+  return file;
+}
+
+/** FR 批：路径尾段解码（坏编码/穿越一律按空串处理，随后被白名单拒绝）。 */
+function decodeName(segment) {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return '';
+  }
+}
 
 /**
  * 管理段：server.js 在 requireAdmin 就绪之后调用——后台报表/备份/日志全部路由。
@@ -41,25 +84,78 @@ import { yuanAmount } from '../format.js';
 export async function handleAdminReportsAdmin(ctx) {
   const { path, req, res, url, q, logger, json, user, requireAdmin } = ctx;
 
-  // ---- 管理员：备份（手动触发 + 列表）----
+  // ---- 管理员：备份（列表 + 手动触发 + 下载 + 删除）----
   if (path === '/api/admin/backups' && req.method === 'GET') {
     if (!requireAdmin()) return true;
-    json(res, 200, { backups: listBackups(process.env.BACKUP_DIR ?? 'data/backup') });
+    const settings = await readSettings(q);
+    json(res, 200, {
+      backups: withMtime(listBackups(BACKUP_DIR())),
+      // FR 批：system.backupEnabled 语义改为「允许后台手动备份」（默认值在 src/settings.js）；
+      // 前端按此开关禁用「立即备份」按钮并提示「备份功能已关闭」。
+      backupEnabled: settings.values['system.backupEnabled'] !== false,
+    });
     return true;
   }
 
   if (path === '/api/admin/backup' && req.method === 'POST') {
     if (!requireAdmin()) return true;
+    const settings = await readSettings(q);
+    if (settings.values['system.backupEnabled'] === false) {
+      json(res, 403, { error: '备份功能已关闭：请先在系统设置开启「允许后台手动备份」' });
+      return true;
+    }
     try {
-      const result = await createBackup(q, { dir: process.env.BACKUP_DIR ?? 'data/backup', logger });
+      const result = await createBackup(q, { dir: BACKUP_DIR(), logger });
       logger?.info('api.backup_done', { ...result, by: user.username });
-      json(res, 200, { result, backups: listBackups(process.env.BACKUP_DIR ?? 'data/backup') });
+      json(res, 200, { result, backups: withMtime(listBackups(BACKUP_DIR())) });
       return true;
     } catch (err) {
       logger?.warn('api.backup_failed', { message: String(err.message).slice(0, 160) });
       json(res, 500, { error: '备份失败：' + String(err.message).slice(0, 120) });
       return true;
     }
+  }
+
+  // FR 批：单备份下载——严格白名单文件名（backup-YYYY-MM-DD.json.gz），流式响应，
+  // 不做内存缓冲（备份文件可达数百 MB）；:name 非法/不存在一律 404 同一文案。
+  if (path.startsWith('/api/admin/backups/') && req.method === 'GET') {
+    if (!requireAdmin()) return true;
+    const name = decodeName(path.slice('/api/admin/backups/'.length));
+    const file = safeBackupFile(name);
+    if (!file || !existsSync(file)) {
+      json(res, 404, { error: '备份不存在' });
+      return true;
+    }
+    res.writeHead(200, {
+      'content-type': 'application/gzip',
+      'content-disposition': `attachment; filename="${name}"`,
+      'cache-control': 'no-store',
+    });
+    const stream = createReadStream(file);
+    stream.on('error', () => {
+      try {
+        res.destroy();
+      } catch {
+        /* 连接已断开 */
+      }
+    });
+    stream.pipe(res);
+    return true;
+  }
+
+  // FR 批：单备份删除——二次确认在前端（ElMessageBox）；后端只校验文件名白名单。
+  if (path.startsWith('/api/admin/backups/') && req.method === 'DELETE') {
+    if (!requireAdmin()) return true;
+    const name = decodeName(path.slice('/api/admin/backups/'.length));
+    const file = safeBackupFile(name);
+    if (!file || !existsSync(file)) {
+      json(res, 404, { error: '备份不存在' });
+      return true;
+    }
+    rmSync(file, { force: true });
+    logger?.info('api.backup_deleted', { name, by: user.username });
+    json(res, 200, { deleted: name, backups: withMtime(listBackups(BACKUP_DIR())) });
+    return true;
   }
 
   // ---- 管理员：最近日志（排障用；日志层已做脱敏）----

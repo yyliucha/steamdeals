@@ -57,7 +57,9 @@ test('CO-5/B4-2 第十六轮：server.js 必须真实接线 handleAdminImagesAdm
   );
   // 位置语义锁：调用必须在 requireAdmin 就绪之后的管理段——本域最早路由 images GET 的原位置
   // （DT-3 users POST 之后、公告管理接线之前，移动 = 改契约）
-  assert.match(AI_SERVER, /管理员不再支持新建用户[\s\S]*?await handleAdminImagesAdmin\(\{/s, '接线在 DT-3 users POST 之后（本域原位置）');
+  // 位置语义锁：admin-users 域的「管理员不再支持新建用户」已随 users 域拆分移出 server.js，
+  // 前后锚点改锁相邻域接线：admin-access（前）与公告管理（后）。
+  assert.match(AI_SERVER, /await handleAdminAccessAdmin\(\{[\s\S]*?await handleAdminImagesAdmin\(\{/s, '接线在 admin-access 之后（本域原位置）');
   assert.match(AI_SERVER, /await handleAdminImagesAdmin\(\{[\s\S]*?await handleAnnouncementsAdmin\(\{/s, '接线在公告管理接线之前（本域原位置）');
 });
 

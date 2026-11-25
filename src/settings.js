@@ -93,7 +93,7 @@ const SETTINGS_META = {
   'system.circuitThreshold': { section: 'schedule', tier: 'advanced' },
   'system.circuitCooldownMin': { section: 'schedule', tier: 'advanced', sum: '熔断 {v} 分' },
   'system.chartOnSync': { section: 'schedule', tier: 'advanced' },
-  'system.backupEnabled': { section: 'schedule', tier: 'advanced', sum: '备份 {v}' },
+  'system.backupEnabled': { section: 'schedule', tier: 'advanced', sum: '手动备份 {v}' },
   'system.backupIntervalMin': { section: 'backup', tier: 'advanced', sum: '间隔 {v}' },
   'system.backupInitialDelaySec': { section: 'backup', tier: 'advanced', sum: '轮延迟 {v}' },
   'system.logsPruneEnabled': { section: 'backup', tier: 'advanced', sum: '清理 {v}' },
@@ -417,7 +417,12 @@ export const SETTINGS = [
   def('system.chartOnSync', 'CHART_ON_SYNC', 'advanced', '采集后生成静态页', 'bool', false, {
     help: '内置 Web 服务直接读数据库，默认不需要静态页；使用 nginx 托管 out/ 时才开启。',
   }),
-  def('system.backupEnabled', 'BACKUP_ENABLED', 'advanced', '每日备份', 'bool', true),
+  // FR 批（docs/BACKUP-AS-FEATURE.md §2.3）：语义改为「允许后台手动备份」，默认 false——
+  // backup 已移出调度任务（不再定时自动跑），此开关只控制后台「统计 → 图片与备份」的
+  // 「立即备份」按钮与 POST /api/admin/backup 接口（false → 按钮禁用 + 403「备份功能已关闭」）。
+  def('system.backupEnabled', 'BACKUP_ENABLED', 'advanced', '允许后台手动备份', 'bool', false, {
+    help: '开启后后台「统计 → 图片与备份」可手动创建备份；备份不再定时自动执行。关闭时「立即备份」按钮禁用。',
+  }),
   def('system.backupIntervalMin', 'BACKUP_INTERVAL_MIN', 'advanced', '备份间隔（分钟）', 'int', 1440, { min: 0, max: 10080, advanced: true }),
   def('system.backupInitialDelaySec', 'BACKUP_INITIAL_DELAY_SEC', 'advanced', '备份首轮延迟（秒）', 'int', 3600, { min: 0, max: 86400, advanced: true }),
   def('system.logsPruneEnabled', 'LOGS_PRUNE_ENABLED', 'advanced', '定期清理日志', 'bool', true, { advanced: true }),

@@ -235,7 +235,7 @@ const isMobileUa = (req) => mobileHitSignal(req) !== null;
  * 白名单范围是交付时需所有者确认的点之一。
  */
 export function isTimeoutExemptPath(path) {
-  if (/\.(png|jpe?g|gif|webp|svg|ico|css|js|map|woff2?|ttf|otf|eot|json|xml|txt|md|apk|wasm|webmanifest)$/i.test(path)) return true;
+  if (/\.(png|jpe?g|gif|webp|svg|ico|css|js|map|woff2?|ttf|otf|eot|json|xml|txt|md|apk|wasm|webmanifest|gz)$/i.test(path)) return true;
   if (path.startsWith('/img/') || path.startsWith('/app/dl/') || path.startsWith('/out/')) return true;
   if (/\.csv$/.test(path)) return true;
   if (path === '/api/admin/backup') return true;
