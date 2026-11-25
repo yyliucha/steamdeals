@@ -22,7 +22,7 @@
 |---|---|---|
 | 🐞 缺陷 | 5 | EO、ER、EU、EX、FM |
 | ✨ 功能 | 0 | — |
-| ⚙️ 调整 | 16 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FL / FK / FO / FP / FQ / FR / FT |
+| ⚙️ 调整 | 17 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FL / FK / FO / FP / FQ / FR / FT / FU |
 | 🧹 技术债 | 2 | EN、FC |
 | 🧪 测试基建 | 0 | — |
 | 📝 文档流程 | 0 | — |
@@ -323,3 +323,17 @@
   存量 adult_flag 游戏重采回填（explicit-backfill 命令）；前台筛选/角标改用 explicit（色情游戏）；
   后台统计拆「成人内容（宽）/色情游戏（严格）」。
 - **验收**：见规格 §3（explicit < adult、2077 不出现、后台两行、回填可跑、测试全绿）。
+
+## FU. 待开发（⚙️ 调整）：接入腾讯云 APM（OpenTelemetry OTLP，Docker Compose 手动接入）
+
+**类型：** ⚙️ 调整（可观测性）
+**状态：** 待开发（2026-11-25 所有者要求接入腾讯云 APM）
+**优先级：** P2
+**依赖：** 无
+**解锁：** 无
+**规格**：[APM-TENCENT.md](APM-TENCENT.md)
+
+- **背景**：Docker Compose 部署（非 TKE），不能 Operator 自动注入；用 OpenTelemetry SDK 手动接入，
+  OTLP HTTP 上报到 `plap-shanghai.apm.tencentcs.com:4319`（token 由服务器 compose env 注入）。
+- **改动**：加 OTel 依赖 + `src/otel.js`（ESM，`--import` 加载）+ Dockerfile/entrypoint 启动注入 + 无 token 时自动跳过。
+- **验收**：见规格 §3（控制台有 Trace、功能不受影响、token 不入库、本地跳过）。
