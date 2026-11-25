@@ -7,6 +7,145 @@
 
 ---
 
+## FK. ~~App 资产同步换源（GitHub → 腾讯云 COS，双通道 + 自动回退）~~ → 已发布 v2.30.0
+
+**类型：** ⚙️ 调整（App 发布链路：服务器无法直连 GitHub Release 资产）
+**状态：** 已发布 v2.30.0（2026-11-25；实现 5ad406b + 文档 81e6dc6；QA-FK 第 1 轮 ✅ 通过 9 / 缺失 0 / 偏差 0 / 需人工确认 3；release 提交见 v2.30.0 批次）
+**优先级：** P1 —— App 更新同步被阻断
+**依赖：** 所有者提供 COS 桶/凭证（部署时）
+**解锁：** 无
+**规格**：[APP-SYNC-COS.md](APP-SYNC-COS.md)
+
+- **需求**：新增 `network.appSyncSource`（github/cos）与 `network.appSyncCosBase`；`syncAppRelease` 支持从 COS
+  拉 latest.json/APK/sha256（与 GitHub 同落盘格式）；cos 失败自动回退 GitHub；App 构建技能增加 COS 双上传。
+- **验收**：见规格 §4（COS 源同步成功、GitHub 备用、回退可见、测试全绿、截图）。
+
+## FM. ~~价格提醒史低误报（价格=史低也标「新史低」，且重复显示史低）~~ → 已发布 v2.30.0
+
+**类型：** 🐞 缺陷（提醒文案/判定）
+**状态：** 已发布 v2.30.0（2026-11-25；实现 `b497566`；QA-FM 第 1 轮 ✅ 通过 5 / 缺失 0 / 偏差 0 / 需人工确认 2，报告 `docs/QA-FM.md` 未提交）
+**优先级：** P2
+**依赖：** 无
+**解锁：** 无
+**规格**：[ALERT-HISTLOW-FIX.md](ALERT-HISTLOW-FIX.md)
+
+- **根因**：`watchCandidates` 的 hist_low 含当天（当前价即史低）→ `evaluateAlerts` 恒触发 hist_low →
+  邮件标「新史低」并重复显示「史低 ¥X」。
+- **修复**：hist_low 改「今天以前」；`current < hist` 标「新史低」、`current == hist` 标「跌至史低」、否则不提醒；
+  模板相同价不重复显示史低；未降价不显示史低段。
+- **验收**：见规格 §3（不再误报新史低/不重复/无折扣不显示；有 target 不变；测试全绿）。
+
+## FL. ~~系统设置页所有分组统一折叠~~ → 已发布 v2.30.0
+
+**类型：** ⚙️ 调整（后台设置页 UI 一致性）
+**状态：** 已发布 v2.30.0（2026-11-25；实现 0f22937 + 打回修复 4052489；QA-FL 第 2 轮 ✅ 放行——打回 3 项全部落实：① 搜索命中自动展开 foldAutoOpenAll ② 折叠行标题回退 foldTitle||title ③ 测试锁 5ad406b、1f70ea5 四条静态断言；复检 43/43 绿 + 反向自检红证；报告 `docs/QA-FL.md`；遗留不阻塞：全局卡紧凑行布局与 PLAIN_GROUPS 4 tab 折叠范围待所有者裁定）
+**优先级：** P3
+**依赖：** 无
+**解锁：** 无
+**规格**：本条目（所有者 2026-11-24 截图反馈：「要收缩就全部收缩，为什么还有不收缩的元素」）
+
+- **根因**：设置页折叠按钮只在组内有 `tier=advanced` 字段时生成；「时区与显示」只有 `system.timezone`（primary）→ 无折叠按钮，与其它组不一致。
+- **修复（0f22937）**：所有分组统一生成折叠按钮 + 折叠体（无 advanced 的组也折叠）；默认收起，状态 localStorage 记忆，与「调度与熔断」等一致。
+- **验收**：设置页各分组（高级 tab 的调度与熔断/备份与日志/缓存与图片/时区与显示，及站点/数据源各组）均可折叠/展开；
+  `frontend:build` 通过；admin-console-ia / style-tokens 测试 fail 0；截图对照（全部分组均有折叠箭头）。
+
+## FO. ~~App 搜索框回车即搜（ImeAction.Search）~~ → 已发布 app-v2.25.1
+
+**类型：** ⚙️ 调整（App 交互）
+**状态：** 已发布 app-v2.25.1（2026-11-25；App b924926；QA-FO 第 1 轮 ✅ 通过 4/缺失 0/偏差 0/需人工确认 0）
+**优先级：** P2
+**依赖：** 无（App 仓库 ui/search/SearchScreen.kt）
+**解锁：** 无
+**规格**：本条目（所有者 2026-11-25 手机端反馈：搜索必须点「搜索」按钮，回车无反应）
+
+- **现状**：`SearchScreen.kt` 的 `OutlinedTextField` 只有 `onValueChange`，没有 `keyboardOptions(ImeAction.Search)` /
+  `keyboardActions(onSearch = {...})`——软键盘回车不触发搜索。
+- **需求**：搜索框 IME 动作设为「搜索」，回车即提交（与「搜索」按钮同一逻辑：trim 非空 → 隐藏键盘 → submitKeyword）；
+  历史页/结果页一致；不改变按钮行为。
+- **验收**：手机端（模拟器/真机）回车即出结果；空关键词回车无动作；按钮仍可用；App 构建通过。
+
+## FP. ~~同步机制完善（僵尸锁 + backup 稳定性 + 分槽 + 提速 + 429 队列 + 时效监控）~~ → 已发布 v2.30.0
+
+**类型：** ⚙️ 调整（同步/调度可靠性）
+**状态：** 已发布 v2.30.0（2026-11-25；实现 0cdddb1；QA-FP 第 1 轮 ✅ 通过 22 / 缺失 0 / 偏差 0 / 需人工确认 3）
+**优先级：** **P0**（僵尸锁导致价格/状态停摆）
+**依赖：** 无
+**解锁：** 无
+**规格**：[SYNC-HARDENING.md](SYNC-HARDENING.md)
+
+- **P0**：`runningSyncRun` 恢复时校验僵尸（running 超 2h → 自动 interrupted，不占槽）；启动/排空时清理 DB running 记录；
+- **P1**：backup 流式导出 + 30 分钟超时；backup/prune 低峰 + 独立槽（不与价格/状态抢槽）；
+- **P2**：steam-status/backfill/rating-backfill 提速（默认 2 万/天，env 可配）；429 队列 + 初始化按钮；后台「数据时效」卡片。
+- **验收**：见规格 §3（僵尸模拟、backup 超时、两槽独立、提速可配、429/初始化、时效卡片、测试全绿）。
+
+## FQ. ~~按钮点击反馈规范（全局——所有操作/刷新按钮点击后必须有前端可见响应）~~ → 已发布 v2.30.0
+
+**类型：** ⚙️ 调整（后台 UI 交互规范）
+**状态：** 已发布 v2.30.0（2026-11-25；1f70ea5；QA docs/QA-FQ-FR.md 第 1 轮 ✅ 通过 9/缺失 0/偏差 0/需人工确认 1）
+**优先级：** P2
+**依赖：** 无
+**解锁：** 无
+**规格**：[UI-BUTTON-FEEDBACK.md](UI-BUTTON-FEEDBACK.md)
+
+- **需求**：所有刷新/操作按钮点击 → loading/禁用（防连点）+ 成功提示（ElMessage）+ 失败提示；刷新类至少「已刷新」；
+  同步与回填页优先，扩展到后台全部按钮。
+- **验收**：见规格 §4（同步页刷新有反馈、立即运行/同步/认领/恢复默认回归、防连点、构建/测试全绿、截图）。
+
+## FR. ~~backup 改为后台功能（移除调度任务/CLI，后台按钮+列表+下载+删除）~~ → 已发布 v2.30.0
+
+**类型：** ⚙️ 调整（功能默认值，避免备份卡死影响主链路）
+**状态：** 已发布 v2.30.0（2026-11-25；1f70ea5；QA docs/QA-FQ-FR.md 第 1 轮 ✅ 通过 9/缺失 0/偏差 0/需人工确认 1）
+**优先级：** P2（配合 FP 僵尸锁缓解）
+**依赖：** 无（原依赖 FP backup 稳定性——FP 已随本批发布，本批复用其流式 createBackup）
+**解锁：** 无
+**规格**：[BACKUP-AS-FEATURE.md](BACKUP-AS-FEATURE.md)（backup 改为后台功能：移除调度任务 + 按钮/列表/下载/删除）
+
+- **现状**：backup 为调度任务（scheduler.js）+ CLI 命令；后台已有 API（/api/admin/backup）+ 「统计→图片与备份」卡片。
+- **需求**：移除调度任务（不再自动/不走命令）；保留并完善后台手动功能（按钮+列表+下载+删除）；默认不自动备份。
+- **验收**：调度任务列表无 backup；后台可手动备份/下载/删除；默认不自动；测试全绿。
+
+## FT. ~~成人内容分级细分（宽=成人内容 / 严格=色情游戏，descriptor 4 或 AO）~~ → 已发布 v2.30.0
+
+**类型：** ⚙️ 调整（内容分级口径）
+**状态：** 已发布 v2.30.0（2026-11-25；站点 cd2829e + App 2916dc3；QA docs/QA-FT.md 第 1 轮 ✅ 通过 10/缺失 0/偏差 0/需人工确认 2；App 侧随 app-v2.25.1/22501）
+**优先级：** P2
+**依赖：** FI（分级入口）、FH（统计）
+**解锁：** 无
+**涉及 App 仓库**：是（app-v2.25.1 随本批）
+**规格**：[EXPLICIT-RATING.md](EXPLICIT-RATING.md)
+
+- **需求**：新增 `games.explicit_flag`（严格 = descriptor 4 或 ESRB AO）与 `classifyContentRating` 的 explicitFlag；
+  存量 adult_flag 游戏重采回填（explicit-backfill 命令）；前台筛选/角标改用 explicit（色情游戏）；
+  后台统计拆「成人内容（宽）/色情游戏（严格）」。
+- **验收**：见规格 §3（explicit < adult、2077 不出现、后台两行、回填可跑、测试全绿）。
+
+## FU. ~~接入腾讯云 APM（OpenTelemetry OTLP，Docker Compose 手动接入）~~ → 已发布 v2.30.0
+
+**类型：** ⚙️ 调整（可观测性）
+**状态：** 已发布 v2.30.0（2026-11-25；实现 07db9a9；QA docs/QA-FU.md 第 1 轮 ✅ 4/0/0/1）
+**优先级：** P2
+**依赖：** 无
+**解锁：** 无
+**规格**：[APM-TENCENT.md](APM-TENCENT.md)
+
+- **背景**：Docker Compose 部署（非 TKE），不能 Operator 自动注入；用 OpenTelemetry SDK 手动接入，
+  OTLP HTTP 上报到 `plap-shanghai.apm.tencentcs.com:4319`（token 由服务器 compose env 注入）。
+- **改动**：加 OTel 依赖 + `src/otel.js`（ESM，`--import` 加载，**采样率 APM_SAMPLE_RATE 默认 0.1**）+ Dockerfile/entrypoint 启动注入 + 无 token 时自动跳过。
+- **验收**：见规格 §3（控制台有 Trace、功能不受影响、token 不入库、本地跳过）。
+
+## FV. ~~站点 head/foot 注入（后台可配置，RUM/统计脚本等免改代码）~~ → 已发布 v2.30.0
+
+**类型：** ⚙️ 调整（可配置化）
+**状态：** 已发布 v2.30.0（2026-11-25；实现 66a7046 + 修复 b445771；QA docs/QA-FV.md 第 2 轮 ✅ 通过 5/缺失 0/偏差 0/需人工确认 1）
+**优先级：** P2
+**依赖：** 无
+**解锁：** 无
+**规格**：[HEAD-FOOT-INJECTION.md](HEAD-FOOT-INJECTION.md)
+
+- **需求**：settings 加 `site.headInjection`/`site.footInjection`；SPA 页面（dist/index.html）注入到 `</head>`/`</body>` 前；
+  内联 script 自动打 CSP nonce；输 no-cache 防旧 HTML；仅管理员可配。
+- **验收**：见规格 §3（后台可填、前台生效、无配置时零变化、CSP 兼容、RUM 脚本可用、测试全绿）。
+
 ## FI. ~~内容分级——后台可筛 + 前台/App 按 site.adultDisplay 参数控制~~ → 已发布 v2.29.1
 
 **类型：** ⚙️ 调整（后台管理能力，前台合规不变）

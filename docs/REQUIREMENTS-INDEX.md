@@ -159,16 +159,16 @@
 | **FH** | ⚙️ 调整：成人内容统计（adult/mature 数量 + 回填覆盖，只读数字） | [ADULT-STATS.md](ADULT-STATS.md) | 已发布 v2.28.10（2026-11-24） | ✅ 本轮已给 |
 | **FI** | ⚙️ 调整：内容分级——后台恢复「内容分级」筛选（不受 adultDisplay 影响）+ 前台/App 按 site.adultDisplay 控制 18R 入口（hide 无入口 / badge 角标 / show 普通展示） | [ADMIN-RATING-FILTER.md](ADMIN-RATING-FILTER.md) | 已发布 v2.29.1（2026-11-24；站点 31126db + App 4266359；App 侧 app-v2.25.0 随本批） | ✅ 本轮已给 |
 | **FJ** | ⚙️ 调整：同步服务合并为任务组（25→12 组：元数据/报价/目录/图片/索引/维护/账号等；claim 改手动） | [SYNC-JOB-GROUPS.md](SYNC-JOB-GROUPS.md) | 已发布 v2.29.1（2026-11-24；QA-FJ 第 1 轮 ✅ 14/0/1 修/2） | ✅ 本轮已给 |
-| **FL** | ⚙️ 调整：系统设置页所有分组统一折叠（无高级字段的组也折叠，交互一致） | 本条目 | 质检通过（2026-11-25，QA-FL 第 2 轮 ✅ 放行：打回 3 项全落实——4052489 修复 ①② + 测试锁 5ad406b/1f70ea5；43/43 绿 + 反向自检红证 + build/scan 干净） | ⚠️ 补登记（先实现后补条目）；遗留待所有者定：全局紧凑行布局 / PLAIN_GROUPS 4 tab 范围 |
-| **FK** | ⚙️ 调整：App 资产同步换源（GitHub→腾讯云 COS，双通道+自动回退；服务器无法直连 GitHub Release 资产） | [APP-SYNC-COS.md](APP-SYNC-COS.md) | 质检通过（2026-11-24，QA-FK 第 1 轮 ✅ 9/0/0/3；实现 5ad406b） | ✅ 本轮已给 |
-| **FM** | 🐞 缺陷：价格提醒史低误报（hist_low 含当天→恒标新史低；相同价重复显示史低） | [ALERT-HISTLOW-FIX.md](ALERT-HISTLOW-FIX.md) | 质检通过（2026-11-24，b497566；QA-FM 第 1 轮 ✅ 通过 5/缺失 0/偏差 0/需人工确认 2） | ✅ 本轮已给 |
-| **FO** | ⚙️ 调整：App 搜索框回车即搜（ImeAction.Search；App 仓库 b924926） | 本条目 | 质检通过（2026-11-25，QA-FO 第 1 轮 ✅ 通过 4/0/0/0） | ✅ 本轮已给 |
-| **FP** | ⚙️ 调整：同步机制完善（僵尸锁 P0 / backup 稳定性 / 分槽 / 提速 / 429 队列 / 时效监控） | [SYNC-HARDENING.md](SYNC-HARDENING.md) | 质检通过（2026-11-25，QA-FP 第 1 轮 ✅ 22/0/0/3；实现 0cdddb1） | ✅ 本轮已给（僵尸锁已服务器手工修复） |
-| **FQ** | ⚙️ 调整：按钮点击反馈规范（所有刷新/操作按钮 loading+成功/失败提示） | [UI-BUTTON-FEEDBACK.md](UI-BUTTON-FEEDBACK.md) | 质检通过（2026-11-25，1f70ea5） | ✅ 本轮已给 |
-| **FR** | ⚙️ 调整：backup 改为后台功能（移除调度任务/CLI 自动跑，后台按钮+列表+下载+删除，默认不自动） | [BACKUP-AS-FEATURE.md](BACKUP-AS-FEATURE.md) | 质检通过（2026-11-25，1f70ea5） | ✅ 本轮已给 |
-| **FT** | ⚙️ 调整：成人内容分级细分（宽=成人内容 / 严格=色情游戏 descriptor4/AO；2077 排除；存量重采回填） | [EXPLICIT-RATING.md](EXPLICIT-RATING.md) | 质检通过（2026-11-25 P2，cd2829e） | ✅ 本轮已给 |
-| **FU** | ⚙️ 调整：接入腾讯云 APM（OpenTelemetry OTLP，Compose 手动接入，token 服务器注入） | [APM-TENCENT.md](APM-TENCENT.md) | 质检通过（2026-11-25 P2，07db9a9） | ✅ 本轮已给 |
-| **FV** | ⚙️ 调整：站点 head/foot 注入（后台可配置，RUM/统计脚本免改代码；CSP nonce/防缓存） | [HEAD-FOOT-INJECTION.md](HEAD-FOOT-INJECTION.md) | 质检通过（2026-11-25 P2，66a7046+b445771） | ✅ 本轮已给 |
+| **FL** | ⚙️ 调整：系统设置页所有分组统一折叠（无高级字段的组也折叠，交互一致） | 本条目 | 已发布 v2.30.0（2026-11-25；0f22937+4052489；QA-FL 第 2 轮 ✅ 放行） | ⚠️ 补登记（先实现后补条目）；遗留待所有者定：全局紧凑行布局 / PLAIN_GROUPS 4 tab 范围 |
+| **FK** | ⚙️ 调整：App 资产同步换源（GitHub→腾讯云 COS，双通道+自动回退；服务器无法直连 GitHub Release 资产） | [APP-SYNC-COS.md](APP-SYNC-COS.md) | 已发布 v2.30.0（2026-11-25，5ad406b；QA-FK 第 1 轮 ✅ 9/0/0/3） | ✅ 本轮已给 |
+| **FM** | 🐞 缺陷：价格提醒史低误报（hist_low 含当天→恒标新史低；相同价重复显示史低） | [ALERT-HISTLOW-FIX.md](ALERT-HISTLOW-FIX.md) | 已发布 v2.30.0（2026-11-25，b497566；QA-FM 第 1 轮 ✅ 5/0/0/2） | ✅ 本轮已给 |
+| **FO** | ⚙️ 调整：App 搜索框回车即搜（ImeAction.Search；App 仓库 b924926） | 本条目 | 已发布 app-v2.25.1（2026-11-25，App b924926；QA-FO 第 1 轮 ✅ 4/0/0/0） | ✅ 本轮已给 |
+| **FP** | ⚙️ 调整：同步机制完善（僵尸锁 P0 / backup 稳定性 / 分槽 / 提速 / 429 队列 / 时效监控） | [SYNC-HARDENING.md](SYNC-HARDENING.md) | 已发布 v2.30.0（2026-11-25，0cdddb1；QA-FP 第 1 轮 ✅ 22/0/0/3） | ✅ 本轮已给（僵尸锁已服务器手工修复） |
+| **FQ** | ⚙️ 调整：按钮点击反馈规范（所有刷新/操作按钮 loading+成功/失败提示） | [UI-BUTTON-FEEDBACK.md](UI-BUTTON-FEEDBACK.md) | 已发布 v2.30.0（2026-11-25，1f70ea5；QA-FQ-FR ✅ 9/0/0/1） | ✅ 本轮已给 |
+| **FR** | ⚙️ 调整：backup 改为后台功能（移除调度任务/CLI 自动跑，后台按钮+列表+下载+删除，默认不自动） | [BACKUP-AS-FEATURE.md](BACKUP-AS-FEATURE.md) | 已发布 v2.30.0（2026-11-25，1f70ea5；QA-FQ-FR ✅ 9/0/0/1） | ✅ 本轮已给 |
+| **FT** | ⚙️ 调整：成人内容分级细分（宽=成人内容 / 严格=色情游戏 descriptor4/AO；2077 排除；存量重采回填） | [EXPLICIT-RATING.md](EXPLICIT-RATING.md) | 已发布 v2.30.0（2026-11-25，站点 cd2829e + App 2916dc3；QA-FT ✅ 10/0/0/2；App 随 app-v2.25.1） | ✅ 本轮已给 |
+| **FU** | ⚙️ 调整：接入腾讯云 APM（OpenTelemetry OTLP，Compose 手动接入，token 服务器注入） | [APM-TENCENT.md](APM-TENCENT.md) | 已发布 v2.30.0（2026-11-25，07db9a9；QA-FU ✅ 4/0/0/1） | ✅ 本轮已给 |
+| **FV** | ⚙️ 调整：站点 head/foot 注入（后台可配置，RUM/统计脚本免改代码；CSP nonce/防缓存） | [HEAD-FOOT-INJECTION.md](HEAD-FOOT-INJECTION.md) | 已发布 v2.30.0（2026-11-25，66a7046+b445771；QA-FV 第 2 轮 ✅ 5/0/0/1） | ✅ 本轮已给 |
 | **EY** | ⚙️ 调整：我的愿望单合并 Steam 愿望单（两层展示、Steam 行只读无操作、同游戏合并一行） | [MY-WISHLIST-MERGED.md](MY-WISHLIST-MERGED.md) | 已发布 v2.29.0（2026-11-24，合并展示按新功能定档 → 大版本） | ✅ 本轮已给 |
 | **EZ** | ⚙️ 调整：个人资料页精简（el-tabs 三 Tab：基本信息 / Steam 账号（绑定+游戏库合并）/ 偏好与统计；保存固定底部；手机端 Tab 横向滚动；全 el-button） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 已发布 v2.28.7（2026-11-23，8eeb1f4；QA-EZ-FA 第 1 轮 ✅） | ✅ demo 已给 |
 | **FA** | ⚙️ 调整：用户菜单新增「切换账户」（退出会话 → /login?switch=1 → 登录后回 Console；保留退出登录） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 已发布 v2.28.7（2026-11-23，8eeb1f4；QA-EZ-FA 第 1 轮 ✅） | ✅ demo 已给 |

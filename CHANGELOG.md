@@ -1,3 +1,35 @@
+## [2.30.0] - 2026-11-25
+
+FK App 资产同步 COS 换源 + FM 史低误报修复 + FL 设置页全分组折叠 + FP 同步机制完善 + FQ 按钮点击反馈 + FR backup 后台功能化 + FT 成人内容分级细分（色情游戏）+ FU 腾讯云 APM 接入 + FV 站点 head/foot 注入（✨ 新功能面 4：FT 分级细分 / FP 同步机制 / FU APM / FV 注入 → 大版本，2.29.1 → 2.30.0 连续递增、不跳号）。站点 + App 双仓库（App 提交 b924926 + 2916dc3，随本批发 app-v2.25.1/22501）。
+
+### 新增
+
+- **FT 成人内容分级细分（站点 cd2829e；App 2916dc3）**：新增 `games.explicit_flag`（严格 = descriptor 4 或 ESRB AO；`adult_flag` 宽口径不变）；前台/App 筛选入口「18R」改「色情游戏」（`rating=explicit`）、18+ 角标仅 explicit、hide 仍排除全部成人内容（宽）；后台「内容分级统计」拆「成人内容（宽）/色情游戏（严格）」两行 + 「内容分级」筛选加「色情游戏（严格）」；新增 `explicit-backfill` 存量回填（候选 ≈4759、限速 1.5s/款、1 天冷却、429 收轮；调度 steam-meta 组子步骤 + 后台任务卡「立即运行」）。**部署后**：`node src/cli.js explicit-backfill --limit 5000 --rate 1500`（约 2 小时）或后台「色情游戏回填」立即运行。
+- **FU 腾讯云 APM 接入（07db9a9）**：OpenTelemetry OTLP HTTP 上报 `plap-shanghai.apm.tencentcs.com:4319`（`--import ./src/otel.js` 统一注入 bootstrap/serve/scheduler）；`APM_SAMPLE_RATE` 默认 0.1；无 `APM_TOKEN` 自动跳过（本地/CI 零影响）；token 只放服务器 compose env（仓库零凭据）。
+- **FV 站点 head/foot 注入（66a7046 + 修复 b445771）**：后台「站点与内容」可配 Head（</head> 前）/Foot（</body> 前）注入（20KB 上限、仅管理员、保存热加载、免改代码发版）；注入内联/外链 `<script>` 自动打 per-request CSP nonce（严格档可执行）；响应 no-cache；无配置字节级不变；/api、/assets、/app/*.apk 不注入。
+
+### 调整
+
+- **FK App 资产同步换源（5ad406b）**：`network.appSyncSource`（github/cos，默认 github）+ `network.appSyncCosBase` + `network.appSyncFallbackGithub`（默认开）三项设置；`syncAppRelease` 支持 COS 拉 latest.json/APK/sha256（60s 超时、文件名严格校验防路径注入），cos 失败自动回退 GitHub 并记 `app.release_fallback`。
+- **FL 系统设置页所有分组统一折叠（0f22937 + 打回修复 4052489）**：无高级字段的分组（时区与显示/站点与内容/全局/发现与热度/同步区域）也生成折叠按钮与折叠体；搜索命中无高级字段的折叠组自动展开（`foldAutoOpenAll`）；折叠行标题回退分组标题（`foldTitle||title`）；默认收起 + localStorage 记忆与其它组一致。
+- **FP 同步机制完善（0cdddb1）**：P0 僵尸锁（running 超 2h 自动 interrupted、启动/排空清理 DB running 记录）；backup 流式分页 + 30 分钟超时；backup/prune 低峰窗口（默认 03:00–05:00）+ 独立维护槽（不与价格/状态抢 heavy 槽）；steam-status/backfill/rating-backfill 提速默认 2 万/天（env 可配）；429 补跑队列 + 后台「初始化全量同步」按钮；后台「数据时效」卡片；403 告警口径收敛（连续 ≥3 次才告警、discovery 类只记日志）。
+- **FQ 按钮点击反馈规范（1f70ea5）**：`useAction` composable（loading 防连点 + ≥200ms 不闪烁 + 成功/失败 ElMessage）；后台全部刷新/操作按钮接入（「已刷新/已保存/已启动」提示、失败可读文案）。
+- **FR backup 改为后台功能（1f70ea5）**：移除调度任务与 CLI 自动跑；后台「备份」卡手动备份/列表/下载/删除（严格文件名白名单 `backup-YYYY-MM-DD.json.gz` 防路径穿越）；`system.backupEnabled` 默认 false（按钮禁用 + 接口 403 双保险）；复用 FP 流式 createBackup。
+
+### 修复
+
+- **FM 价格提醒史低误报（b497566）**：hist_low 改「今天以前」；跌破标「新史低」、持平标「跌至史低」、未跌破不提醒；同价不重复显示史低段；未降价不显示史低；有目标价行为不变。
+
+### App
+
+- **FO 搜索框回车即搜（App b924926）**：IME 动作设「搜索」，软键盘回车即提交（与按钮同一逻辑：trim 非空 → 隐藏键盘 → submitKeyword；空词无动作；历史页/结果页一致）。
+- **FT App 端（App 2916dc3）**：18R chip 改「色情游戏」、rating=explicit、18+ 角标仅 explicit（联动站点 cd2829e）。
+
+### 测试
+
+- QA 全部放行、无打回：FK 9/0/0/3、FM 5/0/0/2、FL 第 2 轮 ✅（打回 3 项全落实）、FP 22/0/0/3、FQ/FR 9/0/0/1、FT 10/0/0/2、FU 4/0/0/1、FV 5/0/0/1、FO 4/0/0/0。
+- 本机验证（构建会话）：本批相关测试（settings 17/17、app-release-sync、alerts、sync-harden、explicit-rating、otel、head-foot-injection 等）+ `api.test.js` + `frontend:build` ✓ + `scan` 干净；全量主链由 CI 兜底。
+
 ## [2.29.1] - 2026-11-24
 
 FI 内容分级——后台可筛 + 前台/App 按 `site.adultDisplay` 三态控制 + FJ 同步服务合并为 12 个任务组（⚙️ 调整 2，无新功能面 → 小版本，2.29.0 → 2.29.1 连续递增）。站点 + App 双仓库（App 提交 `4266359`，随本批发 app-v2.25.0/22500）。

@@ -248,6 +248,10 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 ---
 
+### 当前状态（2026-11-25，v2.30.0 已打 tag——CI 待确认）
+
+**v2.30.0 已打 tag（2026-11-25，release 提交见 CHANGELOG；CI 结果待回填）**：FK App 资产同步 COS 换源 + FM 史低误报修复 + FL 设置页全分组折叠 + FP 同步机制完善（P0 僵尸锁）+ FQ 按钮点击反馈 + FR backup 后台功能化 + FT 成人内容分级细分（色情游戏）+ FU 腾讯云 APM + FV 站点 head/foot 注入（✨ 新功能面 4：FT/FP/FU/FV → 大版本，2.29.1 → 2.30.0 连续递增、不跳号）。**站点 + App 双仓库**（App 提交 b924926 + 2916dc3，随本批发 app-v2.25.1/22501，GitHub Release 三资产）。QA 全部放行、无打回：FK 9/0/0/3、FM 5/0/0/2、FL 第 2 轮 ✅（打回 3 项全落实）、FP 22/0/0/3、FQ/FR 9/0/0/1、FT 10/0/0/2、FU 4/0/0/1、FV 5/0/0/1、FO 4/0/0/0。**含新 schema 列 `games.explicit_flag`**（FT，镜像首次启动迁移自动加列）。**部署提示**：app 与 scheduler 各自 compose 文件（所有者已拆分）——`docker compose -f docker-compose.yml up -d app` 与 `docker compose -f docker-compose.scheduler.yml up -d`（按服务器实际文件名执行，两套互不牵连）；部署后执行 `node src/cli.js explicit-backfill --limit 5000 --rate 1500`（约 2 小时）或后台「游戏管理 → 同步与回填 → 色情游戏回填 → 立即运行」；FU 需在服务器 compose env 注入 `APM_TOKEN`（及可选 `OTEL_SERVICE_NAME`/`APM_ENDPOINT`/`APM_SAMPLE_RATE`）；FK 需部署时提供 COS 桶/凭证（`network.appSyncSource`/`appSyncCosBase`）；App Release 建好后在后台「App 版本卡点立即同步」（或等 15 分钟自动同步）。**服务器部署待执行**。
+
 ### 当前状态（2026-11-25，待发版：FT + FV 已实现待发版——质检通过，等「构建」指令）
 
 **FV 站点 head/foot 注入已实现待发版（2026-11-25，实现 66a7046 + 修复 b445771；QA docs/QA-FV.md 第 2 轮 ✅ 通过 5/缺失 0/偏差 0/需人工确认 1）**：后台「站点与内容」新增「Head 注入（</head> 前）/ Foot 注入（</body> 前）」两个多行输入框（text 类型、20KB 上限、仅管理员）；保存即热加载（无需改代码发版）——SPA 页面注入到 `</head>`/`</body>` 前，注入内容里的内联与外链 `<script>` 自动打 per-request CSP nonce（严格档可执行），响应 `cache-control: no-cache` 防旧 HTML；单段超 20KB 拒绝注入并记 `http.head_injection_skipped`；无配置时页面字节级不变；/api、/assets、/app/*.apk 不注入。⚙️ 调整、无 schema 变更。验证：head-foot-injection 8/8（新主链）+ 主链 test:1~4 全绿 + api 40/40 + `frontend:build` ✓ + `scan` 干净 + headless Chrome 实测（CSP enforce 下注入脚本执行 window 变量=42、Console 0 报错；外链 script 修复后 CSP 放行）+ 真实 HTTP 保存→热加载验证。截图（后台两个输入框 + 前台）：`F:\dsh\fv-shots\fv-admin-settings.png`、`F:\dsh\fv-shots\fv-frontpage.png`（供所有者目视）。
