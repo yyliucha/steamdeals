@@ -77,6 +77,7 @@ export async function applySteamDetails(q, { appid, cnEntry = null, hkEntry = nu
     contentDescriptors: descriptorIds.length > 0 ? descriptorIds : null,
     ageRatings: Object.keys(ratings).length > 0 ? ratings : null,
     adultFlag: hasRating ? rating.adultFlag : null,
+    explicitFlag: hasRating ? rating.explicitFlag : null,
     matureFlag: hasRating ? rating.matureFlag : null,
   });
   // setSteamStatus 未命中（appid 不在库）返回 null：不得算写成功（AB 批 §3-B）
@@ -402,4 +403,127 @@ export async function runRatingBackfillRound(
     elapsedMs: Date.now() - startedMs,
   });
   return { done, wrote, adultWrote, matureWrote, failed, batches, aborted429, before, after, elapsedMs: Date.now() - startedMs };
+}
+
+// ---------------------------------------------------------------- FT：色情游戏（严格分级）存量回填（docs/EXPLICIT-RATING.md §2.2）
+
+/**
+ * FT 批（docs/EXPLICIT-RATING.md §2.2）：explicit 回填候选。
+ * - 候选 = adult_flag=true 且 explicit_flag=false 的行（存量约 4759 个：adult 宽口径里
+ *   有 2077 这类 descriptor 3 的「含部分性内容」正常游戏，需重采一次 descriptor ids 判定）；
+ * - backfill_at 1 天冷却：断点续跑（中断后重跑跳过当天已处理行），次日重采幂等——
+ *   explicit=true 的行退出候选（收敛），false 的行冷却期内不空转；
+ * - 高嫌疑优先：genres/tags 含 色情/Nudity/Sexual 的排前面（先确认最重要的黄油）。
+ */
+export async function listExplicitBackfillCandidates(q, { limit = 30 } = {}) {
+  const size = Math.min(Math.max(Number(limit) || 30, 1), 100);
+  const r = await q(
+    'select g.steam_appid from games g ' +
+      'where g.steam_appid is not null and not g.deleted ' +
+      'and g.adult_flag and not g.explicit_flag ' +
+      "and (g.backfill_at is null or g.backfill_at < now() - interval '1 day') " +
+      "order by (case when (coalesce(array_to_string(g.genres, '|'), '') || '|' || coalesce(array_to_string(g.tags, '|'), '')) ~* '(色情|nudity|sexual)' then 0 else 1 end), g.id " +
+      'limit $1',
+    [size],
+  );
+  return r.rows.map((row) => Number(row.steam_appid)).filter((n) => Number.isFinite(n) && n > 0);
+}
+
+/**
+ * FT 批（docs/EXPLICIT-RATING.md §2.2）：explicit 回填一轮。
+ * 根因：现有 adult_flag 游戏没有存 descriptor 原始 ids → 无法本地判定 explicit；
+ * 本函数逐 appid 用内容区（sync.contentRegion，默认 us）重采 content_descriptors/age_ratings，
+ * 走 applySteamDetails 写分级（含 explicit_flag）——不写 steam_status、不写价格 offer
+ * （本位币价格口径不受影响）。限速按「每个请求」计（rateMs ≥ 1s）；撞 429 立即收轮
+ * （aborted429=true，调用方 exit 75）；开工前 / 收工后各记一次 adult/explicit 计数
+ * （验收：steam.meta.explicit_backfill_before/done）。
+ * fetchMetadataImpl 可注入（测试离线验证）；返回 { done, wrote, explicitWrote, failed, batches, aborted429, before, after, elapsedMs }。
+ */
+export async function runExplicitBackfillRound(
+  q,
+  { limit = 5000, batch = 30, rateMs = 1500, fetchMetadataImpl = null, logger = null } = {},
+) {
+  const fetchMeta = fetchMetadataImpl ?? fetchMetadata;
+  const size = Math.min(Math.max(Number(limit) || 5000, 1), 200000);
+  const step = Math.min(Math.max(Number(batch) || 30, 1), 100);
+  const sleepMs = Math.max(1000, Math.min(Number(rateMs) || 1500, 60000));
+  const startedMs = Date.now();
+  let done = 0;
+  let wrote = 0;
+  let explicitWrote = 0;
+  let failed = 0;
+  let batches = 0;
+  let aborted429 = false;
+
+  const countExplicit = async () =>
+    (
+      await q(
+        "select count(*) filter (where not deleted and adult_flag)::int as adult, " +
+          'count(*) filter (where not deleted and explicit_flag)::int as explicit from games',
+      )
+    ).rows[0];
+
+  // 与 rating-backfill 同一口径：分级回填走内容区（默认 us）
+  const cc = contentRegion();
+  const before = await countExplicit();
+  logger?.info?.('steam.meta.explicit_backfill_before', { adult: before.adult, explicit: before.explicit, contentRegion: cc });
+
+  while (done < size && !aborted429) {
+    const stepSize = Math.min(step, size - done);
+    const appids = await listExplicitBackfillCandidates(q, { limit: stepSize });
+    if (!appids.length) break;
+    batches += 1;
+
+    const metas = new Map();
+    for (const appid of appids) {
+      try {
+        const one = await fetchMeta([appid], { backend: 'official', logger, cc });
+        if (one?.items?.length) metas.set(appid, one.items[0]);
+      } catch (err) {
+        const status = Number(err?.status) || 0;
+        if (status === 429) {
+          aborted429 = true;
+          logger?.warn?.('steam.meta.explicit_backfill_429', { appid, done });
+          break;
+        }
+        failed += 1;
+        logger?.warn?.('steam.meta.explicit_backfill_failed', { appid, message: String(err?.message ?? err).slice(0, 160) });
+      }
+      if (sleepMs) await sleep(sleepMs);
+    }
+
+    let batchWrote = 0;
+    let batchExplicit = 0;
+    for (const appid of metas.keys()) {
+      const outcome = await applySteamDetails(q, { appid, cnEntry: null, hkEntry: null, meta: metas.get(appid), logger });
+      if (outcome.ratingWritten) {
+        batchWrote += 1;
+        if (outcome.rating?.explicitFlag) batchExplicit += 1;
+      }
+    }
+    // 冷却记账（与 rating-backfill 同机制）：正常时无论拿没拿到数据都记一笔（1 天冷却防空转）；
+    // 429 收轮时只记已成功采集的行——未处理行保持候选，下轮断点续跑
+    await db.markBackfilled(q, aborted429 ? [...metas.keys()] : appids);
+    wrote += batchWrote;
+    explicitWrote += batchExplicit;
+    done += appids.length;
+    logger?.info?.('steam.meta.explicit_backfill_batch', { batch: batches, done, wrote: batchWrote, explicit: batchExplicit, failed });
+  }
+
+  const after = await countExplicit();
+  logger?.info?.('steam.meta.explicit_backfill_done', {
+    done,
+    wrote,
+    explicitWrote,
+    failed,
+    batches,
+    adultBefore: before.adult,
+    adultAfter: after.adult,
+    explicitBefore: before.explicit,
+    explicitAfter: after.explicit,
+    aborted429,
+    contentRegion: cc,
+    elapsedMs: Date.now() - startedMs,
+  });
+  return { done, wrote, explicitWrote, failed, batches, aborted429, before, after, elapsedMs: Date.now() - startedMs };
 }

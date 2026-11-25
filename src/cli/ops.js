@@ -18,7 +18,7 @@ import { startApiServer } from '../server.js';
 import * as db from '../store/pg.js';
 import { ingestOffers } from '../ingest.js';
 import { missingPriceAppids, mergePriceOffers, writeBackfillProgress } from '../backfill.js';
-import { applySteamDetails, entryFromMeta, runRatingBackfillRound } from '../steam-status.js';
+import { applySteamDetails, entryFromMeta, runRatingBackfillRound, runExplicitBackfillRound } from '../steam-status.js';
 import { fetchMetadata } from '../adapters/steam-meta.js';
 import { syncPrices } from '../adapters/steam.js';
 import { baseRegion, regionContext } from '../sync-regions.js';
@@ -818,6 +818,35 @@ export function createCliOps(ctx) {
   }
 
   /**
+   * FT 批（docs/EXPLICIT-RATING.md §2.2）：色情游戏（严格分级）存量回填。
+   * 根因：现有 adult_flag 游戏（存量约 4759 个）没有存 descriptor 原始 ids → 无法本地判定
+   * explicit（descriptor 4 或 ESRB AO）。本命令逐 appid 用内容区（sync.contentRegion，默认 us）
+   * 重采 content_descriptors/age_ratings，只写分级（含 explicit_flag）、不写 steam_status、
+   * 不写价格（本位币价格口径不受影响）。
+   * 候选 = adult_flag=true 且 explicit_flag=false（1 天冷却：断点续跑；explicit=true 退出收敛）；
+   * 限速 ≥1s/请求；撞 429 立即收轮（exit 75）；开工前 / 收工后各记一次 adult/explicit 计数
+   * （验收：steam.meta.explicit_backfill_before/done）。
+   * 一轮逻辑在 src/steam-status.js 的 runExplicitBackfillRound（可单测），本命令只负责参数与输出。
+   */
+  async function cmdExplicitBackfill() {
+    const limit = Math.max(1, Math.min(Number(flag('limit', '5000')) || 5000, 200000));
+    const batch = Math.max(1, Math.min(Number(flag('batch', '30')) || 30, 100));
+    // 硬约束 6：采集限速 ≥1 秒/请求；默认 1.5s（在 Steam 200 次/5 分钟配额内）
+    const rateMs = Math.max(1000, Math.min(Number(flag('rate', '1500')) || 1500, 60000));
+
+    const result = await withStore((store) =>
+      runExplicitBackfillRound((sql, p) => store.query(sql, p), { limit, batch, rateMs, logger }),
+    );
+
+    if (result.aborted429) {
+      console.log(`撞 HTTP 429：本轮提前收尾（已处理 ${result.done} 款），可稍后重跑续作`);
+      process.exitCode = 75;
+    }
+    console.log(`完成：处理 ${result.done} 款，写分级 ${result.wrote} 条（本轮新判 explicit ${result.explicitWrote}），失败 ${result.failed}${result.aborted429 ? '（HTTP 429 提前收轮）' : ''}`);
+    console.log(`adult 计数：${result.before.adult} → ${result.after.adult}；explicit：${result.before.explicit} → ${result.after.explicit}（+${result.after.explicit - result.before.explicit}）`);
+  }
+
+  /**
    * DS 批（docs/SEARCH-ALIASES.md §3）：派生搜索 token 重建。
    * 默认增量（search_tokens 为空/从未生成/名字在生成后被改过的行），--full 全量按 id 游标翻页；
    * 纯本地计算、无 Steam 请求；token 未变化的行不写（is distinct from）。调度器每 6 小时一轮。
@@ -1144,6 +1173,7 @@ export function createCliOps(ctx) {
       rename: cmdRename,
       heat: cmdHeat,
       'rating-backfill': cmdRatingBackfill,
+      'explicit-backfill': cmdExplicitBackfill,
       'search-tokens': cmdSearchTokens,
       images: cmdImages,
       prune: cmdPrune,
@@ -1160,6 +1190,7 @@ export function createCliOps(ctx) {
       heat: cmdHeat,
       rename: cmdRename,
       'rating-backfill': cmdRatingBackfill,
+      'explicit-backfill': cmdExplicitBackfill,
       'search-tokens': cmdSearchTokens,
       backfill: cmdBackfill,
       'init-sync': () => cmdBackfill(true), // FP 批 P2：写 sync_runs（后台按钮可见进度与历史）

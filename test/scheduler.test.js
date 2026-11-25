@@ -68,7 +68,7 @@ test('AC11：状态文件带健康面板字段（耗时/结果/失败原因）�
 test('默认任务表（FJ 批：按 12 组顺序重排，steam-claim 已移出定时），各自间隔', () => {
   const jobs = jobsFromEnv({});
   assert.deepEqual(jobs.map((j) => j.name), [
-    'steam-prices', 'steam-status', 'rating-backfill', 'backfill', 'rename', 'sonkwo', 'itad', 'gog', 'humble',
+    'steam-prices', 'steam-status', 'rating-backfill', 'explicit-backfill', 'backfill', 'rename', 'sonkwo', 'itad', 'gog', 'humble',
     'steam-discovery', 'discover', 'images', 'images-backfill', 'readmodel', 'search-tokens-rebuild', 'prune', 'logs',
     'heat', 'app-release-sync', 'align-snapshot', 'proxy-probe', 'alerts',
   ]);
@@ -80,6 +80,7 @@ test('默认任务表（FJ 批：按 12 组顺序重排，steam-claim 已移出�
   assert.equal(interval('steam-status'), 1440, 'Steam 状态判定默认每天一次（X 批）');
   assert.equal(interval('rename'), 10080, '重写名字默认每周一次');
   assert.equal(interval('rating-backfill'), 1440, 'EF 批：内容分级回填默认每天一轮（cc=us 重采描述符）');
+  assert.equal(interval('explicit-backfill'), 10080, 'FT 批：色情游戏存量回填默认 7 天兜底一轮（手动「立即运行」为主）');
   assert.equal(interval('backfill'), 1440, 'BL 批：增量回填默认每天一轮');
   assert.equal(interval('prune'), 10080, '清理默认每周一次');
   assert.equal(interval('readmodel'), 1440, 'AV 批：读模型对账默认每天一次');
@@ -104,6 +105,7 @@ test('默认任务表（FJ 批：按 12 组顺序重排，steam-claim 已移出�
   assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '20000', '--rate', '1500'], 'FP 批：状态判定默认每轮 2 万（env 可配 3–5 万）');
   assert.deepEqual(args('rename'), ['rename', '--limit', '200000', '--batch', '100', '--sleep', '1500']);
   assert.deepEqual(args('rating-backfill'), ['rating-backfill', '--limit', '20000', '--batch', '30', '--rate', '1500'], 'FP 批：分级回填默认每天上限 2 万、限速 1.5s/款');
+  assert.deepEqual(args('explicit-backfill'), ['explicit-backfill', '--limit', '5000', '--batch', '30', '--rate', '1500'], 'FT 批：色情游戏回填默认每轮 5000、限速 1.5s/款');
   assert.deepEqual(args('backfill'), ['backfill', '--limit', '20000', '--batch', '100', '--sleep', '3000'], 'FP 批：回填默认每天上限 2 万');
   assert.deepEqual(args('prune'), ['prune']);
   assert.deepEqual(args('readmodel'), ['readmodel', 'check', '--sample', '200', '--fix'], 'B5 批：每日抽样 200 对账 + 自动修复（手动 check 默认仍只报告）');
@@ -265,7 +267,7 @@ test('显式禁用或间隔为 0 的任务会被剔除', () => {
     READMODEL_ENABLED: '0',
     PROXY_PROBE_ENABLED: '0',
   });
-  assert.deepEqual(jobs.map((j) => j.name), ['rating-backfill', 'backfill', 'rename', 'sonkwo', 'steam-discovery', 'images-backfill', 'search-tokens-rebuild', 'prune', 'heat', 'app-release-sync', 'align-snapshot', 'alerts']);
+  assert.deepEqual(jobs.map((j) => j.name), ['rating-backfill', 'explicit-backfill', 'backfill', 'rename', 'sonkwo', 'steam-discovery', 'images-backfill', 'search-tokens-rebuild', 'prune', 'heat', 'app-release-sync', 'align-snapshot', 'alerts']);
 });
 
 test('从未跑过的任务在 initialDelay 之后才算到点', () => {
@@ -488,13 +490,14 @@ test('B3：实测耗时优先——steamDailyBudgetMinutes 用 sync_runs 平均�
   const env = {};
   const theo = steamDailyBudgetMinutes(env);
   assert.ok(theo.total > 0, '无实测时理论预算可用');
-  // 实测：五个 mode 各给平均秒（steam-status 实测 300s/轮 vs 理论 5h，证明预算跟着实测走）
+  // 实测：六个 mode 各给平均秒（steam-status 实测 300s/轮 vs 理论 5h，证明预算跟着实测走）
   const observed = new Map([
     ['steam-prices', 60],
     ['heat', 120],
     ['steam-status', 300],
     ['backfill', 600],
     ['rating-backfill', 30],
+    ['explicit-backfill', 30],
   ]);
   const obs = steamDailyBudgetMinutes(env, observed);
   assert.equal(obs.priceMin, 1, '价格：60s × 1 轮/天 = 1 分钟');
@@ -502,7 +505,8 @@ test('B3：实测耗时优先——steamDailyBudgetMinutes 用 sync_runs 平均�
   assert.equal(obs.statusMin, 5, '状态：300s × 1 轮/天 = 5 分钟');
   assert.equal(obs.backfillDailyMin, 10, '回填：600s × 1 轮/天 = 10 分钟');
   assert.equal(obs.ratingBackfillDailyMin, 0.5, 'EF 分级回填：30s × 1 轮/天 = 0.5 分钟');
-  assert.equal(obs.total, 18.5, '总预算 = 实测之和（不再按理论常数）');
+  assert.equal(obs.explicitBackfillDailyMin, (30 * (1440 / 10080)) / 60, 'FT 色情游戏回填：30s × 7 天 1 轮 = 约 0.071 分钟/天');
+  assert.equal(obs.total, 18.5 + (30 * (1440 / 10080)) / 60, '总预算 = 实测之和（不再按理论常数）');
   // 缺样本回落理论：只有 heat 有实测，其余回落
   const partial = steamDailyBudgetMinutes(env, new Map([['heat', 0.1]]));
   assert.equal(partial.heatMin, 0.1 / 60, 'heat 用实测（0.1s × 1 轮/天）');
@@ -544,11 +548,11 @@ test('B3：applySteamBudget 预算来源实测——实测超预算同样触发�
   assert.equal(ok.adjusted, false, '实测预算内不调整');
 });
 
-test('B3：jobRuntimeEstimates 只覆盖五个 Steam 重任务，obsSec 来自实测、无实测为 null', () => {
+test('B3：jobRuntimeEstimates 只覆盖六个 Steam 重任务，obsSec 来自实测、无实测为 null', () => {
   const jobs = jobsFromEnv({});
   const observed = new Map([['heat', 42]]);
   const est = jobRuntimeEstimates(jobs, {}, observed);
-  assert.deepEqual([...est.keys()].sort(), ['backfill', 'heat', 'rating-backfill', 'steam-prices', 'steam-status'].sort(), '只给五个 Steam 重任务');
+  assert.deepEqual([...est.keys()].sort(), ['backfill', 'explicit-backfill', 'heat', 'rating-backfill', 'steam-prices', 'steam-status'].sort(), '只给六个 Steam 重任务（FT 批加 explicit-backfill）');
   const heat = est.get('heat');
   assert.equal(heat.obsSec, 42, '实测秒透传');
   assert.equal(heat.estSec, theoreticalRunSeconds({}).heat, '理论估算保留');
@@ -747,8 +751,8 @@ test('FJ：12 个任务组——组名/顺序固定，组内子步骤按优先�
   assert.equal(groups[0].label, 'Steam 价格', '组带中文 label');
   assert.deepEqual(
     groups.find((g) => g.name === 'steam-meta').steps.map((s) => s.name),
-    ['steam-status', 'rating-backfill', 'backfill', 'rename'],
-    '元数据组优先级：未探测 → 缺分级 → 缺说明 → 缺中文名',
+    ['steam-status', 'rating-backfill', 'explicit-backfill', 'backfill', 'rename'],
+    '元数据组优先级：未探测 → 缺分级 → 缺严格分级 → 缺说明 → 缺中文名',
   );
   assert.deepEqual(
     groups.find((g) => g.name === 'proxy-alerts').steps.map((s) => s.name),
@@ -767,9 +771,9 @@ test('FJ：12 个任务组——组名/顺序固定，组内子步骤按优先�
 test('FJ：planTick 组内串行——同组多个到期子步骤只派发优先级最高的一个', () => {
   const jobs = jobsFromEnv({});
   const meta = jobs.filter((j) => j.group === 'steam-meta');
-  assert.equal(meta.length, 4, '元数据组 4 步');
+  assert.equal(meta.length, 5, '元数据组 5 步（FT 批加 explicit-backfill）');
   const plan = planTick({ due: meta, heavySlot: null, running: new Set(), lightMax: 3, jobs });
-  assert.equal(plan.heavy.length, 1, '同组 4 步同 tick 只发一个');
+  assert.equal(plan.heavy.length, 1, '同组 5 步同 tick 只发一个');
   assert.equal(plan.heavy[0].name, 'steam-status', '按组内优先级发 steam-status（未探测最优先）');
 
   // 组内已有子步骤在跑：该组本 tick 不派发任何子步骤（不并发抢 appdetails）
@@ -811,7 +815,7 @@ test('FJ：writeStatusFile 输出 groups（12 组含 label 与子步骤状态）
     assert.equal(payload.groups.length, 12, '状态文件含 12 组');
     const meta = payload.groups.find((g) => g.name === 'steam-meta');
     assert.equal(meta.label, 'Steam 元数据');
-    assert.deepEqual(meta.steps.map((s) => s.name), ['steam-status', 'rating-backfill', 'backfill', 'rename'], '组内子步骤状态');
+    assert.deepEqual(meta.steps.map((s) => s.name), ['steam-status', 'rating-backfill', 'explicit-backfill', 'backfill', 'rename'], '组内子步骤状态');
     assert.ok(meta.steps[0].nextRunAt, '子步骤行含 nextRunAt');
     assert.equal(payload.jobs.find((j) => j.name === 'backfill').group, 'steam-meta', 'jobs 行带 group（兼容旧字段）');
     const sonkwo = payload.jobs.find((j) => j.name === 'sonkwo');

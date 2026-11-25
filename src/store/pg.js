@@ -792,6 +792,9 @@ const ALTERS = [  'alter table games add column if not exists interested boolean
   'alter table games add column if not exists age_ratings jsonb',
   'alter table games add column if not exists adult_flag boolean not null default false',
   'alter table games add column if not exists mature_flag boolean not null default false',
+  // FT 批（docs/EXPLICIT-RATING.md §2.1）：explicit（严格）= descriptor 4 或 ESRB AO——
+  // 色情游戏口径；adult_flag（宽，3/4/AO）保持不变（含 2077 这类含部分性内容的正常游戏）。
+  'alter table games add column if not exists explicit_flag boolean not null default false',
   'create index if not exists idx_games_steam_status on games (steam_status) where steam_status is not null',
   // BK 批（docs/SESSION-MANAGEMENT.md §3.1）：会话治理补列——对外标识/客户端指纹/最近活动。
   // token 仍是主键；id 只作接口标识（绝不把 token 下发前端）。
@@ -3291,6 +3294,7 @@ export async function setSteamStatus(q, {
   contentDescriptors = null,
   ageRatings = null,
   adultFlag = null,
+  explicitFlag = null,
   matureFlag = null,
 }) {
   const params = [steamAppid];
@@ -3308,6 +3312,7 @@ export async function setSteamStatus(q, {
   );
   sets.push(`age_ratings = coalesce(${push(ageRatings ? JSON.stringify(ageRatings) : null)}::jsonb, age_ratings)`);
   if (adultFlag != null) sets.push(`adult_flag = ${push(Boolean(adultFlag))}`);
+  if (explicitFlag != null) sets.push(`explicit_flag = ${push(Boolean(explicitFlag))}`);
   if (matureFlag != null) sets.push(`mature_flag = ${push(Boolean(matureFlag))}`);
   sets.push('updated_at = now()');
   const r = await q(`update games set ${sets.join(', ')} where steam_appid = $1 returning id, steam_status`, params);

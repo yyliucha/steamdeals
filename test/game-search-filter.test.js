@@ -278,14 +278,14 @@ test('count 与列表同条件：分页 total = 全库匹配数，第二页正�
   }
 });
 
-test('EF 批：rating=adult|mature|none 读模型与 legacy 双口径一致（与后台 admin 同一条件）', async () => {
+test('EF/FT 批：rating=adult|explicit|mature|none 读模型与 legacy 双口径一致（与后台 admin 同一条件）', async () => {
   const { store, q } = await fresh();
   try {
-    // 独立数据集：三款全部带报价 + 日价（legacy 前置条件 = exists daily_prices），双口径集合一致
-    const seed = async (appid, name, adult, mature) => {
+    // 独立数据集：全部带报价 + 日价（legacy 前置条件 = exists daily_prices），双口径集合一致
+    const seed = async (appid, name, adult, mature, explicit = false) => {
       const r = await q(
-        'insert into games (steam_appid, name, adult_flag, mature_flag) values ($1,$2,$3,$4) returning id',
-        [appid, name, adult, mature],
+        'insert into games (steam_appid, name, adult_flag, mature_flag, explicit_flag) values ($1,$2,$3,$4,$5) returning id',
+        [appid, name, adult, mature, explicit],
       );
       const id = Number(r.rows[0].id);
       await q("insert into platforms (code, name, kind) values ('steam','Steam','official') on conflict (code) do nothing");
@@ -304,9 +304,13 @@ test('EF 批：rating=adult|mature|none 读模型与 legacy 双口径一致（�
     const noneId = await seed(8101, '未标注', false, false);
     const adultId = await seed(8102, '十八禁', true, false);
     const matureId = await seed(8103, '成熟作', false, true);
+    // FT 批：宽成人（2077 型）与纯色情游戏（explicit，adult 子集）分开
+    const wideAdultId = await seed(8104, '宽成人', true, false, false);
+    const explicitId = await seed(8105, '黄油', true, false, true);
 
     for (const [rating, expected] of [
-      ['adult', [adultId]],
+      ['adult', [adultId, wideAdultId, explicitId]],
+      ['explicit', [explicitId]],
       ['mature', [matureId]],
       ['none', [noneId]],
     ]) {
@@ -319,7 +323,7 @@ test('EF 批：rating=adult|mature|none 读模型与 legacy 双口径一致（�
     }
     // 空 rating = 不过滤（「取消恢复全部」）
     const all = await searchRm(q, { region: 'cn', compact: true, adult: 'badge' });
-    assert.equal(all.total, 3, '不带 rating 时三款全量可见');
+    assert.equal(all.total, 5, '不带 rating 时全部可见');
   } finally {
     delete process.env.READ_MODEL;
     await store.close();

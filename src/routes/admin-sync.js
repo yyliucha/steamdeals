@@ -314,6 +314,38 @@ export async function handleAdminSyncAdmin(ctx) {
     return true;
   }
 
+  // ---- 管理员：色情游戏（严格分级）存量回填（FT 批 docs/EXPLICIT-RATING.md §2.2）----
+  // 候选 = adult_flag=true 且 explicit_flag=false（存量约 4759 个，限速 1.5s/款 ≈ 2 小时）；
+  // 与同步/回填共用子进程槽位（天然互斥）；429 收轮 exit 75（可再点续跑，1 天冷却防重复轰炸）。
+  if (path === '/api/admin/explicit-backfill' && req.method === 'POST') {
+    if (!requireAdmin()) return true;
+    const body = await readBody(req);
+    const pickNum = (v, def, min, max) => Math.max(min, Math.min(Number(v ?? def) || def, max));
+    const params = {
+      limit: pickNum(body.limit, 5000, 1, 200000),
+      batch: pickNum(body.batch, 30, 1, 100),
+      rate: pickNum(body.rate, 1500, 1000, 60000),
+    };
+    try {
+      const job = await startSteamJob({
+        mode: 'explicit-backfill',
+        args: ['explicit-backfill', '--limit', String(params.limit), '--batch', String(params.batch), '--rate', String(params.rate)],
+        params,
+        by: user.username,
+      });
+      logger?.info('api.explicit_backfill_started', { runId: job.runId, by: user.username, ...params });
+      invalidateSyncStatusCache();
+      json(res, 202, { started: true, runId: job.runId, pid: job.pid, params });
+      return true;
+    } catch (err) {
+      if (err.code === 'BUSY') {
+        json(res, 409, { error: err.message, run: err.run });
+        return true;
+      }
+      throw err;
+    }
+  }
+
   // ---- 管理员：热度回填（与同步/回填共用子进程槽位，天然互斥）----
   if (path === '/api/admin/heat' && req.method === 'POST') {
     if (!requireAdmin()) return true;

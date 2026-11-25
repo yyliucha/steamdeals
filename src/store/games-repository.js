@@ -199,8 +199,10 @@ export async function gameSearch(
   // hide=前台不展示（默认），badge/show 不过滤（展示方式由前端角标决定）。只做平台标签映射，不做法律定性。
   if (adult === 'hide') conds.push('not g.adult_flag');
   // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：前台 rating 筛选——与后台 /api/admin/games 同一口径
-  // （adult=只看 18R；mature=只看成熟；none=只看未标注（双 false）；空=不过滤）。
+  // （adult=只看成人（宽）；mature=只看成熟；none=只看未标注（双 false）；空=不过滤）。
+  // FT 批（docs/EXPLICIT-RATING.md §2.3）：explicit=只看色情游戏（严格，descriptor 4/AO）。
   if (rating === 'adult') conds.push('g.adult_flag');
+  else if (rating === 'explicit') conds.push('g.explicit_flag');
   else if (rating === 'mature') conds.push('g.mature_flag');
   else if (rating === 'none') conds.push('not g.adult_flag and not g.mature_flag');
   if (guestFlags && !userId) {    // 游客：感兴趣/不感兴趣沿用浏览器本地标记；已拥有与愿望单是登录用户专属维度，
@@ -377,7 +379,7 @@ export async function gameSearch(
       ${userId ? WISHLISTED_SQL('$3') : 'false'} as wishlisted,
       ${userId ? WISHLISTED_BY_SQL('$3') : "'[]'::json"} as wishlisted_by,
       ${userId ? SITE_WISHLISTED_SQL('$3') : 'false'} as site_wishlisted,
-      g.blocked, g.steam_status, g.adult_flag, g.mature_flag, pr.current_low, pr.currency, pr.steam_price, pr.current_original,
+      g.blocked, g.steam_status, g.adult_flag, g.explicit_flag, g.mature_flag, pr.current_low, pr.currency, pr.steam_price, pr.current_original,
       pr.discount, dr.hist_low, dr.prev_hist_low, dr.day_count, pr.last_seen_at,
       pr.low_platform_name, pr.low_platform, count(*) over() as total_rows
     from games g ${userJoin(3)}
@@ -399,7 +401,7 @@ export async function gameSearch(
       ${userId ? WISHLISTED_SQL('$3') : 'false'} as wishlisted,
       ${userId ? WISHLISTED_BY_SQL('$3') : "'[]'::json"} as wishlisted_by,
       ${userId ? SITE_WISHLISTED_SQL('$3') : 'false'} as site_wishlisted,
-      g.blocked, g.steam_status, g.adult_flag, g.mature_flag,
+      g.blocked, g.steam_status, g.adult_flag, g.explicit_flag, g.mature_flag,
       rs.price_cents as current_low, rs.currency, rs.steam_price_cents as steam_price,
       rs.original_cents as current_original, rs.discount_pct as discount,
       rs.hist_low_cents as hist_low, rs.prev_hist_low_cents as prev_hist_low,

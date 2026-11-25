@@ -345,11 +345,15 @@ test('游戏同步统计与筛选：待同步数量、pending/done 过滤（新�
 
     // V 批：内容分级筛选（docs/STEAM-SYNC-STATUS-AND-RATING.md §13）：
     // 再造两款游戏：一款成人、一款成熟；成人+成熟+未标注 = 未删除总数
-    await q("insert into games (steam_appid, name, description, adult_flag) values (413151, '成人游戏', '说明', true)");
+    // FT 批（docs/EXPLICIT-RATING.md §2.4）：成人游戏带 explicit_flag（严格=色情游戏，adult 子集）
+    await q("insert into games (steam_appid, name, description, adult_flag, explicit_flag) values (413151, '成人游戏', '说明', true, true)");
     await q("insert into games (steam_appid, name, description, mature_flag) values (413152, '成熟游戏', '说明', true)");
     const adult = await (await fetch(`${base}/api/admin/games?rating=adult`, { headers: { cookie: admin.cookie } })).json();
     assert.equal(adult.total, 1, '成人筛出 1');
     assert.equal(adult.games[0].steam_appid, 413151);
+    const explicit = await (await fetch(`${base}/api/admin/games?rating=explicit`, { headers: { cookie: admin.cookie } })).json();
+    assert.equal(explicit.total, 1, '色情游戏（严格）筛出 1');
+    assert.equal(explicit.games[0].steam_appid, 413151);
     const mature = await (await fetch(`${base}/api/admin/games?rating=mature`, { headers: { cookie: admin.cookie } })).json();
     assert.equal(mature.total, 1, '成熟筛出 1');
     const noneRating = await (await fetch(`${base}/api/admin/games?rating=none`, { headers: { cookie: admin.cookie } })).json();
@@ -359,6 +363,7 @@ test('游戏同步统计与筛选：待同步数量、pending/done 过滤（新�
     assert.equal(stacked.total, 1, '分级与状态可叠加');
     const s3 = (await (await fetch(statsUrl, { headers: { cookie: admin.cookie } })).json()).stats;
     assert.equal(s3.adult, 1);
+    assert.equal(s3.explicit, 1, 'stats.explicit = 色情游戏（严格）计数');
     assert.equal(s3.mature, 1);
     assert.equal(s3.total - s3.deleted, s3.adult + s3.mature + noneRating.total, '成人+成熟+未标注=未删除总数');
 
@@ -372,8 +377,8 @@ test('游戏同步统计与筛选：待同步数量、pending/done 过滤（新�
 test('EF 批：前台 /api/games 支持 rating=adult|mature|none（与后台同一口径），非法值回落不过滤', async () => {
   const { store, q, srv, base } = await setup();
   try {
-    const seed = async (appid, name, adult, mature) => {
-      await q('insert into games (steam_appid, name, adult_flag, mature_flag) values ($1, $2, $3, $4)', [appid, name, adult, mature]);
+    const seed = async (appid, name, adult, mature, explicit = false) => {
+      await q('insert into games (steam_appid, name, adult_flag, mature_flag, explicit_flag) values ($1, $2, $3, $4, $5)', [appid, name, adult, mature, explicit]);
       const gid = (await q('select id from games where steam_appid = $1', [appid])).rows[0].id;
       await q(
         "insert into offers (game_id, platform_code, product_type, region, currency, price_cents) values ($1,'steam','official_direct','cn','CNY',1000)",
@@ -389,18 +394,24 @@ test('EF 批：前台 /api/games 支持 rating=adult|mature|none（与后台同�
     await seed(413160, '未标注A', false, false);
     await seed(413161, '十八禁B', true, false);
     await seed(413162, '成熟C', false, true);
+    // FT 批：宽成人（2077 型，adult 但非 explicit）与纯色情游戏分开
+    await seed(413163, '宽成人D', true, false, false);
+    await seed(413164, '黄油E', true, false, true);
 
     const namesOf = (d) => (d.games ?? []).map((g) => g.name).sort();
     const adult = await (await fetch(`${base}/api/games?adult=badge&rating=adult`)).json();
-    assert.deepEqual(namesOf(adult), ['十八禁B'], 'rating=adult 只看 18R（adult=badge 组合）');
-    assert.equal(adult.total, 1);
+    assert.deepEqual(namesOf(adult), ['十八禁B', '宽成人D', '黄油E'].sort(), 'rating=adult 只看成人（宽口径）');
+    assert.equal(adult.total, 3);
+    const explicit = await (await fetch(`${base}/api/games?adult=badge&rating=explicit`)).json();
+    assert.deepEqual(namesOf(explicit), ['黄油E'], 'rating=explicit 只看色情游戏（2077 型不出现）');
+    assert.equal(explicit.total, 1);
     const mature = await (await fetch(`${base}/api/games?adult=badge&rating=mature`)).json();
     assert.deepEqual(namesOf(mature), ['成熟C'], 'rating=mature 只看成熟内容');
     const noneRating = await (await fetch(`${base}/api/games?adult=badge&rating=none`)).json();
     assert.deepEqual(namesOf(noneRating), ['星露谷物语', '未标注A'].sort(), 'rating=none 只看未标注（含 setup 初始游戏）');
     assert.equal(noneRating.total, 2);
     const invalid = await (await fetch(`${base}/api/games?adult=badge&rating=weird`)).json();
-    assert.equal(invalid.total, 4, '非法 rating 回落为不过滤（白名单外一律不过滤）');
+    assert.equal(invalid.total, 6, '非法 rating 回落为不过滤（白名单外一律不过滤）');
   } finally {
     await srv.close();
     await store.close();
@@ -746,7 +757,10 @@ test('备份接口、价格历史 CSV、区服筛选、日志时间范围', asyn
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'steamdeals-backup-'));
   const oldBackupDir = process.env.BACKUP_DIR;
   const oldCsvEnv = process.env.HISTORY_CSV_ENABLED;
+  const oldBackupEnabled = process.env.BACKUP_ENABLED;
   process.env.BACKUP_DIR = tmp;
+  // FR 批（docs/BACKUP-AS-FEATURE.md）：system.backupEnabled 默认关闭（403），备份接口用例显式开启
+  process.env.BACKUP_ENABLED = '1';
   const { store, q, srv, base } = await setup();
   try {
     const admin = await login(base, 'admin', 'admin123456');
@@ -788,6 +802,8 @@ test('备份接口、价格历史 CSV、区服筛选、日志时间范围', asyn
     else process.env.BACKUP_DIR = oldBackupDir;
     if (oldCsvEnv === undefined) delete process.env.HISTORY_CSV_ENABLED;
     else process.env.HISTORY_CSV_ENABLED = oldCsvEnv;
+    if (oldBackupEnabled === undefined) delete process.env.BACKUP_ENABLED;
+    else process.env.BACKUP_ENABLED = oldBackupEnabled;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
@@ -1922,6 +1938,7 @@ test('FJ：组级立即运行与 steam-claim 端点——权限/错误路径/无
           jobs: [
             { name: 'steam-status', lastRunAt: nowIso },
             { name: 'rating-backfill', lastRunAt: nowIso },
+            { name: 'explicit-backfill', lastRunAt: nowIso },
             { name: 'backfill', lastRunAt: nowIso },
             { name: 'rename', lastRunAt: nowIso },
           ],
@@ -1932,7 +1949,7 @@ test('FJ：组级立即运行与 steam-claim 端点——权限/错误路径/无
       const body = await none.json();
       assert.equal(body.started, false);
       assert.match(body.reason, /没有到期/);
-      assert.deepEqual(body.skipped, ['steam-status', 'rating-backfill', 'backfill', 'rename'], '四个未到期子步骤全部跳过');
+      assert.deepEqual(body.skipped, ['steam-status', 'rating-backfill', 'explicit-backfill', 'backfill', 'rename'], '五个未到期子步骤全部跳过');
     } finally {
       if (prevEnv == null) delete process.env.SCHEDULER_STATUS_FILE;
       else process.env.SCHEDULER_STATUS_FILE = prevEnv;

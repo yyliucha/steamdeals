@@ -60,6 +60,8 @@ export function genreName(id) {
  * 内容分级派生（docs/STEAM-SYNC-STATUS-AND-RATING.md §5.1）：只做"平台标签 → 站点标记"映射，
  * 不做法律定性。adult = descriptors 含 3/4 或 ESRB AO；mature = descriptors 含 2/5、
  * PEGI ≥18 或 required_age ≥18（且未命中 adult）。
+ * FT 批（docs/EXPLICIT-RATING.md §2.1）：explicit（严格）= descriptors 含 4 或 ESRB AO——
+ * 纯色情游戏口径；adult（宽）保持 3/4/AO 不变（含 Cyberpunk 2077 这类含部分性内容的正常游戏）。
  */
 export function classifyContentRating({ requiredAge = null, descriptorIds = [], ratings = {} } = {}) {
   const ids = (Array.isArray(descriptorIds) ? descriptorIds : []).map(Number);
@@ -69,7 +71,8 @@ export function classifyContentRating({ requiredAge = null, descriptorIds = [], 
   const age = Number(requiredAge) || 0;
   const adultFlag = ids.includes(3) || ids.includes(4) || esrb === 'AO';
   const matureFlag = !adultFlag && (ids.includes(2) || ids.includes(5) || pegi >= 18 || age >= 18);
-  return { adultFlag, matureFlag };
+  const explicitFlag = ids.includes(4) || esrb === 'AO';
+  return { adultFlag, explicitFlag, matureFlag };
 }
 
 /**

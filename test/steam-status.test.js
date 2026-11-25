@@ -33,18 +33,20 @@ test('classifySteamStatus：六态判定与港区补查（docs §4）', () => {
   assert.equal(classifySteamStatus(fail(), fail()), 'not_found');
 });
 
-test('classifyContentRating：adult/mature 派生（docs §5.1）', () => {
-  // descriptors 3/4 或 ESRB AO → adult
-  assert.equal(classifyContentRating({ descriptorIds: [3], ratings: {} }).adultFlag, true);
-  assert.equal(classifyContentRating({ descriptorIds: [4], ratings: {} }).adultFlag, true);
-  assert.equal(classifyContentRating({ descriptorIds: [], ratings: { esrb: { rating: 'AO' } } }).adultFlag, true);
+test('classifyContentRating：adult/explicit/mature 派生（docs §5.1 + FT docs/EXPLICIT-RATING.md §2.1）', () => {
+  // descriptors 3/4 或 ESRB AO → adult（宽）；explicit（严格）= descriptor 4 或 AO
+  assert.deepEqual(classifyContentRating({ descriptorIds: [3], ratings: {} }), { adultFlag: true, explicitFlag: false, matureFlag: false }, 'descriptor 3=成人（宽）但非色情游戏（2077 口径）');
+  assert.deepEqual(classifyContentRating({ descriptorIds: [4], ratings: {} }), { adultFlag: true, explicitFlag: true, matureFlag: false }, 'descriptor 4=色情游戏（严格）');
+  assert.deepEqual(classifyContentRating({ descriptorIds: [], ratings: { esrb: { rating: 'AO' } } }), { adultFlag: true, explicitFlag: true, matureFlag: false }, 'ESRB AO=色情游戏（严格）');
   // mature：descriptors 2/5、PEGI 18、required_age 18（未命中 adult 时）
-  assert.deepEqual(classifyContentRating({ descriptorIds: [2], ratings: {} }), { adultFlag: false, matureFlag: true });
-  assert.deepEqual(classifyContentRating({ descriptorIds: [5], ratings: {} }), { adultFlag: false, matureFlag: true });
-  assert.deepEqual(classifyContentRating({ descriptorIds: [], ratings: { pegi: { rating: '18' } } }), { adultFlag: false, matureFlag: true });
-  assert.deepEqual(classifyContentRating({ requiredAge: 18, descriptorIds: [], ratings: {} }), { adultFlag: false, matureFlag: true });
+  assert.deepEqual(classifyContentRating({ descriptorIds: [2], ratings: {} }), { adultFlag: false, explicitFlag: false, matureFlag: true });
+  assert.deepEqual(classifyContentRating({ descriptorIds: [5], ratings: {} }), { adultFlag: false, explicitFlag: false, matureFlag: true });
+  assert.deepEqual(classifyContentRating({ descriptorIds: [], ratings: { pegi: { rating: '18' } } }), { adultFlag: false, explicitFlag: false, matureFlag: true });
+  assert.deepEqual(classifyContentRating({ requiredAge: 18, descriptorIds: [], ratings: {} }), { adultFlag: false, explicitFlag: false, matureFlag: true });
   // 正常内容
-  assert.deepEqual(classifyContentRating({ requiredAge: 12, descriptorIds: [1], ratings: { esrb: { rating: 'T' } } }), { adultFlag: false, matureFlag: false });
+  assert.deepEqual(classifyContentRating({ requiredAge: 12, descriptorIds: [1], ratings: { esrb: { rating: 'T' } } }), { adultFlag: false, explicitFlag: false, matureFlag: false });
+  // 3+4 同时出现（含部分性内容 + 频繁裸露）：adult 与 explicit 同时为 true
+  assert.deepEqual(classifyContentRating({ descriptorIds: [3, 4], ratings: {} }), { adultFlag: true, explicitFlag: true, matureFlag: false });
 });
 
 test('normalizeOfficial：解析分级字段（docs §3）', () => {
@@ -74,8 +76,8 @@ test('迁移：加列幂等 + 免费批量置位 + 统计新口径', async () =>
   try {
     // 列存在（migrate 二次执行也幂等）
     await db.migrate(store);
-    const cols = (await q("select column_name from information_schema.columns where table_name = 'games' and column_name in ('steam_status','steam_checked_at','required_age','content_descriptors','age_ratings','adult_flag','mature_flag')")).rows;
-    assert.equal(cols.length, 7, '7 个新列都在');
+    const cols = (await q("select column_name from information_schema.columns where table_name = 'games' and column_name in ('steam_status','steam_checked_at','required_age','content_descriptors','age_ratings','adult_flag','explicit_flag','mature_flag')")).rows;
+    assert.equal(cols.length, 8, '8 个新列都在（FT 批加 explicit_flag）');
 
     // 免费置位：is_free 的行迁移后自动 steam_status='free'，不重复置位
     await q("insert into games (steam_appid, name, is_free) values (1001, '免费A', true), (1002, '付费B', false), (1003, '免费C', true)");

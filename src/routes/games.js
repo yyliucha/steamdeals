@@ -140,8 +140,8 @@ export async function handleGamesRoutes(ctx) {
     // hide=前台不展示（默认，由系统设置 site.adultDisplay 决定）；badge/show 不过滤
     const adult = oneOf('adult', ['hide', 'badge', 'show'], String(process.env.SITE_ADULT_DISPLAY ?? 'hide'));
     // EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：前台 rating 筛选——与后台 /api/admin/games
-    // 同一口径（adult=只看 18R；mature=只看成熟；none=只看未标注；空=不过滤）。
-    const rating = oneOf('rating', ['adult', 'mature', 'none'], '');
+    // 同一口径（adult=只看成人（宽）；explicit=只看色情游戏（严格，FT）；mature=只看成熟；none=只看未标注；空=不过滤）。
+    const rating = oneOf('rating', ['adult', 'explicit', 'mature', 'none'], '');
     // marks=unmarked：「全部」页签——排除用户已标 感兴趣/不感兴趣 的游戏（已拥有由 owned 参数排除）
     const marks = oneOf('marks', ['any', 'unmarked'], 'any');
     const compact = guestSearchPost || url.searchParams.get('compact') === '1';

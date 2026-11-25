@@ -42,7 +42,9 @@ export async function adminGameStats(q) {
            count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status = 'not_found')::int as not_found,
            count(*) filter (where g.steam_appid is not null and not g.deleted and g.steam_status is not null and g.steam_status not in ('ok','free','coming_soon','region_locked','no_price','not_found'))::int as other,
            -- 内容分级计数（docs/STEAM-SYNC-STATUS-AND-RATING.md §13.2）：成人/成熟（未标注 = total-deleted 减这两项）
+           -- FT 批（docs/EXPLICIT-RATING.md §2.4）：explicit（严格，色情游戏）= adult 子集，单独一行
            count(*) filter (where not g.deleted and g.adult_flag)::int as adult,
+           count(*) filter (where not g.deleted and g.explicit_flag)::int as explicit,
            count(*) filter (where not g.deleted and g.mature_flag)::int as mature,
            -- FH（docs/ADULT-STATS.md）：rating-backfill 回填覆盖——口径与候选谓词一致
            -- （docs/STEAM-SYNC-STATUS-AND-RATING.md §9 listRatingBackfillCandidates）：
@@ -76,6 +78,7 @@ export async function adminGameStats(q) {
     other: num('other'),
     // 内容分级计数
     adult: num('adult'),
+    explicit: num('explicit'),
     mature: num('mature'),
     // FH（docs/ADULT-STATS.md）：rating-backfill 回填覆盖（required_age 口径）
     ratingBackfilled: num('rating_backfilled'),
@@ -173,11 +176,13 @@ export function adminGamesWhereParts({ deletedParam = 'exclude', offersParam = '
         ? " and g.steam_appid is not null and g.steam_status = 'ok' and g.description is not null and g.description <> ''"
         : statusWhere;
   // 内容分级筛选（docs/STEAM-SYNC-STATUS-AND-RATING.md §13.2）：可与搜索/平台/同步状态叠加
+  // FT 批（docs/EXPLICIT-RATING.md §2.4）：加「色情游戏」（rating=explicit，严格口径）
   const ratingWhere =
     ratingParam === 'adult' ? ' and g.adult_flag'
-      : ratingParam === 'mature' ? ' and g.mature_flag'
-        : ratingParam === 'none' ? ' and not g.adult_flag and not g.mature_flag'
-          : '';
+      : ratingParam === 'explicit' ? ' and g.explicit_flag'
+        : ratingParam === 'mature' ? ' and g.mature_flag'
+          : ratingParam === 'none' ? ' and not g.adult_flag and not g.mature_flag'
+            : '';
   return { deletedWhere, offersWhere, syncWhere, ratingWhere };
 }
 
@@ -199,7 +204,7 @@ export async function listAdminGames(q, { kw = '', deletedWhere = '', offersWher
   const rows = await q(
     'select g.id, g.steam_appid, coalesce(nullif(g.name, \'\'), nullif(g.name_en, \'\'), \'appid:\' || g.steam_appid) as name, g.name_en, g.app_type, g.blocked, g.deleted, g.deleted_at, g.updated_at, ' +
     '(g.description is not null and g.description <> \'\') as has_desc, ' +
-    'g.steam_status, g.steam_checked_at, g.required_age, g.adult_flag, g.mature_flag, ' +
+    'g.steam_status, g.steam_checked_at, g.required_age, g.adult_flag, g.explicit_flag, g.mature_flag, ' +
     '(select count(*) from offers o where o.game_id = g.id) as offer_count, ' +
     '(select min(o.price_cents) from offers o where o.game_id = g.id and o.platform_code = \'steam\' and o.in_stock) as steam_price, ' +
     // 平台列：这款游戏当前有报价的渠道（多个用数组，前端渲染成多个标签）

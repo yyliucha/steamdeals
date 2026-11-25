@@ -647,6 +647,7 @@ const commands = {
   backfill: opsDomain.commands.backfill,
   rename: opsDomain.commands.rename,
   'rating-backfill': opsDomain.commands['rating-backfill'],
+  'explicit-backfill': opsDomain.commands['explicit-backfill'],
   'search-tokens': opsDomain.commands['search-tokens'],
   heat: opsDomain.commands.heat,
   'steam-status': syncDomain.trackedCommands['steam-status'],
@@ -849,6 +850,9 @@ async function main() {
   rating-backfill      内容分级回填：逐 appid 用内容区（sync.contentRegion，默认 us）重采 content_descriptors/required_age/age_ratings
                        （EF 批 §9：国区商店隐藏成人内容，cc=cn 采不到 → adult_flag 全库仅约 20 个）
                        --limit 200000 --batch 30 --rate 1500（限速 ≥1s；429 收轮 exit 75；断点续跑）
+  explicit-backfill    色情游戏（严格分级）存量回填：候选 = adult_flag=true 且 explicit_flag=false 的成人游戏
+                       （FT 批 docs/EXPLICIT-RATING.md §2.2：存量约 4759 个，重采判定 descriptor 4/ESRB AO）
+                       --limit 5000 --batch 30 --rate 1500（限速 ≥1s；429 收轮 exit 75；1 天冷却断点续跑）
   search-tokens        派生搜索 token 重建：增量（token 空/未生成/名字已变更，--limit 50000 每轮）
                        --full 全量重建（19.8 万行预算内完成；纯本地计算，无 Steam 请求）
   heat                 热度回填：评测数 + 发行日期（逐 appid 请求，约 1.7s/款）

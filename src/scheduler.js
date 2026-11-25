@@ -34,7 +34,7 @@ export const STEAM_STATUS_LIMIT_DEFAULT = 20000;
 // 改后台「Steam 账号」组手动按钮触发（steamClaimArgs 取参数，未配置时返回 null）。
 export const JOB_GROUPS = [
   { name: 'steam-prices', label: 'Steam 价格', steps: ['steam-prices'] },
-  { name: 'steam-meta', label: 'Steam 元数据', steps: ['steam-status', 'rating-backfill', 'backfill', 'rename'] },
+  { name: 'steam-meta', label: 'Steam 元数据', steps: ['steam-status', 'rating-backfill', 'explicit-backfill', 'backfill', 'rename'] },
   { name: 'multi-platform', label: '多平台报价', steps: ['sonkwo', 'itad', 'gog', 'humble'] },
   { name: 'catalog-discovery', label: '目录与发现', steps: ['catalog', 'steam-discovery', 'discover'] },
   { name: 'images', label: '图片同步', steps: ['images', 'images-backfill'] },
@@ -146,6 +146,17 @@ export function jobsFromEnv(env = process.env) {
       args: ['rating-backfill', '--limit', String(num(env.STEAM_RATING_BACKFILL_LIMIT, 20000)), '--batch', '30', '--rate', String(num(env.STEAM_RATING_BACKFILL_RATE_MS, 1500))],
       intervalMin: num(env.STEAM_RATING_BACKFILL_INTERVAL_MIN, 1440),
       initialDelaySec: num(env.STEAM_RATING_BACKFILL_INITIAL_DELAY_SEC, 14400),
+      enabled: env.STEAM_ENABLED !== '0',
+    },
+    {
+      name: 'explicit-backfill',
+      // FT 批（docs/EXPLICIT-RATING.md §2.2）：色情游戏（严格分级）存量回填——候选 =
+      // adult_flag=true 且 explicit_flag=false（存量约 4759 个，约 2 小时/轮）；1 天冷却断点续跑，
+      // explicit=true 退出候选收敛。以存量回填为主、手动「立即运行」触发，默认 7 天兜底重扫一次
+      // （冷却 1 天，7 天间隔下每轮重扫存量、可捕捉 descriptor 变更）；STEAM_HEAVY 互斥串行。
+      args: ['explicit-backfill', '--limit', String(num(env.STEAM_EXPLICIT_BACKFILL_LIMIT, 5000)), '--batch', '30', '--rate', String(num(env.STEAM_EXPLICIT_BACKFILL_RATE_MS, 1500))],
+      intervalMin: num(env.STEAM_EXPLICIT_BACKFILL_INTERVAL_MIN, 10080),
+      initialDelaySec: num(env.STEAM_EXPLICIT_BACKFILL_INITIAL_DELAY_SEC, 21600),
       enabled: env.STEAM_ENABLED !== '0',
     },
     {
@@ -460,7 +471,7 @@ const SYNC_LIKE = new Set(['steam', 'sonkwo', 'itad', 'gog', 'humble', 'discover
 // Steam 重任务：与后台手动同步/回填/热度共用配额与槽位，有手动任务在跑时让路。
 // 它们都打 store.steampowered.com/appdetails（200 次/5 分钟配额），必须串行互斥。
 // steam-status 也在其中（X 批）：逐 appid 全量请求，与价格/热度/回填并列重任务槽。
-export const STEAM_HEAVY = new Set(['steam-prices', 'rename', 'backfill', 'rating-backfill', 'heat', 'steam-status', 'steam-discovery', 'catalog']);
+export const STEAM_HEAVY = new Set(['steam-prices', 'rename', 'backfill', 'rating-backfill', 'explicit-backfill', 'heat', 'steam-status', 'steam-discovery', 'catalog']);
 
 // FP 批（docs/SYNC-HARDENING.md §2 P1）：heavy 分两槽——heavySteam（价格/状态/回填/发现，STEAM_HEAVY）
 // 与 heavyMaint（backup/prune/logs）互不影响，同一时刻各槽最多一个任务。
@@ -652,7 +663,7 @@ export function describeSchedule(jobs) {
 // ---------------------------------------------------------------- AC-4：每日 Steam 配额预算
 
 /** AC-4 的五个 Steam 重任务 mode 列表（B3 批共用：预算/任务卡估算只覆盖这五个；EF 批加 rating-backfill）。 */
-export const STEAM_BUDGET_MODES = ['steam-prices', 'heat', 'steam-status', 'backfill', 'rating-backfill'];
+export const STEAM_BUDGET_MODES = ['steam-prices', 'heat', 'steam-status', 'backfill', 'rating-backfill', 'explicit-backfill'];
 
 /**
  * AC-4 单轮理论耗时（秒）——口径与任务实现一致：
@@ -661,6 +672,7 @@ export const STEAM_BUDGET_MODES = ['steam-prices', 'heat', 'steam-status', 'back
  *  - steam-status：每款平均 2 次请求 × rate；
  *  - backfill：每 100 款一批 GetItems 间隔 3s + 每批最多 10 个单条回退（各 0.4s）；
  *  - rating-backfill（EF 批）：每款 1 次请求 × rate（默认 1.5s）。
+ *  - explicit-backfill（FT 批）：每款 1 次请求 × rate（默认 1.5s）。
  */
 export function theoreticalRunSeconds(env = process.env) {
   const backfillLimit = num(env.STEAM_BACKFILL_LIMIT, 20000);
@@ -670,6 +682,7 @@ export function theoreticalRunSeconds(env = process.env) {
     'steam-status': num(env.STEAM_STATUS_LIMIT, 20000) * 2 * (num(env.STEAM_STATUS_RATE_MS, 1500) / 1000),
     backfill: (backfillLimit / 100) * 3 + (backfillLimit / 100) * 10 * 0.4,
     'rating-backfill': num(env.STEAM_RATING_BACKFILL_LIMIT, 20000) * (num(env.STEAM_RATING_BACKFILL_RATE_MS, 1500) / 1000),
+    'explicit-backfill': num(env.STEAM_EXPLICIT_BACKFILL_LIMIT, 5000) * (num(env.STEAM_EXPLICIT_BACKFILL_RATE_MS, 1500) / 1000),
   };
 }
 
@@ -688,6 +701,7 @@ export function steamDailyBudgetMinutes(env = process.env, observed = null) {
     'steam-status': perDay(num(env.STEAM_STATUS_INTERVAL_MIN, 1440)),
     backfill: perDay(num(env.STEAM_BACKFILL_INTERVAL_MIN, 1440)),
     'rating-backfill': perDay(num(env.STEAM_RATING_BACKFILL_INTERVAL_MIN, 1440)),
+    'explicit-backfill': perDay(num(env.STEAM_EXPLICIT_BACKFILL_INTERVAL_MIN, 10080)),
   };
   const secOf = (mode) => {
     const obs = observed?.get?.(mode);
@@ -699,6 +713,7 @@ export function steamDailyBudgetMinutes(env = process.env, observed = null) {
   const backfillRoundMin = secOf('backfill') / 60;
   const backfillDailyMin = (secOf('backfill') * runsPerDay.backfill) / 60;
   const ratingBackfillDailyMin = (secOf('rating-backfill') * runsPerDay['rating-backfill']) / 60;
+  const explicitBackfillDailyMin = (secOf('explicit-backfill') * runsPerDay['explicit-backfill']) / 60;
   return {
     priceMin,
     heatMin,
@@ -706,7 +721,8 @@ export function steamDailyBudgetMinutes(env = process.env, observed = null) {
     backfillRoundMin,
     backfillDailyMin,
     ratingBackfillDailyMin,
-    total: priceMin + heatMin + statusMin + backfillDailyMin + ratingBackfillDailyMin,
+    explicitBackfillDailyMin,
+    total: priceMin + heatMin + statusMin + backfillDailyMin + ratingBackfillDailyMin + explicitBackfillDailyMin,
   };
 }
 
@@ -746,7 +762,7 @@ export function applySteamBudget(jobs, env = process.env, logger = null, observe
     });
     return { jobs, budget, adjusted: false };
   }
-  const others = budget.priceMin + budget.heatMin + budget.backfillDailyMin + budget.ratingBackfillDailyMin;
+  const others = budget.priceMin + budget.heatMin + budget.backfillDailyMin + budget.ratingBackfillDailyMin + budget.explicitBackfillDailyMin;
   const statusTargetMin = Math.max(120, 1440 - others); // 至少给 status 留 2 小时
   // B3 批：每款速率优先用实测（observed 平均秒 ÷ 当前限额），没有实测才用理论 2×rate
   const statusLimit = num(env.STEAM_STATUS_LIMIT, 20000);
@@ -791,6 +807,7 @@ export function auditJobs(env = process.env) {
     ['steam-status', 'STEAM_ENABLED'],
     ['rename', 'STEAM_ENABLED'],
     ['rating-backfill', 'STEAM_ENABLED'],
+    ['explicit-backfill', 'STEAM_ENABLED'],
     ['backfill', 'STEAM_ENABLED'],
     ['sonkwo', 'SONKWO_ENABLED'],
     ['itad', 'ITAD_ENABLED'],

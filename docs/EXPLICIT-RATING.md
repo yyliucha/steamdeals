@@ -1,4 +1,4 @@
-# 成人内容分级细分：成人内容（宽）/ 色情游戏（严格）（FT，待开发，2026-11-25）
+# 成人内容分级细分：成人内容（宽）/ 色情游戏（严格）（FT，已实现待发版，2026-11-25）
 
 > 所有者要求（2026-11-25）：现在的 `adult_flag`（descriptor 3/4/AO）把 **Cyberpunk 2077** 这类「含部分性内容的正常游戏」
 > 也算成成人内容，但我们要的是**色情游戏（黄油）**。需要两级口径：
@@ -44,3 +44,20 @@
 2. 前台筛选「色情游戏」只出 explicit（抽查：2077 不出现；典型黄油出现）；
 3. 后台统计两行数字正确；「内容分级」筛选可选色情游戏；
 4. 存量回填命令可跑（4759 个，2 小时内）；`npm test`（分段）+ `frontend:build` + `scan` 全绿；截图。
+
+## 4. 实现记录（2026-11-25）
+
+- **数据层**：`games.explicit_flag`（默认 false）迁移；`classifyContentRating` 返回 `{ adultFlag, explicitFlag, matureFlag }`
+  （explicit = descriptor 4 或 ESRB AO）；`setSteamStatus`/`applySteamDetails` 写入路径（null 不覆盖）。
+- **存量回填**：`node src/cli.js explicit-backfill --limit 5000 --rate 1500`——候选 = `adult_flag=true 且 explicit_flag=false`
+  （backfill_at 1 天冷却断点续跑；explicit=true 退出候选收敛）；429 收轮 exit 75；调度器并入 steam-meta 组
+  （默认 7 天兜底，后台任务卡「色情游戏回填 → 立即运行」走 `POST /api/admin/explicit-backfill`）。
+- **前台/App**：筛选入口文案「色情游戏」、请求 `rating=explicit`；18+ 角标只对 explicit；`rating=adult` 保留为
+  宽口径筛选（契约兼容）；hide 仍排除全部成人内容（宽口径）；App 端 Dtos/GameCard/Home/Search/strings 同步。
+- **后台**：「内容分级统计」拆「成人内容（宽）/色情游戏（严格）」两行；「内容分级」筛选加「色情游戏（严格）」。
+- **验证**：`test/explicit-rating.test.js` 7 条（判定/迁移/候选/回填收敛/写回/筛选/统计）；主链 test:1~4 共 1263 项全绿；
+  api 40/40；headless Chrome DOM 断言 11/11（后台两行 宽=2 严格=1、后台筛选只出黄油、前台按钮/角标/筛选）；
+  frontend:build ✓、scan 干净；App testDebugUnitTest 全绿 + assembleDebug 成功。
+- **部署后操作**：执行 `node src/cli.js explicit-backfill --limit 5000 --rate 1500`（约 2 小时）或在后台
+  「游戏管理 → 同步与回填」任务卡点「色情游戏回填 → 立即运行」；回填完成后 `explicit_flag` 数量应 < `adult_flag`
+  （2077 为宽成人、非色情游戏）。

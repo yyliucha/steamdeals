@@ -21,7 +21,7 @@ const ADMIN_COUNT_SQL =
 const ADMIN_ROWS_SQL =
   "select g.id, g.steam_appid, coalesce(nullif(g.name, ''), nullif(g.name_en, ''), 'appid:' || g.steam_appid) as name, g.name_en, g.app_type, g.blocked, g.deleted, g.deleted_at, g.updated_at, " +
   "(g.description is not null and g.description <> '') as has_desc, " +
-  "g.steam_status, g.steam_checked_at, g.required_age, g.adult_flag, g.mature_flag, " +
+  "g.steam_status, g.steam_checked_at, g.required_age, g.adult_flag, g.explicit_flag, g.mature_flag, " +
   "(select count(*) from offers o where o.game_id = g.id) as offer_count, " +
   "(select min(o.price_cents) from offers o where o.game_id = g.id and o.platform_code = 'steam' and o.in_stock) as steam_price, " +
   "(select coalesce(array_agg(distinct p.name), '{}') from offers o2 join platforms p on p.code = o2.platform_code where o2.game_id = g.id) as platform_names, " +
