@@ -20,9 +20,33 @@ async function fresh() {
   return { store, q };
 }
 
-test('设置定义完整：100 项、8 个密钥、关键分组都在', () => {
-  assert.equal(settings.SETTINGS.length, 100, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项 + DR app.syncIntervalMin 1 项 + EI 同步区域 3 项 + EK appSyncProxy 1 项 + EN CSP 模式 1 项 + FK App 同步换源 3 项');
+test('设置定义完整：102 项、8 个密钥、关键分组都在', () => {
+  assert.equal(settings.SETTINGS.length, 102, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项 + DR app.syncIntervalMin 1 项 + EI 同步区域 3 项 + EK appSyncProxy 1 项 + EN CSP 模式 1 项 + FK App 同步换源 3 项 + FV head/foot 注入 2 项');
   assert.equal(settings.SETTINGS.filter((d) => d.secret).length, 8);
+
+test('FV：head/foot 注入设置项——text 类型、默认空、env 兜底、20KB 校验上限', () => {
+  const head = settings.SETTING_MAP.get('site.headInjection');
+  const foot = settings.SETTING_MAP.get('site.footInjection');
+  assert.ok(head && foot, 'FV 批：site.headInjection / site.footInjection 已定义');
+  for (const d of [head, foot]) {
+    assert.equal(d.type, 'text', `${d.key} 是 text（后台多行输入框）`);
+    assert.equal(d.group, 'site', `${d.key} 属 site 分组`);
+    assert.equal(d.default, '', `${d.key} 默认空（无注入）`);
+    assert.equal(d.section, 'site', `${d.key} 进「站点与内容」卡`);
+    assert.equal(d.secret, false, `${d.key} 不是密钥（管理员可见回显）`);
+  }
+  assert.equal(head.env, 'SITE_HEAD_INJECTION', 'env 兜底 SITE_HEAD_INJECTION');
+  assert.equal(foot.env, 'SITE_FOOT_INJECTION', 'env 兜底 SITE_FOOT_INJECTION');
+  // 20KB 字节边界：恰好允许、超 1 字节拒绝；trim 两端空白、内部换行保留
+  const ok = 'a'.repeat(settings.HEAD_FOOT_INJECTION_MAX_BYTES);
+  assert.deepEqual(settings.validateSetting(head, ok), { ok: true, value: ok }, '恰好 20KB 允许');
+  assert.equal(settings.validateSetting(head, ok + 'a').ok, false, '超 20KB 拒绝');
+  assert.deepEqual(
+    settings.validateSetting(foot, '  <script src="x"></script>\n'),
+    { ok: true, value: '<script src="x"></script>' },
+    'trim 两端空白、内部换行保留',
+  );
+});
   const appSync = settings.SETTINGS.find((d) => d.key === 'app.syncIntervalMin');
   assert.ok(appSync, 'DR 批：app.syncIntervalMin 设置项存在');
   assert.equal(appSync.default, 15, 'DR 批：App Release 同步间隔默认 15 分钟（原 60）');
@@ -387,8 +411,9 @@ test('CQ meta：sources/site/advanced 全有 section+tier；6 张平台卡每卡
   assert.equal(adv.length, 4, '高级 4 折叠组');
   assert.deepEqual(adv.map((s) => s.id), ['schedule', 'backup', 'cache', 'timezone'], '调度与熔断/备份与日志/缓存与图片/时区与显示');
   const site = sections.find((s) => s.group === 'site' && s.id === 'site');
-  assert.equal(site.keys.length, 4, '站点常用 4 项');
+  assert.equal(site.keys.length, 6, '站点常用 6 项（FV 批 head/foot 注入 2 项）');
   assert.ok(site.keys.includes('system.timezone'), '时区在站点常用（§2.3）');
+  assert.ok(site.keys.includes('site.headInjection') && site.keys.includes('site.footInjection'), 'FV：head/foot 注入在站点常用');
   const recommend = sections.find((s) => s.group === 'site' && s.id === 'recommend');
   assert.ok(recommend, '推荐与评分折叠存在');
   // 质检打回项：推荐与评分折叠 4 项（口味权重进折叠），行为开关放卡体常用

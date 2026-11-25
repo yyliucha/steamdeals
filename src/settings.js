@@ -35,6 +35,10 @@ export const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error'];
 // report-only 只作观察/收敛期用，off 供紧急回滚。
 export const CSP_MODES = ['enforce', 'report-only', 'off'];
 
+// FV 批（docs/HEAD-FOOT-INJECTION.md §4）：head/foot 注入单段上限（UTF-8 字节），
+// 校验层（validateSetting）与服务端注入层（server.js 的 injectSpaHtml）共用同一常量，防两层口径漂移。
+export const HEAD_FOOT_INJECTION_MAX_BYTES = 20 * 1024;
+
 // ---------------------------------------------------------------- CQ 批（docs/SETTINGS-IA.md §2.6）
 // 渲染 meta：section（卡/折叠组 id）/ tier（primary 常用 | advanced 进折叠）/ sum（折叠标题行摘要模板，{v}=当前值）。
 // 只加展示元数据，不改任何 key / 默认值 / env / 语义。
@@ -79,6 +83,9 @@ const SETTINGS_META = {
   // 站点与内容——常用 4 项 + 推荐与评分折叠
   'site.adultDisplay': { section: 'site', tier: 'primary' },
   'site.publicUrl': { section: 'site', tier: 'primary' },
+  // FV 批（docs/HEAD-FOOT-INJECTION.md §2）：head/foot 注入——站点与内容卡常用区（text 多行）
+  'site.headInjection': { section: 'site', tier: 'primary' },
+  'site.footInjection': { section: 'site', tier: 'primary' },
   'app.mobileRedirectEnabled': { section: 'site', tier: 'primary' },
   'app.syncIntervalMin': { section: 'schedule', tier: 'advanced', sum: 'App 版本同步 {v} 分' },
   'system.timezone': { section: 'site', tier: 'primary' },
@@ -121,7 +128,7 @@ export const SETTINGS_SECTIONS = [
   // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：跨组 keys（site.baseRegion/baseCurrency 属 site 组，
   // 但展示归「同步区域」卡）——与 system.timezone 进「站点与内容」卡同款机制。
   { group: 'sources', id: 'sync-region', title: '同步区域', icon: '🌍', hint: '内容统一美国 · 价格本位币', keys: ['sync.contentRegion', 'site.baseRegion', 'site.baseCurrency'] },
-  { group: 'site', id: 'site', title: '站点与内容', icon: '🌐', keys: ['site.adultDisplay', 'site.publicUrl', 'app.mobileRedirectEnabled', 'system.timezone'] },
+  { group: 'site', id: 'site', title: '站点与内容', icon: '🌐', keys: ['site.adultDisplay', 'site.publicUrl', 'app.mobileRedirectEnabled', 'system.timezone', 'site.headInjection', 'site.footInjection'] },
   { group: 'site', id: 'recommend', title: '推荐与评分', icon: '⭐', foldTitle: '推荐与评分' },
   { group: 'advanced', id: 'schedule', title: '调度与熔断', icon: '🔧', foldTitle: '调度与熔断' },
   { group: 'advanced', id: 'backup', title: '备份与日志', icon: '🗄️', foldTitle: '备份与日志' },
@@ -184,6 +191,14 @@ export const SETTINGS = [
   // CB 批（docs/PRICE-REPORT-EMAIL.md §3.4）：邮件/后台生成的站内链接基准地址（CLI 场景拿不到 req）
   def('site.publicUrl', 'SITE_PUBLIC_URL', 'site', '站点公开地址', 'string', 'https://sd.yyliucha.cn', {
     help: '价格报表邮件里的站内链接（首页/搜索/CTA）以它为准；留空回退默认值。',
+  }),
+  // FV 批（docs/HEAD-FOOT-INJECTION.md §2）：站点 head/foot 注入——原样 HTML（RUM/统计脚本），
+  // 后台设置页自动渲染（text 多行输入框）；保存即热加载，无需改代码发版。
+  def('site.headInjection', 'SITE_HEAD_INJECTION', 'site', 'Head 注入（</head> 前）', 'text', '', {
+    help: '原样 HTML 注入到 </head> 前，仅填可信代码（如 RUM/统计脚本）；最长 20KB。保存后刷新页面即生效，无需发版。',
+  }),
+  def('site.footInjection', 'SITE_FOOT_INJECTION', 'site', 'Foot 注入（</body> 前）', 'text', '', {
+    help: '原样 HTML 注入到 </body> 前，仅填可信代码；最长 20KB。保存后刷新页面即生效，无需发版。',
   }),
   // CA-5（docs/APP-NATIVE.md §5）：手机浏览器前台跳转 /app（默认关闭，等原生 App（CG）发布后开启）
   def('app.mobileRedirectEnabled', 'APP_MOBILE_REDIRECT_ENABLED', 'site', '手机浏览器前台跳转 /app', 'bool', false, {
@@ -560,13 +575,17 @@ export function validateSetting(d, input) {
     if (!d.options?.includes(value)) return { ok: false, error: `${d.label} 只能是 ${d.options?.join(' / ')}` };
     return { ok: true, value };
   }
-  // string / secret
+  // string / secret / text（FV 批：text = 多行 HTML 注入，上限按 UTF-8 字节 20KB 而非 4096 字符）
   if (input == null) return { ok: false, error: `${d.label} 不能为 null` };
   let value = String(input).trim();
   if (d.type === 'secret') {
     // 密钥不 trim 内部空格，但两端空白没有意义
     value = String(input).trim();
     if (value.length > 4096) return { ok: false, error: `${d.label} 过长` };
+  } else if (d.type === 'text') {
+    if (Buffer.byteLength(value, 'utf8') > HEAD_FOOT_INJECTION_MAX_BYTES) {
+      return { ok: false, error: `${d.label} 超过 20KB 上限` };
+    }
   } else if (value.length > 4096) {
     return { ok: false, error: `${d.label} 过长` };
   }

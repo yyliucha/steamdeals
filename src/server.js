@@ -932,7 +932,7 @@ export function createApiServer({
       // CA-1：/api/app/* 豁免设备封禁与 IP 黑名单（App 端自行按 /api/app/status 处理封禁提示）
       const deviceBan = deviceId && !appNamespace && !adminBypass && !whitelisted ? devices.isBanned({ deviceId }) : null;
       if (deviceBan && !appealExempt) {
-        if (req.method === 'GET' && isFrontendAsset(path)) return serveFrontendStatic(res, frontendDir, outDir, path);
+        if (req.method === 'GET' && isFrontendAsset(path)) return serveFrontendStatic(res, frontendDir, outDir, path, { logger });
         logger?.warn('device.denied', { ip, deviceId, until: deviceBan.until });
         logBlocked({ ip, req, path, status: 403, reason: '设备已被封禁' });
         return denyBanned(req, res, { status: 403, until: deviceBan.until, reason: '设备已被封禁', ip });
@@ -962,7 +962,7 @@ export function createApiServer({
         return res;
       };
       if (hit && !appealExempt) {
-        if (req.method === 'GET' && isFrontendAsset(path)) return serveFrontendStatic(res, frontendDir, outDir, path);
+        if (req.method === 'GET' && isFrontendAsset(path)) return serveFrontendStatic(res, frontendDir, outDir, path, { logger });
         logger?.warn('block.ip_denied', { ip, path, rule: hit });
         logBlocked({ ip, req, path, status: 403, reason: `IP 黑名单（${hit}）` });
         return denyBanned(req, res, { status: 403, reason: '访问被拒绝', ip });
@@ -976,7 +976,7 @@ export function createApiServer({
         const bucket = guard.isAssetPath(path) ? 'asset' : path.startsWith('/api/') ? 'api' : 'page';
         const verdict = await ratelimit.hit(q, ip, { bucket });
         if (verdict.limited) {
-          if (req.method === 'GET' && isFrontendAsset(path)) return serveFrontendStatic(res, frontendDir, outDir, path);
+          if (req.method === 'GET' && isFrontendAsset(path)) return serveFrontendStatic(res, frontendDir, outDir, path, { logger });
           const until = Number(verdict.until) || 0;
           logger?.warn('rate.limited', {
             ip,
@@ -1095,7 +1095,7 @@ export function createApiServer({
           path === '/favicon.ico' ||
           path === '/apple-touch-icon.png'
         ) {
-          return serveFrontendStatic(res, frontendDir, outDir, path);
+          return serveFrontendStatic(res, frontendDir, outDir, path, { logger });
         }
         if (path.startsWith('/api/setup/')) {
           const handled = await handleSetupRoutes({
@@ -1221,7 +1221,7 @@ export function createApiServer({
       // 注意：/img/ 是服务端图片代理路由（本地缓存 → CDN 兜底），不能当静态文件处理，
       // 否则会直接 404——这正是之前"前台只有名字没有图"的真正原因。
       if (!path.startsWith('/api/') && !path.startsWith('/img/')) {
-        return serveFrontendStatic(res, frontendDir, outDir, path);
+        return serveFrontendStatic(res, frontendDir, outDir, path, { logger });
       }
 
       // ---- EN 批（docs/CSP-HARDENING.md §2）：CSP 违规上报——只记日志（csp.violation），不落敏感数据 ----
@@ -2208,11 +2208,77 @@ export const FRONTEND_PAGES = [
   '/app/',
 ];
 
+/**
+ * FV 批（docs/HEAD-FOOT-INJECTION.md §2/§4）：SPA HTML 的 head/foot 注入。
+ * - head 插到 `</head>` 前、foot 插到 `</body>` 前（找不到锚点则跳过该段并记日志）；
+ * - 注入内容里的内联 `<script>`（无 src、无 nonce）自动打上本请求 nonce——CSP 严格档
+ *   不含 'unsafe-inline'，注入脚本必须带 nonce 才能执行（serveBanPage 同款先例）；
+ * - 单段超过 HEAD_FOOT_MAX_BYTES 拒绝注入并记 http.head_injection_skipped，**不截断**
+ *   （截断会产生半截标签破坏页面结构，拒绝可预期且可观测）；
+ * - 无任何注入内容时原样返回（调用方据此保持原静态发送行为，字节级一致）。
+ */
+export const HEAD_FOOT_MAX_BYTES = settings.HEAD_FOOT_INJECTION_MAX_BYTES;
+
+export function injectSpaHtml(html, { head = '', foot = '', nonce = '', logger = null } = {}) {
+  const headPart = String(head ?? '').trim();
+  const footPart = String(foot ?? '').trim();
+  if (!headPart && !footPart) return String(html);
+
+  // 只对无 src、无 nonce 的内联 <script> 打 nonce：外链脚本由 'self' 放行、已有 nonce 不重复打
+  const nonceScripts = (fragment) => {
+    if (!nonce || !fragment) return fragment;
+    return fragment.replace(/<script\b([^>]*)>/gi, (whole, attrs) => {
+      if (/\bsrc\s*=/i.test(attrs) || /\bnonce\s*=/i.test(attrs)) return whole;
+      return `<script nonce="${nonce}"${attrs}>`;
+    });
+  };
+
+  const skip = (slot, detail) => logger?.warn('http.head_injection_skipped', { slot, ...detail });
+
+  let out = String(html);
+  const apply = (slot, part, anchor) => {
+    if (!part) return;
+    const bytes = Buffer.byteLength(part, 'utf8');
+    if (bytes > HEAD_FOOT_MAX_BYTES) {
+      skip(slot, { reason: 'too_long', bytes, limit: HEAD_FOOT_MAX_BYTES });
+      return;
+    }
+    const idx = out.toLowerCase().indexOf(anchor);
+    if (idx < 0) {
+      skip(slot, { reason: 'no_anchor', anchor });
+      return;
+    }
+    out = out.slice(0, idx) + nonceScripts(part) + out.slice(idx);
+  };
+  apply('head', headPart, '</head>');
+  apply('foot', footPart, '</body>');
+  return out;
+}
+
 /** Vue 构建产物负责站点所有页面；无构建产物时回退到 web 目录。 */
-export function serveFrontendStatic(res, frontendDir, outDir, pathname) {
+export function serveFrontendStatic(res, frontendDir, outDir, pathname, { logger = null } = {}) {
   if (!frontendDir || !existsSync(resolve(frontendDir, 'index.html'))) return serveStatic(res, outDir, pathname);
   if (FRONTEND_PAGES.includes(pathname)) {
-    return serveStatic(res, frontendDir, '/index.html');
+    // FV 批（docs/HEAD-FOOT-INJECTION.md §2）：有注入配置时读 dist/index.html → 注入 → 发送；
+    // 无配置保持原静态发送行为（body 与响应头字节级一致）。注入只发生在本白名单分支——
+    // /assets/、/app/*.apk 等走下方静态资源分支，天然不注入（测试锁住）。
+    const head = String(process.env.SITE_HEAD_INJECTION ?? '').trim();
+    const foot = String(process.env.SITE_FOOT_INJECTION ?? '').trim();
+    if (!head && !foot) return serveStatic(res, frontendDir, '/index.html');
+    const html = injectSpaHtml(readFileSync(resolve(frontendDir, 'index.html'), 'utf8'), {
+      head,
+      foot,
+      nonce: res.cspNonce ?? '',
+      logger,
+    });
+    res.writeHead(200, {
+      'content-type': TYPES['.html'],
+      'content-length': Buffer.byteLength(html, 'utf8'),
+      // 注入内容变更后客户端不能拿旧 HTML（无注入的 index.html 维持 serveStatic 原有 no-cache 口径）
+      'cache-control': 'no-cache',
+    });
+    res.end(html);
+    return;
   }
   if (pathname.startsWith('/assets/') || isFrontendPublicFile(pathname)) {
     // BS 批：assetlinks.json / sw.js / app/*.apk 不走 max-age 缓存
