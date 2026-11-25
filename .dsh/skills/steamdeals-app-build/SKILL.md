@@ -52,6 +52,12 @@ description: SteamDeals App（F:\dsh\steamdeals-app，yyliucha/steamdeals-app）
 5. **打 tag 推 tag**：`git tag -a app-vX.Y.Z -m "SteamDeals App vX.Y.Z：<摘要>"` → 推送。
 6. **建 Release**：`gh release create app-vX.Y.Z <apk> <sha256 文件> <latest.json> --title "SteamDeals App X.Y.Z" --notes "<摘要>"`；
    三资产缺一不可（站点 `app-release-sync` 从 Release 资产读 versionCode 与下载链接）。
+
+7.1 **强制**：发版完成（GitHub Release 建好后）**必须执行 COS 上传**，否则站点切 cos 源后拉不到新版——
+   用脚本：`pwsh -File F:\dsh\gameprice\scripts\upload-cos.ps1 -Bucket <bucket> -Region ap-shanghai -Version <x.y.z> -Dir <产物目录>`；
+   脚本会校验三件资产（apk/sha256/latest.json）并回读远端确认；**coscli 未安装/凭证未配置 → 中止发版并汇报所有者**（不得静默跳过）；
+   上传成功后在发版汇报里贴「COS 上传完成：cos://<bucket>/steamdeals-app/」。
+
 7. **COS 双上传（FK 批，docs/APP-SYNC-COS.md）**：站点服务器直连 GitHub 资产会被中断（curl 56），生产同步源
    已可切到腾讯云 COS——GitHub Release 照建（备用通道），**同一套三资产必须同步上传 COS**，否则切源后站点
    拉不到新版。凭证只配在所有者本机（coscli 配置文件），**不入库、不写明文到命令/日志**：
