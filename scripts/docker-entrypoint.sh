@@ -4,6 +4,11 @@
 #   不带参数 → 按 RUN_MODE 跑常驻调度器（默认）
 set -eu
 
+# FU：腾讯云 APM（OpenTelemetry OTLP）启动注入——对所有 node 子命令（bootstrap / serve /
+# scheduler / 一次性 CLI）统一生效。src/otel.js 里没有 APM_TOKEN 时直接返回，
+# 本地与未配置 APM 的部署不受影响；探针自身失败只打日志、不中断启动。
+export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--import ./src/otel.js"
+
 log() { echo "[entrypoint] $*"; }
 
 # 宿主机 bind mount 的属主通常不是容器里的 node(1000)，写不进去时报错很隐蔽

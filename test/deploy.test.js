@@ -58,6 +58,8 @@ test('入口脚本存在且逻辑完整', () => {
   assert.match(sh, /bootstrap/, '启动前要建表');
   assert.match(sh, /scheduler/, '默认要跑调度器');
   assert.match(sh, /set -eu/, '应当 fail fast');
+  // FU 批：所有 node 子命令统一经 NODE_OPTIONS 预加载 src/otel.js（APM 无 token 时自动跳过）
+  assert.match(sh, /NODE_OPTIONS=.*--import \.\/src\/otel\.js/, '入口必须注入 OTel 预加载模块');
 });
 
 test('构建所需文件都在（.dockerignore 不能把它们排掉）', () => {
