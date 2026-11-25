@@ -166,7 +166,7 @@
 | **FP** | ⚙️ 调整：同步机制完善（僵尸锁 P0 / backup 稳定性 / 分槽 / 提速 / 429 队列 / 时效监控） | [SYNC-HARDENING.md](SYNC-HARDENING.md) | 质检通过（2026-11-25，QA-FP 第 1 轮 ✅ 22/0/0/3；实现 0cdddb1） | ✅ 本轮已给（僵尸锁已服务器手工修复） |
 | **FQ** | ⚙️ 调整：按钮点击反馈规范（所有刷新/操作按钮 loading+成功/失败提示） | [UI-BUTTON-FEEDBACK.md](UI-BUTTON-FEEDBACK.md) | 质检通过（2026-11-25，1f70ea5） | ✅ 本轮已给 |
 | **FR** | ⚙️ 调整：backup 改为后台功能（移除调度任务/CLI 自动跑，后台按钮+列表+下载+删除，默认不自动） | [BACKUP-AS-FEATURE.md](BACKUP-AS-FEATURE.md) | 质检通过（2026-11-25，1f70ea5） | ✅ 本轮已给 |
-| **FT** | ⚙️ 调整：成人内容分级细分（宽=成人内容 / 严格=色情游戏 descriptor4/AO；2077 排除；存量重采回填） | [EXPLICIT-RATING.md](EXPLICIT-RATING.md) | 待开发（2026-11-25 P2） | ✅ 本轮已给 |
+| **FT** | ⚙️ 调整：成人内容分级细分（宽=成人内容 / 严格=色情游戏 descriptor4/AO；2077 排除；存量重采回填） | [EXPLICIT-RATING.md](EXPLICIT-RATING.md) | 已实现待发版（2026-11-25 P2，cd2829e） | ✅ 本轮已给 |
 | **EY** | ⚙️ 调整：我的愿望单合并 Steam 愿望单（两层展示、Steam 行只读无操作、同游戏合并一行） | [MY-WISHLIST-MERGED.md](MY-WISHLIST-MERGED.md) | 已发布 v2.29.0（2026-11-24，合并展示按新功能定档 → 大版本） | ✅ 本轮已给 |
 | **EZ** | ⚙️ 调整：个人资料页精简（el-tabs 三 Tab：基本信息 / Steam 账号（绑定+游戏库合并）/ 偏好与统计；保存固定底部；手机端 Tab 横向滚动；全 el-button） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 已发布 v2.28.7（2026-11-23，8eeb1f4；QA-EZ-FA 第 1 轮 ✅） | ✅ demo 已给 |
 | **FA** | ⚙️ 调整：用户菜单新增「切换账户」（退出会话 → /login?switch=1 → 登录后回 Console；保留退出登录） | [PROFILE-PAGE-SLIM.md](PROFILE-PAGE-SLIM.md) | 已发布 v2.28.7（2026-11-23，8eeb1f4；QA-EZ-FA 第 1 轮 ✅） | ✅ demo 已给 |
