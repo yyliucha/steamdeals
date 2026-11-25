@@ -47,7 +47,7 @@ test('FV-2：head/foot 注入到 </head>/</body> 前', () => {
   assert.ok(out.includes('<div id="app"></div>'), '页面原有结构保留');
 });
 
-test('FV-3：内联 script 打 nonce；外链 src 与已有 nonce 不动；nonce 空不加', () => {
+test('FV-3：内联与外链 script 都打 nonce（CSP3 nonce 对 src 有效）；已有 nonce 不动；nonce 空不加', () => {
   const frag = [
     '<script>console.log(1)</script>',
     '<script src="https://cdn.example.com/rum.js"></script>',
@@ -56,7 +56,9 @@ test('FV-3：内联 script 打 nonce；外链 src 与已有 nonce 不动；nonce
   ].join('');
   const out = injectSpaHtml(SPA, { head: frag, nonce: 'abc123' });
   assert.ok(out.includes('<script nonce="abc123">console.log(1)</script>'), '无属性内联 script 打 nonce');
-  assert.ok(out.includes('<script src="https://cdn.example.com/rum.js"></script>'), '外链 script 不动（由 self 放行）');
+  // QA 第 1 轮打回修复：严格档 script-src 'self' 会整段拦截外链 SDK，必须同样打 nonce（nonce 优先于来源匹配）
+  assert.ok(out.includes('<script nonce="abc123" src="https://cdn.example.com/rum.js"></script>'), '外链 script 打 nonce（CSP 放行前提）');
+  assert.ok(!out.includes('<script src="https://cdn.example.com/rum.js">'), '未打 nonce 的外链 script 不残留');
   assert.ok(out.includes('<script nonce="keep">'), '已有 nonce 不重复打');
   assert.ok(out.includes('<script nonce="abc123" type="module">'), '带属性的内联 script 补 nonce 且属性保留');
   const noNonce = injectSpaHtml(SPA, { head: '<script>console.log(1)</script>', nonce: '' });

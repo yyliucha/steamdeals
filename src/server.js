@@ -2224,11 +2224,13 @@ export function injectSpaHtml(html, { head = '', foot = '', nonce = '', logger =
   const footPart = String(foot ?? '').trim();
   if (!headPart && !footPart) return String(html);
 
-  // 只对无 src、无 nonce 的内联 <script> 打 nonce：外链脚本由 'self' 放行、已有 nonce 不重复打
+  // 对无 nonce 的 <script> 一律打 nonce（含外链 src）：CSP3 里 nonce 对 <script src> 同样有效——
+  // 严格档 script-src 'self' 不含第三方域，外链 RUM SDK 不打 nonce 会被整段拦截（QA 第 1 轮实测打回）。
+  // 已有 nonce 不重复打。
   const nonceScripts = (fragment) => {
     if (!nonce || !fragment) return fragment;
     return fragment.replace(/<script\b([^>]*)>/gi, (whole, attrs) => {
-      if (/\bsrc\s*=/i.test(attrs) || /\bnonce\s*=/i.test(attrs)) return whole;
+      if (/\bnonce\s*=/i.test(attrs)) return whole;
       return `<script nonce="${nonce}"${attrs}>`;
     });
   };

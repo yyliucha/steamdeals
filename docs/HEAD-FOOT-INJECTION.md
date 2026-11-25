@@ -18,7 +18,7 @@
    - 默认空；仅管理员可改；help 说明「原样 HTML 注入，仅填可信代码」；
 2. **注入实现**：
    - `serveFrontendStatic` 对 `FRONTEND_PAGES` 分支改为：读 dist/index.html → 注入 head/foot → 发送（无配置时保持原静态发送）；
-   - 注入内容中的**内联 `<script>` 自动打 nonce**（`res.cspNonce`，CSP 严格档兼容）；外部 `<script src>` 不动；
+   - 注入内容中的**内联与外链 `<script>` 自动打 nonce**（`res.cspNonce`，CSP3 中 nonce 对 `<script src>` 同样有效——严格档 `script-src 'self'` 不含第三方域，外链 RUM SDK 不打 nonce 会被整段拦截）；已有 nonce 的不重复打；
    - 缓存：`cache-control: no-cache`（或按内容 hash 的 ETag），避免注入内容更新后客户端拿旧 HTML；
 3. **RUM 用例**：后台填腾讯云 RUM 的 script 标签（SDK + 初始化），保存后刷新页面即生效（无需发版）；
 4. **安全**：管理员信任内容；限制注入长度（如 ≤ 20KB）；不注入到 API/静态资源；CSP 严格档下 nonce 由服务端处理。
