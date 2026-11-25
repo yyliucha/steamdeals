@@ -170,7 +170,7 @@
 etwork.appSyncSource（github/cos）+ ppSyncCosBase + 失败自动回退 GitHub（日志可见）；默认 github 行为零变化 |
 | **backup 后台功能（v2.30.0，FR）** | ✅ | backup 不再定时/CLI 自动跑；后台手动备份/列表/下载/删除（文件名白名单防路径穿越）；system.backupEnabled 默认关（按钮禁用 + 接口 403） |
 | **按钮点击反馈（v2.30.0，FQ）** | ✅ | 后台全部刷新/操作按钮点击即 loading 防连点 + 成功/失败提示（「已刷新/已保存/已启动」） |
-| **腾讯云 APM 接入（v2.30.0，FU）** | ✅ | OpenTelemetry OTLP 上报腾讯云 APM（APM_SAMPLE_RATE 默认 0.1）；token 由服务器 compose env 注入、无 token 自动跳过 |
+| **腾讯云 APM 接入（v2.30.0，FU；v2.30.1 gRPC 修正）** | ✅ | OpenTelemetry OTLP **gRPC**（h2c，4319）上报腾讯云 APM（APM_SAMPLE_RATE 默认 0.1）；token 走 Resource 属性、由服务器 compose env 注入；无 token 自动跳过 |
 | **站点 head/foot 注入（v2.30.0，FV）** | ✅ | 后台「站点与内容」可配 Head（</head> 前）/Foot（</body> 前）注入（20KB 上限、仅管理员、保存热加载）；注入脚本自动打 CSP nonce；无配置零变化 |
 | **异常审核规则摘要精简（AZ 批）** | ✅ | 合并视图规则摘要只显示「首规则 ×n · 共 N 条规则」，悬停弹层列全部规则（v2.8.0） |
 | **Steam 账号操作审计** | ✅ | 绑定 / 解绑 / 认领 / 同步库 / 同步愿望单 / 换 API Key / 级联删除 7 类动作落 `steam_account_logs`（失败带原因与耗时、用户被删后日志仍在），后台「操作日志 → Steam 账号」可查；保留 180 天并入每周 prune（v2.4.0） |
