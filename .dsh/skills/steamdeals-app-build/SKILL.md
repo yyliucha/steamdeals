@@ -53,12 +53,18 @@ description: SteamDeals App（F:\dsh\steamdeals-app，yyliucha/steamdeals-app）
 6. **建 Release**：`gh release create app-vX.Y.Z <apk> <sha256 文件> <latest.json> --title "SteamDeals App X.Y.Z" --notes "<摘要>"`；
    三资产缺一不可（站点 `app-release-sync` 从 Release 资产读 versionCode 与下载链接）。
 
-7.1 **强制**：发版完成（GitHub Release 建好后）**必须执行 COS 上传**，否则站点切 cos 源后拉不到新版——
-   用脚本：`pwsh -File F:\dsh\gameprice\scripts\upload-cos.ps1 -Bucket <bucket> -Region ap-shanghai -Version <x.y.z> -Dir <产物目录>`；
-   脚本会校验三件资产（apk/sha256/latest.json）并回读远端确认；**coscli 未安装/凭证未配置 → 中止发版并汇报所有者**（不得静默跳过）；
-   上传成功后在发版汇报里贴「COS 上传完成：cos://<bucket>/steamdeals-app/」。
+7.1 **三资产自托管分发（默认方案，2026-11-25 所有者定）**：App 安装包**不走 COS/GitHub 直连**，由站点自己托管。
+   **发版时必须完成（强制，缺一即未发完）**：
+   ① **更新 `latest.json`**（根目录，本次 v2.25.1 漏更的教训）：`version`=x.y.z、`versionCode`=x.yy.zz、
+      `minVersionCode` 不变、`sha256`（apk 的 SHA256 小写）、`size`（字节）、`notes`（本批 App 改动）、
+      `releasedAt`、`apkPath`=`/app/steamdeals-<x.y.z>.apk`；并与 `.apk.sha256` 文件保持一致；
+   ② 产物三件套放 App 仓库根目录：`steamdeals-<x.y.z>.apk`、`steamdeals-<x.y.z>.apk.sha256`、`latest.json`；
+   ③ **分发清单**（发版汇报里给出绝对路径 + 目标目录）：所有者把三件套上传到站点服务器
+      `/home/ubuntu/steamdeals/data/app/`（scp/WinSCP 均可）；站点直接服务 `/api/app/latest` 与 `/app/dl/<apk>`；
+   ④ 上传后验证：`curl -s https://sd.yyliucha.cn/api/app/latest` 返回新 versionCode；`curl -sI .../app/dl/<apk>` 200。
+   **GitHub Release 照建**（备用通道/审计用）；**COS 上传为可选**（仅当所有者明确要切换 cos 源时才执行，见 §7 模板）。
 
-7. **COS 双上传（FK 批，docs/APP-SYNC-COS.md）**：站点服务器直连 GitHub 资产会被中断（curl 56），生产同步源
+7. （可选）**COS 上传（FK 批，docs/APP-SYNC-COS.md）**——仅当所有者要求切换 cos 源时执行：站点服务器直连 GitHub 资产会被中断（curl 56），生产同步源
    已可切到腾讯云 COS——GitHub Release 照建（备用通道），**同一套三资产必须同步上传 COS**，否则切源后站点
    拉不到新版。凭证只配在所有者本机（coscli 配置文件），**不入库、不写明文到命令/日志**：
 
@@ -107,7 +113,7 @@ description: SteamDeals App（F:\dsh\steamdeals-app，yyliucha/steamdeals-app）
 ```
 📦 App 版本：app-vX.Y.Z（versionCode NNNNN；站点联动版本 vX.Y.Z 如有）
 🔖 tag：app-vX.Y.Z 已推送（<短哈希>）；Release 已建，三资产齐全
-☁️ COS：steamdeals-app/ 下 APK + sha256 + latest.json 已上传（version 核对通过）／未上传（原因）
+📤 分发：三件套路径已给出（所有者上传 data/app/）／已上传并验证（/api/app/latest + /app/dl 200）
 ✅ 验证：模拟器覆盖安装 OK；站点 /api/app/latest = 新 versionCode（后台「立即同步」后）
 🔎 核对：curl -s https://sd.yyliucha.cn/api/app/latest（本机只读，发版后即刻可更新）
 🖥 服务器：站点版本待部署（如本批依赖站点接口）
