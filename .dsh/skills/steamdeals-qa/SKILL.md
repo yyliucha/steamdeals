@@ -122,6 +122,9 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
   ①区块与文字 ②按钮样式 ③布局问题 ④Tab 状态；只读图不改代码")`；
   ③ 或把截图路径交所有者/lead 人工确认——**不许不看图就判 ✅**，也不许猜。
 
+- **执行要求（2026-11-25）**：② 前先 `list_subagent_models(provider="deepseek-official")`；`deepseek-flash` 存在则**必须用**；
+  只有查不到/调用失败才走 ③，并在 QA 报告写明「已查路由，flash 不可用：<原因>」。
+
 ## 5. 报告格式（docs/QA-<TOPIC>.md）
 
 ```
