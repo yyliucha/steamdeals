@@ -2051,6 +2051,10 @@ export function buildCspPolicy({ scriptNonce = '', scriptHashes = [], allowInlin
   for (const h of scriptHashes) scriptSrc.push(`'${h}'`);
   if (scriptNonce) scriptSrc.push(`'nonce-${scriptNonce}'`);
   if (allowInlineScript) scriptSrc.push("'unsafe-inline'");
+  // FV 批：Head 注入的第三方统计/监控脚本域名（百度统计 hm.js、腾讯云 RUM aegis SDK）——
+  // 注入脚本虽打 nonce，但百度统计检测器/旧内核不认 CSP3 的「nonce 作用于外链 script」，
+  // 会拦掉 hm.js → 百度统计报「未安装代码」。仅严格档加域名白名单（兼容档保持原样）。
+  if (!allowInlineScript) scriptSrc.push('https://hm.baidu.com', 'https://tam.cdn-go.cn');
   return [
     "default-src 'self'",
     `script-src ${scriptSrc.join(' ')}`,
