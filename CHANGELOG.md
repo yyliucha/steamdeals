@@ -1,3 +1,15 @@
+## [2.30.3] - 2026-11-26
+
+后台「立即运行」热度回填/色情回填/初始化同步/Steam 状态四个按钮报 `ERR_MODULE_NOT_FOUND /app/heat` 修复（⚙️ 修复 → 小版本，2.30.2 → 2.30.3 连续递增、不跳号）。站点单仓库，App 无改动。
+
+### 修复
+
+- **startSteamJob 统一补齐 CLI 路径（30fb1a2）**：`src/routes/admin-sync.js` 的 heat / explicit-backfill / init-sync / steam-status 四个入口 args 未带 `src/cli.js` 前缀，`spawn(process.execPath, ['heat', ...])` 被 node 当作模块路径 → `ERR_MODULE_NOT_FOUND /app/heat`（v2.30.2 线上实测）；`startSteamJob` 在 spawn 前检测 args[0] 是否为 `cli.js`，不是则自动补绝对路径（带前缀的调用方行为不变）。
+
+### 测试
+
+- `test/api.test.js` 40/40 通过；`test/sync-runs.test.js` 全绿。
+
 ## [2.30.2] - 2026-11-26
 
 百度统计「代码安装检查」报「未安装代码」修复（⚙️ 修复，无新功能 → 小版本，2.30.1 → 2.30.2 连续递增、不跳号）。站点单仓库，App 无改动。

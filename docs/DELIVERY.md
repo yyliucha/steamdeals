@@ -250,6 +250,10 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 
 
+### 当前状态（2026-11-26，v2.30.3 已发布——CI 三绿）
+
+**v2.30.3（2026-11-26，release 30fb1a2；CI 三绿）**：后台「立即运行」四个按钮（热度回填/色情回填/初始化同步/Steam 状态）`ERR_MODULE_NOT_FOUND /app/heat` 修复——`startSteamJob` 统一补齐 `cli.js` 前缀（args 不带前缀时自动补绝对路径，带前缀调用方不变）。⚙️ 修复批，无新功能、无 schema/接口/前端改动 → 小版本 2.30.2 → 2.30.3。**站点单仓库，App 无改动**。验证：api 40/40、sync-runs 全绿、`scan` 干净。**部署提示**：升级镜像即可；部署后后台四个按钮正常。**服务器部署待执行**。
+
 ### 当前状态（2026-11-26，v2.30.2 已发布——CI 三绿）
 
 **v2.30.2 已发布（2026-11-26，release 4c302f8 + package-lock 同步 1e1a002；CI 三绿：docker-hub 45745299145 ✅ publish 全 success；docker-tcr 45745299093 ✅ publish 全 success；test-main 45746041747 ✅ main 1e1a002 全链绿）**：百度统计「代码安装检查」报「未安装代码」→ CSP 严格档 `script-src` 增加第三方统计/监控脚本域名白名单 `https://hm.baidu.com https://tam.cdn-go.cn`（Head 注入的 hm.js / aegis.min.js 虽打 nonce，但百度统计检测器/旧内核不认 CSP3 的「nonce 作用于外链 script」，hm.js 被拦 → 检测器执行 JS 后看不到 `_hmt`）。兼容档保持原样（测试断言不变）。⚙️ 修复批，无新功能、无 schema/接口/前端改动 → 小版本 2.30.1 → 2.30.2（连续递增、不跳号）。**站点单仓库，App 无改动**。验证：csp 11/11、head-foot-injection 通过、`scan` 干净。**部署提示**：无需额外配置，升级镜像即可；部署后百度统计重新「开始检查」应通过。**服务器部署待执行**。
