@@ -298,16 +298,18 @@ test('FP P0 403：首次 403 落盘指数退避，冷却期内不再请求（降
   }
 });
 
-test('FP P0 403：告警口径——连续 ≥3 次才告警，discovery 类永不告警', () => {
+// FW-3（docs/SLOW-SYNC.md §1.3 决策 16）：取消 discovery 类免告警——heat / steam-discovery / discover
+// 一视同仁（所有者 2026-11-26 要求「不静默」）；连续阈值判定不变。
+test('FW-3 403 告警口径：连续 ≥3 次才告警，discovery 类**不再**免告警', () => {
   assert.equal(is403Failure('Steam 返回 HTTP 403（appid 730），已中止热度回填'), true);
-  assert.equal(is403Failure('HTTP 429 提前收尾'), false);
+  assert.equal(is403Failure('HTTP 429 提前收尾'), false, 'FW-3 起 75=429 文案不含 403（403 走 76）');
   assert.equal(is403Failure('exit code 1'), false);
   assert.equal(shouldAlert403('backfill', 2), false, '连续 2 次 403 不告警（单次风控是常态）');
   assert.equal(shouldAlert403('backfill', 3), true, '连续 3 次才发失败邮件');
   assert.equal(shouldAlert403('heat', 99), true);
-  assert.equal(shouldAlert403('steam-discovery', 99), false, 'discovery 类任务 403 只日志不告警');
-  assert.equal(shouldAlert403('discover', 99), false);
-  assert.ok(DISCOVERY_JOBS.has('steam-discovery') && DISCOVERY_JOBS.has('discover'));
+  assert.equal(shouldAlert403('steam-discovery', 99), true, 'FW-3：discovery 类 403 也告警（取消免告警）');
+  assert.equal(shouldAlert403('discover', 99), true, 'FW-3：discover 同样告警');
+  assert.ok(DISCOVERY_JOBS.has('steam-discovery') && DISCOVERY_JOBS.has('discover'), '常量保留（兼容），但不再参与告警判定');
 });
 
 // ---------------------------------------------------------------- P1 heavy 分槽与低峰窗口

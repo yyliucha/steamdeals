@@ -360,9 +360,10 @@ export function resetCircuit(name) {
 /** 记录一次任务结果，返回新的健康状态。纯函数，便于单测。 */
 export function recordJobResult(state, { code, nowMs, threshold = CIRCUIT.threshold, cooldownMs = CIRCUIT.cooldownMs }) {
   if (code === 0) return { failures: 0, openUntil: null, opened: false };
-  // BL-2（docs/BACKFILL-THROUGHPUT.md §3.2）：75 = 429/403 软退出（partial）——本轮已保留进度，
+  // BL-2（docs/BACKFILL-THROUGHPUT.md §3.2）：75 = 429 软退出（partial）——本轮已保留进度，
   // 不算失败：failures 不变、不累计、不触发熔断。
-  if (code === 75) return { failures: state?.failures ?? 0, openUntil: state?.openUntil ?? null, opened: false };
+  // FW-3（docs/SLOW-SYNC.md §1.3 决策 14、§3.1）：76 = 403 收尾（partial）——同样不熔断。
+  if (code === 75 || code === 76) return { failures: state?.failures ?? 0, openUntil: state?.openUntil ?? null, opened: false };
   const failures = (state?.failures ?? 0) + 1;
   if (failures >= threshold) {
     return { failures, openUntil: nowMs + cooldownMs, opened: true };
@@ -388,20 +389,24 @@ export function syncRunModeFor(job) {
 
 /**
  * 任务失败原因的最终取值：优先 sync_runs 里的真实原因（runSyncTracked 写的 err.message），
- * 取不到回退退出码；75（429/403 软退出）保持原有 partial 文案；成功为 null。
+ * 取不到回退退出码；75（429 软退出）/ 76（403 收尾）保持固定 partial 文案；成功为 null。
  */
 export function jobFailureError(code, runReason) {
   if (code === 0) return null;
-  if (code === 75) return 'HTTP 429/403 提前收尾（进度已保留，1 小时后重排）';
+  if (code === 75) return 'HTTP 429 提前收尾（进度已保留，1 小时后重排）';
+  // FW-3（docs/SLOW-SYNC.md §1.3 决策 14、§3.1）：403 不重排——下一轮按正常间隔继续。
+  if (code === 76) return 'HTTP 403 收尾（进度已保留，下一轮继续）';
   return String(runReason || `exit code ${code}`);
 }
 
 /**
  * E4 批（docs/LOGGING-SCHEMA.md §4）：`scheduler.job_failed` 的 reason 稳定短码。
- * 75 = 429/403 软退出；其余优先用 sync_runs 里的真实原因（截断），取不到回退 `exit_<code>`。
+ * 75 = 429 软退出；76 = 403 收尾（FW-3）；其余优先用 sync_runs 里的真实原因（截断），
+ * 取不到回退 `exit_<code>`。
  */
 export function jobFailedReason(code, runReason) {
   if (code === 75) return 'http_429_soft_exit';
+  if (code === 76) return 'http_403_soft_exit';
   return String(runReason || `exit_${code}`).slice(0, 160);
 }
 
@@ -415,8 +420,10 @@ export function outcomeFor(code, runReason, stopping = false) {
     return { result: 'interrupted', error: '服务重启，任务被中断' };
   }
   if (code === 0) return { result: 'ok', error: null };
-  // BL-2：75 = 429/403 软退出 → partial（不记失败、不熔断）
+  // BL-2：75 = 429 软退出 → partial（不记失败、不熔断）
   if (code === 75) return { result: 'partial', error: jobFailureError(75, null) };
+  // FW-3（docs/SLOW-SYNC.md §1.3 决策 14、§3.1）：76 = 403 收尾 → partial（不记失败、不熔断、不重排）
+  if (code === 76) return { result: 'partial', error: jobFailureError(76, null) };
   return { result: 'failed', error: jobFailureError(code, runReason) };
 }
 
@@ -447,12 +454,19 @@ export function writeRetryState(state = {}) {
 /**
  * 更新重排状态（纯函数）：
  * - code 0（成功）→ 清掉该任务的重排与连击；
- * - code 75（partial）→ at = now + 60 分钟、streak + 1；连续 3 次 partial → 清掉重排（等正常日轮，避免整夜刷 429）；
+ * - code 75（partial，429）→ at = now + 60 分钟、streak + 1；连续 3 次 partial → 清掉重排（等正常日轮，避免整夜刷 429）；
+ * - code 76（partial，403）→ **不写重排**：删掉该任务已有的 retry 条目，下一轮按正常间隔到期
+ *   （FW-3/docs/SLOW-SYNC.md §3.1：heat 间隔 10 分钟，1 小时后重排比自然下一轮更慢）；
  * - 其它失败 → 不动。
  */
 export function applyRetry(state = {}, { job, code, nowMs }) {
   const next = { ...state };
   if (code === 0) {
+    delete next[job];
+    return next;
+  }
+  if (code === 76) {
+    // 403 收尾不重排；顺手清掉之前（可能由 75 写入）的条目，避免旧 at 把任务提前唤醒。
     delete next[job];
     return next;
   }
@@ -612,23 +626,64 @@ export function inMaintWindowFor(name, nowMs = Date.now(), env = process.env) {
   return inMaintWindow(nowMs, maintWindow(env));
 }
 
-// ---------------------------------------------------------------- FP 批 P0：403 告警口径（docs/SYNC-HARDENING.md §4.3）
+// ---------------------------------------------------------------- 403 告警口径（FP 批 P0 → FW-3）
+//
+// FW-3（docs/SLOW-SYNC.md §1.3 决策 16）：403 现在是**软退出（partial / exit 76）**，告警口径随之调整：
+//   · 取消 discovery 类免告警——heat / steam-discovery / discover 一视同仁（所有者 2026-11-26 要求「不静默」）；
+//     DISCOVERY_JOBS 常量保留（兼容既有引用），但不再参与告警判定；
+//   · 节流：连续 ≥ threshold 次且距上次发信 ≥ windowMin 分钟才发 1 封（防刷屏）；
+//   · 恢复：任务成功且曾发过预警 → 发 1 封恢复通知，并清掉 streak / 已告警标记。
 
-/** FP P0：discovery 类非核心任务——403 只日志、不发失败邮件。 */
+/** FP P0 保留常量：discovery 类任务名（FW-3 起不再免告警，仅作语义标记/兼容）。 */
 export const DISCOVERY_JOBS = new Set(['steam-discovery', 'discover']);
 
-/** FP P0：失败原因是否 403 类（sync_runs 里的 err.message，如「Steam 返回 HTTP 403…」）。纯函数。 */
+/** 失败原因是否 403 类（sync_runs 里的 err.message，如「Steam 返回 HTTP 403…」）。纯函数。 */
 export function is403Failure(reason) {
   return /403/.test(String(reason ?? ''));
 }
 
 /**
- * FP P0：403 连续失败是否该告警——连续 ≥3 次才发失败邮件（单次 403 是风控常态，不刷屏）；
- * discovery 类任务任何次数都不告警（仅日志）。纯函数。
+ * 403 连续失败是否达到告警阈值——连续 ≥ threshold 次才发失败邮件（单次 403 是风控常态，不刷屏）。
+ * FW-3：discovery 类不再免告警（决策 16）。纯函数。
  */
-export function shouldAlert403(jobName, streak, { threshold = 3, discoveryJobs = DISCOVERY_JOBS } = {}) {
-  if (discoveryJobs.has(jobName)) return false;
+export function shouldAlert403(jobName, streak, { threshold = 3 } = {}) {
   return Number(streak ?? 0) >= threshold;
+}
+
+/**
+ * FW-3（docs/SLOW-SYNC.md §1.3 决策 16、§3.5）：一次 403 收尾后的告警决策（纯函数）——
+ * 双条件：streak ≥ threshold **且** 距上次发信 ≥ windowMin 分钟才发。
+ * 窗口内（距上次发信 < windowMin）不累计、不发——「60 分钟内最多 1 封」；
+ * 发信后 streak 归零重新累计（窗口到期后再连续 3 次才会发第 2 封），并记 alertedAt / alerted。
+ * 返回 { send, state }；state 需写回调用方的 Map（内存态，重启丢失可接受）。
+ */
+export function forbiddenAlertDecision(state, { nowMs, threshold = 3, windowMin = 60 } = {}) {
+  const now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+  const st = {
+    streak: Math.max(0, Number(state?.streak ?? 0) || 0),
+    alerted: Boolean(state?.alerted),
+    alertedAt: Number(state?.alertedAt ?? 0) || null,
+  };
+  const windowMs = Math.max(1, Number(windowMin) || 60) * 60_000;
+  const windowOk = st.alertedAt == null || now - st.alertedAt >= windowMs;
+  if (!windowOk) {
+    // 窗口内继续 403：不重复计数、不发信（规格 §3.5：冷却期内软收尾不重复计数）
+    st.streak = 0;
+    return { send: false, state: st };
+  }
+  st.streak += 1;
+  const send = st.streak >= Math.max(1, Number(threshold) || 3);
+  if (send) {
+    st.streak = 0; // 发信后重新累计（同一窗口内最多 1 封）
+    st.alerted = true;
+    st.alertedAt = now;
+  }
+  return { send, state: st };
+}
+
+/** FW-3：任务成功时是否需要发恢复通知（只有发过预警的任务才发，且只发一次）。纯函数。 */
+export function shouldNotifyForbiddenRecovered(state) {
+  return Boolean(state?.alerted);
 }
 
 /**
@@ -984,13 +1039,17 @@ export async function main() {
         const elapsedMs = Date.now() - startedAt;
         if (code === 0) logger.info('scheduler.job_done', { job: job.name, code, elapsedMs });
         // 失败/软退出的 error/warn 在 completeJob 里记（那里才拿得到 sync_runs 里的真实原因）
-        else if (code === 75)
+        // FW-3（docs/SLOW-SYNC.md §3.4）：76 = 403 收尾同样记 job_partial，reason=http_403_soft_exit（不记 job_failed）
+        else if (code === 75 || code === 76)
           logger.warn('scheduler.job_partial', {
             job: job.name,
             code,
             elapsedMs,
             reason: jobFailedReason(code, null),
-            message: 'HTTP 429/403 软退出：本轮收尾，1 小时后重排',
+            message:
+              code === 76
+                ? 'HTTP 403 收尾：本轮进度已保留，下一轮按正常间隔继续'
+                : 'HTTP 429 软退出：本轮收尾，1 小时后重排',
           });
         resolve({ code: code ?? -1 });
       });
@@ -1062,7 +1121,9 @@ export async function main() {
       logger.warn('scheduler.stale_cleanup_failed', { ...failFields(err), err: serializeError(err) });
     }
     const health = new Map(); // job.name -> { failures, openUntil }
-    const http403Streak = new Map(); // FP P0：job.name -> 403 连续失败次数（≥3 才告警，成功/非 403 清零）
+    // FW-3（docs/SLOW-SYNC.md §1.3 决策 16）：403 预警节流/恢复状态——job.name -> { streak, alerted, alertedAt }。
+    // 内存态即可（重启丢失可接受）；发信后 streak 归零，同一窗口内不会再发。
+    const forbiddenAlerts = new Map();
     // AC-4/AC2：熔断手动重置钩子（后台按钮 → resetCircuit → 清零该任务熔断）
     registerCircuitReset((name) => {
       const state = health.get(name);
@@ -1095,7 +1156,8 @@ export async function main() {
       // EU-4（docs/SCHEDULER-RESTART-RESILIENCE.md）：停机时不查——store 已 close，
       // 查询只会打出「Cannot use a pool」噪音（真失败原因已由子进程 SIGTERM 收尾写库）。
       let runReason = null;
-      if (!stopping && code !== 0 && code !== 75) {
+      // FW-3：76（403 收尾）有固定文案，不必查 sync_runs；75 同样不查。
+      if (!stopping && code !== 0 && code !== 75 && code !== 76) {
         try {
           runReason = await db.lastFailedSyncRun(q, syncRunModeFor(job));
         } catch (err) {
@@ -1122,33 +1184,17 @@ export async function main() {
         logger.info('scheduler.job_interrupted', { job: job.name, code, elapsedMs: outcome.elapsedMs });
       }
       // CO-1/A5：失败邮件告警（开关 settings alerts.jobFailureEmail，默认关；收件人走告警回退链）
-      // FP 批 P0（docs/SYNC-HARDENING.md §4.3）：403 单独口径——连续 ≥3 次才告警（单次不刷失败邮件）；
-      // discovery 类任务（steam-discovery/discover）403 只日志、永不告警。
-      if (outcome.result === 'failed') {
-        const is403 = is403Failure(outcome.error);
-        if (is403) {
-          http403Streak.set(job.name, (http403Streak.get(job.name) ?? 0) + 1);
-        } else {
-          http403Streak.delete(job.name);
-        }
-        if (is403 && !shouldAlert403(job.name, http403Streak.get(job.name))) {
-          const streak = http403Streak.get(job.name) ?? 0;
-          if (DISCOVERY_JOBS.has(job.name)) {
-            logger.info('scheduler.discovery_forbidden', {
-              job: job.name,
-              code,
-              streak,
-              message: 'discovery 类任务 403：仅记日志，不发失败邮件',
-            });
-          } else {
-            logger.info('scheduler.forbidden_deferred', {
-              job: job.name,
-              code,
-              streak,
-              message: '403 失败暂不告警（连续 ≥3 次才发失败邮件）',
-            });
-          }
-        } else {
+      // FW-3（docs/SLOW-SYNC.md §1.3 决策 16）：403 现在是 partial（exit 76）——预警移到 partial 分支，
+      // 连续 ≥ 阈值且距上次 ≥ 窗口才发 1 封；取消 discovery 类免告警（一视同仁，不静默）；
+      // 成功且曾发过预警 → 发 1 封恢复通知并清状态。非 403 的 failed 照旧发失败邮件。
+      if (code === 0) {
+        await notifyForbiddenRecovered(job);
+      } else if (is403Failure(outcome.error)) {
+        await notifyForbidden(job, code, outcome.error);
+      } else {
+        // 非 403 结果打断连续计数；已发预警标记保留到成功时统一清（失败没恢复，不发恢复通知）
+        forbiddenAlerts.delete(job.name);
+        if (outcome.result === 'failed') {
           await alertJobFailure(job, code, outcome.error).catch((err) =>
             logger.warn('scheduler.failure_alert_failed', { job: job.name, ...failFields(err), err: serializeError(err) }),
           );
@@ -1166,8 +1212,9 @@ export async function main() {
             const chartName = `${job.name}:chart`;
             logger.info('scheduler.followup', { job: job.name, args: followUp.join(' ') });
             const res = await runJob({ name: chartName, args: followUp });
-            // chart 任务是直调 runJob、不过 completeJob——失败同样记 scheduler.job_failed（带 reason 稳定短码）
-            if (res.code !== 0 && res.code !== 75 && !res.spawnFailed) {
+            // chart 任务是直调 runJob、不过 completeJob——失败同样记 scheduler.job_failed（带 reason 稳定短码）；
+            // 75/76 是软退出，不算失败（FW-3：403 收尾也不记 job_failed）。
+            if (res.code !== 0 && res.code !== 75 && res.code !== 76 && !res.spawnFailed) {
               logger.error('scheduler.job_failed', {
                 job: chartName,
                 code: res.code,
@@ -1210,6 +1257,57 @@ export async function main() {
       const mail = buildJobFailureMail({ job: job.name, code, reason, at: new Date() });
       const res = await deliver([channel], { subject: mail.subject, text: mail.text, logger });
       logger.info('scheduler.failure_alert', { job: job.name, code, ok: res.ok, to: channel.to.length });
+    };
+
+    /**
+     * FW-3（docs/SLOW-SYNC.md §1.3 决策 16、§3.4）：403 预警——连续 ≥ 阈值 **且** 距上次发信 ≥ 窗口
+     * 才通过既有 alertJobFailure 通道发 1 封；发信后 streak 归零（窗口内不重复）。
+     * 阈值/窗口读 settings 水合后的 env：SYNC_FORBIDDEN_ALERT_THRESHOLD（默认 3）、
+     * SYNC_FORBIDDEN_ALERT_WINDOW_MIN（默认 60）。
+     */
+    const notifyForbidden = async (job, code, reason) => {
+      const threshold = Math.max(1, num(process.env.SYNC_FORBIDDEN_ALERT_THRESHOLD, 3));
+      const windowMin = Math.max(1, num(process.env.SYNC_FORBIDDEN_ALERT_WINDOW_MIN, 60));
+      const { send, state } = forbiddenAlertDecision(forbiddenAlerts.get(job.name), { nowMs: Date.now(), threshold, windowMin });
+      forbiddenAlerts.set(job.name, state);
+      if (!send) {
+        logger.info('scheduler.forbidden_deferred', {
+          job: job.name,
+          code,
+          streak: state.streak,
+          threshold,
+          windowMin,
+          message: '403 软退出暂不告警（连续 ≥ 阈值且距上次发信 ≥ 窗口才发）',
+        });
+        return;
+      }
+      await alertJobFailure(job, code, reason).catch((err) =>
+        logger.warn('scheduler.failure_alert_failed', { job: job.name, ...failFields(err), err: serializeError(err) }),
+      );
+      logger.info('scheduler.forbidden_alert', { job: job.name, code, streak: threshold, windowMin });
+    };
+
+    /**
+     * FW-3（docs/SLOW-SYNC.md §1.3 决策 16、§3.4）：403 恢复通知——任务成功且曾发过预警时发 1 封，
+     * 清掉该任务的 streak 与「曾告警」标记（只发一次）。通道复用告警回退链，不新增凭据。
+     */
+    const notifyForbiddenRecovered = async (job) => {
+      const st = forbiddenAlerts.get(job.name);
+      if (!st) return;
+      forbiddenAlerts.delete(job.name);
+      if (!shouldNotifyForbiddenRecovered(st)) return;
+      const channel = jobFailureEmailChannel(process.env);
+      if (!channel) {
+        logger.info('scheduler.forbidden_recovered_skipped', { job: job.name, reason: 'no_channel' });
+        return;
+      }
+      const text = `SteamDeals 任务 ${job.name} 已恢复正常：本轮执行成功，此前的 403 预警解除。\n时间：${new Date().toISOString()}`;
+      try {
+        const res = await deliver([channel], { subject: `[SteamDeals] 403 已恢复：${job.name}`, text, logger });
+        logger.info('scheduler.forbidden_recovered', { job: job.name, ok: res.ok, to: channel.to.length });
+      } catch (err) {
+        logger.warn('scheduler.failure_alert_failed', { job: job.name, ...failFields(err), err: serializeError(err) });
+      }
     };
 
     /** 非阻塞发射一个任务（熔断检查在发射前做）。 */

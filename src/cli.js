@@ -24,6 +24,8 @@ import { createCliReport } from './cli/report.js';
 import { createCliOps } from './cli/ops.js';
 import * as cliSyncRepo from './store/cli-sync-repository.js';
 import { installSigtermHandler } from './cli-interrupt.js';
+// FW-3（docs/SLOW-SYNC.md §1.3 决策 14/15、§3.1）：软退出退出码判定（75 = 429/备份超时、76 = 403 收尾）。
+import { softAbortExitCode, applySoftAbort, syncRunStatusFor } from './soft-exit.js';
 
 const args = process.argv.slice(2);
 const command = args[0] ?? 'help';
@@ -765,12 +767,14 @@ async function runSyncTracked(mode, fn, { fetchRun = true } = {}) {
     // FP 批 P0/P1（docs/SYNC-HARDENING.md §2/§4）：软中断类错误——429 冷却超时（COOLDOWN_ABORT）
     // 与备份超时（BACKUP_TIMEOUT）不记 failed：sync_runs 记 interrupted、exit 75（调度器不告警不熔断、
     // 1 小时后自动重排、不占 heavy slot）。
-    const softAbort = err?.code === 'COOLDOWN_ABORT' || err?.code === 'BACKUP_TIMEOUT';
-    await finishSyncRunRecord(run, softAbort ? 'interrupted' : 'failed', String(err.message).slice(0, 500));
-    await finishFetchRunRecord(fetchRunId, { status: softAbort ? 'interrupted' : 'failed', note: String(err.message).slice(0, 300) });
+    // FW-3（docs/SLOW-SYNC.md §1.3 决策 14/15、§3.1）：403 收尾 → exit 76——同样记 interrupted，
+    // 但调度器不熔断、不重排（下一轮按正常间隔到期）。判定抽在 src/soft-exit.js（可单测）。
+    const softAbortCode = softAbortExitCode(err);
+    const softAbort = softAbortCode != null;
+    await finishSyncRunRecord(run, syncRunStatusFor(err), String(err.message).slice(0, 500));
+    await finishFetchRunRecord(fetchRunId, { status: syncRunStatusFor(err), note: String(err.message).slice(0, 300) });
     if (softAbort) {
-      process.exitCode = 75;
-      logger.warn('process.soft_abort', { mode, code: err.code, message: String(err.message).slice(0, 200) });
+      applySoftAbort(err, { mode, logger });
       return;
     }
     throw err;

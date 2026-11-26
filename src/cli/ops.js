@@ -25,7 +25,7 @@ import { baseRegion, regionContext } from '../sync-regions.js';
 import { describeProxy, decideProxy, redactProxy } from '../proxy.js';
 import * as settings from '../settings.js';
 import { formatDayUtc } from '../format.js';
-import { fetchText, fetchJson, fetchBuffer, sleep, readSteam429Info } from '../http.js';
+import { fetchText, fetchJson, fetchBuffer, sleep, readSteam429Info, readSteam403Info } from '../http.js';
 import { createBackup } from '../backup.js';
 import * as cliOpsRepo from '../store/cli-ops-repository.js';
 
@@ -1014,6 +1014,26 @@ export function createCliOps(ctx) {
           failed += 1;
           // FP 批 P0：429 冷却超时中断（COOLDOWN_ABORT）原样重抛——runSyncTracked 记 interrupted + exit 75
           if (err.code === 'COOLDOWN_ABORT') throw err;
+          // FW-3（docs/SLOW-SYNC.md §1.3 决策 14、§3.2/§3.4）：Steam 业务 403 = 本轮软收尾——
+          // 当前 appid **不写 heat_at**（退避后仍被选中，进度只进不退），抛带 code 的错误；
+          // runSyncTracked 记 interrupted + exit 76（调度器不熔断、不重排，下一轮按正常间隔继续）。
+          // 排除 proxyStatus：代理层 CONNECT 403 属「代理坏了」，交给 FW-2 的代理切换/全池失败路径。
+          if (err.code === 'FORBIDDEN_COOLDOWN' || (err.status === 403 && err.proxyStatus == null)) {
+            const info = readSteam403Info();
+            logger.warn('sync.forbidden_round_end', {
+              job: 'heat',
+              appid,
+              count: info?.count ?? null,
+              backoffMs: info ? Math.max(0, info.until - Date.now()) : null,
+              message: 'Steam 403：热度回填本轮软收尾（当前 appid 不写 heat_at，冷却后下一轮优先补）',
+            });
+            const forbidden = new Error(
+              `Steam 返回 HTTP 403（appid ${appid}），热度回填本轮软收尾（进度已保留，冷却后下一轮继续）`,
+            );
+            forbidden.code = 'FORBIDDEN_ROUND_END';
+            forbidden.status = 403;
+            throw forbidden;
+          }
           if (err.status && err.status >= 400 && err.status < 500) {
             // 4xx：请求本身被拒（限流/风控/参数非法），继续重试没有意义，立刻中止避免烧配额
             logger.error('heat.aborted', {

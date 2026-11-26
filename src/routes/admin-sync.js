@@ -39,6 +39,9 @@
 import * as db from '../store/pg.js';
 import { auditJobs as auditSchedulerJobs, resetCircuit, jobsFromEnv, steamClaimArgs, syncRunModeFor } from '../scheduler.js';
 import { readFileSync } from 'node:fs';
+// FW-3（docs/SLOW-SYNC.md §3.2/§4、§8 验收第 7 条）：/api/admin/sync/status 带 403 冷却与全站速率闸门状态。
+import { readSteam403Info } from '../http.js';
+import { rateGateInfo } from '../rate-gate.js';
 
 /**
  * FJ 批：组级立即运行的到期判定（纯函数，便于单测）——
@@ -211,6 +214,18 @@ export async function handleAdminSyncAdmin(ctx) {
     const { readBackfillProgress } = await import('../backfill.js');
     // CC 批（docs/SOURCE-SYNC-COVERAGE.md §3.4）：四源状态汇总（matched/nomatch/failed/pending）
     const sourceStats = await db.sourceSyncStats(q).catch(() => null);
+    // FW-3（docs/SLOW-SYNC.md §3.2/§4、§8 验收第 7 条）：403 冷却与全站速率闸门状态。
+    // 无冷却时 forbidden 仍给完整形状（active:false）——前端 `syncStatus.forbidden.active` 好判；
+    // rateGate 文件缺失时按满桶（tokens = perMin、used = 0），import 时不会扣 token。
+    const forbiddenInfo = readSteam403Info(syncStatusNow);
+    const forbidden = {
+      active: Boolean(forbiddenInfo),
+      count: forbiddenInfo?.count ?? 0,
+      until: forbiddenInfo ? new Date(forbiddenInfo.until).toISOString() : null,
+      remainingMin: forbiddenInfo ? Math.max(1, Math.round((forbiddenInfo.until - syncStatusNow) / 60_000)) : 0,
+      label: forbiddenInfo?.label ?? null,
+    };
+    const rateGate = rateGateInfo({ nowMs: syncStatusNow });
     const syncStatusPayload = {
       running,
       run: running ? syncState.run : null,
@@ -219,6 +234,9 @@ export async function handleAdminSyncAdmin(ctx) {
       schedule,
       backfillProgress: readBackfillProgress(),
       sourceStats,
+      // FW-3：403 冷却（count/until/remainingMin/label）与速率闸门（perMin/tokens/used）
+      forbidden,
+      rateGate,
       // AC1（docs/SYNC-FAILURE-MODES.md）：该有但没有的任务，后台显式提示（缺 Key / 被 *_ENABLED=0 关闭）
       warnings: auditSchedulerJobs(process.env),
     };

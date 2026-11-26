@@ -113,6 +113,9 @@ const SETTINGS_META = {
   'sync.rateGatePerMin': { section: 'schedule', tier: 'advanced', sum: '闸门 {v}/分' },
   'sync.rotateMaxPerRequest': { section: 'schedule', tier: 'advanced', sum: '每请求 {v} 条' },
   'sync.rateMaxWaitMs': { section: 'schedule', tier: 'advanced', sum: '闸门等待 {v}ms' },
+  // FW-3（docs/SLOW-SYNC.md §1.3 决策 16、§5）：403 预警节流两项——与上面 5 项同区（调度与熔断折叠区）。
+  'sync.forbiddenAlertThreshold': { section: 'schedule', tier: 'advanced', sum: '403 预警 {v} 次' },
+  'sync.forbiddenAlertWindowMin': { section: 'schedule', tier: 'advanced', sum: '预警间隔 {v} 分' },
   'system.backupIntervalMin': { section: 'backup', tier: 'advanced', sum: '间隔 {v}' },
   'system.backupInitialDelaySec': { section: 'backup', tier: 'advanced', sum: '轮延迟 {v}' },
   'system.logsPruneEnabled': { section: 'backup', tier: 'advanced', sum: '清理 {v}' },
@@ -479,6 +482,19 @@ export const SETTINGS = [
     min: 0,
     max: 3600000,
     help: '等速率闸门 token 的累计等待上限（默认 300000 = 5 分钟）；超过则本轮中断（COOLDOWN_ABORT → exit 75 + interrupted，不继续占槽）。',
+  }),
+  // FW-3（docs/SLOW-SYNC.md §1.3 决策 16、§5）：403 预警节流——连续 ≥ 阈值次且距上次发信 ≥ 窗口分钟
+  // 才发 1 封（复用任务失败邮件通道/收件人回退链）；任务成功且曾预警 → 发 1 封恢复通知。
+  // 放「调度与熔断」折叠区（与上面 5 项同区）。
+  def('sync.forbiddenAlertThreshold', 'SYNC_FORBIDDEN_ALERT_THRESHOLD', 'advanced', '403 预警连续次数阈值', 'int', 3, {
+    min: 1,
+    max: 50,
+    help: '同一任务连续软退出（403 收尾）达到该次数才发预警邮件（默认 3）；单次 403 是风控常态，不刷屏。',
+  }),
+  def('sync.forbiddenAlertWindowMin', 'SYNC_FORBIDDEN_ALERT_WINDOW_MIN', 'advanced', '403 预警最小间隔（分钟）', 'int', 60, {
+    min: 10,
+    max: 1440,
+    help: '同一任务两次 403 预警之间的最小间隔（默认 60 分钟）；窗口内即使继续 403 也不重复发信，任务恢复后发 1 封恢复通知。',
   }),
   def('system.chartOnSync', 'CHART_ON_SYNC', 'advanced', '采集后生成静态页', 'bool', false, {
     help: '内置 Web 服务直接读数据库，默认不需要静态页；使用 nginx 托管 out/ 时才开启。',

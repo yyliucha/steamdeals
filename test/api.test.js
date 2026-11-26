@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { openStore } from '../src/store/index.js';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import * as db from '../src/store/pg.js';
 import { startApiServer } from '../src/server.js';
 import { ingestOffers } from '../src/ingest.js';
@@ -931,6 +931,69 @@ test('数据指纹：数据变化后 stamp 改变，轮询不写访问日志', a
   } finally {
     await srv.close();
     await store.close();
+  }
+});
+
+// FW-3（docs/SLOW-SYNC.md §3.2/§4、§8 验收第 7 条）：/api/admin/sync/status 带 403 冷却与速率闸门字段。
+// 形状约定：无冷却时 forbidden.active=false（字段齐全，前端好判）；闸门文件缺失按满桶（tokens=perMin）。
+test('FW-3：/api/admin/sync/status 返回 forbidden（403 冷却）与 rateGate（速率闸门）', async () => {
+  const dir = join(tmpdir(), `fw3-status-${Date.now()}`);
+  mkdirSync(dir, { recursive: true });
+  const prev403 = process.env.STEAM_403_FILE;
+  const prevRate = process.env.STEAM_RATE_FILE;
+  const prevPerMin = process.env.SYNC_RATE_GATE_PER_MIN;
+  process.env.STEAM_403_FILE = join(dir, 'missing-403.json');
+  process.env.STEAM_RATE_FILE = join(dir, 'missing-rate.json');
+  delete process.env.SYNC_RATE_GATE_PER_MIN;
+  const { store, srv, base } = await setup();
+  try {
+    const admin = await login(base, 'admin', 'admin123456');
+    const s1 = await (await fetch(`${base}/api/admin/sync/status`, { headers: { cookie: admin.cookie } })).json();
+    assert.ok(s1.forbidden, '带 forbidden 字段');
+    assert.equal(s1.forbidden.active, false, '无冷却时 active:false（前端好判）');
+    assert.equal(s1.forbidden.count, 0);
+    assert.equal(s1.forbidden.until, null, '无冷却时 until 为 null');
+    assert.equal(s1.forbidden.remainingMin, 0);
+    assert.ok(s1.rateGate, '带 rateGate 字段');
+    assert.equal(s1.rateGate.perMin, 30, '默认闸门 30 次/分钟');
+    assert.equal(s1.rateGate.tokens, 30, '闸门文件不存在按满桶');
+    assert.equal(s1.rateGate.used, 0);
+
+    // 写入冷却与半桶状态 → 用 circuit/reset 失效 3s 短缓存后重读
+    writeFileSync(
+      process.env.STEAM_403_FILE,
+      JSON.stringify({ until: new Date(Date.now() + 5 * 60_000).toISOString(), count: 2, at: new Date().toISOString(), label: 'pool' }),
+    );
+    writeFileSync(process.env.STEAM_RATE_FILE, JSON.stringify({ tokens: 12, at: new Date().toISOString() }));
+    const bust = await fetch(`${base}/api/admin/circuit/reset`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: admin.cookie },
+      body: JSON.stringify({ name: 'fw3-cache-bust' }),
+    });
+    assert.equal(bust.status, 200, '短路缓存失效接口可用');
+    const s2 = await (await fetch(`${base}/api/admin/sync/status`, { headers: { cookie: admin.cookie } })).json();
+    assert.equal(s2.forbidden.active, true, '冷却期内 active:true');
+    assert.equal(s2.forbidden.count, 2, '连续被拒次数来自 data/steam-403.json');
+    assert.equal(s2.forbidden.label, 'pool');
+    assert.ok(s2.forbidden.remainingMin >= 1 && s2.forbidden.remainingMin <= 5, `剩余分钟应在 1..5，实际 ${s2.forbidden.remainingMin}`);
+    assert.ok(Date.parse(s2.forbidden.until) > Date.now(), 'until 是未来时刻');
+    assert.equal(s2.rateGate.perMin, 30);
+    assert.equal(s2.rateGate.tokens, 12, 'tokens 按 at 补充后读回');
+    assert.equal(s2.rateGate.used, 18, 'used = perMin - tokens');
+
+    // 仅管理员可读（既有 requireAdmin 语义不变）
+    const alice = await login(base, 'alice', 'alice123456');
+    assert.equal((await fetch(`${base}/api/admin/sync/status`, { headers: { cookie: alice.cookie } })).status, 403, '普通用户 403');
+  } finally {
+    await srv.close();
+    await store.close();
+    if (prev403 == null) delete process.env.STEAM_403_FILE;
+    else process.env.STEAM_403_FILE = prev403;
+    if (prevRate == null) delete process.env.STEAM_RATE_FILE;
+    else process.env.STEAM_RATE_FILE = prevRate;
+    if (prevPerMin == null) delete process.env.SYNC_RATE_GATE_PER_MIN;
+    else process.env.SYNC_RATE_GATE_PER_MIN = prevPerMin;
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

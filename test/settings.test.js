@@ -20,8 +20,8 @@ async function fresh() {
   return { store, q };
 }
 
-test('设置定义完整：110 项、8 个密钥、关键分组都在', () => {
-  assert.equal(settings.SETTINGS.length, 110, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项 + DR app.syncIntervalMin 1 项 + EI 同步区域 3 项 + EK appSyncProxy 1 项 + EN CSP 模式 1 项 + FK App 同步换源 3 项 + FV head/foot 注入 2 项 + FW heat 三项 + FW-2 切代理与速率闸门 5 项');
+test('设置定义完整：112 项、8 个密钥、关键分组都在', () => {
+  assert.equal(settings.SETTINGS.length, 112, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项 + DR app.syncIntervalMin 1 项 + EI 同步区域 3 项 + EK appSyncProxy 1 项 + EN CSP 模式 1 项 + FK App 同步换源 3 项 + FV head/foot 注入 2 项 + FW heat 三项 + FW-2 切代理与速率闸门 5 项 + FW-3 403 预警节流 2 项');
   assert.equal(settings.SETTINGS.filter((d) => d.secret).length, 8);
 
 test('FV：head/foot 注入设置项——text 类型、默认空、env 兜底、20KB 校验上限', () => {
@@ -185,6 +185,34 @@ test('FW-2：403/429 切代理 + 全站速率闸门 5 项——默认值/范围/
   // 与既有 setting 的 env 不冲突（水合覆盖会串值）
   const envs = settings.SETTINGS.map((d) => d.env);
   for (const [, env] of expect) assert.equal(envs.filter((e) => e === env).length, 1, `${env} env 不能重复`);
+});
+
+// FW-3（docs/SLOW-SYNC.md §1.3 决策 16、§5、§8 验收 6）：403 预警节流两项——与 FW-2 五项同卡折叠区。
+test('FW-3：403 预警节流 2 项——默认 3 次 / 60 分钟、范围、env、进「调度与熔断」折叠区', () => {
+  const expect = [
+    ['sync.forbiddenAlertThreshold', 'SYNC_FORBIDDEN_ALERT_THRESHOLD', 3, 1, 50, '连续 3 次 403 才发预警'],
+    ['sync.forbiddenAlertWindowMin', 'SYNC_FORBIDDEN_ALERT_WINDOW_MIN', 60, 10, 1440, '两次预警间隔 60 分钟'],
+  ];
+  const keys = settings.SETTINGS.map((d) => d.key);
+  const envs = settings.SETTINGS.map((d) => d.env);
+  for (const [key, env, def, min, max, why] of expect) {
+    const d = settings.SETTING_MAP.get(key);
+    assert.ok(d, `FW-3：${key} 设置项存在`);
+    assert.equal(keys.filter((k) => k === key).length, 1, `${key} 不能重复`);
+    assert.equal(d.env, env, `${key} env 兜底 ${env}`);
+    assert.equal(d.type, 'int', `${key} 类型`);
+    assert.equal(d.default, def, why);
+    assert.equal(d.min, min, `${key} 下限`);
+    assert.equal(d.max, max, `${key} 上限`);
+    assert.deepEqual(settings.validateSetting(d, String(def)), { ok: true, value: def }, `${key} 默认值合法`);
+    assert.equal(settings.validateSetting(d, min - 1).ok, false, `${key} 低于下限拒绝`);
+    assert.equal(settings.validateSetting(d, max + 1).ok, false, `${key} 高于上限拒绝`);
+    assert.equal(d.group, 'advanced', `${key} 归「高级」分组`);
+    assert.equal(d.section, 'schedule', `${key} 进「调度与熔断」卡（与 FW-2 五项同区）`);
+    assert.equal(d.tier, 'advanced', `${key} 进折叠区（CQ：每卡常用 ≤3）`);
+    assert.ok(d.help && d.help.length > 10, `${key} 有面向管理员的说明`);
+    assert.equal(envs.filter((e) => e === env).length, 1, `${env} env 不能重复`);
+  }
 });
 
 test('EI 批：区域/货币设置校验归一化（区域两字母小写、货币三字母大写）', () => {

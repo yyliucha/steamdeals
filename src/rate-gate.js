@@ -178,3 +178,22 @@ export async function takeToken(opts = {}) {
     waitedMs += step;
   }
 }
+
+/**
+ * FW-3（docs/SLOW-SYNC.md §3.2/§4、§8 验收第 7 条）：后台展示用闸门状态——
+ * 读 data/steam-rate.json（STEAM_RATE_FILE 可覆盖），按 at 补 token 到当前时刻；
+ * 文件缺失/坏 JSON → 按满桶（tokens = perMin）。只读，不扣 token。
+ *
+ * 返回 { perMin, tokens, used }：used = perMin − tokens（后台「速率闸门 已用 N/M」）。
+ */
+export function rateGateInfo({ env = process.env, nowMs = Date.now(), file = rateFilePath(env), logger = null } = {}) {
+  const perMin = rateGatePerMin(env);
+  const state = readState(file, logger);
+  const tokens = state ? refillTokens(state, nowMs, perMin) : perMin;
+  const round1 = (n) => Math.round(n * 10) / 10;
+  return {
+    perMin,
+    tokens: round1(Math.min(perMin, Math.max(0, tokens))),
+    used: round1(Math.min(perMin, Math.max(0, perMin - tokens))),
+  };
+}

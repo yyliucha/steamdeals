@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { jobsFromEnv, jobGroupsFromEnv, groupsFromJobs, steamClaimArgs, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, theoreticalRunSeconds, jobRuntimeEstimates, registerCircuitReset, resetCircuit, applyRetry, syncRunModeFor, jobFailureError, jobFailedReason, outcomeFor, STEAM_STATUS_LIMIT_DEFAULT } from '../src/scheduler.js';
+import { jobsFromEnv, jobGroupsFromEnv, groupsFromJobs, steamClaimArgs, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, theoreticalRunSeconds, jobRuntimeEstimates, registerCircuitReset, resetCircuit, applyRetry, syncRunModeFor, jobFailureError, jobFailedReason, outcomeFor, forbiddenAlertDecision, shouldNotifyForbiddenRecovered, STEAM_STATUS_LIMIT_DEFAULT } from '../src/scheduler.js';
 
 test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），默认 3，非法回落默认', () => {
   assert.equal(lightConcurrency({}), 3);
@@ -625,6 +625,71 @@ test('BL-2：429 软退出（exit 75）不计失败、不熔断；重排 1 小�
   assert.equal(dueJobs(jobs, { nowMs: t0 + 3600_000, startedMs: t0, lastRunMs, retry: retryState }).length, 1, '重排时间到了即 due（即使未到正常间隔）');
 });
 
+// FW-3（docs/SLOW-SYNC.md §1.3 决策 14、§3.1、§8 验收 2/3）：exit 76 = 403 收尾——partial、不熔断、不重排。
+// 反向自检口径：把 recordJobResult 的 76 从软退出分支删掉 → failures 断言红；
+// 把 applyRetry 的 76 分支删掉 → retry 条目断言红；outcomeFor 走回 failed → result 断言红。
+test('FW-3：exit 76（403 收尾）——partial、failures 不增不熔断、不写重排（且删既有条目）、原因是 http_403_soft_exit', () => {
+  assert.deepEqual(outcomeFor(76, null, false), { result: 'partial', error: 'HTTP 403 收尾（进度已保留，下一轮继续）' }, '76 → partial（不是 failed），文案说明进度已保留');
+  assert.equal(outcomeFor(76, null, false).result, 'partial', '403 收尾不记 failed（不告警为失败）');
+  assert.equal(jobFailedReason(76, null), 'http_403_soft_exit', 'job_partial 的 reason 稳定短码');
+  assert.equal(jobFailureError(76, 'ignored'), 'HTTP 403 收尾（进度已保留，下一轮继续）', '76 固定文案，不受 sync_runs 原因影响');
+
+  // 连续 5 次 76：failures 始终不变、不 openUntil（与 75 同款不熔断）
+  let state = { failures: 2, openUntil: null };
+  for (let i = 0; i < 5; i += 1) {
+    state = recordJobResult(state, { code: 76, nowMs: 1000 + i });
+    assert.equal(state.failures, 2, `第 ${i + 1} 次 76 不累计 failures`);
+    assert.equal(state.openUntil, null, `第 ${i + 1} 次 76 不熔断`);
+    assert.equal(state.opened, false);
+  }
+  // 对照：真失败照常累计并熔断（证明上面的「不变」不是因为阈值失效）
+  const failed = recordJobResult({ failures: 2, openUntil: null }, { code: 1, nowMs: 2000 });
+  assert.equal(failed.failures, 3);
+  assert.equal(failed.opened, true, '真失败仍会熔断（反向自检）');
+
+  // 76 不写重排：空状态 → 仍为空；已有条目 → 被删掉（不留 1 小时后的旧 at）
+  const t0 = Date.parse('2026-11-26T00:00:00Z');
+  assert.deepEqual(applyRetry({}, { job: 'heat', code: 76, nowMs: t0 }), {}, '76 不写 data/scheduler-retry.json 条目');
+  assert.deepEqual(
+    applyRetry({ heat: { at: new Date(t0 + 3600_000).toISOString(), streak: 1, reason: 'http_429' } }, { job: 'heat', code: 76, nowMs: t0 }),
+    {},
+    '76 会删掉既有 retry 条目（下一轮按正常间隔到期，不 1 小时后重排）',
+  );
+  // 75 语义不变（回归）：1 小时后重排
+  assert.equal(Date.parse(applyRetry({}, { job: 'backfill', code: 75, nowMs: t0 }).backfill.at), t0 + 3600_000, '75 仍 1 小时后重排');
+});
+
+// FW-3（docs/SLOW-SYNC.md §1.3 决策 16、§3.5、§8 验收 6）：403 预警节流 + 恢复通知（纯函数锁住时序）。
+test('FW-3：403 预警节流——连续 3 次发第 1 封；窗口内不重复；距上次 61 分钟后再 3 次才发第 2 封；恢复只发一次', () => {
+  const windowMin = 60;
+  const threshold = 3;
+  let st = undefined;
+  const step = (nowMs) => {
+    const r = forbiddenAlertDecision(st, { nowMs, threshold, windowMin });
+    st = r.state;
+    return r.send;
+  };
+  const t0 = Date.parse('2026-11-26T00:00:00Z');
+  assert.equal(step(t0), false, '第 1 次 403：不告警（连续 < 3）');
+  assert.equal(step(t0 + 60_000), false, '第 2 次 403：不告警');
+  assert.equal(step(t0 + 120_000), true, '第 3 次 403：发第 1 封');
+  assert.equal(st.alerted, true, '记「曾告警」标记（恢复通知要用）');
+  assert.equal(st.streak, 0, '发信后 streak 归零重新累计');
+  assert.equal(step(t0 + 180_000), false, '第 4 次（60 分钟内）：不发第 2 封');
+  assert.equal(step(t0 + 240_000), false, '第 5 次（仍在窗口内）：不发');
+  // 距上次发信 61 分钟后再 3 次 403 → 第 2 封（窗口到期 + 重新累计到 3）
+  assert.equal(step(t0 + 120_000 + 61 * 60_000), false, '窗口到期后第 1 次：streak 1 < 3');
+  assert.equal(step(t0 + 120_000 + 62 * 60_000), false, '第 2 次：streak 2 < 3');
+  assert.equal(step(t0 + 120_000 + 63 * 60_000), true, '第 3 次且窗口已过：发第 2 封');
+  assert.equal(st.streak, 0);
+
+  // 恢复：仅「曾发过预警」的任务才算恢复；发一次后状态清空 → 不再重复发
+  assert.equal(shouldNotifyForbiddenRecovered(st), true, '发过预警 → 成功时发恢复通知');
+  const cleared = undefined;
+  assert.equal(shouldNotifyForbiddenRecovered(cleared), false, '清掉状态后不再发（只发一次）');
+  assert.equal(shouldNotifyForbiddenRecovered({ streak: 2, alerted: false, alertedAt: null }), false, '没发过预警的任务成功不发恢复通知');
+});
+
 test('AC-2：熔断手动重置——registerCircuitReset 注册钩子，resetCircuit 触发清零', () => {
   const state = { failures: 3, openUntil: Date.now() + 3600_000 };
   const off = registerCircuitReset((name) => {
@@ -657,7 +722,7 @@ test('CO-1/A5：失败原因取值——真实原因优先，缺失回退退出�
   assert.equal(jobFailureError(1, 'data/skus.json 为空'), 'data/skus.json 为空', '优先 sync_runs 里的真实原因');
   assert.equal(jobFailureError(1, null), 'exit code 1', '取不到原因回退退出码');
   assert.equal(jobFailureError(-1, ''), 'exit code -1', '空串同样回退');
-  assert.equal(jobFailureError(75, 'ignored'), 'HTTP 429/403 提前收尾（进度已保留，1 小时后重排）', '75 软退出不是失败');
+  assert.equal(jobFailureError(75, 'ignored'), 'HTTP 429 提前收尾（进度已保留，1 小时后重排）', '75 软退出不是失败（FW-3 起 403 走 76，75 只剩 429）');
 });
 
 // CH 批（docs/DISCOVERY-FOR-YOU.md §6）：steam-discovery 任务默认参数与 STEAM_HEAVY 互斥
@@ -682,7 +747,7 @@ test('EU-1：outcomeFor——停机中非零退出判 interrupted（不失败/�
   assert.deepEqual(outcomeFor(-1, null, true), { result: 'interrupted', error: '服务重启，任务被中断' }, '被 SIGKILL/信号杀 → interrupted');
   assert.deepEqual(outcomeFor(0, null, true), { result: 'ok', error: null }, '停机瞬间恰好正常退出不算中断');
   assert.deepEqual(outcomeFor(0, null, false), { result: 'ok', error: null }, '非停机成功照旧 ok');
-  assert.deepEqual(outcomeFor(75, null, false), { result: 'partial', error: 'HTTP 429/403 提前收尾（进度已保留，1 小时后重排）' }, '75 软退出照旧 partial');
+  assert.deepEqual(outcomeFor(75, null, false), { result: 'partial', error: 'HTTP 429 提前收尾（进度已保留，1 小时后重排）' }, '75 软退出照旧 partial');
   assert.deepEqual(outcomeFor(1, 'data/skus.json 为空', false), { result: 'failed', error: 'data/skus.json 为空' }, '非停机失败照旧 failed（带真实原因）');
   assert.equal(outcomeFor(1, null, true).result, 'interrupted', '停机中即使有失败原因也不判 failed');
 });
@@ -707,7 +772,7 @@ test('EU 批静态锁：scheduler 停机语义 + 前端「被重启中断」显�
   assert.match(sched, /outcome\.result === 'interrupted'/, 'interrupted 分支存在');
   assert.match(sched, /if \(outcome\.result === 'interrupted'\) return;/, 'interrupted 不进熔断计数（提前返回）');
   // EU-4：停机时跳过失败原因查询（消除 Cannot use a pool 噪音）
-  assert.match(sched, /if \(!stopping && code !== 0 && code !== 75\)/, '停机中不查 lastFailedSyncRun');
+  assert.match(sched, /if \(!stopping && code !== 0 && code !== 75 && code !== 76\)/, '停机中不查 lastFailedSyncRun（75/76 软退出也不查，原因固定）');
   // EU-5：排空（drain）——停机时不再立即打断在跑任务，等其自然完成（默认 10 分钟可调），超时才 SIGTERM
   assert.match(sched, /SCHEDULER_DRAIN_TIMEOUT_MS/, '排空超时可用环境变量调整');
   assert.match(sched, /10 \* 60_000/, '排空超时默认 10 分钟');
