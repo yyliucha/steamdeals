@@ -369,3 +369,17 @@ while attempt < maxAttempts:
 - 不做「自动测速/自动选最优代理」（AM-1 §9 既有决策不变）；
 - 不改通用代理 `HTTPS_PROXY`（AM-1 决策 6 不变）；
 - 不解决重槽超载（§6.4/§6.5 的缺口靠排队）。
+
+## 12. 监工执行记录（FW 批）
+
+> 按 [steamdeals-nightshift](../.dsh/skills/steamdeals-nightshift/SKILL.md) 监工流程：每阶段追加一行
+> `HH:MM <阶段> <子批> <结果>`。工人**不改**本文件（由监工统一写）。
+
+| 时间 | 阶段 | 子批 | 结果 |
+|---|---|---|---|
+| 17:20 | 开工 | — | 规格与条目已确认并推送 `0a9e35a`；环境验证 Node v24（`C:\Users\Administrator\.dsh\dsh-runtimes\dsh-next-primary-runtime\dependencies\node\bin\node.exe`）跑 `test/scheduler.test.js` 48/48；ACTIVE-SESSIONS 已登记 |
+| 17:21 | 评估 | — | 三子批**串行**执行（FW-1 与 FW-3 共用 `scheduler.js`；FW-1/WF-2 共用 git 暂存区，历史上出过 `b9356aa` 暂存区串扰事故）→ 不并行、不用 worktree（每子批 5~8 文件，合并成本高于收益） |
+| 17:21 | 工人启动 | FW-1 | 派工人 A |
+| 17:47 | 工人完成 | FW-1 | 提交 `7c21b29`（12 文件：scheduler / settings / discovery / cli-sync / store 两处 / 测试 4 个 + `package.json` test:3 一行 + 新增 `test/slow-sync.test.js`）；QA 第 1 轮 ✅ 放行（通过 7 / 缺失 0 / 偏差 0 / 需人工确认 2，报告 `docs/QA-FW-1.md`）；CI `test-main` run 45793517473 success |
+| 17:52 | 监工审核 | FW-1 | ✅ 通过：① 提交范围 12 文件全在预期内，未越界改共用文档；② 复核 `test/slow-sync.test.js` 4/4、`test/scheduler.test.js` 48/48；③ 代码审查通过——游标「每页推进 / 请求失败不推进 / 空 items 重置 1 / 坏 JSON 兜底回 1」正确，迁移用真 pglite 且「显式值 50 不动 + 二次启动不再迁移」，`app_settings` 表名正确（建表在 `src/settings.js:688`） |
+| 17:53 | 工人启动 | FW-2 | 派工人 B（403/429 代理切换 + 全站速率闸门） |
