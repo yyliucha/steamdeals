@@ -12,6 +12,7 @@ import { createServer } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
 import { readFileSync, existsSync, writeFileSync, statSync } from 'node:fs';
 import { join, extname, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as db from './store/pg.js';
 import { createConcurrencyGate } from './http-guard.js';
 import * as visitors from './visitors.js';
@@ -606,7 +607,11 @@ export function createApiServer({
     const { spawn } = await import('node:child_process');
     const fsMod = await import('node:fs');
     // SYNC_RUN_ID 让子进程复用这一条记录，避免重复建行
-    const child = spawn(process.execPath, args, {
+    // 后台「立即运行」各入口的 args 有两种写法（带/不带 cli.js 前缀）——统一在 spawn 前补齐：
+    // 不带前缀时 node 会把 'heat' 当模块路径找（ERR_MODULE_NOT_FOUND /app/heat），v2.30.2 线上实测。
+    const cliPath = fileURLToPath(new URL('./cli.js', import.meta.url));
+    const argv = /(^|\/)cli\.js$/.test(String(args[0] ?? '')) ? args : [cliPath, ...args];
+    const child = spawn(process.execPath, argv, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
