@@ -10,6 +10,9 @@ import { redactUrl } from './log.js';
 import * as undici from 'undici';
 import { decideProxy, redactProxy, steamProxyUrls } from './proxy.js';
 import * as proxyPool from './proxy-pool.js';
+// FW-2（docs/SLOW-SYNC.md §2.3）：全站速率闸门（文件令牌桶）——每次对 Steam 业务域的真实请求都扣，
+// 代理重试也扣；切 IP 不增加总预算。
+import { takeToken, rateGatePerMin, rateMaxWaitMs } from './rate-gate.js';
 
 export const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 steamdeals/0.2 (personal use)';
@@ -241,6 +244,47 @@ function isProxyLayerFailure(info, aborted) {
   return aborted || info.proxyStatus != null || PROXY_SWITCH_CODES.has(info.code);
 }
 
+// ---------------------------------------------------------------- FW-2：403/429 切代理（docs/SLOW-SYNC.md §1.2 决策 7~12、§3.3）
+// 修订 AM-1 决策 1（原「HTTP 5xx 与 429 都不切换」）：403 是出口 IP 被拒（不是配额，等多久都不会好），
+// 429 也切代理但总量不增（全站闸门 30 次/分钟）。5xx 仍不切（Steam 自身故障，换 IP 打到同一组服务器）。
+
+/** 403/429 开关（设置页水合到 env；默认开，'0' 关闭 = 回滚到 AM-1 行为）。 */
+const envFlag = (value, fallback = true) => (value == null || value === '' ? fallback : String(value) !== '0');
+
+export function rotateOn403(env = process.env) {
+  return envFlag(env.SYNC_ROTATE_ON_403);
+}
+
+export function rotateOn429(env = process.env) {
+  return envFlag(env.SYNC_ROTATE_ON_429);
+}
+
+/** 每请求 403/429 最多试几条代理（env SYNC_ROTATE_MAX_PER_REQUEST，1–10，默认 3）。 */
+export function rotateMaxPerRequest(env = process.env) {
+  const n = Number(env.SYNC_ROTATE_MAX_PER_REQUEST);
+  if (!Number.isFinite(n) || n < 1) return 3;
+  return Math.min(10, Math.trunc(n));
+}
+
+/**
+ * FW-2：Steam 业务拒绝 = 目标站回 403/429，且**不是代理层问题**（err.proxyStatus == null）。
+ * 代理 CONNECT 的 403/407 是代理配置/隧道问题，仍走 AM-1 的代理层失败逻辑（isProxyLayerFailure），
+ * 两者不能混：一个该换代理，一个该修代理。
+ */
+export function isSteamReject(err) {
+  if (!err || (err.status !== 403 && err.status !== 429)) return false;
+  return err.proxyStatus == null;
+}
+
+// 全池 403（说明几条出口 IP 一起被封）的全局冷却起点：5 分钟起，随连续次数翻倍、30 分钟封顶。
+export const STEAM_403_POOL_BASE_MS = 5 * 60_000;
+
+/** FW-2：全池被拒后的全局 403 退避——5m→10m→20m→30m 封顶（单代理/直连仍用 steam403BackoffMs 1m 起）。 */
+export function steam403PoolBackoffMs(count) {
+  const n = Math.max(1, Math.trunc(Number(count) || 1));
+  return Math.min(STEAM_403_MAX_MS, STEAM_403_POOL_BASE_MS * 2 ** (n - 1));
+}
+
 /** 把错误码翻译与出网通道合起来，得到最终给用户看的一句提示。 */
 export function errorHint(info, route, { aborted = false, timeoutMs = 0 } = {}) {
   if (aborted) return `超时（${timeoutMs}ms 内无响应）`;
@@ -318,6 +362,7 @@ export async function fetchText(url, opts = {}) {
   // 传入 fetchImpl 时（测试/特殊场景）不干预出网通道；
   // forceDirect 强制直连（诊断/兜底用）；否则按主机决定是否走代理。
   const host = hostOf(url);
+  const steamHost = isSteamHost(host);
   // AM-1：Steam 代理池（docs/PROXY-POOL.md §4.3）——只有走 Steam 专用代理的请求才启用；
   // 老单行配置 = 1 条代理，保持旧行为（验收 1「照常工作」，含 407 只请求一次等语义），≥2 条才启用池。
   const configuredPool = !fetchImpl && !forceDirect && decideProxy(host, process.env).via === 'steam-proxy'
@@ -342,7 +387,18 @@ export async function fetchText(url, opts = {}) {
   let attempt = 0;
   let retriesUsed = 0;
   let steam429Retries = 0;
-  let shouldAdvance = true; // 是否要为下一次尝试重新选代理（只有代理层失败才置 true）
+  let shouldAdvance = true; // 是否要为下一次尝试重新选代理（代理层失败 / 403/429 切换才置 true）
+  let pendingSwitchReason = null; // 下一次 http.proxy_switch 的 reason（proxy 错误码 / steam403 / steam429）
+  let steamRejected = false; // FW-2：403/429 已无法再换代理 → 已写全局冷却，最终抛原错误（不包装 PROXY_ALL_FAILED）
+
+  // FW-2（docs/SLOW-SYNC.md §1.2 决策 7~12）：403/429 切代理开关 + 每请求上限 + 全站闸门参数。
+  const rotate403 = rotateOn403(process.env);
+  const rotate429 = rotateOn429(process.env);
+  const rotateMax = rotateMaxPerRequest(process.env);
+  // 决策 8：闸门只对 Steam 业务域的真实请求生效；fetchImpl 是注入的替身（没有真实请求）不扣 token。
+  const gateEnabled = steamHost && !fetchImpl;
+  const gatePerMin = rateGatePerMin(process.env);
+  const gateMaxWaitMs = rateMaxWaitMs(process.env);
 
   /** AM-1：全部候选失败 → 报错并记日志，绝不回退直连（docs/PROXY-POOL.md 决策 3）。 */
   const throwAllFailed = () => {
@@ -361,22 +417,90 @@ export async function fetchText(url, opts = {}) {
     throw allFailed;
   };
 
-  /** AM-1：为本次尝试选一条池内代理；候选全部试过 → PROXY_ALL_FAILED。 */
-  const poolRouteForAttempt = () => {
+  /**
+   * 429 全局冷却（内存 + 落盘）：剩余超 SYNC_429_MAX_WAIT_MS → COOLDOWN_ABORT（exit 75 + interrupted），
+   * 短冷却（≤ 上限）等待后继续。仅在无池（单代理/直连/注入 fetchImpl）或全池都不可用时检查。
+   */
+  const waitSteam429Cooldown = async () => {
+    const effective429 = Math.max(steamCooldownUntil, readSteam429Until());
+    if (!steamHost || effective429 <= Date.now()) return;
+    const delayMs = effective429 - Date.now();
+    // FP 批 P0（docs/SYNC-HARDENING.md §4.1）：冷却剩余超上限 → 中断本轮，不空转占槽。
+    const maxWait = sync429MaxWaitMs(process.env);
+    if (delayMs > maxWait) {
+      logger?.warn('sync.cooldown_abort', {
+        label,
+        delayMs,
+        maxWaitMs: maxWait,
+        ...(route?.proxy ? { proxy: route.proxy } : {}),
+        message: 'Steam 429 冷却剩余超过 SYNC_429_MAX_WAIT_MS，本轮中断（exit 75 + interrupted，不占槽）',
+      });
+      const err = new Error(
+        `Steam 429 冷却剩余约 ${Math.round(delayMs / 60000)} 分钟，超过上限 ${Math.round(maxWait / 60000)} 分钟，本轮中断（SYNC_429_MAX_WAIT_MS 可调）`,
+      );
+      err.status = 429;
+      err.code = 'COOLDOWN_ABORT';
+      throw err;
+    }
+    logger?.warn('http.rate_limit_wait', {
+      label,
+      delayMs,
+      ...(route?.proxy ? { proxy: route.proxy } : {}),
+      message: 'Steam 处于 429 冷却期，等待后再请求',
+    });
+    await sleep(delayMs);
+  };
+
+  /** 403 全局冷却：冷却期内不请求 Steam，直接抛 FORBIDDEN_COOLDOWN（status 403，调用方按 403 收轮）。 */
+  const throwIfSteam403Cooldown = () => {
+    const info = steamHost ? readSteam403Info() : null;
+    if (!info) return;
+    const err = new Error(
+      `Steam 处于 403 冷却期（连续 ${info.count} 次被拒），约 ${Math.max(1, Math.round((info.until - Date.now()) / 60000))} 分钟后可重试`,
+    );
+    err.status = 403;
+    err.code = 'FORBIDDEN_COOLDOWN';
+    logger?.warn('sync.forbidden_cooldown', {
+      label,
+      count: info.count,
+      until: new Date(info.until).toISOString(),
+      ...(route?.proxy ? { proxy: route.proxy } : {}),
+      message: '403 冷却期内不再请求（退避 + 降速）',
+    });
+    throw err;
+  };
+
+  /**
+   * 为本次尝试选一条池内代理。
+   * FW-2（docs/SLOW-SYNC.md §3.3）：冷却改成**按代理**——downUntil 未过期的候选直接跳过、不再请求；
+   * **只有全池都不可用（或可用候选都试过）时才读全局** `data/steam-403.json` / `data/steam-429.json`，
+   * 否则会变成「一条代理被拒 → 所有代理一起停」。
+   * 全池冷却且全局也无冷却时，仍按 AM-1 兜底试最早解冻的一条（避免长任务被卡死）。
+   * 返回 null 表示池内候选全部试过（调用方按 AM-1 报 PROXY_ALL_FAILED）。
+   */
+  const poolRouteForAttempt = async () => {
     poolCandidates = proxyPool.candidatesFor(host, process.env, { logger });
-    const next = proxyPool.nextCandidate(poolCandidates, triedProxies);
-    if (!next) throwAllFailed();
+    const available = poolCandidates.filter((u) => !proxyPool.cooldownUntil(u, { logger }));
+    let next = proxyPool.nextCandidate(available, triedProxies);
+    let coolingOverride = null;
+    if (!next) {
+      // 全池都在冷却 / 可用候选都试过 → 这时才看全局冷却（403 冷却期直接失败、429 冷却期按上限等待或中断）
+      await waitSteam429Cooldown();
+      throwIfSteam403Cooldown();
+      next = poolCandidates.find((u) => !triedProxies.includes(u)) ?? null;
+      if (!next) return null;
+      coolingOverride = proxyPool.cooldownUntil(next, { logger });
+    }
     const nextRoute = dispatcherForUrl(next, 'steam-proxy');
     if (route?.proxy && route.proxy !== nextRoute.proxy) {
       logger?.info('http.proxy_switch', {
         from: route.proxy,
         to: nextRoute.proxy,
-        reason: String(lastFailureInfo?.code ?? lastError?.code ?? lastError?.message ?? 'cooldown').slice(0, 60),
+        reason: String(pendingSwitchReason ?? lastFailureInfo?.code ?? lastError?.code ?? lastError?.message ?? 'cooldown').slice(0, 60),
       });
     }
-    const cooling = proxyPool.cooldownUntil(next, { logger });
-    if (cooling) {
-      logger?.warn('http.proxy_cooldown_override', { proxy: nextRoute.proxy, downUntil: cooling });
+    if (coolingOverride) {
+      logger?.warn('http.proxy_cooldown_override', { proxy: nextRoute.proxy, downUntil: coolingOverride });
     }
     triedProxies.push(next);
     return nextRoute;
@@ -384,56 +508,30 @@ export async function fetchText(url, opts = {}) {
 
   while (true) {
     attempt += 1;
-    const effective429 = Math.max(steamCooldownUntil, readSteam429Until());
-    if (isSteamHost(hostOf(url)) && effective429 > Date.now()) {
-      const delayMs = effective429 - Date.now();
-      // FP 批 P0（docs/SYNC-HARDENING.md §4.1）：冷却剩余超 SYNC_429_MAX_WAIT_MS → 中断本轮
-      //（COOLDOWN_ABORT 带 status=429，调用方按 429 软退出 exit 75 + interrupted，不占 heavy slot）；
-      // 短冷却（≤ 上限）保持等待——批量任务不再睡满 30 分钟挂起占槽。
-      const maxWait = sync429MaxWaitMs(process.env);
-      if (delayMs > maxWait) {
-        logger?.warn('sync.cooldown_abort', {
-          label,
-          delayMs,
-          maxWaitMs: maxWait,
-          message: 'Steam 429 冷却剩余超过 SYNC_429_MAX_WAIT_MS，本轮中断（exit 75 + interrupted，不占槽）',
-        });
-        const err = new Error(
-          `Steam 429 冷却剩余约 ${Math.round(delayMs / 60000)} 分钟，超过上限 ${Math.round(maxWait / 60000)} 分钟，本轮中断（SYNC_429_MAX_WAIT_MS 可调）`,
-        );
-        err.status = 429;
-        err.code = 'COOLDOWN_ABORT';
-        throw err;
+    if (fetchImpl) {
+      // 注入替身：行为与旧版一致（仍先看全局冷却，测试靠它锁 429/403 冷却语义）
+      await waitSteam429Cooldown();
+      throwIfSteam403Cooldown();
+      route = { dispatcher: null, via: 'custom', proxy: null };
+    } else if (poolUrls.length) {
+      if (shouldAdvance) {
+        route = await poolRouteForAttempt();
+        if (!route) throwAllFailed(); // AM-1：候选全部试过 → PROXY_ALL_FAILED，不回退直连
       }
-      logger?.warn('http.rate_limit_wait', { label, delayMs, message: 'Steam 处于 429 冷却期，等待后再请求' });
-      await sleep(delayMs);
+      // 非代理层失败的重试：复用同一条代理，不切换（AM-1 原语义）
+    } else {
+      // 单代理 / 直连：保持原有全局冷却语义（每次尝试前检查）
+      await waitSteam429Cooldown();
+      throwIfSteam403Cooldown();
+      route = forceDirect ? { dispatcher: null, via: 'direct', proxy: null } : dispatcherFor(host);
     }
-    // FP 批 P0（docs/SYNC-HARDENING.md §4.3）：Steam 403 冷却期内不请求——直接按 403 失败
-    //（降速：调用方 403 收轮，不再打 Steam 加深风控；指数退避时长由连续次数决定）。
-    const steam403Info = isSteamHost(hostOf(url)) ? readSteam403Info() : null;
-    if (steam403Info) {
-      const err = new Error(
-        `Steam 处于 403 冷却期（连续 ${steam403Info.count} 次被拒），约 ${Math.max(1, Math.round((steam403Info.until - Date.now()) / 60000))} 分钟后可重试`,
-      );
-      err.status = 403;
-      err.code = 'FORBIDDEN_COOLDOWN';
-      logger?.warn('sync.forbidden_cooldown', {
-        label,
-        count: steam403Info.count,
-        until: new Date(steam403Info.until).toISOString(),
-        message: '403 冷却期内不再请求（指数退避 + 降速）',
-      });
-      throw err;
-    }
-    route = fetchImpl
-      ? { dispatcher: null, via: 'custom', proxy: null }
-      : forceDirect
-        ? { dispatcher: null, via: 'direct', proxy: null }
-        : poolUrls.length
-          ? (shouldAdvance ? poolRouteForAttempt() : route) // 非代理层失败的重试：复用同一条代理，不切换
-          : dispatcherFor(host);
     shouldAdvance = false;
     const requestId = rid();
+    // FW-2 决策 8（docs/SLOW-SYNC.md §2.3）：每个真实请求（含代理重试）都过全站闸门；
+    // 不足则 sleep 到够 1 个 token（单次最多 2 秒、累计超上限抛 COOLDOWN_ABORT）。
+    if (gateEnabled) {
+      await takeToken({ perMin: gatePerMin, maxWaitMs: gateMaxWaitMs, logger, label });
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const startedAt = Date.now();
@@ -500,7 +598,6 @@ export async function fetchText(url, opts = {}) {
       lastFailureInfo = { code, message: String(err.message ?? '').slice(0, 120) };
       const hint = errorHint(info, route, { aborted, timeoutMs });
       // 代理拒绝隧道（403/407）是配置问题，重试 3 次只会拖慢并刷屏；5xx 才值得再试
-      const steam429 = err.status === 429 && isSteamHost(hostOf(url));
       const retryable = aborted
         ? true
         : info.proxyStatus != null
@@ -525,58 +622,99 @@ export async function fetchText(url, opts = {}) {
         retryable,
       });
 
-      if (steam429) {
-        // BL 批（docs/BACKFILL-THROUGHPUT.md §3.2）：首次 429 就先落盘全局冷却（含 at/label），
-        // 再按 STEAM_429_RETRIES 决定是否在本进程内重试——回填用 STEAM_429_RETRIES=0 快速失败，
-        // 其它任务仍能从文件读到冷却、不再立刻打 Steam。
-        const nextRetry = steam429Retries + 1;
-        // 持续 429 时逐步拉长等待（30m、1h、2h…最多 6h），避免任务退出后需要人工重启。
-        const backoffMs = Math.min(6 * 60 * 60 * 1000, STEAM_429_COOLDOWN_MS * (2 ** (nextRetry - 1)));
-        const delayMs = Math.max(backoffMs, retryAfterMs(err.retryAfter));
-        writeSteam429Until(Math.max(steamCooldownUntil, Date.now() + delayMs), { at: new Date().toISOString(), label }); // AC6 + BL：落盘共享给其它子进程
-        if (steam429Retries >= steam429RetriesMax) break; // 不重试：立即失败（内存冷却只在重试语义下设置，避免同进程后续请求被睡死）
-        steam429Retries = nextRetry;
-        steamCooldownUntil = Math.max(steamCooldownUntil, Date.now() + delayMs);
-        logger?.warn('http.rate_limit_pause', {
-          label,
-          requestId,
-          status: 429,
-          retry: steam429Retries,
-          delayMs,
-          retryAfter: err.retryAfter ?? null,
-          message: 'Steam 429：已记录冷却（at/label），按重试配置决定是否等待重试',
-        });
-        await sleep(delayMs);
-        continue;
-      }
-
-      // FP 批 P0（docs/SYNC-HARDENING.md §4.3）：Steam 403 单独退避——指数退避（1m→2m→4m…上限 30m）+ 降速。
-      // 连续次数落盘（steam-403.json），下一次请求前读到冷却直接失败，不再打 Steam；
-      // 告警口径在调度器侧：连续 ≥3 次才发失败邮件（单次 403 不刷屏）。
-      if (err.status === 403 && isSteamHost(hostOf(url))) {
-        // 连续次数按带衰减的 streak 累计（冷却过期后恢复请求、再 403 时退避继续翻倍）
-        const count = Math.min(readSteam403Streak() + 1, 20);
-        const backoffMs = steam403BackoffMs(count);
-        writeSteam403Until(Date.now() + backoffMs, { count, at: new Date().toISOString(), label });
-        logger?.warn('http.forbidden_backoff', {
-          label,
-          requestId,
-          status: 403,
-          count,
-          backoffMs,
-          message: 'Steam 403（风控/代理被拒）：已记录指数退避冷却，冷却期内不再请求',
-        });
+      // FW-2（docs/SLOW-SYNC.md §1.2 决策 7~12、§3.3）：Steam 目标站 403/429 = 出口 IP 被拒/限流。
+      // 池 ≥2 且开关开且未超「每请求最多 N 条」→ 按代理记冷却后换下一条（同一逻辑请求继续）；
+      // 否则（池用尽 / 开关关 / 已达上限 / 单代理直连）→ 写全局冷却并抛**原错误**（status 保持
+      // 403/429，不包装 PROXY_ALL_FAILED——FW-3 的软退出判定依赖原错误码）。
+      // 代理 CONNECT 的 403/407 不在这里（proxyStatus != null），仍走下面的 AM-1 代理层失败逻辑。
+      const steamReject = steamHost && isSteamReject(err);
+      if (steamReject) {
+        const status = err.status;
+        const kind = status === 403 ? 'steam403' : 'steam429';
+        const switchOn = status === 403 ? rotate403 : rotate429;
+        const untried = poolUrls.filter((u) => !triedProxies.includes(u));
+        const canRotate = Boolean(route?.url) && poolUrls.length >= 2 && switchOn
+          && triedProxies.length < rotateMax && untried.length > 0 && attempt < maxAttempts;
+        const poolRotation = poolUrls.length >= 2 && switchOn;
+        if (poolRotation && route?.url) {
+          // 按代理记冷却（决策 10）：能继续切就换下一条；不能切（池用尽/已达上限）也要把当前这条标记掉——
+          // 「全池都被标记」才写全局冷却（验收 6），否则下轮全局冷却到期后会立刻再撞同一条。
+          // 429 的 Retry-After 只记到该代理（不当全局冷却）；冷却时长取 max(阶梯, retryAfter)。
+          const minCooldownMs = status === 429 ? retryAfterMs(err.retryAfter) : 0;
+          const rec = proxyPool.noteProxyFailure(
+            route.url,
+            { code: kind, message: `HTTP ${status}` },
+            { logger, kind, minCooldownMs },
+          );
+          logger?.warn('http.proxy_down', { proxy: route.proxy, fails: rec.fails, downUntil: rec.downUntil, kind });
+          if (canRotate) {
+            pendingSwitchReason = kind;
+            shouldAdvance = true; // 下一条代理（同一逻辑请求，不 break）
+            continue;
+          }
+        }
+        if (status === 403) {
+          // FP 批口径保留：连续次数按带衰减的 streak 累计；FW-2 全池被拒从 5 分钟起
+          //（AM-1 单代理/直连仍 1 分钟起，回滚开关关掉时行为不变）。
+          const count = Math.min(readSteam403Streak() + 1, 20);
+          const backoffMs = poolRotation ? steam403PoolBackoffMs(count) : steam403BackoffMs(count);
+          writeSteam403Until(Date.now() + backoffMs, { count, at: new Date().toISOString(), label });
+          logger?.warn('http.forbidden_backoff', {
+            label,
+            requestId,
+            status: 403,
+            count,
+            backoffMs,
+            ...(route?.proxy ? { proxy: route.proxy } : {}),
+            message: 'Steam 403（风控/代理被拒）：已记录退避冷却，冷却期内不再请求',
+          });
+        } else {
+          // BL 批（docs/BACKFILL-THROUGHPUT.md §3.2）：首次 429 即落盘全局冷却（含 at/label）。
+          const nextRetry = steam429Retries + 1;
+          const backoffMs = Math.min(6 * 60 * 60 * 1000, STEAM_429_COOLDOWN_MS * (2 ** (nextRetry - 1)));
+          const delayMs = Math.max(backoffMs, retryAfterMs(err.retryAfter));
+          writeSteam429Until(Math.max(steamCooldownUntil, Date.now() + delayMs), { at: new Date().toISOString(), label });
+          logger?.warn('http.rate_limit_pause', {
+            label,
+            requestId,
+            status: 429,
+            retry: nextRetry,
+            delayMs,
+            retryAfter: err.retryAfter ?? null,
+            ...(route?.proxy ? { proxy: route.proxy } : {}),
+            message: 'Steam 429：已记录全局冷却（at/label）',
+          });
+          // 开关关（回滚 AM-1）时保留既有「按 STEAM_429_RETRIES 等待后同代理重试」语义；
+          // 全池已用尽/已达上限（FW 语义）则直接抛原错误，不再睡 30 分钟。
+          if (!poolRotation && steam429Retries < steam429RetriesMax) {
+            steam429Retries = nextRetry;
+            steamCooldownUntil = Math.max(steamCooldownUntil, Date.now() + delayMs);
+            await sleep(delayMs);
+            continue; // shouldAdvance=false：复用同一条代理
+          }
+        }
+        if (poolRotation) {
+          logger?.error('http.proxy_all_rejected', {
+            status,
+            proxies: triedProxies.map((u) => redactProxy(u)),
+            count: triedProxies.length,
+            message: '池内可用代理都被 Steam 403/429 拒绝（或已达每请求上限），已写全局冷却',
+          });
+        }
+        steamRejected = true; // 最终抛原错误（status 保持 403/429）
+        break;
       }
 
       // AM-1：代理层失败 → 记冷却并换下一条（docs/PROXY-POOL.md 决策 1/2）；
-      // HTTP 5xx / 429 是"有响应"，走上面/下面的原重试逻辑，不切换代理。
+      // HTTP 5xx 是"有响应"，走下面的原重试逻辑，不切换代理（FW-2 决策 11 保持不变）。
       if (poolUrls.length && route?.url && isProxyLayerFailure(info, aborted)) {
         const rec = proxyPool.noteProxyFailure(
           route.url,
           { code, message: String(lastError?.message ?? '').slice(0, 120) },
-          { logger },
+          { logger, kind: 'proxy' },
         );
-        logger?.warn('http.proxy_down', { proxy: route.proxy, fails: rec.fails, downUntil: rec.downUntil });
+        logger?.warn('http.proxy_down', { proxy: route.proxy, fails: rec.fails, downUntil: rec.downUntil, kind: 'proxy' });
+        pendingSwitchReason = String(code || 'proxy').slice(0, 60);
         shouldAdvance = true; // 下一条代理
         if (attempt < maxAttempts) continue;
       }
@@ -593,8 +731,9 @@ export async function fetchText(url, opts = {}) {
     }
   }
 
-  if (poolUrls.length && poolCandidates.length && triedProxies.length >= poolCandidates.length) {
-    // 池内候选全部试过且都失败（含 retries=0 的直落路径）→ 统一报 PROXY_ALL_FAILED，不回退直连
+  // FW-2：全池 403/429 时已写全局冷却并直接抛原错误（steamRejected 分支），不包装成 PROXY_ALL_FAILED；
+  // 其它情况（代理层失败把候选试完）仍按 AM-1 报 PROXY_ALL_FAILED，不回退直连。
+  if (!steamRejected && poolUrls.length && poolCandidates.length && triedProxies.length >= poolCandidates.length) {
     throwAllFailed();
   }
 

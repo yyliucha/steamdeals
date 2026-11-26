@@ -9,7 +9,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { explainError, fetchText, readSteam429Until, readSteam429Info, writeSteam429Until, steam429FilePath } from '../src/http.js';
+
+// FW-2（docs/SLOW-SYNC.md §2.3）：Steam 业务域名请求要过全站速率闸门（data/steam-rate.json）——
+// 本文件有几条经真实 undici ProxyAgent 打到 api.steampowered.com 的用例，必须把闸门文件隔离到临时目录，
+// 否则会把运行时状态写进工作区、并被别的用例的 token 余额影响。
+process.env.STEAM_RATE_FILE = join(mkdtempSync(join(tmpdir(), 'steam-rate-http-error-')), 'steam-rate.json');
 
 /** 复刻 undici 8.x ProxyAgent 的包装形状。 */
 function proxyTunnelError(status) {

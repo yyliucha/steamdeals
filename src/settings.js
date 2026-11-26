@@ -106,6 +106,13 @@ const SETTINGS_META = {
   'system.circuitCooldownMin': { section: 'schedule', tier: 'advanced', sum: '熔断 {v} 分' },
   'system.chartOnSync': { section: 'schedule', tier: 'advanced' },
   'system.backupEnabled': { section: 'schedule', tier: 'advanced', sum: '手动备份 {v}' },
+  // FW 批（docs/SLOW-SYNC.md §5）：403/429 切代理 + 全站速率闸门——进「调度与熔断」卡折叠区。
+  // 该卡现有 5 项全部在折叠里，本批 5 项若放常用区 = 5 项 > CQ 的「每卡常用 ≤3」上限，故全进折叠。
+  'sync.rotateOn403': { section: 'schedule', tier: 'advanced', sum: '403 切代理 {v}' },
+  'sync.rotateOn429': { section: 'schedule', tier: 'advanced', sum: '429 切代理 {v}' },
+  'sync.rateGatePerMin': { section: 'schedule', tier: 'advanced', sum: '闸门 {v}/分' },
+  'sync.rotateMaxPerRequest': { section: 'schedule', tier: 'advanced', sum: '每请求 {v} 条' },
+  'sync.rateMaxWaitMs': { section: 'schedule', tier: 'advanced', sum: '闸门等待 {v}ms' },
   'system.backupIntervalMin': { section: 'backup', tier: 'advanced', sum: '间隔 {v}' },
   'system.backupInitialDelaySec': { section: 'backup', tier: 'advanced', sum: '轮延迟 {v}' },
   'system.logsPruneEnabled': { section: 'backup', tier: 'advanced', sum: '清理 {v}' },
@@ -450,6 +457,29 @@ export const SETTINGS = [
   // ---- 高级 ----
   def('system.circuitThreshold', 'CIRCUIT_THRESHOLD', 'advanced', '熔断阈值（连续失败次数）', 'int', 3, { min: 1, max: 100 }),
   def('system.circuitCooldownMin', 'CIRCUIT_COOLDOWN_MIN', 'advanced', '熔断暂停（分钟）', 'int', 360, { min: 1, max: 10080 }),
+  // FW 批（docs/SLOW-SYNC.md §1.2 决策 7~12、§5）：403/429 切代理与全站速率闸门。
+  // 放「调度与熔断」卡折叠区（与 system.circuitThreshold 同区）；全部可回滚到 AM-1 行为。
+  def('sync.rotateOn403', 'SYNC_ROTATE_ON_403', 'advanced', 'Steam 403 切换代理', 'bool', true, {
+    help: '撞 403 时按代理记冷却（60s/5min/30min）并换下一条可用代理，全池被拒才写全局冷却。关闭 = 退回 AM-1 行为（同一个出口等冷却再试）。',
+  }),
+  def('sync.rotateOn429', 'SYNC_ROTATE_ON_429', 'advanced', 'Steam 429 切换代理', 'bool', true, {
+    help: '撞 429 时同样换下一条代理（Retry-After 只记到该代理），但全站总预算不变（见下方速率闸门）。关闭 = 退回 AM-1 行为。',
+  }),
+  def('sync.rateGatePerMin', 'SYNC_RATE_GATE_PER_MIN', 'advanced', '全站速率闸门（次/分钟）', 'int', 30, {
+    min: 1,
+    max: 40,
+    help: 'Steam 全部业务请求共用这一份预算（含代理重试），切 IP 不增加总请求量：Steam 硬上限 200 次/5 分钟 = 40/分钟，默认 30 留 25% 余量。调大更容易撞 429。',
+  }),
+  def('sync.rotateMaxPerRequest', 'SYNC_ROTATE_MAX_PER_REQUEST', 'advanced', '每请求最多试几条代理', 'int', 3, {
+    min: 1,
+    max: 10,
+    help: '一个逻辑请求因 403/429 最多换几条代理（默认 3），避免一条链路把整个代理池跑一遍；代理连不上的失败不受此限。',
+  }),
+  def('sync.rateMaxWaitMs', 'SYNC_RATE_MAX_WAIT_MS', 'advanced', '闸门等待上限（毫秒）', 'int', 300000, {
+    min: 0,
+    max: 3600000,
+    help: '等速率闸门 token 的累计等待上限（默认 300000 = 5 分钟）；超过则本轮中断（COOLDOWN_ABORT → exit 75 + interrupted，不继续占槽）。',
+  }),
   def('system.chartOnSync', 'CHART_ON_SYNC', 'advanced', '采集后生成静态页', 'bool', false, {
     help: '内置 Web 服务直接读数据库，默认不需要静态页；使用 nginx 托管 out/ 时才开启。',
   }),

@@ -19,6 +19,14 @@ export function healthFile() {
 // 冷却阶梯：fails=1 → 60s；fails=2 → 5min；fails>=3 → 30min（§2 决策 2）
 const COOLDOWN_BY_FAILS = [0, 60_000, 5 * 60_000, 30 * 60_000];
 
+// FW-2（docs/SLOW-SYNC.md §2.4）：失败类型——区分「Steam 拒了」（403/429，该换 IP）
+// 与「代理坏了」（连不上/超时/TLS/CONNECT 4xx，5xx）。只用于展示与排查，不参与选路。
+export const FAILURE_KINDS = ['proxy', 'steam403', 'steam429'];
+
+export function normalizeFailureKind(kind) {
+  return FAILURE_KINDS.includes(String(kind)) ? String(kind) : 'proxy';
+}
+
 /** 代理 key = sha256(url) 前 16 位（§3.2）。 */
 export function proxyKey(url) {
   return createHash('sha256').update(String(url ?? '')).digest('hex').slice(0, 16);
@@ -175,25 +183,35 @@ export function nextCandidate(list, tried) {
   return null;
 }
 
-/** 记一次失败：fails+1、按阶梯算冷却、落盘。返回 { fails, downUntil } 供日志用。 */
+/**
+ * 记一次失败：fails+1、按阶梯算冷却、落盘。返回 { fails, downUntil, lastErrorKind } 供日志用。
+ *
+ * FW-2（docs/SLOW-SYNC.md §2.4 / PROXY-POOL.md §12）：新增 kind ∈ 'proxy' | 'steam403' | 'steam429'，
+ * 写进 lastErrorKind 供设置页健康表区分「Steam 403/429」与「代理不可用」；
+ * minCooldownMs 用于把 429 的 Retry-After 落到**该代理**（冷却取 max(阶梯, retryAfter)），不当全局冷却。
+ */
 export function noteProxyFailure(url, err, opts = {}) {
-  const { file = healthFile(), logger = null } = opts;
+  const { file = healthFile(), logger = null, kind = 'proxy', minCooldownMs = 0 } = opts;
   readHealth(file, logger);
   const key = proxyKey(url);
   const rec = state.proxies[key] ?? {};
   const fails = (Number(rec.fails) || 0) + 1;
   const now = new Date();
-  const downUntil = new Date(now.getTime() + COOLDOWN_BY_FAILS[Math.min(fails, 3)]).toISOString();
+  const ladderMs = COOLDOWN_BY_FAILS[Math.min(fails, 3)];
+  const extraMs = Math.max(0, Number(minCooldownMs) || 0);
+  const lastErrorKind = normalizeFailureKind(kind);
+  const downUntil = new Date(now.getTime() + Math.max(ladderMs, extraMs)).toISOString();
   state.proxies[key] = {
     fails,
     downUntil,
     lastErrorAt: now.toISOString(),
     lastError: String(err?.code ?? err?.message ?? 'unknown').slice(0, 120),
     lastOkAt: rec.lastOkAt ?? null,
+    lastErrorKind,
   };
   state.updatedAt = now.toISOString();
   scheduleSave(file, logger);
-  return { fails, downUntil };
+  return { fails, downUntil, lastErrorKind };
 }
 
 /** 记一次成功：失败计数清零、清冷却、记 lastGood（粘住用），落盘。 */
@@ -208,6 +226,7 @@ export function noteProxySuccess(url, opts = {}) {
     lastErrorAt: null,
     lastError: null,
     lastOkAt: now.toISOString(),
+    lastErrorKind: null, // 成功一次即清「最近错误类型」（与 lastError 同口径）
   };
   state.lastGood = key;
   state.updatedAt = now.toISOString();
@@ -233,6 +252,8 @@ export function proxyHealth(env = process.env, opts = {}) {
       lastError: rec?.lastError ?? null,
       lastErrorAt: rec?.lastErrorAt ?? null,
       lastOkAt: rec?.lastOkAt ?? null,
+      // FW-2（docs/SLOW-SYNC.md §2.4）：失败类型——Steam 403 / Steam 429 / 代理不可用（老字段不变）
+      lastErrorKind: rec?.lastErrorKind ?? null,
       // BB 批（docs/PROXY-POOL.md §11.2）：主动探测结果（与业务冷却分离）
       probeAt: rec?.probeAt ?? null,
       probeOk: typeof rec?.probeOk === 'boolean' ? rec.probeOk : null,

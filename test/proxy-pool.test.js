@@ -76,6 +76,47 @@ test('冷却阶梯：首败 60s、二连败 5min、三连败 30min 封顶；成�
   }
 });
 
+test('FW-2：noteProxyFailure 支持 kind（proxy/steam403/steam429）→ lastErrorKind；proxyHealth 输出；429 Retry-After 落到该代理', () => {
+  const file = fileIn(tmpDir());
+  resetProxyHealth();
+  try {
+    // 默认 kind = proxy（AM-1 老调用方不传 kind，行为不变）
+    const r1 = noteProxyFailure(P1, { code: 'ECONNREFUSED' }, { file });
+    assert.equal(r1.lastErrorKind, 'proxy', '不传 kind 默认 proxy');
+    assert.equal(healthRecord(P1, { file }).lastErrorKind, 'proxy');
+    // Steam 403 / 429 区分开（§2.4：区分「Steam 拒了」与「代理坏了」）
+    noteProxyFailure(P2, { code: 'steam403' }, { file, kind: 'steam403' });
+    assert.equal(healthRecord(P2, { file }).lastErrorKind, 'steam403');
+    // 非法 kind 归一化成 proxy（不把未知字符串写进健康文件）
+    noteProxyFailure(P3, { code: 'x' }, { file, kind: 'banana' });
+    assert.equal(healthRecord(P3, { file }).lastErrorKind, 'proxy', '非法 kind 归一化');
+    // 老字段语义不变（fails/downUntil/lastErrorAt/lastOkAt）
+    const rec = healthRecord(P1, { file });
+    assert.equal(rec.fails, 1);
+    assert.ok(rec.downUntil && rec.lastErrorAt, '仍写 downUntil/lastErrorAt');
+    assert.equal(rec.lastError, 'ECONNREFUSED');
+    // 视图输出（地址脱敏）——老字段不变 + 新字段 lastErrorKind
+    const view = proxyHealth({ STEAM_PROXY: [P1, P2].join('\n') }, { file });
+    assert.equal(view.proxies[0].lastErrorKind, 'proxy');
+    assert.equal(view.proxies[1].lastErrorKind, 'steam403');
+    assert.ok('fails' in view.proxies[0] && 'downUntil' in view.proxies[0] && 'lastErrorAt' in view.proxies[0], '老字段仍在');
+    // 成功一次 → lastErrorKind 清零（与 lastError 同口径）
+    noteProxySuccess(P1, { file });
+    assert.equal(healthRecord(P1, { file }).lastErrorKind, null, '成功后清「最近错误类型」');
+    // 429 的 Retry-After 只记到该代理：冷却取 max(阶梯 60s, retryAfter 30min)
+    const started = Date.now();
+    const r429 = noteProxyFailure(P2, { code: 'steam429' }, { file, kind: 'steam429', minCooldownMs: 30 * 60_000 });
+    const downMs = Date.parse(r429.downUntil) - started;
+    assert.ok(downMs >= 29.9 * 60_000, `429 冷却取 max(阶梯, Retry-After)，实际 ${downMs}ms`);
+    // 落盘后换进程（清内存）仍读得到 lastErrorKind
+    flushProxyHealth();
+    resetProxyHealth();
+    assert.equal(healthRecord(P2, { file }).lastErrorKind, 'steam429', '重启进程后 lastErrorKind 仍在（读 proxy-health.json）');
+  } finally {
+    resetProxyHealth();
+  }
+});
+
 test('候选顺序：sticky 优先；冷却中的排后面；全部冷却取最早解冻；nextCandidate 跳过已试', () => {
   const file = fileIn(tmpDir());
   resetProxyHealth();
