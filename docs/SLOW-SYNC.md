@@ -57,7 +57,7 @@
 
 ## 2. 数据模型
 
-新增 1 张表、2 个持久状态，不改既有表结构：
+新增 3 处持久状态（1 个页面游标 + 1 个令牌桶文件 + 1 组代理业务冷却标记），不改表结构：
 
 ### 2.1 heat 候选阈值（改 SQL）
 
@@ -75,27 +75,23 @@
 - **幂等**：同一页重复跑不重复写库（`update games ... where steam_appid=$1`）；
 - **不落 `data/*.json`**：容器重建可能丢 `data/`（待核实 §10-2），`app_meta` 随库持久。
 
-### 2.3 全站速率闸门（新表，FW-2）
+### 2.3 全站速率闸门（文件令牌桶，FW-2）
 
-```sql
-create table if not exists sync_rate_bucket (
-  bucket_at  timestamptz primary key,   -- 对齐到 10 秒
-  count      integer not null default 0,
-  updated_at timestamptz not null default now()
-);
-```
+**为什么不用 DB 表**：`src/http.js` 是纯网络层、**不持有 DB 连接**（server 进程、scheduler 子进程、
+各 CLI 命令共用同一出口），在 HTTP 出口做闸门只能走文件——与 `data/steam-403.json` /
+`data/steam-429.json` / `data/proxy-health.json` 同款先例。
 
-- **窗口**：最近 60 秒 = 6 个 10 秒桶；
-- **放行**：请求前 `select coalesce(sum(count),0) from sync_rate_bucket where bucket_at > now() - interval '60 seconds'`
-  → `< 30` 放行，否则 sleep 到最老桶滑出；
-- **记账**：请求后 `insert ... on conflict (bucket_at) do update set count = sync_rate_bucket.count + 1`；
-  **代理重试也记一次**（切 IP 的额外请求必须计入预算）；
-- **跨进程原子**：DB 单行 upsert，不依赖文件锁；
-- **清理**：`prune` 任务删除 `bucket_at < now() - interval '1 hour'` 的桶（新增一条清理）；
-- **计入范围**：只算 `store.steampowered.com` / `api.steampowered.com`；不含杉果/GOG/Humble/ITAD、
-  不含图片 CDN、不含 `probe` 的 CONNECT 探测；
-- **等待上限**：闸门等待超 `SYNC_RATE_MAX_WAIT_MS`（默认 5 分钟）→ 软退出 76（与 429 的
-  `COOLDOWN_ABORT` 同款思路，避免长时间占槽）。
+- **文件**：`data/steam-rate.json`，内容 `{"tokens":<0..30>,"at":"ISO"}`；
+- **容量/补充**：容量 **30**，补充率 **30/分钟**（每 2 秒 1 个 token）；
+- **取用**：请求前「读 → 按 `at` 补 token（上限 30）→ 有则扣 1 写回（tmp+rename 原子）→
+  不足则 sleep 到够 1 个（最多 2 秒）」；
+- **记账范围**：每次对 Steam 业务域的真实请求都扣；**代理重试也扣**（切 IP 的额外请求必须计入预算）；
+  不含杉果/GOG/Humble/ITAD、不含图片 CDN、不含 `probe` 的 CONNECT 探测；
+- **跨进程**：最后写入者胜（AM-1 健康文件同款）——最坏情况少扣 1~2 个 token，偶发多打几次；
+  闸门 30 对硬上限 40 留 25% 余量，可接受；
+- **等待上限**：累计等待超 `SYNC_RATE_MAX_WAIT_MS`（默认 5 分钟）→ 抛 `COOLDOWN_ABORT`
+  （沿用既有 exit 75 + 1 小时重排；FW-3 之后再决定是否并入 76）；
+- **首次/文件损坏**：按满桶（30）处理并记 `sync.rate_gate_reset`（debug），不因坏文件停摆。
 
 ### 2.4 代理业务冷却（复用，加标记）
 
@@ -128,11 +124,12 @@ create table if not exists sync_rate_bucket (
 | `src/scheduler.js:105-106` | discovery `--pages 10 --fallback 10`、`intervalMin 30` | FW-1 |
 | `src/cli/sync.js:437-449` | `cmdSteamDiscovery` 读/写 `app_meta` 游标，新增 `--reset-cursor` | FW-1 |
 | `src/discovery.js` | `runDiscoveryRound` 接受 `startPage`，每页推进游标，到头重置 | FW-1 |
-| `src/store/pg.js` | 建 `sync_rate_bucket` + 清理；`app_meta` 游标读写函数 | FW-2 |
+| `src/store/pg.js` | `app_meta` 游标读写函数（FW-1 已落 `cli-sync-repository`，本批只读用） | FW-2 |
+| `src/rate-gate.js`（新增） | 令牌桶读写 `data/steam-rate.json`：`takeToken({perMin, maxWaitMs})` 原子写 + 坏文件按满桶 | FW-2 |
 | `src/http.js:233-242` | `isProxyLayerFailure` 之外新增 `isSteamReject(err)` = `status===403`（且 `proxyStatus==null`）或 `status===429` | FW-2 |
 | `src/http.js:411-427` | 403 冷却读取改为「当前代理的 `downUntil`」；全池冷却才读全局文件 | FW-2 |
 | `src/http.js:528-566` | 403/429 分支：`noteProxyFailure(route.url, {kind:'steam403'|'steam429'})` + `shouldAdvance=true` + `continue`（受 3 条上限） | FW-2 |
-| `src/http.js`（请求前） | 过全局速率闸门（`sync_rate_bucket`），重试也记账 | FW-2 |
+| `src/http.js`（请求前） | 过全局速率闸门（`src/rate-gate.js` 的 `takeToken`），代理重试也扣 token | FW-2 |
 | `src/proxy-pool.js` | `noteProxyFailure` 支持 `kind`；`candidatesFor` 跳过 `downUntil` 未过期的（已有）；`proxyHealth` 输出 `lastErrorKind` | FW-2 |
 | `src/cli.js:768` | `softAbort` 加 `FORBIDDEN_COOLDOWN` → exit **76** | FW-3 |
 | `src/cli/ops.js:1017-1025` | `cmdHeat` 403 不抛「已中止」，改抛 `code='FORBIDDEN_ROUND_END'`（当前 appid **不写** `heat_at`） | FW-3 |
@@ -321,8 +318,9 @@ while attempt < maxAttempts:
    后续请求直接从第 2 条开始（不再撞第 1 条）；
 6. **全池 403 才写全局冷却**：`data/steam-403.json` 的 `until` 只在全池都被标记后出现；抛出的错误
    `err.status === 403`（不是 `PROXY_ALL_FAILED`）；
-7. **速率闸门**：连续发起 35 次 Steam 请求，第 31 次起被拦（`sync_rate_bucket` 60 秒窗口计数 ≥30 时等待）；
-   重试请求也计数；等待超 `SYNC_RATE_MAX_WAIT_MS` → exit 76；
+7. **速率闸门**：同一 Node 进程连续要 35 个 token（源站请求），第 31 个起被拦（容量 30、30/分钟补充）；
+   `data/steam-rate.json` 的 `tokens` 随时间回升；**代理重试也扣 token**（切 3 条 = 扣 3 个）；
+   等待超 `SYNC_RATE_MAX_WAIT_MS` → 抛 `COOLDOWN_ABORT`（exit 75）；
    外加 `npm test`（分段）+ `frontend:build` + `scan` 全绿。
 
 ### FW-3（软退出与预警，7 条）
@@ -338,7 +336,7 @@ while attempt < maxAttempts:
 
 ### 通用
 
-- 不改既有表结构（只新增 `sync_rate_bucket`）、不加依赖；
+- 不改表结构、不加依赖（闸门走文件不走 DB）；
 - 日志事件名符合 `域.动作`；
 - `npm test`（分段）+ `frontend:build` + `scan` 全绿。
 
@@ -383,3 +381,4 @@ while attempt < maxAttempts:
 | 17:47 | 工人完成 | FW-1 | 提交 `7c21b29`（12 文件：scheduler / settings / discovery / cli-sync / store 两处 / 测试 4 个 + `package.json` test:3 一行 + 新增 `test/slow-sync.test.js`）；QA 第 1 轮 ✅ 放行（通过 7 / 缺失 0 / 偏差 0 / 需人工确认 2，报告 `docs/QA-FW-1.md`）；CI `test-main` run 45793517473 success |
 | 17:52 | 监工审核 | FW-1 | ✅ 通过：① 提交范围 12 文件全在预期内，未越界改共用文档；② 复核 `test/slow-sync.test.js` 4/4、`test/scheduler.test.js` 48/48；③ 代码审查通过——游标「每页推进 / 请求失败不推进 / 空 items 重置 1 / 坏 JSON 兜底回 1」正确，迁移用真 pglite 且「显式值 50 不动 + 二次启动不再迁移」，`app_settings` 表名正确（建表在 `src/settings.js:688`） |
 | 17:53 | 工人启动 | FW-2 | 派工人 B（403/429 代理切换 + 全站速率闸门） |
+
