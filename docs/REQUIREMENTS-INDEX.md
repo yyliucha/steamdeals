@@ -180,6 +180,7 @@
 | **EQ** | 提醒通道：多收件人分组（范围待确认后补规格） | [ROADMAP.md](ROADMAP.md)「未排期想法」 | 待决策 | ✅ 本轮已给 |
 | **ER** | B4/cli 拆分遗留缺陷修复（backfill q is not a function / prune 42P01 / #18 syncPrices 断引用） | 本条目 + [B4-QUEUE.md](B4-QUEUE.md) 备注 | 已发布 v2.28.10（2026-11-24） | ✅ 本轮已给 |
 | **ES** | 生产 pg_trgm 索引命中复核（EXPLAIN，部署侧执行） | [ROADMAP.md](ROADMAP.md)「体验与性能优化」段尾注 | 待排查 | ✅ 本轮已给 |
+| **FW** | ⚙️ 调整：慢慢同步——heat 100 款/10 分钟 + 过期阈值 30 天；steam-discovery 10 页/30 分钟 + fallback 10/轮 + 页游标（`app_meta`）；403 软退出（新增 exit 76）全 Steam 任务通用 + 预警节流；拆 FW-1 / FW-2 | [SLOW-SYNC.md](SLOW-SYNC.md) | 待开发（2026-11-26 确认，两个子批） | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
 
