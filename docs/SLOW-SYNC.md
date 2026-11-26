@@ -381,4 +381,7 @@ while attempt < maxAttempts:
 | 17:47 | 工人完成 | FW-1 | 提交 `7c21b29`（12 文件：scheduler / settings / discovery / cli-sync / store 两处 / 测试 4 个 + `package.json` test:3 一行 + 新增 `test/slow-sync.test.js`）；QA 第 1 轮 ✅ 放行（通过 7 / 缺失 0 / 偏差 0 / 需人工确认 2，报告 `docs/QA-FW-1.md`）；CI `test-main` run 45793517473 success |
 | 17:52 | 监工审核 | FW-1 | ✅ 通过：① 提交范围 12 文件全在预期内，未越界改共用文档；② 复核 `test/slow-sync.test.js` 4/4、`test/scheduler.test.js` 48/48；③ 代码审查通过——游标「每页推进 / 请求失败不推进 / 空 items 重置 1 / 坏 JSON 兜底回 1」正确，迁移用真 pglite 且「显式值 50 不动 + 二次启动不再迁移」，`app_settings` 表名正确（建表在 `src/settings.js:688`） |
 | 17:53 | 工人启动 | FW-2 | 派工人 B（403/429 代理切换 + 全站速率闸门） |
+| 18:06 | 工人完成 | FW-2 | 提交 `09c7036`（11 文件 / +1109 −131：`src/rate-gate.js` 新增、`http.js`、`proxy-pool.js`、`settings.js`、`.gitignore`、`package.json` test:1、5 个测试）；QA 第 1 轮 ✅ 放行（7/0/0/4，报告 `docs/QA-FW-2.md`） |
+| 18:12 | 监工审核 | FW-2 | ✅ 通过：① 提交 11 文件全在范围内；② 复核 `test/rate-gate.test.js` 8/8、`test/http-proxy-failover.test.js` 14/14；③ 代码审查——`isSteamReject` 正确排除代理层 403（`proxyStatus != null` 走 AM-1）、全池才写全局冷却（403 从 5 分钟起）、`steamRejected` 标记避免包装成 `PROXY_ALL_FAILED`、闸门在每次真实请求前扣 token（含重试）、5xx 不切；④ 反例自检：工人如实报「字面变异（nextCandidate 恒返第一条）不变红」，原因是按代理冷却预过滤使该变异语义等价；改用 `shouldAdvance=false` 等价变异后 5 条用例变红——解释成立、做法有效；⑤ bool 开关格式核对正确（`valueToEnv` 输出 `'1'/'0'`，与 `envFlag` 的 `!=='0'` 匹配，不存在「关不掉」bug） |
+| 18:13 | 工人启动 | FW-3 | 派工人 C（403 软退出 76 + 预警节流 + 后台展示） |
 
