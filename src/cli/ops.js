@@ -505,13 +505,21 @@ export function createCliOps(ctx) {
       logger.error('backfill.aborted', { message, ...extra });
       throw new Error(message);
     };
-    // BL-2：403/429 软退出——本轮收尾、保留进度，1 小时内由调度器重排（exit 75 = partial）
+    // BL-2：429 软退出——本轮收尾、保留进度，1 小时内由调度器重排（exit 75 = partial）。
+    // FW-3（docs/SLOW-SYNC.md §1.3 决策 15、§8 验收第 5 条）：403 收尾**不重排**——抛给 runSyncTracked
+    // 统一收口（sync_runs 记 interrupted + exit 76，不熔断、下一轮按正常间隔继续）。
     const softExit = (status) => {
       partial = true;
       count429 += 1;
       last429At = new Date().toISOString();
       writeProgress('partial');
       logger.warn('backfill.partial', { reason: `http_${status}`, done, stored, priced, failed, batches, count429 });
+      if (status === 403) {
+        console.log(`本轮因 HTTP 403 提前收尾：已处理 ${done} 款，进度已保留，下一轮继续`);
+        const err = new Error('Steam 返回 HTTP 403：回填本轮软收尾（进度已保留，下一轮继续）');
+        err.status = 403;
+        throw err;
+      }
       console.log(`本轮因 HTTP ${status} 提前收尾：已处理 ${done} 款，进度已保留，1 小时内自动重试`);
       process.exitCode = 75;
     };

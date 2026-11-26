@@ -8,6 +8,8 @@ import { ingestOffers } from './ingest.js';
 import { classifySteamStatus } from './adapters/steam.js';
 import { classifyContentRating, normalizeOfficial, fetchMetadata } from './adapters/steam-meta.js';
 import { contentRegion, baseRegion, baseCurrency } from './sync-regions.js';
+// FW-3（docs/SLOW-SYNC.md §1.3 决策 15、§8 验收第 5 条）：Steam 业务 403 = 本轮软收尾。
+import { softAbortExitCode } from './soft-exit.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -205,6 +207,9 @@ export async function runSteamStatusRound(
         // 分级字段与状态来自同一响应；锁区时用港区数据（内容分级与区服无关）。
         meta = data ? normalizeOfficial(appid, data) : null;
       } catch (err) {
+        // FW-3（docs/SLOW-SYNC.md §1.3 决策 15、§8 验收第 5 条）：403 冷却 / Steam 业务 403 = 本轮软收尾——
+        // 立即重抛（不计数为失败、不逐款空转），runSyncTracked 记 interrupted + exit 76（不熔断、不重排）。
+        if (softAbortExitCode(err) === 76) throw err;
         // 网络/限流失败：不写 steam_checked_at，下轮会被重新选中（续跑）
         failed += 1;
         attempted += 1;

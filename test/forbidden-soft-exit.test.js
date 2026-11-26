@@ -12,7 +12,9 @@
 // 把 cli.js 的 applySoftAbort 调用删掉 → 静态锁红；把 cmdHeat 的 403 分支删掉 → FORBIDDEN_ROUND_END 断言红。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
@@ -125,6 +127,44 @@ test('FW-3 接线静态锁：cli.js 用 softAbortExitCode/syncRunStatusFor/apply
   );
 });
 
+// FW-3（docs/SLOW-SYNC.md §1.3 决策 15、§8 验收第 5 条）：全 Steam 任务通用——不能只有 heat 收口。
+// 中间层（steam-status 的逐款循环、fetchMetadata 的批量/回退）过去会把 403 当「这款没数据」吞掉，
+// 结果整轮空转、最后记 failed（还会熔断）。FW-3 要求这些路径把 403 重抛给 runSyncTracked → exit 76。
+test('FW-3 全 Steam 任务通用：steam-status / fetchMetadata / backfill 的 403 软收尾接线（删任一即红）', async () => {
+  const { fetchMetadata } = await import('../src/adapters/steam-meta.js');
+  // 真行为：mock 一个 403（无代理层 proxyStatus）→ fetchMetadata 必须重抛（不能返回空 items）。
+  // 注意隔离 STEAM_403_FILE：http.js 会把 403 落盘成全局冷却，不隔离会污染同工作区的其它测试
+  // （steam-meta.test.js 等按真实 data/steam-403.json 走冷却检查）。
+  const prev403 = process.env.STEAM_403_FILE;
+  const sandbox403 = join(tmpdir(), `fw3-meta-403-${process.pid}-${Date.now()}.json`);
+  process.env.STEAM_403_FILE = sandbox403;
+  try {
+    const forbidden = () => Object.assign(new Error('Steam 返回 HTTP 403'), { status: 403, proxyStatus: null });
+    await assert.rejects(
+      () => fetchMetadata([730], { backend: 'official', fetchImpl: async () => { throw forbidden(); } }),
+      (err) => softAbortExitCode(err) === 76,
+      'fetchMetadata 遇 403 重抛（否则 backfill/rename 会把冷却期当「没数据」逐款空转）',
+    );
+  } finally {
+    if (prev403 == null) delete process.env.STEAM_403_FILE;
+    else process.env.STEAM_403_FILE = prev403;
+    rmSync(sandbox403, { force: true });
+  }
+
+  // 静态锁：三处中间层都接入了统一判定
+  const meta = read('src/adapters/steam-meta.js');
+  assert.match(meta, /import \{ softAbortExitCode \} from '\.\.\/soft-exit\.js'/, 'steam-meta 引入统一判定');
+  assert.equal([...meta.matchAll(/rethrowForbiddenSoftExit\(err\);/g)].length, 2, 'official 与 steamcmd 两个后端都重抛 403');
+  const status = read('src/steam-status.js');
+  assert.match(status, /if \(softAbortExitCode\(err\) === 76\) throw err;/, 'steam-status 逐款循环遇 403 立即收轮（不计数为失败、不空转）');
+  const ops = read('src/cli/ops.js');
+  const softStart = ops.indexOf('const softExit = (status) => {');
+  assert.ok(softStart > 0, 'cmdBackfill 的 softExit 存在');
+  const softBlock = ops.slice(softStart, softStart + 700);
+  assert.match(softBlock, /if \(status === 403\) \{/, '403 走独立分支');
+  assert.match(softBlock, /err\.status = 403;[\s\S]{0,80}throw err;/, '403 抛错给 runSyncTracked 统一收口（exit 76）');
+  assert.match(softBlock, /process\.exitCode = 75;/, '429 仍走既有 exit 75（1 小时重排）不受影响');
+});
 // FW-3（docs/SLOW-SYNC.md §4、§8 验收第 7 条）：后台任务卡/任务表展示——不重设计操作区，只加状态 tag。
 // 判据：桌面表格与移动卡片两套模板都有 tag；数据来自 /api/admin/sync/status 的 forbidden / rateGate；
 // 76 的失败原因走既有 partialReason（row.lastError ← scheduler-status.json 的 lastOutcome.error）。

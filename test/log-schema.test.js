@@ -33,9 +33,10 @@ const PILOT_FILES = [
 const EVENT_SNAPSHOT = {
   'src/scheduler.js': [
     'scheduler.budget_exceeded', 'scheduler.budget_skipped', 'scheduler.circuit_reset', 'scheduler.circuit_reset_manual',
-    'scheduler.circuit_skip', 'scheduler.circuit_tripped', 'scheduler.crash', 'scheduler.discovery_forbidden', 'scheduler.exit',
+    'scheduler.circuit_skip', 'scheduler.circuit_tripped', 'scheduler.crash', 'scheduler.exit',
     'scheduler.failure_alert', 'scheduler.failure_alert_failed', 'scheduler.failure_alert_skipped',
-    'scheduler.failure_reason_failed', 'scheduler.followup', 'scheduler.forbidden_deferred', 'scheduler.heavy_slot_released',
+    'scheduler.failure_reason_failed', 'scheduler.followup', 'scheduler.forbidden_alert', 'scheduler.forbidden_deferred',
+    'scheduler.forbidden_recovered', 'scheduler.forbidden_recovered_skipped', 'scheduler.heavy_slot_released',
     'scheduler.job_deferred_busy', 'scheduler.job_done', 'scheduler.job_failed', 'scheduler.job_interrupted', 'scheduler.job_partial',
     'scheduler.job_spawn_failed', 'scheduler.job_start', 'scheduler.job_unexpected', 'scheduler.job_wait_end',
     'scheduler.job_wait_slot', 'scheduler.lastrun_restore_failed', 'scheduler.lastrun_restored',

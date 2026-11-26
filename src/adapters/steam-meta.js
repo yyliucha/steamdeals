@@ -12,6 +12,17 @@ import { fetchJson } from '../http.js';
 import { failFields } from '../log.js';
 import { formatDayUtc } from '../format.js';
 import { contentRegion } from '../sync-regions.js';
+// FW-3（docs/SLOW-SYNC.md §1.3 决策 15、§8 验收第 5 条）：Steam 业务 403 = 本轮软收尾。
+import { softAbortExitCode } from '../soft-exit.js';
+
+/**
+ * FW-3：403 冷却 / Steam 业务 403 不能当「这款没数据」吞掉——否则 backfill/rename 会把冷却期
+ * 逐款空转跑完（每款都在本地抛一次，看起来成功）。重抛给调用方 → runSyncTracked 记 interrupted
+ * + exit 76（不熔断、不重排）。429 与其它错误维持既有语义（调用方各自处理）。
+ */
+function rethrowForbiddenSoftExit(err) {
+  if (softAbortExitCode(err) === 76) throw err;
+}
 
 // Steam 官方分类 id → 中文名。只收录确定的那几个，未知 id 原样保留为 genre:<id>，
 // 宁可显示得少，也不瞎猜名字（Steam 的分类 id 表不是公开稳定的文档）。
@@ -226,6 +237,7 @@ async function fetchOfficial(appids, { logger, fetchImpl, cc = contentRegion() }
         logger?.warn('steam.meta.missing', { appid, backend: 'official' });
       }
     } catch (err) {
+      rethrowForbiddenSoftExit(err);
       logger?.warn('steam.meta.failed', { appid, backend: 'official', ...failFields(err, { url }), message: String(err.message).slice(0, 120) });
     }
   }
@@ -243,6 +255,7 @@ async function fetchSteamcmd(appids, { logger, fetchImpl }) {
       if (item) items.push(item);
       else logger?.warn('steam.meta.missing', { appid, backend: 'steamcmd', status: json?.status });
     } catch (err) {
+      rethrowForbiddenSoftExit(err);
       logger?.warn('steam.meta.failed', { appid, backend: 'steamcmd', ...failFields(err, { url }), message: String(err.message).slice(0, 120) });
     }
   }
