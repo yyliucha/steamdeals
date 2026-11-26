@@ -435,17 +435,21 @@ export function createCliSync(ctx) {
     console.log(result.synced ? `已同步 app ${result.version}（APK ${result.apk ?? '无'}）` : `未同步：${result.reason}${result.version ? `（${result.version}）` : ''}`);
   }
   async function cmdSteamDiscovery() {
-    const { runDiscoveryRound } = await import('../discovery.js');
+    // FW 批（docs/SLOW-SYNC.md §2.2）：页游标落 app_meta——默认从上次的下一页续跑，
+    // `--reset-cursor` 从第 1 页重来；--pages/--fallback/--rate 语义不变。
+    const { runDiscoveryRound, discoveryRoundOptions } = await import('../discovery.js');
     const stats = await withStore((store) =>
       runDiscoveryRound({
         q: (sql, p) => store.query(sql, p),
-        pages: Number(flag('pages', 100)),
-        fallbackLimit: Number(flag('fallback', 100)),
-        rateMs: Number(flag('rate', 1200)),
+        ...discoveryRoundOptions(flag),
         logger,
       }),
     );
-    console.log(`发现轮完成：翻页命中 ${stats.matched}，回退请求 ${stats.fallbackRequests}（采纳 ${stats.fallbackMatched}），总请求 ${stats.requests}`);
+    console.log(
+      `发现轮完成：从第 ${stats.startPage} 页起翻 ${stats.pagesFetched} 页（命中 ${stats.matched}），` +
+        `回退请求 ${stats.fallbackRequests}（采纳 ${stats.fallbackMatched}），总请求 ${stats.requests}；` +
+        `${stats.reachedEnd ? '已翻到尽头，游标重置为 1' : `下次从第 ${stats.nextPage} 页继续`}`,
+    );
   }
 
   async function cmdSyncSonkwo() {

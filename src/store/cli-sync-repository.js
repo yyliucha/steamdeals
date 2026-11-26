@@ -91,3 +91,24 @@ export async function gameAppidRowById(q, { id }) {
   const r = await q('select steam_appid from games where id = $1', [id]);
   return r.rows[0] ?? null;
 }
+
+/**
+ * app_meta 通用读取（FW 批，docs/SLOW-SYNC.md §2.2）：同步类持久状态用（discovery 页游标等）。
+ * 值缺失返回 null；表不存在等异常向上抛（调用方决定是否兜底，别静默当成"没有"）。
+ */
+export async function readAppMeta(q, { key }) {
+  const r = await q('select value from app_meta where key = $1', [key]);
+  return r.rows[0]?.value ?? null;
+}
+
+/**
+ * app_meta 通用写入（upsert，值为文本）：同一 key 只留一行，updated_at 跟随刷新。
+ * FW 批：容器重建后 data/ 可能丢，游标跟库走才不丢进度（不落 data/*.json）。
+ */
+export async function writeAppMeta(q, { key, value }) {
+  await q(
+    `insert into app_meta (key, value, updated_at) values ($1, $2, now())
+     on conflict (key) do update set value = excluded.value, updated_at = now()`,
+    [key, value],
+  );
+}

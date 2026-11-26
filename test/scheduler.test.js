@@ -76,7 +76,8 @@ test('默认任务表（FJ 批：按 12 组顺序重排，steam-claim 已移出�
   assert.ok(!jobs.some((j) => j.name === 'backup'), 'FR：backup 不在调度任务表（改回手动后台功能）');
   const interval = (name) => jobs.find((j) => j.name === name).intervalMin;
   assert.equal(interval('steam-prices'), 1440, 'Steam 价格默认每天刷新');
-  assert.equal(interval('heat'), 1440, '热度默认每天刷新（首轮自动播种，之后刷过期条目）');
+  assert.equal(interval('heat'), 10, 'FW 批：热度默认每 10 分钟一轮（100 款/轮 ≈ 14 天播种，稳态 30 天一轮）');
+  assert.equal(interval('steam-discovery'), 30, 'FW 批：Steam 发现默认每 30 分钟一轮（10 页 + 10 回退/轮）');
   assert.equal(interval('steam-status'), 1440, 'Steam 状态判定默认每天一次（X 批）');
   assert.equal(interval('rename'), 10080, '重写名字默认每周一次');
   assert.equal(interval('rating-backfill'), 1440, 'EF 批：内容分级回填默认每天一轮（cc=us 重采描述符）');
@@ -101,7 +102,8 @@ test('默认任务表（FJ 批：按 12 组顺序重排，steam-claim 已移出�
   assert.deepEqual(args('images-backfill'), ['images', 'backfill', '--limit', '100', '--sleep', '1200'], 'EC 批：缺图回填默认每轮 100 款、限速 1.2s/请求');
   assert.ok(!jobsFromEnv({ IMAGES_BACKFILL_ENABLED: '0' }).some((j) => j.name === 'images-backfill'), 'EC 批：IMAGES_BACKFILL_ENABLED=0 可关闭');
   assert.deepEqual(args('steam-prices'), ['sync', 'steam-prices', '--limit', '200000', '--batch', '5000'], 'EU-2：价格刷新默认每轮分批 5000（约 4–5 分钟，批间落断点）');
-  assert.deepEqual(args('heat'), ['heat', '--limit', '20000', '--sleep', '1700']);
+  assert.deepEqual(args('heat'), ['heat', '--limit', '100', '--sleep', '1700'], 'FW 批：每轮 100 款（轮内保持 1.7s/款 ≈ 2.8 分钟）');
+  assert.deepEqual(args('steam-discovery'), ['steam-discovery', '--pages', '10', '--fallback', '10'], 'FW 批：每轮 10 页 + 10 条名称回退');
   assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '20000', '--rate', '1500'], 'FP 批：状态判定默认每轮 2 万（env 可配 3–5 万）');
   assert.deepEqual(args('rename'), ['rename', '--limit', '200000', '--batch', '100', '--sleep', '1500']);
   assert.deepEqual(args('rating-backfill'), ['rating-backfill', '--limit', '20000', '--batch', '30', '--rate', '1500'], 'FP 批：分级回填默认每天上限 2 万、限速 1.5s/款');
@@ -476,8 +478,8 @@ test('AC-4/FP：默认声明 2 万后每日预算超 24h 自动缩 steam-status�
   const status2 = r2.jobs.find((j) => j.name === 'steam-status');
   assert.equal(status2.args[status2.args.indexOf('--limit') + 1], '40000', '显式配置的 limit 原样保留');
 
-  // heat 拉到 2.2 万（status 仍默认、未显式配置）：超预算自动缩（others 自身仍留在预算内，缩 status 可回预算）
-  const env2 = { STEAM_HEAT_LIMIT: '22000', STEAM_STATUS_RATE_MS: '1500' };
+  // heat 每轮 150 款（默认 100，仍能靠缩 status 回预算）：超预算自动缩（others 自身仍在预算内，缩 status 可回预算）
+  const env2 = { STEAM_HEAT_LIMIT: '150', STEAM_STATUS_RATE_MS: '1500' };
   const r3 = applySteamBudget(jobsFromEnv(env2), env2, logger);
   assert.equal(r3.adjusted, true);
   const status3 = r3.jobs.find((j) => j.name === 'steam-status');
@@ -501,15 +503,15 @@ test('B3：实测耗时优先——steamDailyBudgetMinutes 用 sync_runs 平均�
   ]);
   const obs = steamDailyBudgetMinutes(env, observed);
   assert.equal(obs.priceMin, 1, '价格：60s × 1 轮/天 = 1 分钟');
-  assert.equal(obs.heatMin, 2, '热度：120s × 1 轮/天 = 2 分钟');
+  assert.equal(obs.heatMin, 288, '热度：120s × 144 轮/天（FW 批默认 10 分钟间隔）= 288 分钟');
   assert.equal(obs.statusMin, 5, '状态：300s × 1 轮/天 = 5 分钟');
   assert.equal(obs.backfillDailyMin, 10, '回填：600s × 1 轮/天 = 10 分钟');
   assert.equal(obs.ratingBackfillDailyMin, 0.5, 'EF 分级回填：30s × 1 轮/天 = 0.5 分钟');
   assert.equal(obs.explicitBackfillDailyMin, (30 * (1440 / 10080)) / 60, 'FT 色情游戏回填：30s × 7 天 1 轮 = 约 0.071 分钟/天');
-  assert.equal(obs.total, 18.5 + (30 * (1440 / 10080)) / 60, '总预算 = 实测之和（不再按理论常数）');
+  assert.equal(obs.total, 288 + 16.5 + (30 * (1440 / 10080)) / 60, '总预算 = 实测之和（不再按理论常数）');
   // 缺样本回落理论：只有 heat 有实测，其余回落
   const partial = steamDailyBudgetMinutes(env, new Map([['heat', 0.1]]));
-  assert.equal(partial.heatMin, 0.1 / 60, 'heat 用实测（0.1s × 1 轮/天）');
+  assert.equal(partial.heatMin, (0.1 * (1440 / 10)) / 60, 'heat 用实测（0.1s × 144 轮/天）');
   assert.equal(partial.priceMin, theo.priceMin, '缺实测的 mode 回落理论值');
   // 非法实测值（0/负数/NaN）当没有样本
   const junk = steamDailyBudgetMinutes(env, new Map([['steam-prices', 0], ['heat', -5], ['steam-status', Number.NaN]]));
@@ -659,13 +661,13 @@ test('CO-1/A5：失败原因取值——真实原因优先，缺失回退退出�
 });
 
 // CH 批（docs/DISCOVERY-FOR-YOU.md §6）：steam-discovery 任务默认参数与 STEAM_HEAVY 互斥
-test('CH steam-discovery：默认 100 页/回退 100/1440 分钟，归入 STEAM_HEAVY', () => {
+test('CH/FW steam-discovery：默认 10 页/回退 10/30 分钟，归入 STEAM_HEAVY', () => {
   const jobs = jobsFromEnv({ STEAM_ENABLED: '1' });
   const job = jobs.find((j) => j.name === 'steam-discovery');
   assert.ok(job, 'steam-discovery 任务存在');
-  assert.match(job.args.join(' '), /--pages 100/, '默认 100 页');
-  assert.match(job.args.join(' '), /--fallback 100/, '默认回退 100');
-  assert.equal(job.intervalMin, 1440, '默认每天一轮');
+  assert.match(job.args.join(' '), /--pages 10/, 'FW：默认 10 页（原 100）');
+  assert.match(job.args.join(' '), /--fallback 10/, 'FW：默认回退 10（原 100）');
+  assert.equal(job.intervalMin, 30, 'FW：默认每 30 分钟一轮（原 1440）');
   assert.ok(STEAM_HEAVY.has('steam-discovery'), '与 Steam 重任务互斥串行');
 });
 

@@ -20,8 +20,8 @@ async function fresh() {
   return { store, q };
 }
 
-test('设置定义完整：102 项、8 个密钥、关键分组都在', () => {
-  assert.equal(settings.SETTINGS.length, 102, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项 + DR app.syncIntervalMin 1 项 + EI 同步区域 3 项 + EK appSyncProxy 1 项 + EN CSP 模式 1 项 + FK App 同步换源 3 项 + FV head/foot 注入 2 项');
+test('设置定义完整：105 项、8 个密钥、关键分组都在', () => {
+  assert.equal(settings.SETTINGS.length, 105, '… + CB publicUrl + CC 四源每轮条数 4 项 + CF 自动封禁策略 8 项 + CH 发现与推荐 8 项 + CA-5 手机跳转开关 1 项 + CO-3/C2 App 设备限流 2 项 + CO-1/A5 任务失败邮件告警 1 项 + CO-4/E4 入库告警阈值 2 项 + DR app.syncIntervalMin 1 项 + EI 同步区域 3 项 + EK appSyncProxy 1 项 + EN CSP 模式 1 项 + FK App 同步换源 3 项 + FV head/foot 注入 2 项 + FW heat 三项');
   assert.equal(settings.SETTINGS.filter((d) => d.secret).length, 8);
 
 test('FV：head/foot 注入设置项——text 类型、默认空、env 兜底、20KB 校验上限', () => {
@@ -506,4 +506,87 @@ test('CQ 前端接线（静态）：只看非默认/折叠/恢复本组默认/�
   assert.match(admin, /sources\.\$\{s\.id\}\.enabled/, '卡头开关取与分区同名的平台 enabled（杉果=sonkwo.enabled）');
   assert.match(admin, /s\.id==='gog-humble'/, 'GOG/Humble 卡不挂卡头开关、按平台分两行');
   assert.match(admin, /enabledField\?\[sec\.enabledField\]/, '恢复本组默认包含卡头开关字段');
+});
+
+// ---------------------------------------------------------------- FW 批（docs/SLOW-SYNC.md §5/§8 FW-1）
+
+test('FW-1 设置项：heat 三项新增（发现与热度卡）、discovery 三项默认值改新值且 min 60→10', () => {
+  const heatLimit = settings.SETTING_MAP.get('heat.limit');
+  const heatInterval = settings.SETTING_MAP.get('heat.intervalMin');
+  const heatInitial = settings.SETTING_MAP.get('heat.initialDelaySec');
+  assert.ok(heatLimit && heatInterval && heatInitial, 'heat 三项已定义');
+  assert.deepEqual(
+    [heatLimit.env, heatLimit.default, heatLimit.min, heatLimit.max],
+    ['STEAM_HEAT_LIMIT', 100, 1, 200000],
+    'heat.limit：env STEAM_HEAT_LIMIT、默认 100、范围 1–200000',
+  );
+  assert.deepEqual(
+    [heatInterval.env, heatInterval.default, heatInterval.min, heatInterval.max],
+    ['STEAM_HEAT_INTERVAL_MIN', 10, 1, 1440],
+    'heat.intervalMin：env STEAM_HEAT_INTERVAL_MIN、默认 10、范围 1–1440',
+  );
+  assert.deepEqual(
+    [heatInitial.env, heatInitial.default, heatInitial.min, heatInitial.max],
+    ['STEAM_HEAT_INITIAL_DELAY_SEC', 3600, 0, 86400],
+    'heat.initialDelaySec：env STEAM_HEAT_INITIAL_DELAY_SEC、默认 3600（首轮延迟不变）',
+  );
+  for (const d of [heatLimit, heatInterval, heatInitial]) {
+    assert.equal(d.section, 'discovery', `${d.key} 归「发现与热度」卡`);
+  }
+  // 设置页 DOM 契约：卡片 id=discovery 由后端 sections 驱动，前端按 section 归卡（无需前端改动）
+  const sec = settings.SETTINGS_SECTIONS.find((s) => s.id === 'discovery');
+  assert.equal(sec.group, 'sources', '发现与热度卡在「数据源与采集」组');
+  const prim = settings.SETTINGS.filter((d) => d.section === 'discovery' && d.tier !== 'advanced');
+  assert.ok(prim.length <= 3, `发现与热度卡常用项 ${prim.length} 项（CQ 批约束 ≤3，heat 三项在折叠内）`);
+
+  assert.deepEqual(
+    [settings.SETTING_MAP.get('discovery.pages').default, settings.SETTING_MAP.get('discovery.intervalMin').default],
+    [10, 30],
+    'discovery.pages 100→10、intervalMin 1440→30',
+  );
+  assert.equal(settings.SETTING_MAP.get('discovery.fallbackLimit').default, 10, 'discovery.fallbackLimit 100→10');
+  assert.equal(settings.SETTING_MAP.get('discovery.intervalMin').min, 10, '发现间隔下限 60→10');
+  // 校验：新范围真的拦得住越界值（行为锁，不是只读 schema）
+  assert.equal(settings.validateSetting(heatLimit, 0).ok, false);
+  assert.equal(settings.validateSetting(heatLimit, 200001).ok, false);
+  assert.equal(settings.validateSetting(heatLimit, 100).ok, true);
+  assert.equal(settings.validateSetting(settings.SETTING_MAP.get('discovery.intervalMin'), 10).ok, true, '新下限 10 可保存');
+  assert.equal(settings.validateSetting(settings.SETTING_MAP.get('discovery.intervalMin'), 9).ok, false);
+});
+
+test('FW-1 升级迁移：旧默认值改成新默认、显式改过的不动、slow_sync.migrated_v1 只生效一次', async () => {
+  const { store, q } = await fresh();
+  try {
+    // 模拟线上库：三项旧默认值已保存 + 一个用户显式改过的值（不能被动）
+    await q(
+      `insert into app_settings (key, value, updated_by) values
+         ('discovery.pages', '100'::jsonb, 'tester'),
+         ('discovery.fallbackLimit', '50'::jsonb, 'tester'),
+         ('discovery.intervalMin', '1440'::jsonb, 'tester')`,
+    );
+    const events = [];
+    const logger = { info: (e, f) => events.push([e, f]), warn: () => {}, setLevel: () => {} };
+    const env = {};
+    await settings.initializeSettings({ store, env, secretKey: SECRET, logger });
+
+    const rows = (await q("select key, value from app_settings where key like 'discovery.%' order by key")).rows;
+    const byKey = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    assert.equal(byKey['discovery.pages'], 10, '旧默认 100 → 新默认 10');
+    assert.equal(byKey['discovery.intervalMin'], 30, '旧默认 1440 → 新默认 30');
+    assert.equal(byKey['discovery.fallbackLimit'], 50, '显式改过的值（50）保持不动');
+    assert.equal(env.STEAM_DISCOVERY_PAGES, '10', '同一次启动的水合已用新值');
+    assert.ok(events.some(([e]) => e === 'settings.slow_sync_migrated'), '迁移落日志 settings.slow_sync_migrated');
+    const marker = (await q("select value from app_meta where key = 'slow_sync.migrated_v1'")).rows[0];
+    assert.ok(marker?.value, '一次性标记 slow_sync.migrated_v1 已写入');
+
+    // 幂等：把 pages 改回 100 再启动一次——标记已存在，不得再迁移
+    await q("update app_settings set value = '100'::jsonb where key = 'discovery.pages'");
+    const events2 = [];
+    await settings.initializeSettings({ store, env: {}, secretKey: SECRET, logger: { info: (e) => events2.push(e), warn: () => {}, setLevel: () => {} } });
+    const pages2 = (await q("select value from app_settings where key = 'discovery.pages'")).rows[0]?.value;
+    assert.equal(pages2, 100, '标记存在 → 第二次启动不再迁移（只生效一次）');
+    assert.ok(!events2.includes('settings.slow_sync_migrated'), '第二次启动不再记迁移日志');
+  } finally {
+    await store.close();
+  }
 });

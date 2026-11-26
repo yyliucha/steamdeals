@@ -78,9 +78,9 @@ test('CH 接线：调度任务/STEAM_HEAVY/设置/接口/前端 静态契约', (
   const pg = readFileSync(join(process.cwd(), 'src', 'store', 'pg.js'), 'utf8');
 
   assert.match(sched, /name: 'steam-discovery'/, '调度任务');
-  assert.match(sched, /STEAM_DISCOVERY_PAGES, 100/, '默认 100 页');
+  assert.match(sched, /STEAM_DISCOVERY_PAGES, 10/, 'FW 批：默认 10 页（原 100）');
   assert.match(sched, /STEAM_HEAVY = new Set\(\[[\s\S]*'steam-discovery'/, '归入 STEAM_HEAVY 互斥串行');
-  for (const k of ['discovery.pages', 'discovery.fallbackLimit', 'discovery.intervalMin', 'personal.tasteWeight', 'personal.scoreDiscountWeight', 'personal.scoreReviewWeight', 'personal.scoreHeatWeight', 'personal.behaviorLogEnabled']) {
+  for (const k of ['discovery.pages', 'discovery.fallbackLimit', 'discovery.intervalMin', 'heat.limit', 'heat.intervalMin', 'heat.initialDelaySec', 'personal.tasteWeight', 'personal.scoreDiscountWeight', 'personal.scoreReviewWeight', 'personal.scoreHeatWeight', 'personal.behaviorLogEnabled']) {
     assert.ok(settings.includes(`'${k}'`), `设置 ${k}`);
   }
   // CO-5/B4-2 第十五轮：/api/games/for-you 已随 games 域抽到 src/routes/games.js，断言指向新落点

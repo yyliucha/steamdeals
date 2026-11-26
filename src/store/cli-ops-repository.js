@@ -20,11 +20,15 @@ export async function listRenameCandidates(q, { size }) {
   );
 }
 
-/** 热度回填候选（cmdHeat）：heat_at 为空或过期 7 天且有报价的游戏。返回 { rows }。 */
+/**
+ * 热度回填候选（cmdHeat）：heat_at 为空、或过期 30 天且有报价的游戏。返回 { rows }。
+ * FW 批（docs/SLOW-SYNC.md §2.1）：7 天 → 30 天。20 万目录按「100 款/10 分钟」≈ 1.44 万/天 ≈ 14 天播种；
+ * 稳态 30 天阈值只需约 6,533 款/天，而 7 天阈值要 2.8 万/天 → 会永久积压（能力追不上需求）。
+ */
 export async function listHeatCandidates(q, { size }) {
   return q(
     'select g.id, g.steam_appid from games g where g.steam_appid is not null and not g.deleted ' +
-      'and (g.heat_at is null or (g.heat_at < now() - interval \'7 days\' ' +
+      'and (g.heat_at is null or (g.heat_at < now() - interval \'30 days\' ' +
       'and exists (select 1 from offers o where o.game_id = g.id))) ' +
       'order by g.heat_at asc nulls first, g.id limit $1',
     [size],

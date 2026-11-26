@@ -76,6 +76,11 @@ const SETTINGS_META = {
   'discovery.pages': { section: 'discovery', tier: 'primary' },
   'discovery.fallbackLimit': { section: 'discovery', tier: 'primary' },
   'discovery.intervalMin': { section: 'discovery', tier: 'primary' },
+  // FW 批（docs/SLOW-SYNC.md §4/§5）：热度低频参数与 discovery 同卡「发现与热度」。
+  // 三项进折叠（tier=advanced）——该卡已有 3 项常用，CQ 批「每卡常用 ≤3 项」由 test/settings.test.js 锁死。
+  'heat.limit': { section: 'discovery', tier: 'advanced', sum: '热度每轮 {v} 款' },
+  'heat.intervalMin': { section: 'discovery', tier: 'advanced', sum: '热度每 {v} 分' },
+  'heat.initialDelaySec': { section: 'discovery', tier: 'advanced', sum: '热度首轮 {v} 秒' },
   // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：同步区域卡（内容 vs 本位币两套口径）
   'sync.contentRegion': { section: 'sync-region', tier: 'primary' },
   'site.baseRegion': { section: 'sync-region', tier: 'primary' },
@@ -388,9 +393,25 @@ export const SETTINGS = [
   }),
 
   // ---- Deck 认证 + 好评率 + 个性化推荐（CH 批，docs/DISCOVERY-FOR-YOU.md §5）----
-  def('discovery.pages', 'STEAM_DISCOVERY_PAGES', 'sources', 'Steam 发现每轮翻页数', 'int', 100, { min: 1, max: 1000, help: '每页 50 款，100 页 ≈ 5000 款/轮。' }),
-  def('discovery.fallbackLimit', 'STEAM_DISCOVERY_FALLBACK_LIMIT', 'sources', '发现名称回退条数', 'int', 100, { min: 1, max: 2000, advanced: true }),
-  def('discovery.intervalMin', 'STEAM_DISCOVERY_INTERVAL_MIN', 'sources', 'Steam 发现间隔（分钟）', 'int', 1440, { min: 60, max: 10080 }),
+  // FW 批（docs/SLOW-SYNC.md §1.1/§5）：慢慢同步——discovery 每轮 10 页、30 分钟一轮（页游标只进不退）；
+  // 名称回退 100 → 10/轮（一次 403 也不会整轮白跑，游标在 app_meta）。
+  def('discovery.pages', 'STEAM_DISCOVERY_PAGES', 'sources', 'Steam 发现每轮翻页数', 'int', 10, { min: 1, max: 1000, help: '每页 50 款，10 页 ≈ 500 款/轮；配合页游标只进不退，翻到尽头才从第 1 页重来。' }),
+  def('discovery.fallbackLimit', 'STEAM_DISCOVERY_FALLBACK_LIMIT', 'sources', '发现名称回退条数', 'int', 10, { min: 1, max: 2000, advanced: true }),
+  def('discovery.intervalMin', 'STEAM_DISCOVERY_INTERVAL_MIN', 'sources', 'Steam 发现间隔（分钟）', 'int', 30, { min: 10, max: 10080 }),
+  // FW 批（docs/SLOW-SYNC.md §1.1/§6.1）：热度回填低频化——每轮 100 款、10 分钟一轮（首轮延迟仍 3600 秒）。
+  // 20 万目录按 100 款/10 分钟 ≈ 1.44 万/天 ≈ 14 天播种完；稳态候选阈值 30 天（cli-ops-repository），
+  // 每天只需 ≈6,533 款。轮内保持 1.7s/款突发（≈2.8 分钟），轮间静默 ≈7 分钟。
+  def('heat.limit', 'STEAM_HEAT_LIMIT', 'sources', '热度回填每轮条数', 'int', 100, {
+    min: 1,
+    max: 200000,
+    help: '每轮热度回填的游戏数（逐 appid 请求，约 1.7s/款）。100 款 ≈ 2.8 分钟/轮，20 万目录约 14 天播种一轮。',
+  }),
+  def('heat.intervalMin', 'STEAM_HEAT_INTERVAL_MIN', 'sources', '热度回填间隔（分钟）', 'int', 10, {
+    min: 1,
+    max: 1440,
+    help: '每轮间隔；10 分钟一轮 ≈ 1.44 万款/天。稳态只回填过期 30 天且有报价的条目（约 6,533 款/天）。',
+  }),
+  def('heat.initialDelaySec', 'STEAM_HEAT_INITIAL_DELAY_SEC', 'sources', '热度首轮延迟（秒）', 'int', 3600, { min: 0, max: 86400, advanced: true }),
   def('personal.tasteWeight', 'PERSONAL_TASTE_WEIGHT', 'site', '推荐口味权重（0–100）', 'int', 50, { min: 0, max: 100, help: '「为你推荐」口味相似 vs 综合评分的混合比例。' }),
   def('personal.scoreDiscountWeight', 'PERSONAL_SCORE_DISCOUNT_W', 'site', '综合分折扣权重', 'int', 40, { min: 0, max: 100, advanced: true }),
   def('personal.scoreReviewWeight', 'PERSONAL_SCORE_REVIEW_W', 'site', '综合分好评权重', 'int', 35, { min: 0, max: 100, advanced: true }),
@@ -1153,6 +1174,47 @@ export async function hydrateSettings({ store, logger = null, env = process.env,
   return read;
 }
 
+// ---------------------------------------------------------------- FW 批（docs/SLOW-SYNC.md §5）
+// 升级迁移：settings 表的已存值优先于代码默认值（DB > env > 默认）——线上保存过旧默认值的话，
+// 光改默认值不生效。这里把「等于旧默认值」的行一次性改成新默认，用 app_meta 标记保证只生效一次。
+export const SLOW_SYNC_MIGRATED_KEY = 'slow_sync.migrated_v1';
+
+// [key, 旧默认, 新默认]——只迁移「值恰好等于旧默认」的行；用户显式改过的值不动。
+export const SLOW_SYNC_DEFAULT_MIGRATIONS = [
+  ['discovery.pages', 100, 10],
+  ['discovery.fallbackLimit', 100, 10],
+  ['discovery.intervalMin', 1440, 30],
+];
+
+/**
+ * 慢同步一次迁移（幂等：app_meta.slow_sync.migrated_v1 存在即跳过）。
+ * 返回 { migrated: 是否本次执行, keys: 实际改动的 key }；由 initializeSettings 在启动链路调用，
+ * 不放请求路径（每进程启动一次的开销 = 1 次 app_meta 读）。
+ */
+export async function migrateSlowSyncDefaults(q, { logger = null } = {}) {
+  const done = await q('select value from app_meta where key = $1', [SLOW_SYNC_MIGRATED_KEY]);
+  if (done.rows.length) return { migrated: false, keys: [] };
+  const keys = [];
+  for (const [key, oldValue, newValue] of SLOW_SYNC_DEFAULT_MIGRATIONS) {
+    const r = await q(
+      `update app_settings set value = to_jsonb($2::int), updated_at = now(), updated_by = 'migration:slow_sync'
+        where key = $1 and value = to_jsonb($3::int)`,
+      [key, newValue, oldValue],
+    );
+    if ((r.rowCount ?? 0) > 0) keys.push(key);
+  }
+  await q(
+    `insert into app_meta (key, value, updated_at) values ($1, $2, now())
+     on conflict (key) do update set value = excluded.value, updated_at = now()`,
+    [SLOW_SYNC_MIGRATED_KEY, new Date().toISOString()],
+  );
+  if (keys.length) {
+    await bumpRevision(q, 'migration:slow_sync');
+    logger?.info('settings.slow_sync_migrated', { keys, to: { 'discovery.pages': 10, 'discovery.fallbackLimit': 10, 'discovery.intervalMin': 30 } });
+  }
+  return { migrated: true, keys };
+}
+
 /**
  * 进程启动初始化：
  *   1. 建设置表
@@ -1166,6 +1228,8 @@ export async function initializeSettings({ store, logger = null, env = process.e
   if (usersReady) await ensureSmtpSchema(store);
 
   const q = (sql, p) => store.query(sql, p);
+  // FW 批：启动链路跑一次慢同步迁移（在 env 导入/水合之前——同一次启动内新默认值即生效；幂等标记只生效一次）。
+  await migrateSlowSyncDefaults(q, { logger });
   const completed = await isSetupComplete(q, { fresh: true });
   const admins = usersReady ? await countAdmins(q) : 0;
   let migrated = false;

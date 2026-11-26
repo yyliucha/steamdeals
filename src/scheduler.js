@@ -77,12 +77,13 @@ export function jobsFromEnv(env = process.env) {
     },
     {
       name: 'heat',
-      // 每天跑热度（评测数 + 发行日期）：**首轮自动全量播种**（heat_at 为 null 的都会被选中），
-      // 之后只刷"过期 7 天且有报价"的条目。appdetails 批量只接受 price_overview，
-      // 热度必须逐 appid 请求（约 1.7s/款）；每天 20000 款 ≈ 9.4 小时，
-      // 19.6 万款约 10 天播完，**无需手工执行任何命令**。
-      args: ['heat', '--limit', String(num(env.STEAM_HEAT_LIMIT, 20000)), '--sleep', '1700'],
-      intervalMin: num(env.STEAM_HEAT_INTERVAL_MIN, 1440),
+      // FW 批（docs/SLOW-SYNC.md §1.1/§6.1）：热度回填低频化——每轮 100 款（轮内 1.7s/款 ≈ 2.8 分钟）、
+      // 间隔 10 分钟（轮间静默 ≈ 7 分钟），首轮延迟仍 3600 秒（首轮自动全量播种，heat_at 为 null 都选中）。
+      // 之后只刷"过期 30 天且有报价"的条目（见 cli-ops-repository 的 listHeatCandidates）：
+      // 20 万目录按 100 款/10 分钟 ≈ 1.44 万/天 ≈ 14 天播种完，稳态 30 天一轮只需 ≈6,533 款/天。
+      // appdetails 批量只接受 price_overview，热度必须逐 appid 请求（约 1.7s/款）。
+      args: ['heat', '--limit', String(num(env.STEAM_HEAT_LIMIT, 100)), '--sleep', '1700'],
+      intervalMin: num(env.STEAM_HEAT_INTERVAL_MIN, 10),
       initialDelaySec: num(env.STEAM_HEAT_INITIAL_DELAY_SEC, 3600),
       enabled: env.STEAM_ENABLED !== '0',
     },
@@ -100,10 +101,12 @@ export function jobsFromEnv(env = process.env) {
     },
     {
       name: 'steam-discovery',
-      // CH 批（docs/DISCOVERY-FOR-YOU.md §6）：每天翻页采集 Deck 认证 + 好评率（search/results，
-      // 与 appdetails 同域共享 200 次/5 分钟配额 → 归入 STEAM_HEAVY 互斥串行）；100 页 ×50 款 ≈ 5 分钟/轮。
-      args: ['steam-discovery', '--pages', String(num(env.STEAM_DISCOVERY_PAGES, 100)), '--fallback', String(num(env.STEAM_DISCOVERY_FALLBACK_LIMIT, 100))],
-      intervalMin: num(env.STEAM_DISCOVERY_INTERVAL_MIN, 1440),
+      // CH 批（docs/DISCOVERY-FOR-YOU.md §6）：翻页采集 Deck 认证 + 好评率（search/results，
+      // 与 appdetails 同域共享 200 次/5 分钟配额 → 归入 STEAM_HEAVY 互斥串行）。
+      // FW 批（docs/SLOW-SYNC.md §1.1/§2.2）：10 页 ×50 款 + 10 条名称回退、30 分钟一轮（≈24 秒）；
+      // 页游标落 app_meta（discovery.page_cursor），只进不退，翻到尽头才重置为 1（断点续跑）。
+      args: ['steam-discovery', '--pages', String(num(env.STEAM_DISCOVERY_PAGES, 10)), '--fallback', String(num(env.STEAM_DISCOVERY_FALLBACK_LIMIT, 10))],
+      intervalMin: num(env.STEAM_DISCOVERY_INTERVAL_MIN, 30),
       initialDelaySec: num(env.STEAM_DISCOVERY_INITIAL_DELAY_SEC, 1800),
       enabled: env.STEAM_ENABLED !== '0' && env.STEAM_DISCOVERY_ENABLED !== '0',
     },
@@ -668,7 +671,7 @@ export const STEAM_BUDGET_MODES = ['steam-prices', 'heat', 'steam-status', 'back
 /**
  * AC-4 单轮理论耗时（秒）——口径与任务实现一致：
  *  - steam-prices：每 30 款一批约 1.1s（batchSize=30/rateLimitMs=1100，cmd 内固定）；
- *  - heat：每款约 1.7s（scheduler 里 --sleep 1700 固定）；
+ *  - heat：每款约 1.7s（scheduler 里 --sleep 1700 固定）；FW 批每轮默认 100 款（100×1.7s ≈ 2.8 分钟/轮）。
  *  - steam-status：每款平均 2 次请求 × rate；
  *  - backfill：每 100 款一批 GetItems 间隔 3s + 每批最多 10 个单条回退（各 0.4s）；
  *  - rating-backfill（EF 批）：每款 1 次请求 × rate（默认 1.5s）。
@@ -678,7 +681,7 @@ export function theoreticalRunSeconds(env = process.env) {
   const backfillLimit = num(env.STEAM_BACKFILL_LIMIT, 20000);
   return {
     'steam-prices': (num(env.STEAM_PRICE_LIMIT, 200000) / 30) * 1.1,
-    heat: num(env.STEAM_HEAT_LIMIT, 20000) * 1.7,
+    heat: num(env.STEAM_HEAT_LIMIT, 100) * 1.7,
     'steam-status': num(env.STEAM_STATUS_LIMIT, 20000) * 2 * (num(env.STEAM_STATUS_RATE_MS, 1500) / 1000),
     backfill: (backfillLimit / 100) * 3 + (backfillLimit / 100) * 10 * 0.4,
     'rating-backfill': num(env.STEAM_RATING_BACKFILL_LIMIT, 20000) * (num(env.STEAM_RATING_BACKFILL_RATE_MS, 1500) / 1000),
@@ -697,7 +700,7 @@ export function steamDailyBudgetMinutes(env = process.env, observed = null) {
   const perDay = (intervalMin) => 1440 / Math.max(1, intervalMin);
   const runsPerDay = {
     'steam-prices': perDay(num(env.STEAM_PRICE_INTERVAL_MIN, 1440)),
-    heat: perDay(num(env.STEAM_HEAT_INTERVAL_MIN, 1440)),
+    heat: perDay(num(env.STEAM_HEAT_INTERVAL_MIN, 10)),
     'steam-status': perDay(num(env.STEAM_STATUS_INTERVAL_MIN, 1440)),
     backfill: perDay(num(env.STEAM_BACKFILL_INTERVAL_MIN, 1440)),
     'rating-backfill': perDay(num(env.STEAM_RATING_BACKFILL_INTERVAL_MIN, 1440)),
