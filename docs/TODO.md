@@ -3,6 +3,8 @@
 > 最后更新：2026-11-25（本批 FK/FM/FL/FO/FP/FQ/FR/FT/FU/FV 已发布 v2.30.0 / app-v2.25.1，移入 [DONE.md](DONE.md)；本清单只保留未完成条目）。
 > 2026-11-25 晚补：FU 的 **gRPC 修正**（v2.30.0 用 OTLP HTTP 上报 4319 不成立，腾讯云要求 gRPC + token 走 Resource 属性）
 > 已随 **v2.30.1** 发布，FU 条目整段移入 [DONE.md](DONE.md)。
+> 2026-11-26 补：**v2.30.2**（CSP 严格档放行百度统计/RUM 脚本域名白名单，修复百度统计「未安装代码」）已发布，无待办条目新增。
+
 > 接手会话先看本清单，再看 [REQUIREMENTS-INDEX.md](REQUIREMENTS-INDEX.md)（**需求批次总账**：全部批次的规格 + 状态 + 是否已有开发描述）、
 > [DONE.md](DONE.md)（**已完成/已过时条目存档**）、[DELIVERY.md](DELIVERY.md)（流程/发版）与 [UI-FIXES.md](UI-FIXES.md)（界面缺陷细节）。
 > **清单分工（2026-11-18 所有者新规）**：本清单**只放待办**；条目变为 `已发布 vX.Y.Z` 或 `已过时` 后**整段移入 [DONE.md](DONE.md)**
