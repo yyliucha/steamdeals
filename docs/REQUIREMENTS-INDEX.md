@@ -208,11 +208,5 @@
 9. **AO**（后台游戏列 + 链接抽屉改版）2026-11-09 入 TODO，规格 [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md)；单批，纯前端；
 10. **AP**（价格历史报表）2026-11-09 入 TODO，规格 [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md)；单批，纯前端；
 11. **AQ / AR**（后台列表排序 / 按 IP 合并）2026-11-09 入 TODO，规格 [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md)；AR 依赖 AQ、下一期开发。
-
-
-
-
-
-
-
+| **GD** | 🐞 缺陷：App「我的 → 主题」切换深色完全不生效（2.25.1）——链路已查通，最可能 DataStore 写入静默失败；修复=内存态优先 + 异常兜底 | —（App 仓库 `steamdeals-app`；来源所有者 2026-11-27 反馈） | 待开发 | — |
 

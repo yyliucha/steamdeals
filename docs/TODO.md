@@ -25,7 +25,7 @@
 
 | 类型 | 数量 | 编号 |
 |---|---|---|
-| 🐞 缺陷 | 5 | EO、ER、EU、EX、GC |
+| 🐞 缺陷 | 6 | EO、ER、EU、EX、GC、GD |
 | ✨ 功能 | 0 | — |
 | ⚙️ 调整 | 12 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FW / FZ / GA |
 | 🧹 技术债 | 2 | EN、FC |
@@ -281,3 +281,29 @@
   env 缓存」而不污染 `process.env`；③ `readSettings` 记录「本进程内 hydrate 过的 key」，restore 后对这些 key 跳过 env。
 - **验收**：新增 `test/settings-restore.test.js`：保存 → 恢复默认 → 值回默认且来源为「默认」（不再回落刚保存值）；
   连续两次保存/恢复幂等；`pages` 侧来源徽标正确。
+
+## GD. 待开发（🐞 缺陷）：App「我的 → 主题」切换深色完全不生效（2.25.1）
+
+**状态：** 待开发
+**类型：** 🐞 缺陷（**涉及 App 仓库**：是）
+**优先级：** P2 —— 主题切换点了完全没反应，用户无法切深色
+**依赖：** 无
+**解锁：** 无
+**来源**：所有者 2026-11-27 反馈（手机 App 2.25.1，点「深色」完全没变，像没点一样）
+
+- **已查链路（2026-11-27 监工，App 仓库 HEAD `ba0e1b1`）**：`MeScreen` 主题弹窗 → `vm.setTheme(mode)` →
+  `store.setTheme`（DataStore `edit`）→ `SessionManager.session = store.data.stateIn` →
+  `AppViewModel.themeMode = session.map{ it.theme }.stateIn` → `MainActivity.collectAsState` →
+  `SteamDealsTheme(themeMode)`——**每一环都接上了**；色板是标准 `darkColorScheme`/`lightColorScheme`，
+  UI 无硬编码颜色（仅品牌渐变 + 一处浅黄提示卡，不影响整体）。
+- **最可能根因**：`setTheme` 在 `viewModelScope.launch` 里调 `store.setTheme`，**无 try-catch、无内存态兜底**——
+  DataStore 写入若抛异常（多进程访问 `steamdeals_session`、IO 问题），协程静默失败 → `session` 不 emit →
+  界面与选项高亮都不变，正好是「点了跟没点一样」。
+- **修复方向**：① **内存态优先**——新增 `_themeOverride: MutableStateFlow<String?>`，
+  `themeMode = combine(session.map{it.theme}, _themeOverride){ p,o -> o ?: p }`；`setTheme` 先置 `_themeOverride.value = mode`
+  （界面立即变），再 `runCatching{ store.setTheme(mode) }`，成功后清 override；② `store.setTheme` 包 `runCatching` +
+  失败日志，便于确认是否 DataStore 真失败。
+- **验收**：点「深色」**界面立即变深**（不重启）；杀掉重开仍深色（持久化生效）；「跟随系统」跟随系统；
+  游客与登录用户都生效；DataStore 写入失败时界面仍切换（仅重启后回退）。
+- **备注**：本机模拟器 `steamdeals35` 冷启动卡在 `offline`（2026-11-27 23:00 放弃），真机/模拟器复现交给 App 开发会话。
+
