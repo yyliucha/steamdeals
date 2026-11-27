@@ -18,11 +18,19 @@
   "notes": "后台两页重设计 + 定时任务精简：FZ 访问记录七块（唯一处置入口 / IP 抽屉 / 四类解封 / 状态词统一）；GA-1 游戏管理拆三项 + 同步与回填页重设计（概览→任务表→两折叠）；GA-2 定时任务 26→19（合并 4 / 转手动 3 / prune 周→天 / 降频 4）。**targets 含 scheduler**：GA-2 改了 src/scheduler.js 与 CLI，必须重启调度器。",
   "builtAt": "2026-11-27T17:35:00Z",
   "release": {
-    "status": "pending",
+    "status": "success",
+    "releasedAt": "2026-11-27T17:33:09Z",
+    "by": "steamdeals-release",
     "targets": [
       "app",
       "scheduler"
-    ]
+    ],
+    "appImage": "ccr.ccs.tencentyun.com/tcb-100003189690-pljp/steamdeals:2.33.0",
+    "schedulerImage": "ccr.ccs.tencentyun.com/tcb-100003189690-pljp/steamdeals:2.33.0",
+    "siteVersion": "2.33.0",
+    "previousVersion": "2.32.0",
+    "rollbackPoint": "ccr.ccs.tencentyun.com/tcb-100003189690-pljp/steamdeals:2.32.0",
+    "notes": "app 01:22:12 成功（healthy，/api/site 2.33.0，公网自检通过）；scheduler 01:33:09 成功（启动约 10 分钟：迁移+预热；jobs 列表已按 GA-2 精简，rename/search-tokens/images-backfill/explicit-backfill/catalog/logs/report 已不在调度队列）"
   },
   "ciRuns": {
     "docker_hub": 46036170409,

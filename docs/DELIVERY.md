@@ -249,12 +249,16 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 
 
-### 当前状态（2026-11-28，v2.33.0 已构建——CI 双绿）
+### 当前状态（2026-11-28，v2.33.0 已发布——CI 双绿）
 
 - 本批范围：**FZ**（访问记录七块重设计 + 唯一处置入口 + IP 抽屉 + 四类解封 + 状态词统一）、**GA-1**（游戏管理拆三项 + 同步与回填页重设计）、**GA-2**（定时任务 26→19：合并 4 / 转手动 3 / prune 周→天 / 降频 4）。
 - 验证：主链 `test:1~4` 全绿（31/37/42/36 文件）；`api.test.js` 41/41；`scheduler-slim` 7/7；`sync-page-redesign` 9/9；`frontend:build` ✓；`scan` 干净。
 - CI：docker-hub `46036170409`（test/smoke/publish 全 success）；docker-tcr `46036170377`（test/publish 全 success）；test-main `46036086367` success。
-- 发布清单 `docs/releases/v2.33.0.json`（targets `["app","scheduler"]`——GA-2 改了 `src/scheduler.js`，必须重启调度器）。
+- 发布：清单 `docs/releases/v2.33.0.json`（targets `["app","scheduler"]`），`steamdeals-release` 执行：
+  - **app** 2026-11-28 01:22:12 成功（镜像 2.33.0、healthy、`/api/site` 2.33.0、公网自检通过）；
+  - **scheduler** 2026-11-28 01:33:09 成功（启动约 10 分钟；`scheduler.start` 日志确认 GA-2 精简生效——`rename`/`search-tokens`/`images-backfill`/`explicit-backfill`/`catalog`/`logs`/`report` 已不在调度队列）；
+  - 回滚点：`steamdeals:2.32.0`；
+  - 发布后验证：`check` → `=== 完成 ===` / `api/site ok 2.33.0` / `api/search ok total=110804`；首页 200、`/login` 200、`/api/games?q=portal` 200；近 300 行日志无 ERROR。
 - 注：首次打 tag 因 `commit-own` 路径校验中断落在上一提交（`0eb8b18`，package.json 仍 2.32.0），已取消那次 CI、删 tag 重打到 `e4d9e14`；本记录的 run id 属重打后的。
 - 未纳入：GC（恢复默认回落）/ GD（App 深色，App 仓库）——均待发版。
 
