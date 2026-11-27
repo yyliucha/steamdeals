@@ -16,6 +16,7 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
+| **FX → FY**（串行，共用 `AdminModules.vue`） | `src/settings-routes.js`、`frontend/src/components/SecretField.vue`、`frontend/src/pages/AdminModules.vue`、`frontend/src/router/index.js`（FY）、`src/settings.js`（FY 分组）、`test/` | 无（不构建、不跑 e2e） | 2026-11-27 16:00 | 2026-11-27 20:00 | lead（FX→FY 监工） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 
