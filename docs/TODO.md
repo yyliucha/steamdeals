@@ -281,7 +281,7 @@
   明细与统计同口径；**四类解封各在自己那页**；**状态词统一**（正常/被拦截/临时封/已封禁/已信任）；
   新增 `GET /api/admin/visitors/overview`，`by-ip`/`visitors` 的 status 加 `active`（默认）/`trusted`。
 - **验收**：见规格 §7（8 条）；拆 FZ-1（结构+概览）/ FZ-2（处置+列表）两批。
-- **排期**：当前版本已定稿，可随时派开发（建议排在 FX / FY 之后，复用行组件与左导航样式）；设计若再调整，先改 demo 与规格再同步本条。
+- **排期**：**下一轮监工**（2026-11-27 所有者指定：本监工轮次统一构建 v2.32.0 完成后启动；FZ 先做，GA 随后拆 GA-1/GA-2）；复用 FY 的行组件与左导航样式。
 
 ## GA. 待开发（⚙️ 调整）：游戏管理拆分 + 同步与回填页重设计——三个一级菜单 + 任务优先 + 两块折叠 + 定时任务精简 26→19
 
@@ -307,6 +307,7 @@
   | **GA-2** | 定时任务 **26 → 19**：合并 4 处（rename→backfill / search-tokens→readmodel / images-backfill→images / explicit-backfill→rating-backfill）+ 转手动 3 个（catalog/logs/report）+ **prune 保留但周→天** + 降频 4 处（proxy-probe 30 / app-release-sync 60 / align-snapshot 120 / sonkwo 180）；被合并任务的 CLI 命令保留 | 待开发 | 建议 GA-1 先 |
 
 - **验收**：GA-1 = 规格 §7 的 1~4（含 demo 状态↔断言对照）；GA-2 = 规格 §7 的 5~8（任务集合/降频/合并逻辑/CLI 兼容）。
+- **排期**：**下一轮监工**（2026-11-27 所有者指定：本监工轮次统一构建 v2.32.0 完成后启动；先 GA-1 界面、再 GA-2 任务精简）。
 
 ## GB. 待开发（🐞 缺陷）：数据统计「图片与备份」console 三报错——coverage 超时 503 / apple-touch-icon 404 / apple meta 弃用
 
@@ -327,6 +328,7 @@
   或改引用指向已存在图标；`index.html` 补 `mobile-web-app-capable` + `test/pwa.test.js` 断言。
 - **不做**：百度统计 `unload`；看板前端失败态（「加载失败 + 重试」，等 FY-2 改完 `AdminModules.vue` 后另批）。
 - **验收**：见规格 §3（4 条：接口 <1s 或 SQL 静态断言、数字与库口径一致、图标/meta 存在、测试与构建全绿）。
+
 
 
 

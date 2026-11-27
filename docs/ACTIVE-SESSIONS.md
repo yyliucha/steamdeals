@@ -16,7 +16,12 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| **FX → FY**（串行，共用 `AdminModules.vue`） | `src/settings-routes.js`、`frontend/src/components/SecretField.vue`、`frontend/src/pages/AdminModules.vue`、`frontend/src/router/index.js`（FY）、`src/settings.js`（FY 分组）、`test/` | 无（不构建、不跑 e2e） | 2026-11-27 16:00 | 2026-11-27 20:00 | lead（FX→FY 监工） |
+| **FX → FY → GB**（本监工轮次） | `src/settings-routes.js`、`frontend/src/components/SecretField.vue`、`frontend/src/pages/AdminModules.vue`、`frontend/src/router/index.js`、`src/settings.js`、`src/routes/admin-images.js`、`src/store/admin-images-repository.js`、`frontend/index.html`、`test/` | **打 tag 构建**（收尾统一构建 v2.32.0） | 2026-11-27 16:00 | 2026-11-27 20:00 | lead（监工，本会话） |
+| **FZ + GA**（下一轮监工，排队中） | `frontend/src/pages/AdminModules.vue`（访问记录段 FZ / 游戏段 GA）、`frontend/src/pages/Console.vue`（GA 菜单）、`src/scheduler.js`（GA-2 任务精简）、`src/settings.js`（无） | 无（等当前监工构建完成后再开工） | 待启动 | — | 下一轮监工（所有者 2026-11-27 指定） |
+
+> **本监工轮次收尾口径（2026-11-27 所有者新规）**：监工范围内**不逐批构建**——等 `fy2-worker` / `gb-worker`
+> 全部结束后，审核 + 状态改 `质检通过` → **收尾统一构建一次**（v2.32.0，含 FX / FY-1 / FY-2 / GB）。
+> 构建完成后再启动下一轮监工做 **FZ → GA**（FZ 先，GA 拆 GA-1 界面 / GA-2 任务精简）。
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 
