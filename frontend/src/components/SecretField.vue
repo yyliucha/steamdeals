@@ -5,6 +5,7 @@
         v-if="mode === 'single' || !revealed"
         v-model="inputValue"
         class="secret-input"
+        :class="{ 'is-plain': revealed }"
         :type="revealed ? 'text' : 'password'"
         :placeholder="placeholder"
         :disabled="disabled || loading"
@@ -311,6 +312,12 @@ watch(
 .secret-input {
   flex: 1;
   min-width: 0;
+}
+/* 明文态：等宽字体、可选中复制（demo 图 1 状态 ②） */
+.secret-input.is-plain :deep(.el-input__inner) {
+  font-family: ui-monospace, Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  letter-spacing: 0.3px;
 }
 /* 眼睛在框内：给输入框右侧留出 44px 触摸目标（≥44px 等效，验收 §7.7） */
 .secret-box :deep(.el-input__wrapper) {

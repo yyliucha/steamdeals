@@ -64,6 +64,8 @@ test('验收 2/3/4/5：SecretField.vue 真的用了这些纯逻辑与 30 秒定�
   assert.match(secretField, /ElMessageBox\.confirm/, '清除有二次确认');
   assert.match(secretField, /values: \{ \[props\.field\.key\]: null \}/, '清除提交 null（回落 env/默认）');
   assert.match(secretField, /:type="revealed \? 'text' : 'password'"/, '密文/明文只切 type');
+  assert.match(secretField, /:class="\{ 'is-plain': revealed \}"/, '明文态挂等宽类');
+  assert.match(secretField, /\.secret-input\.is-plain :deep\(\.el-input__inner\) \{[\s\S]*?ui-monospace/, '明文态等宽字体（demo 状态②）');
   assert.match(secretField, /:disabled="!canReveal"/, '未配置时眼睛置灰不可点');
   assert.match(secretField, /@media \(max-width: 560px\)/, '移动端断点 560px');
   assert.match(secretField, /min-height: 44px/, '移动端触摸目标 ≥44px');
