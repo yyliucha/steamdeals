@@ -1,3 +1,28 @@
+## [2.32.0] - 2026-11-27
+
+后台三页重设计 + 密钥查看统一（FX / FY / GB 三批）：FX 把 8 个密钥项统一成「密码框 + 眼睛懒加载 + 审计」；FY 把系统设置页从「7 个横 tab + 卡片盒子」重设计为「左导航 7 组 + `/console/settings/:group` 二级路由 + 分区标题 + 一行一项 + 每项即时保存（600ms 防抖 / 1.5 秒合并 / 失败回滚）+ 跨组搜索 + 只看非默认 + 移动端两段式」；GB 修掉「数据统计 → 图片与备份」的三个 console 报错（coverage 接口全表拉 19.6 万行致 503 + apple-touch-icon 404 + apple meta 弃用）。⚙️ 调整 2 条 + 🐞 缺陷 1 条，但含新功能面（密钥查看交互、设置页整体重设计与即时保存）→ 按 EY/FW 先例定档**大版本**，2.31.0 → 2.32.0 连续递增、不跳号。站点单仓库，App 无改动。
+
+### 新增
+
+- **FX 密钥查看统一**：8 个 secret 覆盖四种布局（平铺组 / grid / foldBody / 代理）统一为 `<SecretField>`——密码框默认密文、点眼睛懒加载一次明文、30 秒无操作自动回密文、未配置时眼睛置灰、清除需二次确认；每次查看明文写 `audit_logs`（`admin.secret_revealed`，只记 key + 操作人 + IP）；旧「查看」按钮 / 代理查看弹窗 / 「已保存密钥不会自动回显」提示移除；仅管理员、非 secret 400、匿名 401、普通用户 403。
+- **FY-1 设置页分组重划 + 二级路由**：7 个组按「对象」重划（数据源 / 站点与外观 / 账号与安全 / 提醒与通知 / 网络与代理 / 同步与调度 / 运维与存储）——「账号与登录」+「安全与限流」合并为「账号与安全」，「高级」拆成「同步与调度」+「运维与存储」；新增 `/console/settings/:group` 路由（深链直达、未知组回落 sources、后退可回上一组、裸 `/console` 重定向默认组）；横向 7 tab 改左侧竖排导航（图标 + 项数徽标 + 品牌色条 + 底部版本/配置修订）；迁移断言：112 项不重不漏、旧组 id 清零。
+- **FY-2 设置页行列表 + 每项即时保存**：右侧去卡片盒子、去「高级 N 项」折叠 → 分区标题（名称 + 项数 + 启用徽标）+ 一行一项（新组件 `SettingsRow.vue`）；每项保存状态三态（保存中… → ✓ 已保存 2s 淡出 → ✕ 原因）；bool/enum 改完即存、int/string/text 600ms 防抖 + blur 立即提交，**静默 700ms 提前 flush + 合并上限 1500ms**（单改 1 秒内出 ✓、1.5 秒内连改只发 1 次 POST）；失败回滚上次值并标红；工具栏只留搜索 + 只看非默认；搜索跨 7 组（label / key / help）命中面板显示「组 · 分区」、点击跳组并高亮、支持 `?q=` 深链；来源徽标与「恢复默认」hover/focus 才显形（触屏兜底常显）；≤560px 每行上下两段、控件占满宽、触摸 ≥44px；密钥行继续复用 FX 的 `SecretField`。
+
+### 修复
+
+- **GB 图片覆盖看板 503（29eac6e）**：`GET /api/admin/images/coverage` 原用 `imageCoverageRows` **全表拉约 19.6 万行**再在 Node 内存统计，超 `requestTimeoutMs=15000` → 503，看板「游戏总数 / 有 header_image / 已缓存 / 缺图」全部显示「—」；改为 `imageCoverageTotals`（`count(*)` / `count(header_image)` 聚合）+ `imageCoverageHeaderByAppids`（只查负缓存 appid 的 `any(::int[])`，带 `not deleted` 保持口径）+ 分页，**响应契约不变**，20 万行实测 169~208ms。
+- **apple-touch-icon 404**：`frontend/index.html` 引用 `/apple-touch-icon.png` 但 `frontend/public/` 无此文件（每次访问吃一个 404、iOS 主屏无自定义图标）；补 180×180 图标（icon-512 缩放）并登记 `isFrontendPublicFile` 白名单（否则 dist 里的图标不被服务）。
+- **apple meta 弃用**：补 `<meta name="mobile-web-app-capable">`，保留旧 `apple-mobile-web-app-capable`（iOS 仍认）。
+- **FY-1 遗留深链 404**：`/console/settings/<group>` 直开/刷新落到旧 `web/` 返回纯文本 not found；`src/server.js` 加参数化路由判定 `isFrontendPage`（移动端重定向与 CSP 分类同步使用），`test/serve.test.js` 补 200/404 断言。
+- **基线红（FX 引入）**：`test/mail-templates.test.js` 断言因 `handleSettingsRoutes` 新增 `ip` 参数未同步 → 已修（GB 顺带），主链恢复全绿。
+
+### 测试
+
+- FX：`test/secret-reveal.test.js` 9 项（纯函数 / 模板静态锁 / SSR DOM / 真 HTTP + pglite 审计）。
+- FY：`test/settings-immediate-save.test.js` 22 项（假计时器合并队列 + SSR 渲染 + 静态接线，已进 `test:4`）+ `test/e2e/settings-rows.mjs`（headless 29 项：真点击 / 真悬停 / 真 POST 计数 / 375px 无溢出）。
+- GB：`test/image-coverage.test.js` 新增 20 万行口径与耗时用例 + 静态锁（不再调 `imageCoverageRows`）；`test/pwa.test.js` 图标与新标签断言；`test/serve.test.js` 深链 200/404。
+- 主链 `test:1~4` 全绿（142 文件 / 1344 用例 / 0 失败）；`frontend:build` ✓；`scan` 干净。
+
 ## [2.31.0] - 2026-11-27
 
 慢慢同步 + 403/429 代理切换（FW 批）：Steam 403 从「同一个出口 IP 等冷却再试 + 记失败熔断」改为「换代理继续 + 403 软收尾不熔断」；heat / steam-discovery 低频化并加断点游标；全站速率闸门把总请求压到 30 次/分钟。⚙️ 调整 1 条，但含新功能面（代理切换策略、全站速率闸门、退出码 76、后台任务卡展示、7 个新设置项 + 2 个预警设置）→ 按 EY 批先例定档**大版本**，2.30.3 → 2.31.0 连续递增、不跳号。站点单仓库，App 无改动。
@@ -3805,4 +3830,5 @@ Steam 封面图多路兜底（线上图片 404 的修复）。
 - ITAD 响应结构按官方文档实现，尚未用真实 key 验证。
 - 无失败熔断：某源持续 403 时仍需人工关闭。
 - 无前端界面，当前只有 CLI。
+
 
