@@ -1,6 +1,6 @@
 # 慢慢同步改造 + 403/429 代理切换（FW，待开发）
 
-> 状态：**需求与方案已确认（2026-11-26），待开发**。
+> 状态：**已实现并发布 v2.31.0（2026-11-27）**。
 > 关联：[PROXY-POOL.md](PROXY-POOL.md)（AM 批代理池，本批**修订其决策 1**）、
 > [SYNC-HARDENING.md](SYNC-HARDENING.md)（FP 批已落地 403 退避一半）、
 > [DISCOVERY-FOR-YOU.md](DISCOVERY-FOR-YOU.md)（CH 批 steam-discovery 起源）、

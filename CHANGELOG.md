@@ -1,3 +1,36 @@
+## [2.31.0] - 2026-11-27
+
+慢慢同步 + 403/429 代理切换（FW 批）：Steam 403 从「同一个出口 IP 等冷却再试 + 记失败熔断」改为「换代理继续 + 403 软收尾不熔断」；heat / steam-discovery 低频化并加断点游标；全站速率闸门把总请求压到 30 次/分钟。⚙️ 调整 1 条，但含新功能面（代理切换策略、全站速率闸门、退出码 76、后台任务卡展示、7 个新设置项 + 2 个预警设置）→ 按 EY 批先例定档**大版本**，2.30.3 → 2.31.0 连续递增、不跳号。站点单仓库，App 无改动。
+
+### 新增
+
+- **403 / 429 都切代理（09c7036）**：修订 AM-1 决策 1（原「目标返回 4xx/5xx 不切换」）。`src/http.js` 新增 `isSteamReject`（`status 403/429` 且 `proxyStatus == null`，与代理 CONNECT 403/407 严格区分）——撞 403/429 时给**该代理**记冷却（复用 AM-1 阶梯 60s/5min/30min，`data/proxy-health.json` 新增 `lastErrorKind`）并换下一条，**每请求最多 3 条**（`SYNC_ROTATE_MAX_PER_REQUEST`）；**全池都被拒**才写全局冷却（403 从 5 分钟起、429 沿用 30 分钟起）并抛**原错误码**（不包装 `PROXY_ALL_FAILED`，下游软退出判定依赖它）；429 的 `Retry-After` 只记该代理；**5xx 仍不切**（保持 AM-1）。规格与修订记录见 [docs/SLOW-SYNC.md](docs/SLOW-SYNC.md) §3.3、[docs/PROXY-POOL.md](docs/PROXY-POOL.md) §12。
+- **全站速率闸门 30 次/分钟（09c7036）**：新增 `src/rate-gate.js` —— `data/steam-rate.json` 文件令牌桶（容量 = `SYNC_RATE_GATE_PER_MIN` 默认 30、按分钟补充、tmp→rename 原子写、坏文件按满桶），**每次对 Steam 业务域的真实请求都扣 token，代理重试也扣**；等 token 累计超 `SYNC_RATE_MAX_WAIT_MS`（默认 5 分钟）→ `COOLDOWN_ABORT`。切 IP 不增加总预算（Steam 硬上限 200 次/5 分钟 = 40/分钟，留 25% 余量）。
+- **403 软退出 exit 76 + 预警节流（cde8ea9 / ee85ffb）**：新增 `src/soft-exit.js`（75 = 429 冷却/备份超时；76 = 403 收尾）。403 时 `sync_runs` 记 `interrupted`、调度器记 `partial`、**不熔断、不重排**（下一轮按正常间隔继续）；**全 Steam 任务通用**（heat / steam-discovery / steam-prices / steam-status / backfill / rename / rating-backfill 统一）。403 预警从「失败分支 + discovery 类免告警」改为「`partial && 403` 分支 + 统一节流」：连续 ≥ `SYNC_FORBIDDEN_ALERT_THRESHOLD`（默认 3）且距上次 ≥ `SYNC_FORBIDDEN_ALERT_WINDOW_MIN`（默认 60 分钟）发 1 封邮件，恢复后发 1 封恢复通知（`scheduler.forbidden_alert` / `forbidden_recovered`）。
+- **heat 低频化 + 候选过期 30 天（7c21b29）**：默认 `--limit 100 --sleep 1700`、间隔 **10 分钟**（轮内 ≈2.8 分钟、轮间静默 ≈7 分钟）——首轮 20 万目录 ≈14 天播种，稳态 30 天一轮只需 ≈6,533 款/天；候选 SQL 过期阈值 7 天 → **30 天**（7 天阈值稳态每天需 2.8 万、能力只有 1.44 万 → 会永久积压）。
+- **steam-discovery 页游标 + 低频（7c21b29）**：默认 `--pages 10 --fallback 10`、间隔 **30 分钟**；页游标落 `app_meta.discovery.page_cursor`（`{nextPage,updatedAt,roundStartedAt,completedAt}`），**每页成功写库后推进、请求失败不推进、翻到尽头（空 items）才重置为 1**，新增 `--reset-cursor`。修掉「每轮从 page=1 翻 → 永远只覆盖前 5,000 款（全库 2.5%）」，改为 8 天覆盖全库。
+- **设置项 9 个**：heat 三项（`heat.limit` 100 / `heat.intervalMin` 10 / `heat.initialDelaySec` 3600，进「发现与热度」高级折叠）+ discovery 三项默认值（10 / 10 / 30，`intervalMin` 下限 60→10）+ 同步容错 5 项（`sync.rotateOn403` / `sync.rotateOn429` 默认开、`sync.rateGatePerMin` 30、`sync.rotateMaxPerRequest` 3、`sync.rateMaxWaitMs` 300000，进「高级 → 调度与熔断」）+ 预警 2 项（`sync.forbiddenAlertThreshold` 3 / `sync.forbiddenAlertWindowMin` 60）。**升级迁移**：把 `app_settings` 里等于旧默认值的 discovery 三项一次性改成新默认（`slow_sync.migrated_v1` 幂等标记，用户显式改过的值不动）。
+- **后台展示（cde8ea9）**：`/api/admin/sync/status` 新增 `forbidden:{active,count,until,remainingMin,label}` 与 `rateGate:{perMin,tokens,used}`；任务表/卡片新增「403 冷却 · 剩余 N 分钟」「速率闸门 已用 N/M」tag（桌面 + 移动），「部分完成」tag 悬停显示 403 收尾原因。
+
+### 修复
+
+- **heat 撞 403 整轮作废（7c21b29 / cde8ea9）**：原 4xx 分支直接抛「已中止热度回填」，当前 appid 不写 `heat_at` → 当天进度归零；现改为软收尾（`FORBIDDEN_ROUND_END`，当前 appid 仍不写 `heat_at`，退避后优先补），进度只进不退。
+- **steam-status / backfill / fetchMetadata 吞掉 403（ee85ffb）**：`src/steam-status.js` 逐款循环、`src/cli/ops.js` 的 backfill 回退路径、`src/adapters/steam-meta.js` 原本把 403 当「这款没数据」继续空转或直接 exit 0；改为重抛交统一收尾 → 403 不再假成功、四条 Steam 任务实测全部 exit 76。
+
+### 测试
+
+- 新增 `test/slow-sync.test.js`（4 项：heat 30 天候选 pglite 真测、游标推进 `nextPage=11` 与第二轮 `start=500`、到头重置、`--reset-cursor`）、`test/rate-gate.test.js`（8 项：容量/补充/不足等待/超限 `COOLDOWN_ABORT`/坏文件满桶/代理重试扣 token/非 Steam 域不扣）、`test/forbidden-soft-exit.test.js`（6 项：403 → 76 + `interrupted`、`FORBIDDEN_COOLDOWN` → 76、429 → 75 回归、四任务统一）。
+- 扩展 `test/http-proxy-failover.test.js`（7→14 项：403 切代理断言两次代理不同、429 切、5xx 不切、每请求最多 3 条、全池才写全局冷却、按代理冷却）；`test/scheduler.test.js`（50 项：76 三语义 + 预警节流时序 + 恢复通知）；`test/api.test.js`（41 项：`forbidden`/`rateGate` 形状）；`test/sync-harden.test.js`、`test/proxy-pool.test.js`、`test/settings.test.js`、`test/setup.test.js`（设置项计数 105→112）、`test/log-schema.test.js` 同步更新。
+- 本机验证（构建会话）：`slow-sync` 4/4、`rate-gate` 8/8、`forbidden-soft-exit` 6/6、`http-proxy-failover` 14/14、`scheduler` 50/50、`sync-harden` 22/22、`api` 41/41、`settings` 112 项、`frontend:build` ✓、`scan` 干净；全量主链由 CI 兜底。
+- QA：FW-1 7/0/0/2、FW-2 7/0/0/4、FW-3 7/0/0/2 —— 三批第 1 轮全部 ✅ 放行（FW-3 轮内自检发现「steam-status 未统一 76」并第 2 提交修复）。
+
+### 部署提示
+
+- 本批含**新增运行时文件** `data/steam-rate.json`（已进 `.gitignore`）、`data/steam-403.json`、`data/proxy-health.json` —— 确认 compose 的 `data/` 是持久卷，否则重启丢冷却/健康状态（会立刻重新打 Steam）。
+- **代理池需 ≥2 条且不同出口 IP** 切换才有效；若三条来自同一服务商同一段，封段时一起失效——发现 403 反而变多时把 `sync.rotateOn429` / `sync.rotateOn403` 关掉即可退回 AM-1 行为（无需回滚代码）。
+- **闸门 30 次/分钟是全局预算**（含重试），会连带把 steam-status / rating-backfill 压到 30 次/分钟以内、全量周期按缺口比例拉长——这是「平安」的代价，上线后按 `sync_runs` 实测校正（`sync.rateGatePerMin` 可调 1–40）。
+- 升级后到「系统设置 → 发现与热度」确认 heat 三项与 discovery 三项已是 10 / 10 / 30（迁移只改「等于旧默认值」的行，显式改过的不动）；「高级 → 调度与熔断」确认 7 个新开关。
+
 ## [2.30.3] - 2026-11-26
 
 后台「立即运行」热度回填/色情回填/初始化同步/Steam 状态四个按钮报 `ERR_MODULE_NOT_FOUND /app/heat` 修复（⚙️ 修复 → 小版本，2.30.2 → 2.30.3 连续递增、不跳号）。站点单仓库，App 无改动。
