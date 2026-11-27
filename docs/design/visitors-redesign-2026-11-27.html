@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>访问记录重设计 · A 任务导向五块（2026-11-27）</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#141c2e; --border:#26314d; --fg:#eef2ff; --fg2:#c9d4ec; --muted:#8d9bbb;
+    --brand:#5b8cff; --brand-soft:#1c2a4a; --ok:#34d399; --warn:#fbbf24; --danger:#f87171;
+    --mono:ui-monospace,Consolas,"Courier New",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;padding:30px 34px}
+  h1{font-size:25px;margin:0 0 8px;letter-spacing:-.02em}
+  h2{font-size:17px;margin:0 0 12px}
+  p{margin:0}
+  .sub{color:var(--muted);font-size:14px}
+  .shot{max-width:1260px}
+  .wrap{display:flex;gap:22px;margin-top:22px}
+  .nav{width:224px;flex:none;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px 10px;display:flex;flex-direction:column;gap:2px}
+  .nav .it{display:flex;align-items:center;justify-content:space-between;padding:12px;border-radius:9px;color:var(--fg2);font-size:14.5px;cursor:pointer}
+  .nav .it:hover{background:#1b2540}
+  .nav .it.on{background:var(--brand-soft);color:#fff;font-weight:650;box-shadow:inset 3px 0 0 var(--brand)}
+  .nav .it .n{font-size:12px;color:var(--muted);background:#1d2842;border-radius:20px;padding:1px 8px}
+  .nav .it.on .n{color:#bcd0ff;background:#243a66}
+  .nav .it .n.hot{color:#ffb4b4;background:#3a1d24}
+  .main{flex:1;min-width:0}
+  .crumb{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+  .head h2{font-size:22px;margin:0}
+  .head p{color:var(--muted);font-size:13.5px;margin-top:5px}
+  .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:18px 0 0}
+  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+  .kpi span{font-size:12px;color:var(--muted);display:block}
+  .kpi b{font-size:26px;display:block;margin-top:6px;letter-spacing:-.03em}
+  .kpi.hot{border-color:#5a2b2b;background:#1d1216}
+  .kpi.hot b{color:#ff9b9b}
+  .kpi.warn{border-color:#5a4718;background:#211a0d}
+  .kpi.warn b{color:var(--warn)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-top:20px}
+  .bar{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{border-bottom:1px solid #1e2942;padding:11px 12px;text-align:left;vertical-align:middle}
+  th{background:#1a2338;color:var(--fg2);font-size:13px;font-weight:600;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:0}
+  .mono{font-family:var(--mono);font-size:13.5px}
+  .muted{color:var(--muted);font-size:13px}
+  .tag{display:inline-block;font-size:11.5px;border-radius:6px;padding:2px 9px;border:1px solid}
+  .t-normal{color:#9fb0d6;border-color:#33415f;background:#1a2338}
+  .t-int{color:var(--warn);border-color:#5a4718;background:#211a0d}
+  .t-ban{color:#f0a04b;border-color:#5a3a18;background:#211508}
+  .t-blocked{color:#ff9b9b;border-color:#5a2b2b;background:#211012}
+  .t-trust{color:var(--ok);border-color:#1f5741;background:#0e2019}
+  .t-pending{color:#7fd7ff;border-color:#1c4a63;background:#0d1e28}
+  .btn{background:#212c47;border:1px solid #33415f;color:var(--fg2);border-radius:8px;padding:0 12px;height:32px;font-size:12.5px;cursor:pointer}
+  .btn.danger{color:#ffb4b4;border-color:#4b2b33}
+  .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+  .sel{display:inline-flex;align-items:center;gap:8px;background:#0e1524;border:1.5px solid #2c3a5a;border-radius:9px;padding:0 12px;height:38px;font-size:13.5px;color:var(--fg2)}
+  .search{flex:1;max-width:320px;background:#0e1524;border:1.5px solid #2c3a5a;border-radius:9px;padding:0 12px;height:38px;display:flex;align-items:center;color:#6f7d9e;font-size:13.5px}
+  .toast{position:absolute;right:26px;top:76px;display:flex;align-items:center;gap:12px;background:#13241c;border:1px solid #1f5741;border-radius:10px;padding:11px 14px;font-size:13.5px;color:#bdf3d6;box-shadow:0 10px 30px #0007}
+  .toast b{color:#fff}
+  .toast .act{color:#7fd7ff;cursor:pointer;font-weight:600}
+  .rel{position:relative}
+  .note{background:#1a2340;border:1px solid #2b3a63;border-radius:10px;padding:12px 14px;font-size:13.5px;color:#c2cdea;margin-top:16px}
+  .note.warn{background:#241d0f;border-color:#4a3a15;color:#f0d79a}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .k{color:#7f8fb3;font-size:12.5px}
+  .step{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;margin:0 0 10px}
+  .num{display:inline-flex;width:21px;height:21px;border-radius:50%;background:var(--brand);color:#fff;font-size:12px;align-items:center;justify-content:center;flex:none}
+</style>
+</head>
+<body>
+
+<!-- ============ 图 1：概览 + 异常处置 ============ -->
+<section id="s1" class="shot">
+  <h1>访问记录 · 重设计（A 任务导向五块）</h1>
+  <p class="sub">左导航 5 块；待审前置、封禁集中、概览一眼看全。四个旧 tab 的重复入口合并。</p>
+
+  <div class="wrap">
+    <div class="nav">
+      <div class="it on"><span>📊 概览</span></div>
+      <div class="it"><span>🚨 异常处置</span><span class="n hot">3</span></div>
+      <div class="it"><span>📈 访问分析</span><span class="n">72</span></div>
+      <div class="it"><span>⛔ 封禁管理</span><span class="n">17</span></div>
+      <div class="it"><span>✅ 白名单</span><span class="n">4</span></div>
+    </div>
+
+    <div class="main">
+      <div class="crumb">管理中心 <span class="muted">/</span> 访问与安全 <span class="muted">/</span> 访问记录</div>
+      <div class="head"><h2>概览</h2><p>流量、异常与封禁的全貌；有积压会标红。</p></div>
+
+      <div class="cards">
+        <div class="kpi"><span>今日请求</span><b>12,847</b></div>
+        <div class="kpi"><span>被拦截</span><b>386</b></div>
+        <div class="kpi hot"><span>待审异常</span><b>3</b></div>
+        <div class="kpi warn"><span>封禁中</span><b>5</b></div>
+        <div class="kpi"><span>IP 黑名单</span><b>12</b></div>
+        <div class="kpi"><span>白名单</span><b>4</b></div>
+      </div>
+
+      <div class="card">
+        <div class="step"><span class="num">1</span>异常处置（旧「异常审核」，现在只在这里处置）</div>
+        <div class="bar">
+          <div class="sel">只看待审 <span class="muted">▾</span></div>
+          <span class="muted">按 IP 合并 · 3 个 IP 待审（共 7 条规则）</span>
+          <span style="flex:1"></span>
+          <button class="btn danger">封 IP</button><button class="btn danger">封设备</button><button class="btn">忽略</button>
+        </div>
+        <table>
+          <tr><th>IP</th><th>规则摘要</th><th>命中</th><th>首次 → 最近</th><th>设备</th><th>操作</th></tr>
+          <tr>
+            <td class="mono">34.88.59.51</td>
+            <td><span class="mono">漏洞路径探测</span> ×121 · 共 3 条规则</td>
+            <td>121</td><td class="muted">11-24 13:19 → 13:20</td><td>0</td>
+            <td><button class="btn danger">临时封 ▾</button> <button class="btn danger">永久封</button> <button class="btn">信任</button> <button class="btn">忽略</button></td>
+          </tr>
+          <tr>
+            <td class="mono">34.81.11.19</td>
+            <td><span class="mono">异常 UA 名单</span> ×62 · 共 2 条规则</td>
+            <td>62</td><td class="muted">11-22 18:00 → 18:00</td><td>0</td>
+            <td><button class="btn danger">临时封 ▾</button> <button class="btn danger">永久封</button> <button class="btn">信任</button> <button class="btn">忽略</button></td>
+          </tr>
+          <tr>
+            <td class="mono">23.251.141.4</td>
+            <td><span class="mono">登录凭据爆破</span> ×18 · 共 2 条规则</td>
+            <td>18</td><td class="muted">11-24 20:44 → 20:45</td><td>2</td>
+            <td><button class="btn danger">临时封 ▾</button> <button class="btn danger">永久封</button> <button class="btn">信任</button> <button class="btn">忽略</button></td>
+          </tr>
+        </table>
+        <div class="note">处置后该行立即消失、待审数减 1（与封禁移出同一套逻辑）；「信任」= 加白名单，也从待审移出。<b>旧「访问明细 → 封禁 IP」入口移除</b>，统一到这里的批量与行内操作。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 图 2：访问分析（只读 + 快捷封禁） ============ -->
+<section id="s2" class="shot" style="display:none">
+  <h1>访问分析</h1>
+  <p class="sub">旧「访问明细」。只读分析为主，行内保留快捷封禁/信任；封禁后该行默认移出。</p>
+
+  <div class="card" style="margin-top:22px">
+    <div class="bar">
+      <div class="sel">近 7 天 <span class="muted">▾</span></div>
+      <div class="sel">有效访问（默认） <span class="muted">▾</span></div>
+      <div class="search">按 IP 搜索</div>
+      <span class="muted">共 72 个 IP · 已隐藏 12 个已封禁 / 4 个已信任</span>
+    </div>
+    <table>
+      <tr><th>IP</th><th>地区</th><th>访问次数</th><th>首次 → 最近</th><th>独立路径</th><th>设备</th><th>状态</th><th>操作</th></tr>
+      <tr><td class="mono">223.166.239.55</td><td>中国 上海</td><td>254</td><td class="muted">11-21 07:50 → 11-27 15:36</td><td>30</td><td>0</td><td><span class="tag t-normal">正常</span></td><td><button class="btn danger">封禁</button> <button class="btn">信任</button></td></tr>
+      <tr><td class="mono">35.233.44.84</td><td>比利时 布鲁塞尔</td><td>107</td><td class="muted">11-26 22:56 → 22:57</td><td>106</td><td>0</td><td><span class="tag t-ban">封禁中 · 6 分钟</span></td><td><button class="btn danger">封禁</button> <button class="btn">信任</button></td></tr>
+      <tr><td class="mono">130.211.87.56</td><td>比利时 布鲁塞尔</td><td>107</td><td class="muted">11-26 02:41 → 02:41</td><td>107</td><td>0</td><td><span class="tag t-int">被拦截</span></td><td><button class="btn danger">封禁</button> <button class="btn">信任</button></td></tr>
+    </table>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:14px">
+      <button class="btn">◀ 上一页</button><span class="muted">第 1 / 4 页 · 每页 20</span><button class="btn">下一页 ▶</button>
+    </div>
+    <div class="note">「明细」子视图与这里同口径（封禁/信任后同样移出）；时间窗 1/7/30 天。「封禁中」是临时封禁，留在列表里观察到到期。</div>
+  </div>
+
+  <div class="card rel">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:10px">
+      <div class="step" style="margin:0"><span class="num">2</span>行内点「封禁」→ 确认 → 该行消失，toast 可撤销</div>
+      <div class="toast" style="position:static;box-shadow:none"><span>✅</span><span><b>130.211.87.56</b> 已封禁</span><span class="act">撤销</span><span class="muted">✕</span></div>
+    </div>
+    <table>
+      <tr><th>IP</th><th>地区</th><th>访问次数</th><th>状态</th><th>操作</th></tr>
+      <tr><td class="mono">223.166.239.55</td><td>中国 上海</td><td>254</td><td><span class="tag t-normal">正常</span></td><td><button class="btn danger">封禁</button> <button class="btn">信任</button></td></tr>
+      <tr><td class="mono">35.233.44.84</td><td>比利时 布鲁塞尔</td><td>107</td><td><span class="tag t-ban">封禁中 · 6 分钟</span></td><td><button class="btn danger">封禁</button> <button class="btn">信任</button></td></tr>
+      <tr><td class="mono">176.34.12.9</td><td>法国 巴黎</td><td>98</td><td><span class="tag t-int">被拦截</span></td><td><button class="btn danger">封禁</button> <button class="btn">信任</button></td></tr>
+    </table>
+    <div class="note">撤销 = 移出黑名单，行回原位；5 秒内可点。计数与分页同步（当前页空了自动回上一页）。</div>
+  </div>
+</section>
+
+<!-- ============ 图 3：封禁管理 + 白名单 ============ -->
+<section id="s3" class="shot" style="display:none">
+  <h1>封禁管理 · 白名单</h1>
+  <p class="sub">旧「封禁与白名单」拆成两块：封禁管 IP/设备/临时封三类，白名单独立一块。</p>
+
+  <div class="grid2" style="margin-top:22px">
+    <div class="card" style="margin-top:0">
+      <h2>⛔ 封禁管理 · IP 黑名单（12）</h2>
+      <div class="bar"><div class="search" style="max-width:none">按 IP 搜索</div><button class="btn primary">手动添加</button></div>
+      <table>
+        <tr><th>IP</th><th>备注</th><th>加入时间</th><th>操作</th></tr>
+        <tr><td class="mono">34.88.59.51</td><td class="muted">漏洞路径探测</td><td class="muted">11-27 15:40</td><td><button class="btn">解封</button></td></tr>
+        <tr><td class="mono">34.81.11.19</td><td class="muted">异常 UA</td><td class="muted">11-27 15:40</td><td><button class="btn">解封</button></td></tr>
+        <tr><td class="mono">23.251.141.4</td><td class="muted">凭据爆破</td><td class="muted">11-24 20:50</td><td><button class="btn">解封</button></td></tr>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:0">
+      <h2>✅ 白名单（4）</h2>
+      <div class="bar"><div class="search" style="max-width:none">按 IP 搜索</div><button class="btn primary">添加</button></div>
+      <table>
+        <tr><th>IP</th><th>备注</th><th>限流</th><th>操作</th></tr>
+        <tr><td class="mono">127.0.0.1</td><td class="muted">本机</td><td class="muted">不限制</td><td><button class="btn">移出</button></td></tr>
+        <tr><td class="mono">203.0.113.0/24</td><td class="muted">公司出口</td><td class="muted">页面 600/分</td><td><button class="btn">移出</button></td></tr>
+      </table>
+      <div class="note">白名单 IP 不受黑名单与频率限制；加白会自动移黑、清临时封禁。</div>
+    </div>
+  </div>
+
+  <div class="grid2" style="margin-top:20px">
+    <div class="card" style="margin-top:0">
+      <h2>设备封禁（3）</h2>
+      <table>
+        <tr><th>设备码 / 指纹</th><th>最近出现</th><th>操作</th></tr>
+        <tr><td class="mono">a1b2c3… / 9f8e7d…</td><td class="muted">11-27 14:02</td><td><button class="btn">解封</button></td></tr>
+        <tr><td class="mono">ffee11… / 33aa22…</td><td class="muted">11-26 09:18</td><td><button class="btn">解封</button></td></tr>
+      </table>
+      <div class="note">设备封禁按指纹生效，换 IP 也命中；白名单 IP 不受影响。</div>
+    </div>
+
+    <div class="card" style="margin-top:0">
+      <h2>临时封禁记录（abuse，5 生效中）</h2>
+      <div class="bar"><div class="sel">生效中 <span class="muted">▾</span></div><span class="muted">来源：频率超限 / 路径规则 / 异常 UA / 人工临时封</span></div>
+      <table>
+        <tr><th>IP</th><th>来源</th><th>到期</th><th>操作</th></tr>
+        <tr><td class="mono">35.233.44.84</td><td class="muted">频率超限</td><td class="muted">剩余 6 分钟</td><td><button class="btn">解除</button></td></tr>
+        <tr><td class="mono">176.34.12.9</td><td class="muted">漏洞路径探测</td><td class="muted">剩余 42 分钟</td><td><button class="btn">解除</button></td></tr>
+      </table>
+      <div class="note">只解除自动临时封禁，<b>不</b>移除 IP 黑名单（两个概念分开，避免误操作）。</div>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top:20px">旧「异常审核」里的「封设备」与「设备」tab 的封禁入口，统一收进「封禁管理 → 设备封禁」；行内快捷封设备只保留在异常处置里（带二次确认）。</div>
+</section>
+
+<script>
+  const m = new URLSearchParams(location.search).get('shot');
+  if (m) {
+    const keep = 's' + m;
+    document.querySelectorAll('section.shot').forEach((el) => { el.style.display = el.id === keep ? '' : 'none'; });
+  }
+</script>
+</body>
+</html>
