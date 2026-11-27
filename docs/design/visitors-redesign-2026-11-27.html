@@ -66,6 +66,17 @@
   .k{color:#7f8fb3;font-size:12.5px}
   .step{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;margin:0 0 10px}
   .num{display:inline-flex;width:21px;height:21px;border-radius:50%;background:var(--brand);color:#fff;font-size:12px;align-items:center;justify-content:center;flex:none}
+  .drawer{width:520px;flex:none;background:#111a2b;border:1px solid #2c3a5e;border-radius:14px;overflow:hidden;box-shadow:0 18px 50px #0008}
+  .drawer-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);font-weight:650;font-size:15px}
+  .drawer-body{padding:16px 18px}
+  .drawer-body h4{font-size:13px;color:var(--fg2);margin:16px 0 8px;font-weight:600}
+  .drawer-body h4:first-child{margin-top:0}
+  .kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;font-size:13.5px;border-bottom:1px dashed #1e2942}
+  .kv span{color:var(--muted)}
+  .kpi2{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+  .kpi2 div{background:#0e1524;border:1px solid #2c3a5a;border-radius:9px;padding:9px 10px;font-size:12px;color:var(--muted)}
+  .kpi2 b{display:block;font-size:18px;color:var(--fg);margin-top:3px}
+  .drawer-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid var(--border);background:#0e1626}
 </style>
 </head>
 <body>
@@ -92,7 +103,7 @@
         <div class="kpi"><span>今日请求</span><b>12,847</b></div>
         <div class="kpi"><span>被拦截</span><b>386</b></div>
         <div class="kpi hot"><span>待审异常</span><b>3</b></div>
-        <div class="kpi warn"><span>封禁中</span><b>5</b></div>
+        <div class="kpi warn"><span>临时封</span><b>5</b></div>
         <div class="kpi"><span>IP 黑名单</span><b>12</b></div>
         <div class="kpi"><span>白名单</span><b>4</b></div>
       </div>
@@ -132,43 +143,57 @@
   </div>
 </section>
 
-<!-- ============ 图 2：访问分析（只读 + 快捷封禁） ============ -->
+<!-- ============ 图 2：访问分析（只读）+ IP 详情抽屉 ============ -->
 <section id="s2" class="shot" style="display:none">
-  <h1>访问分析</h1>
-  <p class="sub">旧「访问明细」。只读分析为主，行内保留快捷封禁/信任；封禁后该行默认移出。</p>
+  <h1>访问分析（只读）+ IP 详情抽屉</h1>
+  <p class="sub">访问分析只读、没有封禁按钮；点 IP 开抽屉，一处看全访问/异常/设备/状态；处置统一去「异常处置」。</p>
 
-  <div class="card" style="margin-top:22px">
-    <div class="bar">
-      <div class="sel">近 7 天 <span class="muted">▾</span></div>
-      <div class="sel">有效访问（默认） <span class="muted">▾</span></div>
-      <div class="search">按 IP 搜索</div>
-      <span class="muted">共 72 个 IP · 已隐藏 12 个已封禁 / 4 个已信任</span>
+  <div style="display:flex;gap:20px;margin-top:22px;align-items:flex-start">
+    <div class="card" style="flex:1;margin-top:0">
+      <div class="bar">
+        <div class="sel">近 7 天 <span class="muted">▾</span></div>
+        <div class="sel">有效访问（默认） <span class="muted">▾</span></div>
+        <div class="search">按 IP 搜索</div>
+      </div>
+      <p class="muted" style="margin-bottom:10px">共 72 个 IP · 已隐藏 12 个已封禁 / 4 个已信任</p>
+      <table>
+        <tr><th>IP</th><th>地区</th><th>访问</th><th>路径</th><th>设备</th><th>状态</th><th>操作</th></tr>
+        <tr><td class="mono">223.166.239.55</td><td>中国 上海</td><td>254</td><td>30</td><td>0</td><td><span class="tag t-normal">正常</span></td><td><button class="btn">详情</button></td></tr>
+        <tr><td class="mono">35.233.44.84</td><td>比利时 布鲁塞尔</td><td>107</td><td>106</td><td>0</td><td><span class="tag t-ban">临时封 · 6 分钟</span></td><td><button class="btn">详情</button></td></tr>
+        <tr><td class="mono">176.34.12.9</td><td>法国 巴黎</td><td>98</td><td>98</td><td>1</td><td><span class="tag t-int">被拦截</span></td><td><button class="btn">详情</button></td></tr>
+      </table>
+      <div class="note"><b>只读</b>：没有封禁/信任按钮，封禁入口从 5 个降到 0（处置只在「异常处置」）；行为统一后不再出现「封了页面不刷新」。</div>
     </div>
-    <table>
-      <tr><th>IP</th><th>地区</th><th>访问次数</th><th>首次 → 最近</th><th>独立路径</th><th>设备</th><th>状态</th><th>操作</th></tr>
-      <tr><td class="mono">223.166.239.55</td><td>中国 上海</td><td>254</td><td class="muted">11-21 07:50 → 11-27 15:36</td><td>30</td><td>0</td><td><span class="tag t-normal">正常</span></td><td><button class="btn danger">封禁</button> <button class="btn">信任</button></td></tr>
-      <tr><td class="mono">35.233.44.84</td><td>比利时 布鲁塞尔</td><td>107</td><td class="muted">11-26 22:56 → 22:57</td><td>106</td><td>0</td><td><span class="tag t-ban">封禁中 · 6 分钟</span></td><td><button class="btn danger">封禁</button> <button class="btn">信任</button></td></tr>
-      <tr><td class="mono">130.211.87.56</td><td>比利时 布鲁塞尔</td><td>107</td><td class="muted">11-26 02:41 → 02:41</td><td>107</td><td>0</td><td><span class="tag t-int">被拦截</span></td><td><button class="btn danger">封禁</button> <button class="btn">信任</button></td></tr>
-    </table>
-    <div style="display:flex;align-items:center;gap:12px;margin-top:14px">
-      <button class="btn">◀ 上一页</button><span class="muted">第 1 / 4 页 · 每页 20</span><button class="btn">下一页 ▶</button>
+
+    <div class="drawer">
+      <div class="drawer-head">IP 详情 <span class="mono" style="font-size:13.5px">176.34.12.9</span></div>
+      <div class="drawer-body">
+        <div class="kv"><span>地区</span><b>法国 巴黎</b></div>
+        <div class="kv"><span>状态</span><b style="color:#fbbf24">被拦截（1 条待审）</b></div>
+        <div class="kpi2">
+          <div>访问次数<b>98</b></div>
+          <div>独立路径<b>98</b></div>
+          <div>设备<b>1</b></div>
+        </div>
+        <h4>最近访问</h4>
+        <table style="font-size:13px">
+          <tr><td class="muted">11-26 02:41:07</td><td class="mono">/api/games/search</td><td>403</td></tr>
+          <tr><td class="muted">11-26 02:41:03</td><td class="mono">/api/games</td><td>403</td></tr>
+        </table>
+        <h4>异常规则（1 条待审）</h4>
+        <table style="font-size:13px">
+          <tr><td>漏洞路径探测</td><td>×98 命中</td><td><span class="tag t-pending">待审</span></td></tr>
+        </table>
+        <h4>设备</h4>
+        <table style="font-size:13px">
+          <tr><td class="mono">a1b2c3…</td><td class="muted">11-26 02:41</td><td><span class="tag t-normal">正常</span></td></tr>
+        </table>
+      </div>
+      <div class="drawer-foot"><button class="btn">关闭</button><button class="btn primary">去异常处置</button></div>
     </div>
-    <div class="note">「明细」子视图与这里同口径（封禁/信任后同样移出）；时间窗 1/7/30 天。「封禁中」是临时封禁，留在列表里观察到到期。</div>
   </div>
 
-  <div class="card rel">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:10px">
-      <div class="step" style="margin:0"><span class="num">2</span>行内点「封禁」→ 确认 → 该行消失，toast 可撤销</div>
-      <div class="toast" style="position:static;box-shadow:none"><span>✅</span><span><b>130.211.87.56</b> 已封禁</span><span class="act">撤销</span><span class="muted">✕</span></div>
-    </div>
-    <table>
-      <tr><th>IP</th><th>地区</th><th>访问次数</th><th>状态</th><th>操作</th></tr>
-      <tr><td class="mono">223.166.239.55</td><td>中国 上海</td><td>254</td><td><span class="tag t-normal">正常</span></td><td><button class="btn danger">封禁</button> <button class="btn">信任</button></td></tr>
-      <tr><td class="mono">35.233.44.84</td><td>比利时 布鲁塞尔</td><td>107</td><td><span class="tag t-ban">封禁中 · 6 分钟</span></td><td><button class="btn danger">封禁</button> <button class="btn">信任</button></td></tr>
-      <tr><td class="mono">176.34.12.9</td><td>法国 巴黎</td><td>98</td><td><span class="tag t-int">被拦截</span></td><td><button class="btn danger">封禁</button> <button class="btn">信任</button></td></tr>
-    </table>
-    <div class="note">撤销 = 移出黑名单，行回原位；5 秒内可点。计数与分页同步（当前页空了自动回上一页）。</div>
-  </div>
+  <div class="note">抽屉只读（不在这里封禁，避免再造一个入口）；有待审时给「去异常处置」并定位该 IP；已封禁时给「去封禁管理」链接。</div>
 </section>
 
 <!-- ============ 图 3：封禁管理 + 白名单 ============ -->
@@ -224,6 +249,7 @@
   </div>
 
   <div class="note" style="margin-top:20px">旧「异常审核」里的「封设备」与「设备」tab 的封禁入口，统一收进「封禁管理 → 设备封禁」；行内快捷封设备只保留在异常处置里（带二次确认）。</div>
+  <div class="note" style="margin-top:14px"><b>解封集中</b>：四类解封（IP 黑名单 / 临时封 / 设备封禁 / 白名单）全部只在本页做，其他页只读或给跳转链接。<b>状态词统一</b>：正常 / 被拦截 / 临时封 / 已封禁 / 已信任（异常审核的「待审/已处置/已忽略/自动封禁」是审核记录状态，与 IP 状态是两个维度，不混用）。</div>
 </section>
 
 <script>
@@ -235,3 +261,4 @@
 </script>
 </body>
 </html>
+
