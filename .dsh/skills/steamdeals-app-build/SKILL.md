@@ -12,6 +12,10 @@ description: SteamDeals App（F:\dsh\steamdeals-app，yyliucha/steamdeals-app）
 > **分工**：站点发版用 `steamdeals-build`；**本技能只负责 App 仓库的 tag / Release / 站点同步验证**。
 > 提交身份一律 `yyliucha <jacksunyx@outlook.com>`（见 `F:\dsh\git-identity-map.md`）。
 
+> **上传安装包（2026-11-27 起，推荐）**：服务器装好 `put-app` 通道后，用
+> `bash scripts/upload-app.sh <apk> frontend/public/app/latest.json` 把 APK 与 latest.json 直接传到站点
+> `/app/data/app`，**无需重建站点镜像**（通道说明见 `steamdeals-release` §2.5）。
+
 ## 0. 触发与前置
 
 - **触发词**：所有者说「**发 app-vX.Y.Z**」（或「发 App」= 用当前 main 的版本号自动发）。

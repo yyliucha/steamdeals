@@ -77,6 +77,19 @@ ssh ... deploy@sd.yyliucha.cn "deploy-scheduler vX.Y.Z"
 > 也可直接跑 `pwsh -File <本技能>\scripts\release.ps1 -Version vX.Y.Z`
 > （`-DryRun` 只做门禁与计划、不发布；`-Rollback` 回滚；`-Targets app,scheduler` 覆盖清单）。
 
+### 2.5 App 安装包上传（2026-11-27 起；**不重建镜像**）
+
+站点 `/app/dl/<file>` 只读容器内 `/app/data/app`（宿主挂载目录），**上传即可下载**——不需要重建站点镜像。
+
+- **前置（一次性，服务器 root）**：`bash scripts/server/install-put-app.sh '<专用公钥>'`
+  ——生成 `put-app` / `put-latest` 命令，并追加 `steamdeals-put-app` 专用 key；
+  **不碰 deploy 现有通道**（deploy 的 ForceCommand 白名单只读命令，不能传文件）。
+- **客户端**：`bash scripts/upload-app.sh <apk> [latest.json]`
+  （专用 key `~/.ssh/id_ed25519_steamdeals_putapp`，可用 `STEAMDEALS_PUTAPP_KEY` 覆盖）。
+- **验证**：`curl -sI https://sd.yyliucha.cn/app/dl/<file>` 200；`curl -s https://sd.yyliucha.cn/api/app/latest` 版本正确。
+- **边界**：本通道只传 APK 与 `latest.json`（站点 `/app/data/app`），**不发容器、不动镜像**；
+  站点代码变更仍走 §2 的镜像发布。
+
 ## 3. 发布后验证（缺一不算完）
 
 | 项 | 通过标准 |
