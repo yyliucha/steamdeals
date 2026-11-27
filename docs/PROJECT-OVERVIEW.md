@@ -235,6 +235,8 @@ Node.js 服务 src/server.js
 
 | 访问记录七块（v2.32.1/FZ） | `frontend/src/components/visitors/*`（9 个块组件 + visitors.css）、`frontend/src/composables/useVisitorsAdmin.js`、`frontend/src/utils/visitorStatus.js`（唯一状态词表）、`src/routes/admin-access.js`（overview + status active/trusted）、`src/store/admin-access-repository.js` |
 
+| 同步与回填页（v2.33.0/GA） | `frontend/src/components/sync/*`（SyncAdmin/SyncKpiBar/TaskGroupTable/SyncQualityPanel/SyncToolsPanel/SyncFold + sync.css）、`frontend/src/composables/useSyncAdmin.js`、`src/scheduler.js`（`jobsFromEnv` 19 个定时任务）、`src/routes/admin-sync.js`（手动任务「立即运行」） |
+
 ## 关键数据概念
 
 - `games`：以 Steam AppID 为中心的游戏主记录；来源标题可以先形成待匹配记录，再通过匹配流程归并。
