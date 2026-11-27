@@ -1467,7 +1467,7 @@ export function createApiServer({
         if (!requireAdmin()) return;
         // BR 批：设置保存后立即热加载限流阈值（hydrate 写回 env → configureFromEnv 重配）
         // DX 批：注册开关等 /api/site 字段来自设置表——保存/恢复后立即失效 site 缓存
-        const handled = await handleSettingsRoutes({ path, req, res, q, store, logger, json, readBody, user, afterHydrate: () => { ratelimit.configureFromEnv(process.env); appRateLimit.configureFromEnv(process.env); invalidateSiteCache(); } });
+        const handled = await handleSettingsRoutes({ path, req, res, q, store, logger, json, readBody, user, ip, afterHydrate: () => { ratelimit.configureFromEnv(process.env); appRateLimit.configureFromEnv(process.env); invalidateSiteCache(); } });
         if (handled) return;
       }
 

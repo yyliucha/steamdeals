@@ -65,19 +65,18 @@ test('EK-4：Steam 专用代理内联编辑器改弹窗（列表增删/排序/�
   assert.match(modules, /约 15 秒内生效/, '保存后 15 秒生效提示');
 });
 
-test('EK-5：通用出网代理 / App 同步专用代理改编辑按钮 + 弹窗（掩码显示、http/https 校验）', () => {
-  assert.match(modules, /field\.key==='network\.httpsProxy'\|\|field\.key==='network\.appSyncProxy'/, '两个代理 key 走弹窗分支');
-  assert.match(modules, /openSecretDialog\(field\)/, '编辑按钮打开弹窗');
-  assert.match(modules, /v-model="secretDialog\.visible"/, '代理编辑弹窗挂载');
-  assert.match(modules, /已设置/, '掩码显示：已设置');
-  assert.match(modules, /尚未设置/, '掩码显示：尚未设置');
-  assert.match(modules, /saveSecretDialog/, '弹窗保存');
-  assert.match(modules, /仅支持 http\/https 代理地址/, '前端 http/https 校验');
-  assert.match(modules, /已设置，留空保持原值/, '留空保持原值提示');
-  assert.match(modules, /清除该代理（留空直连）/, '清除入口');
-  assert.match(modules, /revealSecretInDialog/, '查看当前值入口（沿用明文通道）');
-  // 其它 secret 字段仍走内联查看/清除（不在本批范围）
-  assert.match(modules, /revealSecret\(field\.key\)/, '其它 secret 内联查看保留');
+test('FX（docs/SECRET-REVEAL.md §4，取代 EK-5 的查看/编辑弹窗）：两个代理密钥改眼睛式密码框', () => {
+  // FX 批把 EK-5 的「编辑按钮 + 弹窗」统一成行内 SecretField（密码框 + 眼睛懒加载 + 清除）；
+  // 这里锁的是「入口没被卡片化弄丢」：两个代理 key 仍走同一分支，且渲染 SecretField。
+  assert.match(modules, /field\.key==='network\.httpsProxy'\|\|field\.key==='network\.appSyncProxy'/, '两个代理 key 走同一分支');
+  assert.match(modules, /<SecretField v-else-if="field\.key==='network\.httpsProxy'\|\|field\.key==='network\.appSyncProxy'"/, '分支渲染 SecretField（密码框 + 眼睛）');
+  assert.match(modules, /已设置（点眼睛查看，或用「编辑」修改）/, 'Steam 代理卡保留「点眼睛查看 / 编辑管理」文案');
+  assert.doesNotMatch(modules, /openSecretDialog/, '旧编辑弹窗入口已移除');
+  assert.doesNotMatch(modules, /v-model="secretDialog\.visible"/, '旧代理编辑弹窗挂载已移除');
+  assert.doesNotMatch(modules, /revealSecretInDialog/, '旧「查看当前值」入口已移除');
+  const secretField = read('../frontend/src/components/SecretField.vue');
+  assert.match(secretField, /ElMessageBox\.confirm/, '清除保留二次确认');
+  assert.match(secretField, /清除「.*」后，该值将回落到环境变量或默认值/, '清除语义：回落 env/默认');
 });
 
 test('EK-6：申诉处理抽屉改弹窗（处理表单在弹窗内、动作放 footer）', () => {

@@ -2,8 +2,9 @@
 //
 // 密钥字段：GET 只返回 hasValue；POST 里空字符串表示保持原值，null 表示清除。
 import * as settings from './settings.js';
+import { writeAuditLog } from './store/pg.js';
 
-export async function handleSettingsRoutes({ path, req, res, q, store, logger = null, json, readBody, user = null, afterHydrate = null }) {
+export async function handleSettingsRoutes({ path, req, res, q, store, logger = null, json, readBody, user = null, ip = null, afterHydrate = null }) {
   if (!path.startsWith('/api/admin/settings')) return false;
 
   try {
@@ -51,6 +52,16 @@ export async function handleSettingsRoutes({ path, req, res, q, store, logger = 
       if (!field || !field.secret) return json(res, 400, { error: '只能查看敏感字段' }), true;
       const read = await settings.readSettings(q);
       logger?.info('settings.revealed', { key, by: user?.username ?? null });
+      // FX 批（docs/SECRET-REVEAL.md §3/§6）：显示明文落 audit_logs（后台「审计日志」可查）。
+      // detail 只含 key 名，绝不写值；writeAuditLog 内部吞异常，审计失败不阻塞返回。
+      await writeAuditLog(q, {
+        actorId: user?.id ?? null,
+        actor: user?.username ?? null,
+        action: 'admin.secret_revealed',
+        target: key,
+        detail: { key },
+        ip,
+      });
       return json(res, 200, { key, value: read.values[key] ?? '', source: read.sources[key] ?? null }), true;
     }
 
