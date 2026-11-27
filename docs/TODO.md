@@ -225,13 +225,13 @@
 **依赖：** 无
 **解锁：** 无
 **规格**：[SECRET-REVEAL.md](SECRET-REVEAL.md)
-**demo**：[design/secret-reveal-2026-11-27.html](design/secret-reveal-2026-11-27.html)（+ 同名 `.png`，1180×2700）
+**demo**：[design/secret-reveal-2026-11-27.html](design/secret-reveal-2026-11-27.html)（分区截图 `-1.png` 核心交互 / `-2.png` 真实卡片 / `-3.png` 安全与断言）
 
 - **现状（2026-11-27 代码核实）**：后端 `GET /api/admin/settings/value?key=` 已有（只允许 secret、单 key、
   记 `settings.revealed` 日志，`src/settings-routes.js:47-56`）；但前端旧布局分支有「查看」按钮
   （`AdminModules.vue:204` 的 `isPlainGroup`），**CQ 批卡片化后的 `grid` / `foldBody` 分支只渲染密码框**；
   代理类走「编辑弹窗里查看当前值」，明文进输入框有误保存风险。
 - **范围**：8 个 secret（Steam API Key / ITAD Key / SMTP 授权码 / 通用 Webhook / 企业微信 / 3 个代理）在四种
-  布局分支统一「查看 / 编辑 / 清除」三动作；抽 `SecretField.vue` 组件；查看**无二次确认**直接显示、
-  **30 秒自动隐藏**、审计写 `audit_logs`（`admin.secret_revealed`，只记 key 名不含值）。
+  布局分支统一为**标准密码框 + 眼睛图标原地切换明文/密文**（不用弹窗、不用二次确认）；明文**懒加载**（点眼睛才取）、
+  **30 秒无操作自动回密文**、审计写 `audit_logs`（`admin.secret_revealed`，只记 key 名）；未改动不提交防误覆盖。
 - **验收**：见规格 §7（7 条）+ 与 demo 一致。

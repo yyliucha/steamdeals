@@ -1,9 +1,9 @@
 # 后台密钥查看统一（FX，待开发）
 
 > 状态：**需求与方案已确认（2026-11-27），待开发**。
-> 关联：[demo](design/secret-reveal-2026-11-27.html)（+ 同名 `.png`）、`src/settings-routes.js`（查看接口）、
-> `frontend/src/pages/AdminModules.vue`（设置页四种布局分支）、[PROXY-POOL.md](PROXY-POOL.md) §5（代理列表编辑器）、
-> [SETTINGS-IA.md](SETTINGS-IA.md)（CQ 批信息架构）
+> 关联：[demo](design/secret-reveal-2026-11-27.html)（分区截图 `-1.png` 核心交互 / `-2.png` 真实卡片 / `-3.png` 安全与断言）、
+> `src/settings-routes.js`（查看接口）、`frontend/src/pages/AdminModules.vue`（设置页四种布局分支）、
+> [PROXY-POOL.md](PROXY-POOL.md) §5（代理列表编辑器）、[SETTINGS-IA.md](SETTINGS-IA.md)（CQ 批信息架构）
 
 ## 0. 背景与现状（2026-11-27 代码核实）
 
@@ -33,14 +33,14 @@
 
 | # | 决策 |
 |---|---|
-| 1 | 点「查看」**不要二次确认**，直接显示明文（Demo 区块 C） |
-| 2 | 明文 **30 秒自动隐藏**；手动关闭立即清除（Demo 区块 D） |
-| 3 | 审计写 **`audit_logs`**（`admin.secret_revealed`，只记 key 名，不记值） |
-| 4 | **查看只读、编辑才写、清除二次确认**——三动作彻底分离（不再「查看即载入输入框」） |
-| 5 | 覆盖全部 **8 个 secret**，且在**四种布局分支**（`isPlainGroup` / `grid` / `foldBody` / 代理行）行为一致 |
-| 6 | 抽公共组件，**一处实现四处分发**（根治「换个布局就丢入口」） |
-| 7 | 不做「全部显示」/批量；一次一个 key（后端本来就是单 key 接口） |
-| 8 | 掩码固定 **12 点**，不透露真实长度 |
+| 1 | 交互 = **标准密码框 + 眼睛图标原地切换明文/密文**（所有者原话：「市面上类似密码框的…后面有一个小眼睛，可以控制明文和密文，这个是我理想的功能」）；**不用查看弹窗、不用二次确认** |
+| 2 | 明文**懒加载**：页面加载不取明文；点眼睛才调一次 `GET /api/admin/settings/value?key=`，再点眼睛回密文（**不重复请求**） |
+| 3 | 明文显示 **30 秒无操作自动回密文**（只切回 `type=password`，不关页面） |
+| 4 | 审计写 **`audit_logs`**（`admin.secret_revealed`，只记 key 名，不记值） |
+| 5 | 编辑直接在密码框改：**未改动不提交**、留空 = 保持原值（避免「懒加载到的真值」被误保存） |
+| 6 | 覆盖全部 **8 个 secret**，且**四种布局分支**（`isPlainGroup` / `grid` / `foldBody` / 代理行）行为一致——抽公共组件一处实现 |
+| 7 | 未配置时眼睛**置灰不可点**、不发请求；不做「全部显示」/批量，一次一个 key |
+| 8 | 掩码由浏览器 `type=password` 渲染（不手工拼 12 个点；demo 的圆点是静态示意） |
 
 ## 2. 数据模型
 
@@ -59,23 +59,23 @@
 
 ## 4. 前端 / 后台
 
-**新增组件** `frontend/src/components/SecretField.vue`：
+**新增组件** `frontend/src/components/SecretField.vue`（替换四处渲染）：
 
 | 状态 | 渲染 | 行为 |
 |---|---|---|
-| 未配置 | 「尚未设置」+ 「设置」按钮 | 打开编辑弹窗 |
-| 已配置 | 掩码 12 点（`••••••••••••`）+ 「查看」「编辑」「清除」 | 见下 |
-| 查看中 | 弹窗：等宽明文 + 「复制」+ 倒计时「N 秒后隐藏」 | 关闭或倒计时归零 → 清空并关弹窗 |
-| 编辑中 | 弹窗：空输入框（placeholder「已设置，留空保持原值」） | 留空保存不改值；填写则覆盖；保存后约 15 秒生效 |
+| 未配置 | 空密码框（placeholder「尚未设置」）+ 眼睛置灰 + 「设置」 | 不发请求；输入后保存 |
+| 已配置 · 密文 | `type=password`（浏览器渲染圆点）+ 眼睛图标 | 点眼睛：首次懒加载明文后切 `type=text` |
+| 已配置 · 明文 | `type=text` 等宽字体、可选中复制 + 眼睛图标 | 再点 → 回 `type=password`（不重新请求）；30 秒无操作自动回密文 |
+| 编辑中 | 直接改密码框内容 | 未改动不提交；留空 = 保持原值；保存约 15 秒生效 |
+| 清除 | 密码框旁「清除」按钮 | `ElMessageBox.confirm` 后保存 `null`，来源回落 env/默认 |
 
-- 点「查看」→ **直接** `GET /api/admin/settings/value?key=<key>`，**不弹确认**；
-- 「复制」用 `navigator.clipboard`；非安全上下文降级为「已选中，请 Ctrl+C」提示；
-- 「清除」走 `ElMessageBox.confirm` → 保存 `null`（来源回落 env/默认）；
+- 眼睛按钮**自实现**（不直接用 `el-input` 的 `show-password`）——因为值要懒加载，需要在点击时先取明文再切 `type`；
+- 懒加载值保存在组件内存（`loadedValue`），不写 `localStorage`/不解进 URL；
 - **四处替换**：`isPlainGroup` 分支、`grid` 分支、`foldBody` 分支、`network.steamProxy` 代理行；
-- **代理（多条）**：查看弹窗逐条列出明文（含账号密码的 URL），并显示条数；沿用列表编辑器管理（[PROXY-POOL.md](PROXY-POOL.md) §5）；
-- **移动端**（≤560px）：三动作换行、按钮触摸目标 ≥44px 等效、输入框不溢出；
-- **demo**：[design/secret-reveal-2026-11-27.html](design/secret-reveal-2026-11-27.html)，
-  验收必须「与 demo 一致」；demo 内嵌「状态 ↔ 自动化断言」对照表。
+- **代理（多条）**：眼睛点开后逐行显示两条代理地址（含账号密码），每行可单独复制；管理仍走列表编辑器（[PROXY-POOL.md](PROXY-POOL.md) §5）；
+- **移动端**（≤560px）：眼睛保留在输入框内，次要动作换行，触摸目标 ≥44px 等效；
+- **demo**：[design/secret-reveal-2026-11-27.html](design/secret-reveal-2026-11-27.html)
+  （`?shot=1/2/3` 分区查看；截图 `-1.png` / `-2.png` / `-3.png`），验收必须「与 demo 一致」。
 
 ## 5. 设置与配置
 
@@ -86,22 +86,25 @@
 | 项 | 要求 |
 |---|---|
 | 权限 | 仅管理员（沿用 `requireAdmin` + 后端只允许 secret 字段） |
-| 审计 | 每次查看落 `audit_logs`（`admin.secret_revealed`，只含 key 名） |
-| 明文生命周期 | 只在弹窗内存；关闭 / 30 秒即清；**不进表单**（避免误保存）、不进 localStorage、不进日志 |
-| 掩码 | 固定 12 点，不透露长度 |
+| 审计 | 每次显示明文落 `audit_logs`（`admin.secret_revealed`，只含 key 名） |
+| 懒加载 | 页面加载不取明文；**点眼睛才调一次接口**；再点眼睛不重复请求 |
+| 明文生命周期 | 只在组件内存；**30 秒无操作自动回密文**；不进 localStorage、不进前端日志、不进 URL |
+| 误覆盖防护 | 懒加载到真值后**未改动不提交**（按 diff 判断），留空 = 保持原值 |
+| 掩码 | 浏览器 `type=password` 渲染；不手工拼串 |
 | 批量 | 不做「全部显示」；一次一个 key |
-| 复制 | Clipboard API；HTTP 环境降级提示手动复制 |
-| 不新增 | 不加「查看需重输密码」这类二次认证（所有者 2026-11-27 明确：无确认步骤），靠审计追溯 |
+| 二次认证 | **不做**「查看需重输密码」这类步骤（所有者 2026-11-27：眼睛即可），靠审计追溯 |
 
 ## 7. 验收（7 条）
 
-1. **8 个 secret 项在四种布局分支**都出现「查看 / 编辑 / 清除」三动作（模板静态锁 + 至少两处 DOM 断言）；
-2. 点「查看」**无确认弹窗**，直接调 `GET /api/admin/settings/value?key=` 一次；明文等宽显示 + 复制按钮 + 倒计时；
-3. 明文弹窗 30 秒倒计时后自动关闭，**DOM 中不再存在该值**；手动关闭同样清空（断言弹窗关闭后页面文本不含明文）；
-4. 查看后 `audit_logs` 新增一条 `admin.secret_revealed`，`detail` 只含 key 名、**不含值**；后台「审计日志」可查到；
-5. 非管理员访问该接口 401/403；非 secret key 返回 400「只能查看敏感字段」（回归）；
-6. 代理（多条）查看弹窗逐条显示明文与条数；编辑留空保存不改值；清除二次确认后回落 env/默认；
-7. 移动端 375px 三动作换行且无横向溢出；`npm test`（分段）+ `npm run frontend:build` + `npm run scan` 全绿。
+1. **8 个 secret 项在四种布局分支**都有密码框 + 眼睛图标 + 清除（模板静态锁 + 至少两处 DOM 断言）；
+2. 已配置默认 `type=password`；点眼睛 → **调 `GET /api/admin/settings/value?key=` 一次** → `type=text` 显示明文；
+   再点眼睛 → 回 `type=password` 且**不再调接口**（断言请求次数）；
+3. 明文显示 **30 秒无操作后自动回 `type=password`**（不再显示明文）；
+4. 未配置：眼睛置灰不可点、不发请求；
+5. **未改动不提交**、留空 = 保持原值；清除二次确认后保存 `null` 并回落 env/默认；
+6. 显示明文后 `audit_logs` 新增 `admin.secret_revealed`（`detail` 只含 key 名、不含值）；非管理员 401/403；
+   非 secret key 返回 400「只能查看敏感字段」（回归）；
+7. 移动端 375px 眼睛在框内、次要动作换行、无横向溢出；`npm test`（分段）+ `npm run frontend:build` + `npm run scan` 全绿。
 
 ## 8. 实施顺序
 
