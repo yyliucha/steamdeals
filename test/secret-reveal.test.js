@@ -134,19 +134,20 @@ test('验收 1（DOM 断言）：SecretField 真渲染——默认 type=password
   }
 });
 
-// ---------------------------------------------------------------- 验收 1：四处布局分支
+// ---------------------------------------------------------------- 验收 1：secret 字段统一由行组件渲染
 
-test('验收 1：四处布局分支都渲染 SecretField（平铺 / 网格 / 折叠 / 代理行）', () => {
-  assert.match(adminModules, /import SecretField from '\.\.\/components\/SecretField\.vue'/, 'AdminModules 引入公共组件');
-  // 平铺组（alerts 的 secret）：旧「查看 + 清除 checkbox」整块被替换
-  assert.match(adminModules, /<div v-else-if="field\.type==='secret'" class="secret-control"><SecretField/, 'isPlainGroup 分支');
-  // 卡片/网格 + 折叠体：两处旧 el-input secret 换成同一组件
-  const gridUsages = adminModules.match(/<SecretField v-else-if="field\.type==='secret'"/g) ?? [];
-  assert.equal(gridUsages.length, 2, 'grid 分支 + foldBody 分支各一处');
-  // 代理：Steam 多条走 proxy 模式（保留列表编辑器），两个单条代理走普通模式
-  assert.equal((adminModules.match(/<SecretField mode="proxy"/g) ?? []).length, 1, 'network.steamProxy 走 proxy 模式');
-  assert.match(adminModules, /<SecretField v-else-if="field\.key==='network\.httpsProxy'\|\|field\.key==='network\.appSyncProxy'"/, '两个单条代理走同一条 SecretField 分支');
-  // 8 个 secret 全覆盖：sources 2 个进 grid/折叠、alerts 3 个进平铺、network 3 个进代理分支
+// FY-2（docs/SETTINGS-REDESIGN.md §3.2）：设置页改成「分区标题 + 一行一项」后，密钥字段仍复用本批组件
+// （SettingsRow 是唯一渲染点，按 type=secret 分支走，不再在 AdminModules 里按 key 特判）。
+test('验收 1：8 个 secret 全部经由 SettingsRow 的 SecretField 分支渲染（FY-2 行列表仍复用 FX 组件）', () => {
+  const settingsRow = read('../frontend/src/components/SettingsRow.vue');
+  assert.match(settingsRow, /import SecretField from '\.\.\/components\/SecretField\.vue'/, '行组件引入公共密钥组件');
+  assert.match(settingsRow, /<SecretField/, '行内渲染 SecretField');
+  assert.match(settingsRow, /mode="field\.key === 'network\.steamProxy' \? 'proxy' : 'single'"/, 'Steam 多条代理走 proxy 模式，其余单值模式');
+  assert.match(settingsRow, /v-else-if="field\.type === 'secret'"/, '按 type 分支（不按 key 硬编码）');
+  assert.equal((settingsRow.match(/<SecretField/g) ?? []).length, 1, '只有一个 SecretField 渲染点（8 个密钥统一走它）');
+  assert.match(adminModules, /<SettingsRow v-for="field in sec\.fields"/, '设置页每项一行（密钥也是行）');
+  assert.ok(!adminModules.includes('<SecretField'), '设置页不再有手写的密钥框（全部交行组件）');
+  // 8 个 secret 全覆盖：sources 2 / alerts 3 / network 3，全部落在行组件里渲染
   const expected = [
     'sources.steam.apiKey',
     'sources.itad.apiKey',
@@ -161,7 +162,7 @@ test('验收 1：四处布局分支都渲染 SecretField（平铺 / 网格 / 折
   for (const key of expected) {
     const field = settings.SETTING_MAP.get(key);
     assert.equal(field.type, 'secret', `${key} 是 secret`);
-    assert.ok(['sources', 'alerts', 'network'].includes(field.group), `${key} 落在被替换的三个分组里`);
+    assert.ok(['sources', 'alerts', 'network'].includes(field.group), `${key} 落在设置页的三个分组里`);
   }
 });
 
@@ -171,8 +172,11 @@ test('FX 清理：旧 revealSecret / 明文塞输入框 / 「已保存密钥不�
   assert.doesNotMatch(adminModules, /clearSecrets/, '旧「清除」checkbox 状态已删');
   assert.doesNotMatch(adminModules, /secretPlaceholder/, '旧「已设置，留空保持原值」placeholder 已删');
   assert.doesNotMatch(adminModules, /已保存密钥不会自动回显/, '旧提示已删（新交互点眼睛即可看）');
-  // 批量保存跳过密钥：密钥由组件自己保存，避免把懒加载真值写库
-  assert.match(adminModules, /if\(f\.type==='secret'\)continue;/, '批量「保存设置」跳过 secret');
+  // FY-2：整份「保存设置」批量提交已删除（改为每项即时保存），密钥因此不会被批量覆盖；
+  // 即时保存回写视图时也显式跳过密钥明文（不落 settingValues/savedValues）。
+  assert.doesNotMatch(adminModules, /submitSettings/, '整份批量提交已删除（改为局部 values 即时保存）');
+  assert.match(adminModules, /function isSecretKey\(key\)/, '回写视图时识别密钥 key');
+  assert.match(adminModules, /if\(!isSecretKey\(key\)&&view\.values/, '密钥明文不回写进页面值状态（FX 决策 5）');
 });
 
 // ---------------------------------------------------------------- 验收 6：后端审计与权限（真 HTTP + pglite）

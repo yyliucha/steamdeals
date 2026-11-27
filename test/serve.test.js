@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { resolveFilePath, contentTypeFor, startStaticServer } from '../src/serve.js';
 import { openStore } from '../src/store/index.js';
 import * as db from '../src/store/pg.js';
-import { FRONTEND_PAGES, startApiServer } from '../src/server.js';
+import { FRONTEND_PAGES, isFrontendPage, startApiServer } from '../src/server.js';
 
 function makeSite() {
   const root = mkdtempSync(join(tmpdir(), 'gp-serve-'));
@@ -124,6 +124,9 @@ test('port=0 时返回系统分配的真实端口', async () => {
 
 // BM-1（docs/SESSION-MANAGEMENT.md §8.4.1）：SPA 页面白名单——登录/注册/改密页直接打开或刷新必须返回
 // 200 index.html（v2.11.0 的 `/login` 落到旧 web/ 目录回纯文本 not found 的事故）。
+// FY-2（docs/SETTINGS-REDESIGN.md §3.1）：`/console/settings/:group` 是参数化路由，按前缀放行——
+// 深链直接打开/刷新必须是 index.html（同一类事故：FY-1 加了二级路由但白名单只支持精确路径，
+// 线上直开 /console/settings/sources 会回纯文本 not found）。
 test('BM-1：/login、/register、/change-password（含 next 参数）返回 200 index.html', async () => {
   const frontend = mkdtempSync(join(tmpdir(), 'gp-frontend-'));
   writeFileSync(join(frontend, 'index.html'), '<!doctype html><html><body><div id="app">spa-marker</div></body></html>');
@@ -133,7 +136,17 @@ test('BM-1：/login、/register、/change-password（含 next 参数）返回 20
   const srv = await startApiServer({ query: q, frontendDir: frontend, port: 0, host: '127.0.0.1' });
   const base = `http://127.0.0.1:${srv.port}`;
   try {
-    for (const p of ['/login', '/login?next=%2Fconsole%3Fsection%3Dgames', '/register', '/change-password', '/console?section=games']) {
+    for (const p of [
+      '/login',
+      '/login?next=%2Fconsole%3Fsection%3Dgames',
+      '/register',
+      '/change-password',
+      '/console?section=games',
+      // FY-2：系统设置二级路由的深链（7 组逐条 + 带 ?q= 搜索词）
+      '/console/settings/sources',
+      '/console/settings/network',
+      '/console/settings/schedule?q=proxy',
+    ]) {
       const res = await fetch(base + p);
       assert.equal(res.status, 200, `${p} → 200`);
       assert.match(res.headers.get('content-type') || '', /text\/html/, `${p} → text/html`);
@@ -142,6 +155,8 @@ test('BM-1：/login、/register、/change-password（含 next 参数）返回 20
     // 白名单不是通配：未登记的路径仍是 404（而不是把所有路径都当 SPA）
     const missing = await fetch(`${base}/no-such-page`);
     assert.equal(missing.status, 404, '未登记路径 404');
+    // 前缀只放行 /console/settings/<group> 一层，不吞掉其它 /console 子路径
+    assert.equal((await fetch(`${base}/console/nope`)).status, 404, '/console/nope 仍 404');
   } finally {
     await srv.close();
     await store.close();
@@ -152,8 +167,16 @@ test('BM-1：前端 router 的每个页面路径都在服务端白名单（新�
   const routerJs = readFileSync(new URL('../frontend/src/router/index.js', import.meta.url), 'utf8');
   const paths = [...routerJs.matchAll(/path: '([^']+)'/g)].map((m) => m[1]);
   assert.ok(paths.length >= 8, `解析到路由路径（${paths.length} 条）`);
-  for (const p of paths) assert.ok(FRONTEND_PAGES.includes(p), `router 路径 ${p} 已登记进 FRONTEND_PAGES`);
+  // FY-2：参数化路由（:group?）按前缀白名单放行——用 isFrontendPage 判定，而不是精确包含
+  for (const p of paths) assert.ok(isFrontendPage(p), `router 路径 ${p} 已登记进白名单（精确或前缀）`);
   for (const p of ['/login', '/register', '/change-password']) assert.ok(FRONTEND_PAGES.includes(p), `BM-1：${p} 在册`);
+  // FY-2 反向自检锚点：二级设置页任意组都算 SPA 页面；其它 /console 子路径不算
+  for (const p of ['/console/settings/sources', '/console/settings/ops', '/console/settings/network/']) {
+    assert.equal(isFrontendPage(p), true, `${p} 由 SPA 承接`);
+  }
+  for (const p of ['/console/nope', '/console/setting', '/console/settingsx']) {
+    assert.equal(isFrontendPage(p), false, `${p} 不是 SPA 页面（前缀不越界）`);
+  }
 });
 
 test('BS-1：/.well-known/assetlinks.json、/sw.js、/app/*.apk 返回 200 + 正确 Content-Type + no-cache', async () => {

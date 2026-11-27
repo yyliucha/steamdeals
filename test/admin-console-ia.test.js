@@ -319,7 +319,8 @@ test('邮件 3 tab + 发送记录单一入口；价格表无「近 7 天」表�
 // FY-1（docs/SETTINGS-REDESIGN.md §2/§3.1/§3.2、验收 1/2/3）：
 // 设置页横向 7 tab 下线 → 左侧竖排导航（7 个对象组、项数徽标、当前组高亮 + 品牌色条、底部版本脚注）+
 // `/console/settings/:group` 二级路由（未知组回落 sources、/console 重定向、点组 = push 可后退）+
-// 右侧仍是「面包屑 + 组标题/描述 + 现有卡片/网格/折叠渲染」。
+// 右侧「面包屑 + 组标题/描述 + 工具栏 + 分区列表」。
+// FY-2 落地后右侧渲染已在同文件断言里改成「分区标题 + 一行一项」（卡片/折叠下线），左导航与路由契约不变。
 // 反向自检：把 el-tabs 塞回设置模板 / 删掉 goSettingsGroup 的 push 分支 → 本用例必红。
 test('FY-1：系统设置左导航 7 组 + /console/settings/:group 路由 + 横向 tab 下线（验收 1/2/3）', () => {
   const modules = read('../frontend/src/pages/AdminModules.vue');
@@ -331,9 +332,12 @@ test('FY-1：系统设置左导航 7 组 + /console/settings/:group 路由 + 横
   assert.ok(!modules.includes('el-tabs'), '设置页不再渲染横向 tab（el-tabs 已移除）');
   assert.ok(!modules.includes('el-tab-pane'), '设置页不再有 tab-pane');
   assert.ok(!modules.includes('settings-tabs'), '旧 .settings-tabs 容器/样式已移除');
-  assert.match(modules, /class="settings-sections"/, '右侧仍按分区渲染（本批不改卡片，FY-2 才重写行列表）');
-  assert.match(modules, /class="setting-grid"/, '平铺组仍是网格（不改渲染）');
-  assert.match(modules, /settings-fold/, '折叠入口仍是原按钮（不改渲染）');
+  // FY-2 已落地（本文件同步更新）：右侧不再有卡片盒子与「高级 N 项」折叠，改「分区标题 + 一行一项」
+  assert.match(modules, /class="settings-sections"/, '右侧分区容器');
+  assert.match(modules, /<section v-for="sec in visibleSections" :key="sec\.id" class="settings-section">/, '每个分区一个 section');
+  assert.match(modules, /<SettingsRow v-for="field in sec\.fields"/, 'FY-2：一行一项');
+  assert.ok(!modules.includes('setting-grid'), 'FY-2：网格卡片已下线');
+  assert.ok(!modules.includes('settings-fold'), 'FY-2：「高级 N 项」折叠已下线');
 
   // ② 验收 1：左导航 7 组（图标 + 名称 + 项数徽标）、当前组高亮 + 左侧品牌色条、底部版本脚注
   assert.match(modules, /class="settings-nav"/, '左侧竖排导航容器');
@@ -347,8 +351,8 @@ test('FY-1：系统设置左导航 7 组 + /console/settings/:group 路由 + 横
   assert.match(modules, /const settingsGroups=computed[\s\S]{0,220}SETTINGS_GROUP_IDS\.map/, '7 组顺序取前端 id 白名单、标题/图标以 schema 为准');
   // 当前组的唯一事实源 = URL（route.params.group）→ 浏览器后退换回上一组 URL 时页面自动跟着变
   assert.match(modules, /const activeSettingsGroup=computed\(\(\)=>\{const id=String\(route\.params\.group\?\?''\)/, '当前组从 URL route.params.group 读（后退即回上一组）');
-  assert.match(modules, /const activeSettingsGroupList=computed\([\s\S]{0,120}activeSettingsGroupItem/, '右侧只渲染 URL 指向的那一组');
-  assert.match(modules, /<section v-for="group in activeSettingsGroupList"/, '分区渲染绑定当前组（不是横向 tab 的 v-for）');
+  assert.match(modules, /const visibleSections=computed\(\(\)=>\{[\s\S]{0,400}?const gid=activeSettingsGroup\.value/, '右侧只渲染 URL 指向的那一组（FY-2：visibleSections 以当前组为唯一事实源）');
+  assert.match(modules, /<section v-for="sec in visibleSections" :key="sec\.id" class="settings-section">/, '分区渲染绑定当前组（不是横向 tab 的 v-for）');
 
   // ③ 验收 3：面包屑「管理控制台 / 系统设置 / 当前组」
   assert.match(modules, /管理控制台 <span>\/<\/span> 系统设置 <span>\/<\/span> \{\{ activeSettingsGroupItem\?\.title \}\}/, '面包屑三级');

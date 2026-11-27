@@ -649,35 +649,32 @@ test('CQ 恢复默认：删库覆盖行后值=默认、来源回落 default（�
   }
 });
 
-test('CQ 前端接线（静态）：只看非默认/折叠/恢复本组默认/卡头/搜索高亮都在 AdminModules.vue', () => {
+// FY-2（docs/SETTINGS-REDESIGN.md §3.2/§3.3/§3.4）：设置页从「卡片 + 折叠」改成「分区标题 + 一行一项」+
+// 每项即时保存。本用例只锁「后端 schema 与前端接线仍在」的部分；行组件/即时保存/搜索的细粒度行为锁在
+// test/settings-immediate-save.test.js（假计时器 + SSR 真渲染 + 静态接线三层）。
+test('FY-2 前端接线（静态）：只看非默认/恢复默认/搜索跨组/行列表都在 AdminModules.vue（卡片与折叠已下线）', () => {
   const admin = readFileSync(new URL('../frontend/src/pages/AdminModules.vue', import.meta.url), 'utf8');
   assert.match(admin, /只看非默认/, '只看非默认开关');
   assert.match(admin, /settings-only-changed/, '只看非默认 localStorage 记忆');
-  assert.match(admin, /settings-fold-/, '折叠状态 localStorage 记忆');
-  assert.match(admin, /恢复本组默认/, '分组级恢复默认');
   assert.match(admin, /恢复默认/, '行级恢复默认');
-  assert.match(admin, /settings-card-head/, '平台卡头');
-  assert.match(admin, /settings-fold/, '折叠行');
-  assert.match(admin, /foldAutoOpen/, '搜索命中折叠项自动展开');
-  assert.match(admin, /foldAutoOpenAll/, '搜索命中无高级字段的折叠组也自动展开（FL 修复）');
-  assert.match(admin, /foldTitle \|\| entry\.sec\.title/, '折叠行标题回退到分组标题（FL 修复）');
-  assert.match(admin, /else if\(prim\.length\)\{entries\.push/, '无高级字段的分组也生成折叠按钮与折叠体（FL 修复）');
-  assert.match(admin, /else if\(prim\.length\)\{.*foldAutoOpenAll\(sec\)/, '无高级字段的分支用 foldAutoOpenAll 判定自动展开（命中常用项就展开，不误开高级折叠）');
-  assert.match(admin, /kind:'foldBody',sec,fields:prim/, '无高级字段分组的折叠体用过滤后的 prim（字段不丢、只看非默认生效）');
-  assert.match(admin, /fieldHit/, '搜索命中高亮');
-  assert.match(admin, /api\/admin\/settings\/restore/, '恢复默认接口接线（二次确认在 restoreField/restoreSection）');
+  assert.match(admin, /api\/admin\/settings\/restore/, '恢复默认接口接线（二次确认在 restoreField）');
   assert.match(admin, /ElMessageBox\.confirm/, '恢复默认二次确认');
+  // FY-2 新渲染：分区标题 + 一行一项（行组件），不再有卡片盒子/折叠/网格
+  assert.match(admin, /<SettingsRow v-for="field in sec\.fields"/, '一行一项（SettingsRow）');
+  assert.match(admin, /class="section-head"><h3>\{\{ sec\.title \}\}<\/h3>/, '分区标题');
+  assert.match(admin, /createSettingsSaver\(\{/, '即时保存合并队列接线');
+  assert.ok(!admin.includes('settings-card'), 'FY-2：卡片盒子已删除（含 CSS）');
+  assert.ok(!admin.includes('settings-fold'), 'FY-2：「高级 N 项」折叠已删除（含 localStorage 折叠态）');
+  assert.ok(!admin.includes('恢复本组默认'), 'FY-2：分区级「恢复本组默认」随折叠体下线（分区头只留 名称 + 项数 + 启用徽标）');
+  // 卡头启用徽标改为绑「与分区同名平台的 enabled」（杉果=sonkwo.enabled）；GOG/Humble 有两个开关故不挂徽标
+  assert.match(admin, /sources\.\$\{sec\.id\}\.enabled/, '启用状态徽标取与分区同名的平台 enabled');
+  assert.match(admin, /bools\.length===1\?bools\[0\]\.key:null/, 'GOG/Humble 两个 enabled 时徽标为空（不误显示单平台状态）');
+  // 搜索跨组 + 命中高亮
+  assert.match(admin, /settingSearchHits/, '跨组搜索命中面板');
+  assert.match(admin, /highlightKey/, '搜索命中高亮目标行');
   const server = readFileSync(new URL('../src/settings-routes.js', import.meta.url), 'utf8');
   assert.match(server, /api\/admin\/settings\/restore/, '恢复接口路由');
   assert.match(server, /settings\.restored/, '恢复审计');
-  // 质检打回项静态锁：只看非默认过滤折叠内项 / bool 摘要开·关 / 紧凑行每字段恢复入口
-  assert.match(admin, /'开':'关'/, 'bool 摘要显示开/关而非 true/false');
-  assert.match(admin, /kind:'foldBody',sec,fields:adv/, '折叠展开项与折叠计数同用过滤后的 adv（只看非默认生效）');
-  assert.match(admin, /summaryFor\(sec,adv\)/, '折叠摘要按过滤后 adv 计算（与计数口径一致）');
-  assert.match(admin, /↺/, '紧凑行每个字段都有恢复入口');
-  assert.match(admin, /sources\.\$\{s\.id\}\.enabled/, '卡头开关取与分区同名的平台 enabled（杉果=sonkwo.enabled）');
-  assert.match(admin, /s\.id==='gog-humble'/, 'GOG/Humble 卡不挂卡头开关、按平台分两行');
-  assert.match(admin, /enabledField\?\[sec\.enabledField\]/, '恢复本组默认包含卡头开关字段');
 });
 
 // ---------------------------------------------------------------- FW 批（docs/SLOW-SYNC.md §5/§8 FW-1）

@@ -9,8 +9,9 @@ import { fileURLToPath } from 'node:url';
 const src = readFileSync(fileURLToPath(new URL('../frontend/src/pages/AdminModules.vue', import.meta.url)), 'utf8');
 
 test('验收 8：列表编辑器——查看并编辑走明文通道、增/删/上移/下移/清空、上限 10 条、未配置文案（EL 批改为弹窗）', () => {
-  assert.match(src, /已配置 \{\{ proxySavedCount \}\} 条/, '卡片显示已配置 N 条');
-  assert.match(src, /未配置，Steam 走直连\/通用代理/, 'N=0 时提示未配置');
+  // FY-2：卡片头改行列表后，「已配置 N 条」放在 Steam 代理那一行的 #after 插槽里（行内展示，文案不变）
+  assert.match(src, /已配置 \$\{proxySavedCount\} 条/, '行内显示已配置 N 条');
+  assert.match(src, /尚未设置（Steam 走直连\/通用代理）/, 'N=0 时提示未配置');
   assert.match(src, /openProxyDialog/, '编辑按钮（EL 批：内联展开改为弹窗编辑）');
   assert.match(src, /\/api\/admin\/settings\/value\?key=network\.steamProxy/, '明文走现有查看通道（§5.1）');
   assert.match(src, /上移/, '每行上移');
@@ -56,6 +57,6 @@ test('验收 9：刷新时机——分组展开且页面可见时每 10 秒自�
   assert.match(src, /activeSettingsGroup\.value==='network'/, '只在「网络与代理」组打开时刷（FY-1：设置 tab 改二级路由组）');
   assert.match(src, /startProxyTimer\(\)/, '定时器随组件挂载启动');
   assert.match(src, /clearInterval\(proxyTimer\)/, '卸载时清理定时器');
-  assert.match(src, /ElMessage\.success\(`已保存/, '保存成功后');
-  assert.match(src, /loadProxyHealth\(\)/, '保存后立即刷新健康状态（saveSettings 内调用）');
+  assert.match(src, /ElMessage\.success\('Steam 专用代理已保存/, '保存成功后 toast（FY-2 起代理保存走 applySavedView 回写行值）');
+  assert.match(src, /loadProxyHealth\(\)/, '保存后立即刷新健康状态（saveProxyDialog 内调用）');
 });

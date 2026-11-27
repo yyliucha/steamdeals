@@ -53,12 +53,15 @@ test('挂载与守卫：App.vue 挂全局弹窗、router 注册 beforeEach（§4
 });
 
 test('五个编辑面全部注册（§4.4），且保存回调是抛错版（失败才能留在本页）', () => {
+  // FY-2（docs/SETTINGS-REDESIGN.md §3.3）：设置页改即时保存——「脏」只剩「提交失败」一种，
+  // 守卫的 save 改成 flush 待发改动；代理弹窗草稿仍是草稿式，单独注册一个面。
   assert.match(adminModules, /label:'系统设置'/, '系统设置面');
   assert.match(announceDrawer, /label: '站点通知'/, '站点通知面（已随抽屉组件注册，AT 批）');
   assert.match(adminModules, /label:'编辑游戏'/, '编辑游戏面');
   assert.match(mailForm, /label: '邮件配置'/, '邮件配置面');
   assert.match(userDrawer, /label: '新建用户'/, '新建用户面（已随抽屉组件注册，AT 批）');
-  assert.match(adminModules, /save:submitSettings/, '系统设置 save = submitSettings（抛错版）');
+  assert.match(adminModules, /save:flushSettings/, '系统设置 save = flushSettings（把待发改动发出去；失败才留本页）');
+  assert.match(adminModules, /label:'Steam 专用代理'/, '代理弹窗草稿面（FY-2 起单独注册）');
   assert.match(announceDrawer, /save: submit/, '站点通知 save = submit（抛错版）');
   assert.match(adminModules, /save:submitGameSave/, '编辑游戏 save = submitGameSave（抛错版）');
   assert.match(mailForm, /save: submit/, '邮件配置 save = submit（抛错版）');
@@ -110,7 +113,7 @@ test('回归（2026-11-09）：放弃修改必须清掉草稿——只放行一�
 test('回归（2026-11-09）：五个编辑面都提供 discard 回调，composable 调用 source.discard', () => {
   assert.match(composable, /discard = null/, '注册签名支持可选 discard');
   assert.match(composable, /void source\.discard\?\.\(\)/, '放弃修改时逐个调用来源 discard');
-  assert.equal((adminModules.match(/discard:/g) || []).length, 2, '系统设置/编辑游戏两个来源都有 discard（站点通知随抽屉注册）');
+  assert.equal((adminModules.match(/discard:/g) || []).length, 3, '系统设置 / Steam 专用代理 / 编辑游戏三个来源都有 discard（站点通知随抽屉注册）');
   assert.match(adminModules, /discard:discardSettings/, '系统设置 discard 重置代理编辑态并重拉');
   assert.match(adminModules, /discard:closeGameDialog/, '编辑游戏 discard 关弹窗+清快照');
   assert.match(announceDrawer, /discard: resetForm/, '站点通知 discard 清表单+快照（抽屉内）');

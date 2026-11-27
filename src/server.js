@@ -1188,7 +1188,7 @@ export function createApiServer({
         String(process.env.APP_MOBILE_REDIRECT_ENABLED ?? '') === '1' &&
         req.method === 'GET' &&
         mobileSignal &&
-        FRONTEND_PAGES.includes(path) &&
+        isFrontendPage(path) &&
         !MOBILE_REDIRECT_EXEMPT.test(path)
       ) {
         logger?.info('http.mobile_redirect', { ip, path, signal: mobileSignal });
@@ -2113,7 +2113,7 @@ function applySecurityHeaders(req, res, { frontendDir = null } = {}) {
       // 与 serveFrontendStatic 的判定保持一致：有 dist/index.html 时，FRONTEND_PAGES 这些路径
       // 返回的是 SPA 文档（严格档）；其余路径是无构建产物回退页/服务端生成页（兼容档）。
       const distIndex = frontendDir ? resolve(frontendDir, 'index.html') : null;
-      const strictSpa = Boolean(distIndex && existsSync(distIndex) && FRONTEND_PAGES.includes(pathname));
+      const strictSpa = Boolean(distIndex && existsSync(distIndex) && isFrontendPage(pathname));
       // per-request nonce：只给服务端注入到 dist/index.html 的内联脚本用（serveBanPage/serveAppealPage）
       const nonce = randomBytes(16).toString('base64');
       res.cspNonce = nonce;
@@ -2220,6 +2220,19 @@ export const FRONTEND_PAGES = [
 ];
 
 /**
+ * FY-2（docs/SETTINGS-REDESIGN.md §3.1）：带路径参数的 SPA 路由按前缀放行。
+ * `/console/settings/:group` 是同一份 SPA 文档（组由前端路由解析）；精确匹配放不进去，
+ * 漏登记时深链/刷新会落到旧 web/ 目录 → 纯文本 not found（与 v2.11.0 `/login` 事故同款）。
+ * 只放行「二级设置页」这一层，不做全局通配（未登记路径仍是 404）。
+ */
+export const FRONTEND_PAGE_PREFIXES = ['/console/settings/'];
+
+/** 该 pathname 是否由 SPA 文档承接（精确白名单 + 参数化前缀）。 */
+export function isFrontendPage(pathname) {
+  return FRONTEND_PAGES.includes(pathname) || FRONTEND_PAGE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+/**
  * FV 批（docs/HEAD-FOOT-INJECTION.md §2/§4）：SPA HTML 的 head/foot 注入。
  * - head 插到 `</head>` 前、foot 插到 `</body>` 前（找不到锚点则跳过该段并记日志）；
  * - 注入内容里的内联 `<script>`（无 src、无 nonce）自动打上本请求 nonce——CSP 严格档
@@ -2271,7 +2284,7 @@ export function injectSpaHtml(html, { head = '', foot = '', nonce = '', logger =
 /** Vue 构建产物负责站点所有页面；无构建产物时回退到 web 目录。 */
 export function serveFrontendStatic(res, frontendDir, outDir, pathname, { logger = null } = {}) {
   if (!frontendDir || !existsSync(resolve(frontendDir, 'index.html'))) return serveStatic(res, outDir, pathname);
-  if (FRONTEND_PAGES.includes(pathname)) {
+  if (isFrontendPage(pathname)) {
     // FV 批（docs/HEAD-FOOT-INJECTION.md §2）：有注入配置时读 dist/index.html → 注入 → 发送；
     // 无配置保持原静态发送行为（body 与响应头字节级一致）。注入只发生在本白名单分支——
     // /assets/、/app/*.apk 等走下方静态资源分支，天然不注入（测试锁住）。

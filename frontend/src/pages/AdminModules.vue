@@ -197,21 +197,36 @@
     </template>
 
     <!-- 设置 -->
-    <!-- FY-1（docs/SETTINGS-REDESIGN.md §2/§3.2）：横向 7 tab → 左侧竖排导航（7 个对象组）+ 二级路由；
-         右侧仍是「组标题/描述 + 工具栏 + 现有卡片 / 网格 / 折叠渲染」（行列表与即时保存留给 FY-2）。 -->
+    <!-- FY-1（docs/SETTINGS-REDESIGN.md §2/§3.1/§3.2）：横向 7 tab → 左侧竖排导航（7 个对象组）+ 二级路由；
+         FY-2（§3.2/§3.3/§3.4/§3.5）：右侧改成「分区标题 + 一行一项」+ 每项即时保存 + 跨组搜索/只看非默认 + 移动端两段式。 -->
     <template v-else-if="section==='settings'">
       <div class="settings-page">
         <aside class="settings-nav" aria-label="设置分组">
           <button v-for="g in settingsGroups" :key="g.id" type="button" class="settings-nav-item" :class="{ on: g.id===activeSettingsGroup }" :aria-current="g.id===activeSettingsGroup?'page':null" @click="goSettingsGroup(g.id)"><span class="settings-nav-ico">{{ g.icon }}</span><span class="settings-nav-name">{{ g.title }}</span><span class="settings-nav-count">{{ groupItemCount(g.id) }}</span></button>
-          <div class="settings-nav-foot"><div>版本 {{ settingsSchema?.version||'—' }} · 配置修订 {{ settingsSchema?.revision||0 }}</div><div>改一项即存，约 15 秒生效</div><span v-if="settingsDirty || proxyDialogDirty" class="dirty-dot">未保存的修改</span></div>
+          <div class="settings-nav-foot"><div>版本 {{ settingsSchema?.version||'—' }} · 配置修订 {{ settingsSchema?.revision||0 }}</div><div>改一项即存，约 15 秒生效</div><span v-if="settingsConflict || proxyDialogDirty" class="dirty-dot">{{ proxyDialogDirty ? '代理有未保存的修改' : '设置保存失败，待重试' }}</span></div>
         </aside>
         <div class="settings-main">
           <div class="settings-nav-mobile"><el-select :model-value="activeSettingsGroup" class="settings-nav-select" @change="goSettingsGroup"><el-option v-for="g in settingsGroups" :key="g.id" :label="`${g.icon} ${g.title} · ${groupItemCount(g.id)} 项`" :value="g.id"/></el-select></div>
           <div class="settings-crumb">管理控制台 <span>/</span> 系统设置 <span>/</span> {{ activeSettingsGroupItem?.title }}</div>
           <div class="settings-head"><h2>{{ activeSettingsGroupItem?.title }}</h2><p v-if="activeSettingsGroupItem?.description">{{ activeSettingsGroupItem.description }}</p></div>
-          <div class="settings-toolbar"><el-input v-model="settingQuery" clearable placeholder="搜索设置项，例如 Steam、代理、SMTP（命中折叠项会自动展开）" @keyup.enter="onSettingsEnter"/><el-checkbox v-model="settingsOnlyChanged">只看非默认</el-checkbox><el-button v-if="theme.storedMode()" text @click="resetTheme">跟随系统</el-button><el-button :loading="settingsLoading" @click="reloadSettings">重新加载</el-button><el-button type="primary" :loading="saving" @click="saveSettings">保存设置</el-button></div>
-      <el-empty v-if="!filteredGroups.length && settingsSchema" description="没有匹配的设置项"/>
-      <div v-else class="settings-group"><section v-for="group in activeSettingsGroupList" :key="group.id" class="settings-group-section"><div v-if="isPlainGroup(group.id)" class="setting-grid"><article v-for="field in fieldsByGroup(group.id)" :key="field.key" class="setting-field" :class="{hit: fieldHit(field)}"><div class="setting-head"><label :for="settingId(field.key)">{{ field.label }}</label><el-tag size="small" effect="plain">{{ sourceLabel(settingsSchema?.sources?.[field.key]) }}</el-tag><el-button link size="small" class="setting-restore" :loading="settingsLoading" @click="restoreField(field)">恢复默认</el-button></div><div v-if="field.type==='bool'" class="setting-control"><el-switch v-model="settingValues[field.key]" @change="settingsDirty=true"/><span>{{ settingValues[field.key]?'启用':'关闭' }}</span></div><el-select v-else-if="field.type==='enum'" :id="settingId(field.key)" v-model="settingValues[field.key]" @change="settingsDirty=true"><el-option v-for="option in field.options||[]" :key="option" :label="option" :value="option"/></el-select><div v-else-if="field.key==='network.steamProxy'" class="proxy-editor"><div class="proxy-head"><span class="proxy-count"><template v-if="proxySavedCount!=null">已配置 {{ proxySavedCount }} 条<template v-if="!proxySavedCount">（未配置，Steam 走直连/通用代理）</template></template><template v-else>{{ settingsSchema?.secrets?.[field.key]?.hasValue?'已设置（点眼睛查看，或用「编辑」修改）':'尚未设置（Steam 走直连/通用代理）' }}</template></span><el-button text @click="openProxyDialog">编辑</el-button></div><SecretField mode="proxy" :field="secretMeta(field)" :version="settingsSchema?.revision" @saved="(d)=>onSecretSaved(d,field.key)"/></div><SecretField v-else-if="field.key==='network.httpsProxy'||field.key==='network.appSyncProxy'" :field="secretMeta(field)" :version="settingsSchema?.revision" @saved="(d)=>onSecretSaved(d,field.key)"/><div v-else-if="field.type==='secret'" class="secret-control"><SecretField :field="secretMeta(field)" :version="settingsSchema?.revision" @saved="(d)=>onSecretSaved(d,field.key)"/></div><el-input v-else-if="field.type==='text'" :id="settingId(field.key)" v-model="settingValues[field.key]" type="textarea" :rows="6" maxlength="20480" class="setting-textarea" @input="settingsDirty=true"/><el-input v-else :id="settingId(field.key)" v-model="settingValues[field.key]" :type="field.type==='int'?'number':'text'" :min="field.min" :max="field.max" @input="settingsDirty=true"/><p v-if="field.help" class="setting-help">{{ field.help }}</p></article></div><div v-else class="settings-sections"><section v-for="grp in displaySettingsFields(group.id)" :key="grp.sec.id" class="settings-card"><div class="settings-card-head"><span class="settings-ico">{{ grp.sec.icon }}</span><h3>{{ grp.sec.title }}</h3><span v-if="grp.sec.hint" class="settings-card-tag">{{ grp.sec.hint }}</span><span v-if="grp.sec.enabledKey" class="settings-card-tag" :class="settingValues[grp.sec.enabledKey]?'ok':''">{{ settingValues[grp.sec.enabledKey]?'已启用':'已停用' }}</span><el-switch v-if="grp.sec.enabledKey" v-model="settingValues[grp.sec.enabledKey]" @change="settingsDirty=true"/></div><div class="settings-card-body"><template v-for="entry in grp.entries" :key="entry.k"><div v-if="entry.kind==='rows'" class="setting-rows"><div v-for="row in entry.rows" :key="row.label" class="setting-row" :class="{hit: row.fields.some(f=>fieldHit(f))}"><span class="k">{{ row.label }}</span><template v-for="field in row.fields" :key="field.key"><el-switch v-if="field.type==='bool'" v-model="settingValues[field.key]" @change="settingsDirty=true"/><el-select v-else-if="field.type==='enum'" v-model="settingValues[field.key]" @change="settingsDirty=true"><el-option v-for="o in field.options||[]" :key="o" :label="o" :value="o"/></el-select><el-input v-else v-model="settingValues[field.key]" :type="field.type==='int'?'number':'text'" @input="settingsDirty=true" class="row-input"/><el-button link size="small" class="setting-restore" :title="`恢复 ${field.label} 默认`" @click="restoreField(field)">↺</el-button></template><span class="src">{{ sourceLabel(settingsSchema?.sources?.[row.fields[0].key]) }}</span></div></div><div v-else-if="entry.kind==='grid'" class="setting-grid"><article v-for="field in entry.fields" :key="field.key" class="setting-field" :class="{hit: fieldHit(field)}"><div class="setting-head"><label :for="settingId(field.key)">{{ field.label }}</label><el-tag size="small" effect="plain">{{ sourceLabel(settingsSchema?.sources?.[field.key]) }}</el-tag><el-button link size="small" class="setting-restore" :loading="settingsLoading" @click="restoreField(field)">恢复默认</el-button></div><div v-if="field.type==='bool'" class="setting-control"><el-switch v-model="settingValues[field.key]" @change="settingsDirty=true"/><span>{{ settingValues[field.key]?'启用':'关闭' }}</span></div><el-select v-else-if="field.type==='enum'" :id="settingId(field.key)" v-model="settingValues[field.key]" @change="settingsDirty=true"><el-option v-for="option in field.options||[]" :key="option" :label="option" :value="option"/></el-select><SecretField v-else-if="field.type==='secret'" :field="secretMeta(field)" :version="settingsSchema?.revision" @saved="(d)=>onSecretSaved(d,field.key)"/><el-input v-else-if="field.type==='text'" :id="settingId(field.key)" v-model="settingValues[field.key]" type="textarea" :rows="6" maxlength="20480" class="setting-textarea" @input="settingsDirty=true"/><el-input v-else :id="settingId(field.key)" v-model="settingValues[field.key]" :type="field.type==='int'?'number':'text'" :min="field.min" :max="field.max" @input="settingsDirty=true"/><p v-if="field.help" class="setting-help">{{ field.help }}</p></article></div><button v-else-if="entry.kind==='fold'" type="button" class="settings-fold" @click="toggleFold(entry.sec.id)"><span class="arrow">{{ foldOpen(entry.sec.id)?'▾':'▸' }}</span>{{ entry.sec.foldTitle || entry.sec.title }} <b>{{ entry.count }} 项</b><span v-if="entry.summary" class="sum">{{ entry.summary }}</span></button><div v-else-if="entry.kind==='foldBody'" class="settings-fold-body"><div class="setting-grid"><article v-for="field in entry.fields" :key="field.key" class="setting-field" :class="{hit: fieldHit(field)}"><div class="setting-head"><label :for="settingId(field.key)">{{ field.label }}</label><el-tag size="small" effect="plain">{{ sourceLabel(settingsSchema?.sources?.[field.key]) }}</el-tag><el-button link size="small" class="setting-restore" :loading="settingsLoading" @click="restoreField(field)">恢复默认</el-button></div><div v-if="field.type==='bool'" class="setting-control"><el-switch v-model="settingValues[field.key]" @change="settingsDirty=true"/><span>{{ settingValues[field.key]?'启用':'关闭' }}</span></div><el-select v-else-if="field.type==='enum'" :id="settingId(field.key)" v-model="settingValues[field.key]" @change="settingsDirty=true"><el-option v-for="option in field.options||[]" :key="option" :label="option" :value="option"/></el-select><SecretField v-else-if="field.type==='secret'" :field="secretMeta(field)" :version="settingsSchema?.revision" @saved="(d)=>onSecretSaved(d,field.key)"/><el-input v-else-if="field.type==='text'" :id="settingId(field.key)" v-model="settingValues[field.key]" type="textarea" :rows="6" maxlength="20480" class="setting-textarea" @input="settingsDirty=true"/><el-input v-else :id="settingId(field.key)" v-model="settingValues[field.key]" :type="field.type==='int'?'number':'text'" :min="field.min" :max="field.max" @input="settingsDirty=true"/><p v-if="field.help" class="setting-help">{{ field.help }}</p></article></div><div class="settings-foot"><el-button link type="primary" @click="restoreSection(entry.sec)">恢复本组默认</el-button></div></div></template></div></section></div></section></div></div></div>
+          <div class="settings-toolbar"><el-input v-model="settingQuery" class="settings-search" clearable placeholder="搜索设置项，例如 Steam、代理、SMTP（跨 7 组匹配，点结果跳组）"/><el-checkbox v-model="settingsOnlyChanged">只看非默认</el-checkbox></div>
+          <!-- FY-2（docs/SETTINGS-REDESIGN.md §3.4）：搜索常驻组顶、跨 7 组匹配 label/key/help；命中面板显示「组 · 分区」，点击跳组并高亮该行 -->
+          <div v-if="settingQuery.trim()" class="settings-hits" aria-label="跨组搜索结果">
+            <button v-for="hit in settingSearchHits" :key="hit.key" type="button" class="settings-hit" :class="{ on: hit.key===highlightKey }" @click="jumpToSetting(hit)"><span class="hit-label">{{ hit.label }}<span v-if="hit.tier==='advanced'" class="hit-adv">高级</span></span><span class="hit-meta">{{ groupTitle(hit.group) }}<template v-if="sectionTitleOf(hit)"> · {{ sectionTitleOf(hit) }}</template></span></button>
+            <p v-if="!settingSearchHits.length" class="settings-hits-empty">没有匹配的设置项</p>
+          </div>
+          <el-empty v-if="settingsSchema && !visibleSections.length" description="没有匹配的设置项"/>
+          <!-- FY-2（§3.2）：每个分区 = 分区标题（名称 + 项数 + 启用状态徽标）+ 一行一项；没有卡片盒子、高级项不再折叠 -->
+          <div v-else class="settings-sections">
+            <section v-for="sec in visibleSections" :key="sec.id" class="settings-section">
+              <div v-if="!sec.plain" class="section-head"><h3>{{ sec.title }}</h3><span class="section-n">{{ sec.fields.length }} 项</span><span v-if="sec.enabledKey" class="section-st" :class="{ off: !settingValues[sec.enabledKey] }">{{ settingValues[sec.enabledKey] ? '已启用' : '已停用' }}</span></div>
+              <SettingsRow v-for="field in sec.fields" :key="field.key" :dom-id="settingId(field.key)" :field="field" :value="settingValues[field.key]" :source="settingsSchema?.sources?.[field.key]" :has-value="Boolean(settingsSchema?.secrets?.[field.key]?.hasValue)" :revision="settingsSchema?.revision" :status="rowStatus[field.key]" :hit="highlightKey===field.key" @commit="(v)=>commitSetting(field,v)" @input="(v)=>inputSetting(field,v)" @commit-now="(v)=>commitSettingNow(field,v)" @restore="restoreField(field)" @saved="(d)=>onSecretSaved(d,field.key)">
+                <template #after><template v-if="field.key==='network.steamProxy'"><span class="proxy-count">{{ proxySavedCount!=null ? `已配置 ${proxySavedCount} 条` : (settingsSchema?.secrets?.[field.key]?.hasValue ? '已设置（点眼睛查看，或用「编辑」修改）' : '尚未设置（Steam 走直连/通用代理）') }}</span><el-button text @click="openProxyDialog">编辑</el-button></template></template>
+              </SettingsRow>
+            </section>
+          </div>
+        </div>
+      </div>
     </template>
 
     <!-- 统计 -->
@@ -235,7 +250,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import PaginationBar from '../components/PaginationBar.vue';
@@ -262,6 +277,10 @@ import PriceSparkline from '../components/PriceSparkline.vue';
 import CoverPlaceholder from '../components/CoverPlaceholder.vue';
 // FX 批（docs/SECRET-REVEAL.md §4）：密钥字段统一「密码框 + 眼睛懒加载」组件（平铺/网格/折叠/代理四处复用）
 import SecretField from '../components/SecretField.vue';
+// FY-2（docs/SETTINGS-REDESIGN.md §3.2）：设置页行组件——分区标题 + 一行一项（左 label/帮注/来源，右控件/保存状态）
+import SettingsRow from '../components/SettingsRow.vue';
+// FY-2（§3.3）：每项即时保存的合并队列（静默 700ms / 上限 1.5s，回滚与行内状态由它驱动）
+import { createSettingsSaver } from '../utils/settingsSave.js';
 import { CopyDocument, Check, ArrowDown } from '@element-plus/icons-vue';
 import AlignAdmin from '../components/AlignAdmin.vue';
 import { registerUnsavedSource, bypassNextGuard } from '../composables/useUnsavedGuard.js';
@@ -274,7 +293,7 @@ const loading=ref(false),saving=ref(false),error=ref('');
 const statsAction=useAction(),coverageAction=useAction(),adultStatsAction=useAction(),devicesAction=useAction(),securityAction=useAction(),wishlistsAction=useAction(),settingsAction=useAction(),taskAction=useAction(),groupAction=useAction(),stopAction=useAction(),appSyncAction=useAction(),backupAction=useAction(),backupDeleteAction=useAction(),imageResetAction=useAction(),gamesAction=useAction();
 // FQ 批：Vue 模板 ref 解包仅限顶层——loading 必须提为顶层别名绑定，
 // 否则 :loading="backupLoading" 传入的是 Ref 对象（恒 truthy → 按钮永远 loading）。
-const statsLoading=statsAction.loading,coverageLoading=coverageAction.loading,adultStatsLoading=adultStatsAction.loading,devicesLoading=devicesAction.loading,securityLoading=securityAction.loading,wishlistsLoading=wishlistsAction.loading,settingsLoading=settingsAction.loading,taskLoading=taskAction.loading,groupLoading=groupAction.loading,stopLoading=stopAction.loading,appSyncLoading=appSyncAction.loading,backupLoading=backupAction.loading,backupDeleteLoading=backupDeleteAction.loading,imageResetLoading=imageResetAction.loading,gamesLoading=gamesAction.loading;
+const statsLoading=statsAction.loading,coverageLoading=coverageAction.loading,adultStatsLoading=adultStatsAction.loading,devicesLoading=devicesAction.loading,securityLoading=securityAction.loading,wishlistsLoading=wishlistsAction.loading,taskLoading=taskAction.loading,groupLoading=groupAction.loading,stopLoading=stopAction.loading,appSyncLoading=appSyncAction.loading,backupLoading=backupAction.loading,backupDeleteLoading=backupDeleteAction.loading,imageResetLoading=imageResetAction.loading,gamesLoading=gamesAction.loading;
 // DV 批（docs/ITAD-SOURCE-FILTER.md §2 方案 A）：itad 不在平台数组里，单独在「来源」分组渲染「ITAD（来源）」
 const platforms=[{value:'steam',label:'Steam'},{value:'sonkwo',label:'杉果'},{value:'gog',label:'GOG'},{value:'humble',label:'Humble'},{value:'steampy',label:'SteamPy'}];
 // 窄屏（手机）时游戏目录/访问记录改用卡片式渲染（docs/MOBILE-FIX.md §3D）：
@@ -298,7 +317,7 @@ function switchVisitMode(mode){visitMode.value=mode;if(mode==='ip')loadVisitorsB
 const announcements=ref([]);
 // AT 批（docs/ADMIN-CONSOLE-IA.md §3/§7）：新建/编辑通知改弹窗（表单与未保存守卫在 AnnouncementDrawer 内；EL 批由抽屉改弹窗）
 const announcementDrawer=reactive({visible:false,edit:null});
-const settingsSchema=ref(null),settingValues=reactive({}),settingQuery=ref(''),settingsDirty=ref(false);
+const settingsSchema=ref(null),settingValues=reactive({}),settingQuery=ref('');
 const priceReport=ref({}),priceSeries=ref({}),views=ref([]),imageStats=ref({}),backups=ref([]),aggregateViews=ref(false),statsView=ref('price');
 // FR 批（docs/BACKUP-AS-FEATURE.md §2）：system.backupEnabled =「允许后台手动备份」，
 // false 时「立即备份」按钮禁用并提示「备份功能已关闭」（值来自 GET /api/admin/backups 响应）。
@@ -770,24 +789,112 @@ async function removeAnnouncement(id){try{await ElMessageBox.confirm('删除后�
 const settingsGroups=computed(()=>{const list=settingsSchema.value?.groups||[];return SETTINGS_GROUP_IDS.map((id)=>list.find((g)=>g.id===id)).filter(Boolean);});
 const activeSettingsGroup=computed(()=>{const id=String(route.params.group??'');return isSettingsGroupId(id)?id:DEFAULT_SETTINGS_GROUP;});
 const activeSettingsGroupItem=computed(()=>settingsGroups.value.find((g)=>g.id===activeSettingsGroup.value)||null);
-const activeSettingsGroupList=computed(()=>(activeSettingsGroupItem.value?[activeSettingsGroupItem.value]:[]));
 // 左导航项数徽标：本组可见项（与旧 tab 徽标同口径：不含「邮件服务」页维护的 8 项）
 function groupItemCount(id){return (settingsSchema.value?.fields||[]).filter((f)=>f.group===id&&!isMailSettingKey(f.key)).length;}
-// 换组：push 换 URL（可后退）；同页换组不丢草稿，故放过未保存守卫的离开询问（FY-2 改即时保存后此态消失）
+// 换组：push 换 URL（可后退）；FY-2 改即时保存后换组不再有草稿，故放过未保存守卫的离开询问
 function goSettingsGroup(id,{replace=false}={}){if(!id||id===activeSettingsGroup.value)return;bypassNextGuard();const path=`/console/settings/${id}`;const nav=replace?router.replace(path):router.push(path);nav.catch(()=>{});}
-function fieldsByGroup(groupId){const q=settingQuery.value.trim().toLocaleLowerCase();return (settingsSchema.value?.fields||[]).filter(f=>f.group===groupId&&!isMailSettingKey(f.key)&&(!q||`${f.label} ${f.key} ${f.help||''}`.toLocaleLowerCase().includes(q))&&onlyChangedFilter(f));}
-// 设置搜索按 Enter：有未保存修改时先提醒；没有匹配项给出提示；然后重新加载设置定义
-function onSettingsEnter(){if(settingsDirty.value){ElMessage.warning('有未保存的修改，先保存再重新加载');return;}const q=settingQuery.value.trim().toLocaleLowerCase();if(q&&!(settingsSchema.value?.fields||[]).some(f=>`${f.label} ${f.key} ${f.help||''}`.toLocaleLowerCase().includes(q)))ElMessage.warning('没有匹配的设置项');loadSettings();}
-const filteredGroups=computed(()=>{const groups=settingsSchema.value?.groups||[];return groups.filter(g=>fieldsByGroup(g.id).length);});
-function sourceLabel(src){return ({database:'数据库',env:'环境变量',default:'默认值'})[src]||src||'默认值';}
 function settingId(key){return `setting-${String(key).replace(/[^a-zA-Z0-9_-]/g,'-')}`;}
-async function loadSettings(){loading.value=true;try{const d=await api('/api/admin/settings');settingsSchema.value=d;for(const key of Object.keys(settingValues))delete settingValues[key];for(const field of d.fields||[]){settingValues[field.key]=field.type==='secret'?'':d.values?.[field.key]??field.default??(field.type==='bool'?false:'');}restoreFoldState();settingsDirty.value=false;}catch(e){notifyError(e);}finally{loading.value=false;}}
-// 放弃修改（2026-11-09 修复）：重置代理编辑态并重拉设置，草稿与脏标记一起清
-function discardSettings(){proxyDialogDirty.value=false;proxyList.value=[];void loadSettings();}
-// FX 批（docs/SECRET-REVEAL.md §4）：密钥字段元数据（hasValue 走 secrets 视图；明文只留在 SecretField 内部）
-function secretMeta(field){const s=settingsSchema.value?.secrets?.[field.key];return {key:field.key,label:field.label,help:field.help,hasValue:Boolean(s?.hasValue),source:s?.source??null};}
-// SecretField 自行保存/清除后回传最新设置视图：只同步该 key 的 schema/草稿，不清掉页面其它未保存修改
-function onSecretSaved(d,key){if(d?.fields)syncSettingsAfterSave(d,key);if(key==='network.steamProxy')proxySavedCount.value=null;}
+
+// ── FY-2（§3.4 搜索与过滤）：搜索常驻当前组顶部、跨 7 组匹配；「只看非默认」沿用 localStorage 记忆 ──
+const settingsOnlyChanged=ref(false);try{settingsOnlyChanged.value=localStorage.getItem('settings-only-changed')==='1';}catch{}
+watch(settingsOnlyChanged,(v)=>{try{localStorage.setItem('settings-only-changed',v?'1':'0');}catch{}});
+function isPlainGroup(gid){return Boolean(settingsSchema.value?.plainGroups?.includes(gid));}
+function onlyChangedFilter(f){if(!settingsOnlyChanged.value)return true;return !(settingsSchema.value?.isDefault?.[f.key]??true);}
+const highlightKey=ref('');let highlightTimer=null;
+function groupTitle(id){return settingsGroups.value.find((g)=>g.id===id)?.title||id;}
+function sectionTitleOf(field){const id=field?.section;if(!id)return '';return (settingsSchema.value?.sections||[]).find((s)=>s.id===id)?.title||'';}
+// 跨 7 组命中（label / key / help），面板最多列 30 条；点一条跳组 + 高亮该行
+const settingSearchHits=computed(()=>{const q=settingQuery.value.trim().toLocaleLowerCase();if(!q)return [];return (settingsSchema.value?.fields||[]).filter((f)=>!isMailSettingKey(f.key)&&`${f.label} ${f.key} ${f.help||''}`.toLocaleLowerCase().includes(q)).slice(0,30);});
+// 分区字段顺序 = 服务端 keys（显式卡）或 SETTINGS 定义顺序（按 section 归卡）；一行一项（不再按 compact 合并成多列行）
+function sectionFields(sec){const all=settingsSchema.value?.fields||[];if(Array.isArray(sec.keys)){const byKey=new Map(all.map((f)=>[f.key,f]));return sec.keys.map((k)=>byKey.get(k)).filter(Boolean);}return all.filter((f)=>f.section===sec.id);}
+// 分区头「启用状态徽标」绑定的开关：与分区同名平台的 enabled（杉果=sonkwo.enabled）；GOG/Humble 有两个开关故不挂徽标
+function sectionEnabledKey(sec,fields){const named=fields.find((f)=>f.key===`sources.${sec.id}.enabled`);if(named)return named.key;const bools=fields.filter((f)=>f.type==='bool'&&String(f.key).endsWith('.enabled'));return bools.length===1?bools[0].key:null;}
+// 右侧可见分区：分区标题（名称 + 项数 + 启用状态徽标）+ 一行一项。
+// 平铺组（alerts/access/network）没有分区定义 → 单段且不重复打标题（组标题已在页头）。
+const visibleSections=computed(()=>{const schema=settingsSchema.value;if(!schema)return [];const gid=activeSettingsGroup.value;const q=settingQuery.value.trim().toLocaleLowerCase();
+  // 高亮行不受搜索/只看非默认过滤影响，否则跳过去看不到目标项
+  const match=(f)=>(!q||`${f.label} ${f.key} ${f.help||''}`.toLocaleLowerCase().includes(q))&&(onlyChangedFilter(f)||f.key===highlightKey.value);
+  const mine=(schema.fields||[]).filter((f)=>f.group===gid&&!isMailSettingKey(f.key));
+  if(isPlainGroup(gid)){const fields=mine.filter(match);return fields.length?[{id:gid,title:activeSettingsGroupItem.value?.title||gid,plain:true,fields,enabledKey:null}]:[];}
+  const out=[];
+  for(const sec of (schema.sections||[]).filter((s)=>s.group===gid)){
+    const ordered=sectionFields(sec);
+    const enabledKey=sectionEnabledKey(sec,ordered);
+    const fields=ordered.filter(match).map((f)=>(enabledKey&&f.key===enabledKey&&f.type==='bool'?{...f,label:'启用'}:f));
+    if(!fields.length)continue;
+    out.push({id:sec.id,title:sec.title,plain:false,fields,enabledKey});
+  }
+  return out;});
+// 点命中结果：跳组 + 高亮该行 + 滚到可视区
+async function jumpToSetting(hit){
+  highlightKey.value=hit.key;
+  if(hit.group!==activeSettingsGroup.value)goSettingsGroup(hit.group);
+  await nextTick();
+  document.getElementById(settingId(hit.key))?.scrollIntoView({block:'center',behavior:'smooth'});
+  if(highlightTimer)clearTimeout(highlightTimer);
+  highlightTimer=setTimeout(()=>{highlightKey.value='';},4000);
+}
+
+// ── FY-2（§3.3 即时保存）：改动入合并队列 → 行内「保存中…」→「✓ 已保存」（2 秒淡出）；失败回滚上次值 + 红字原因 ──
+// 合并规则见 utils/settingsSave.js 头注释（静默 700ms / 上限 1.5s → 单改 1 秒内出 ✓、1.5 秒内连改只发 1 次 POST）。
+const rowStatus=reactive({});   // key -> { kind: saving|saved|error, message }
+const savedValues={};           // key -> 上次成功保存的值（回滚目标）
+const saveError=ref('');        // 最近一次提交失败原因
+const settingsConflict=ref(false); // 有保存失败 = 仍存在「未保存」态（其余情况即时保存已完成，离开不拦）
+const settingsSaver=createSettingsSaver({
+  save:(values)=>api('/api/admin/settings',json('POST',{values})),
+  // 行内状态 + 失败联动未保存守卫：只有「提交失败」才重新变成「未保存」态（§3.3 语义调整）
+  onState:(key,kind,message)=>{if(kind==='idle')delete rowStatus[key];else rowStatus[key]={kind,message};if(kind==='error'){settingsConflict.value=true;saveError.value=message||'保存失败';}},
+  onRollback:(key,previous)=>{settingValues[key]=previous??defaultValueOf(key);},
+  onSaved:(view,values)=>{applySavedView(view,values);settingsConflict.value=false;saveError.value='';},
+});
+function defaultValueOf(key){return (settingsSchema.value?.fields||[]).find((f)=>f.key===key)?.default??'';}
+function isSecretKey(key){return Boolean(settingsSchema.value?.secrets&&Object.prototype.hasOwnProperty.call(settingsSchema.value.secrets,key));}
+// 只同步本批提交的 key：避免整份 schema 回写覆盖掉别的行正在输入的内容。
+// 密钥值（明文）绝不落进 settingValues/savedValues——密钥的展示与保存都在 SecretField 内部（FX 决策 5）。
+function applySavedView(view,values){
+  if(!view)return;
+  const schema=settingsSchema.value;
+  for(const key of Object.keys(values||{})){
+    if(!isSecretKey(key)&&view.values&&Object.prototype.hasOwnProperty.call(view.values,key)){savedValues[key]=view.values[key];settingValues[key]=view.values[key];}
+    if(schema?.sources&&view.sources?.[key]!=null)schema.sources[key]=view.sources[key];
+    if(schema?.isDefault&&key in (view.isDefault||{}))schema.isDefault[key]=view.isDefault[key];
+    if(schema?.secrets&&view.secrets?.[key])schema.secrets[key]=view.secrets[key];
+  }
+  if(schema&&view.revision!=null)schema.revision=view.revision;
+  if(schema&&view.version)schema.version=view.version;
+}
+// int：空输入框 = 放弃本次输入（不提交，避免误报 400）；非法数字原样提交，让服务端 400 → 回滚 + 红字
+function typedValue(field,raw){
+  if(field.type!=='int')return raw;
+  const s=String(raw??'').trim();
+  if(s==='')return undefined;
+  const n=Number(s);
+  return Number.isFinite(n)?n:s;
+}
+function commitSetting(field,value){settingValues[field.key]=value;settingsSaver.set(field.key,value,()=>savedValues[field.key]);}
+function inputSetting(field,raw){
+  settingValues[field.key]=raw; // 输入中的草稿只留在页面，600ms 后才入库
+  const v=typedValue(field,raw);
+  if(v===undefined){settingsSaver.cancelInput(field.key);return;}
+  settingsSaver.input(field.key,v,()=>savedValues[field.key]);
+}
+function commitSettingNow(field,raw){
+  const v=typedValue(field,raw);
+  if(v===undefined){settingValues[field.key]=savedValues[field.key]??defaultValueOf(field.key);settingsSaver.cancelInput(field.key);return;}
+  settingValues[field.key]=v;
+  settingsSaver.commitNow(field.key,v,()=>savedValues[field.key]).catch((e)=>{saveError.value=e?.message||String(e);settingsConflict.value=true;});
+}
+// 页面离开（路由卸载 / 切到别的模块 / 标签隐藏）时若有未发出的改动，强制 flush 一次（§3.3：即时保存后不再有「未保存」态）
+function flushSettings(){return settingsSaver.flushAll().catch((e)=>{saveError.value=e?.message||String(e);settingsConflict.value=true;return null;});}
+function onSettingsPageHide(){void flushSettings();}
+// Console 里系统设置与其它 native 模块共用 AdminModules 实例（只换 section prop，不卸载）→ 切走时也要 flush
+watch(()=>props.section,(next,prev)=>{if(prev==='settings'&&next!=='settings')void flushSettings();});
+async function loadSettings(){loading.value=true;try{const d=await api('/api/admin/settings');settingsSchema.value=d;for(const key of Object.keys(settingValues))delete settingValues[key];for(const field of d.fields||[]){settingValues[field.key]=field.type==='secret'?'':d.values?.[field.key]??field.default??(field.type==='bool'?false:'');savedValues[field.key]=settingValues[field.key];}settingsConflict.value=false;saveError.value='';}catch(e){notifyError(e);}finally{loading.value=false;}}
+// 放弃修改（保存失败后离开时用）：重置代理编辑态并重拉设置，错误态一起清
+function discardSettings(){proxyDialogDirty.value=false;proxyList.value=[];settingsConflict.value=false;saveError.value='';void loadSettings();}
+// SecretField 自行保存/清除后回传最新设置视图：只同步该 key 的 schema/值，不清掉页面其它输入
+function onSecretSaved(d,key){if(d?.fields)applySavedView(d,{[key]:''});if(key==='network.steamProxy')proxySavedCount.value=null;}
 // AM-2（docs/PROXY-POOL.md §5）：Steam 代理池列表编辑器 + 健康状态表。
 // 保存：非空行按顺序 join('\n') 提交 network.steamProxy，清空传 null；前端先做 http/https 与 ≤10 校验，服务端兜底。
 // 健康表：状态 正常/冷却中(倒计时)/未知；「刷新」+ 网络分组展开且页面可见时每 10 秒自动刷新；保存后立即刷新一次。
@@ -808,7 +915,7 @@ async function saveProxyDialog(){
   proxySaving.value=true;
   try{
     const d=await api('/api/admin/settings',json('POST',{values:{'network.steamProxy':lines.length?lines.join('\n'):null}}));
-    syncSettingsAfterSave(d,'network.steamProxy');
+    applySavedView(d,{'network.steamProxy':lines.length?lines.join('\n'):null});
     proxyDialogDirty.value=false;proxySavedCount.value=lines.length;proxyDialogOpen.value=false;
     ElMessage.success('Steam 专用代理已保存（约 15 秒内生效）');loadProxyHealth();
   }finally{proxySaving.value=false;}
@@ -822,56 +929,13 @@ async function loadProxyHealth(){try{const d=await api('/api/admin/proxies');pro
 // BB 批（docs/PROXY-POOL.md §11.5）：立即检测——服务端逐条 CONNECT 探测，返回脱敏结果
 async function probeProxies(){proxyProbing.value=true;try{const d=await api('/api/admin/proxies/probe',json('POST',{}));proxyHealth.value=d;ElMessage.success('已检测 '+(d.probed||0)+' 条，可用 '+(d.ok||0)+' 条');}catch(e){ElMessage.error(e.message);}finally{proxyProbing.value=false;}}
 function startProxyTimer(){if(proxyTimer)return;proxyTimer=setInterval(()=>{proxyTick+=1;healthNow.value=Date.now();const active=props.section==='settings'&&!document.hidden&&activeSettingsGroup.value==='network';if(active&&proxyTick%10===0)loadProxyHealth();},1000);}
-// EL 批（docs/ADMIN-EDIT-DIALOG.md EK-4/EK-5）：代理草稿先落（守卫「保存并离开」走弹窗路径），其余字段照旧收集
-async function submitSettings(){
-  if(proxyDialogDirty.value){await saveProxyDialog();}
-  const values={};
-  for(const f of settingsSchema.value?.fields||[]){
-    if(isMailSettingKey(f.key))continue;
-    const v=settingValues[f.key];
-    // FX 批（§4 决策 5）：密钥由 SecretField 自己保存（懒加载真值只作比较基线），批量提交一律跳过，
-    // 避免「点过眼睛后的真值」被批量保存覆盖成数据库覆盖值。
-    if(f.type==='secret')continue;
-    if(f.type==='int'){values[f.key]=v===''||v==null?null:Number(v);}
-    else if(f.type==='bool')values[f.key]=Boolean(v);
-    else values[f.key]=v;
-  }
-  const d=await api('/api/admin/settings',json('POST',{values}));
-  settingsSchema.value=d;
-  for(const f of d.fields||[]){if(f.type==='secret')settingValues[f.key]='';else settingValues[f.key]=d.values?.[f.key]??f.default??'';}
-  settingsDirty.value=false;
-  return d;
+// 「恢复默认」：删库覆盖行后值/来源回落 env→默认（二次确认；先 flush 待发改动，避免被整份视图回写覆盖）
+async function restoreField(field){
+  try{await ElMessageBox.confirm(`把「${field.label}」恢复为默认值（${field.default??''}）？来源将回落为环境变量或默认。`,'恢复默认',{type:'warning',confirmButtonText:'确认恢复',cancelButtonText:'取消'});}catch{return;}
+  await settingsAction.run(async()=>{await flushSettings();const d=await api('/api/admin/settings/restore',json('POST',{keys:[field.key]}));applySettingsSchema(d);},{success:'已恢复默认'});
 }
-// 弹窗局部保存后同步 schema/values（只刷新对应 key，保留页面其它未保存输入，不误清脏标记）
-function syncSettingsAfterSave(d,key){
-  settingsSchema.value=d;
-  const f=(d.fields||[]).find((x)=>x.key===key);
-  if(f){if(f.type==='secret')settingValues[f.key]='';else settingValues[f.key]=d.values?.[f.key]??f.default??'';}
-}
-async function saveSettings(){await run(async()=>{const d=await submitSettings();ElMessage.success(`已保存 ${d.keys?.length||0} 项设置`);loadProxyHealth();});}
-// FY-1：搜索命中时自动切到第一个有命中的组（用 replace 换 URL——避免逐字输入往历史里塞记录；FY-2 改跨组结果面板）
-watch(settingQuery,()=>{if(settingQuery.value.trim()){const first=filteredGroups.value[0];if(first&&first.id!==activeSettingsGroup.value)goSettingsGroup(first.id,{replace:true});}});
-
-// ── CQ 批（docs/SETTINGS-IA.md）：平台卡片/折叠/只看非默认/恢复默认/搜索展开 ──
-const settingsOnlyChanged=ref(false);const settingsFolds=reactive({});
-try{settingsOnlyChanged.value=localStorage.getItem('settings-only-changed')==='1';}catch{}
-watch(settingsOnlyChanged,(v)=>{try{localStorage.setItem('settings-only-changed',v?'1':'0');}catch{}});
-function isPlainGroup(gid){return Boolean(settingsSchema.value?.plainGroups?.includes(gid));}
-function onlyChangedFilter(f){if(!settingsOnlyChanged.value)return true;return !(settingsSchema.value?.isDefault?.[f.key]??true);}
-function sectionDefs(gid){const regs=settingsSchema.value?.sections||[];const fieldList=settingsSchema.value?.fields||[];const byKey=new Map(fieldList.map((f)=>[f.key,f]));return regs.filter((s)=>s.group===gid).map((s)=>{const keys=s.keys??fieldList.filter((f)=>f.section===s.id).map((f)=>f.key);const fields=keys.map((k)=>byKey.get(k)).filter(Boolean);const primary=fields.filter((f)=>f.tier!=='advanced');const advanced=fields.filter((f)=>f.tier==='advanced');const en=primary.filter((f)=>f.type==='bool'&&String(f.key).endsWith('.enabled'));const named=primary.find((f)=>f.key===`sources.${s.id}.enabled`);const enabledKey=named?named.key:(en.length===1?en[0].key:null);const enabledField=enabledKey?byKey.get(enabledKey):null;const body=primary.filter((f)=>f.key!==enabledKey);let rows=null;if(s.compact){if(s.id==='gog-humble'){const pick=(p)=>body.filter((f)=>String(f.key).startsWith(p));rows=[pick('sources.gog.'),pick('sources.humble.')].filter((fs)=>fs.length).map((fs)=>({label:fs.map((f)=>f.label).join(' / '),fields:fs}));}else{rows=body.reduce((acc,f,i)=>{const r=Math.floor(i/(s.compact||2));if(!acc[r])acc[r]=[];acc[r].push(f);return acc;},[]).map((fs)=>({label:fs.map((f)=>f.label).join(' / '),fields:fs}));}}return {...s,fields,primary:body,advanced,enabledKey,enabledField,rows};});}
-function sectionForId(secId){for(const g of settingsSchema.value?.groups||[]){const s=sectionDefs(g.id).find((x)=>x.id===secId);if(s)return s;}return null;}
-function foldOpen(secId){return Boolean(settingsFolds[secId]);}
-function toggleFold(secId){settingsFolds[secId]=!settingsFolds[secId];try{localStorage.setItem(`settings-fold-${secId}`,settingsFolds[secId]?'1':'0');}catch{}}
-function restoreFoldState(){for(const s of settingsSchema.value?.sections||[]){try{if(localStorage.getItem(`settings-fold-${s.id}`)==='1')settingsFolds[s.id]=true;}catch{}}}
-function fieldHit(f){const q=settingQuery.value.trim().toLocaleLowerCase();if(!q)return false;return `${f.label} ${f.key}`.toLocaleLowerCase().includes(q);}
-function foldAutoOpen(sec){const q=settingQuery.value.trim().toLocaleLowerCase();if(!q)return false;return (sec.advanced||[]).some((f)=>`${f.label} ${f.key} ${f.help||''}`.toLocaleLowerCase().includes(q));}
-function foldAutoOpenAll(sec){const q=settingQuery.value.trim().toLocaleLowerCase();if(!q)return false;return [...(sec.advanced||[]),...(sec.primary||[])].some((f)=>`${f.label} ${f.key} ${f.help||''}`.toLocaleLowerCase().includes(q));}
-function summaryFor(sec,fields){const list=fields??(sec.advanced||[]);const parts=list.filter((f)=>f.sum).map((f)=>{const raw=settingValues[f.key]??f.default??'';const v=typeof raw==='boolean'?(raw?'开':'关'):raw;return String(f.sum).replace('{v}',v);});return parts.length?parts.join(' · '):null;}
-function displaySettingsFields(gid){const q=settingQuery.value.trim().toLocaleLowerCase();const groups=[];for(const sec of sectionDefs(gid)){const match=(f)=>(!q||`${f.label} ${f.key} ${f.help||''}`.toLocaleLowerCase().includes(q))&&onlyChangedFilter(f);const prim=sec.primary.filter(match),adv=sec.advanced.filter(match);const entries=[];const body=(list)=>{if(sec.compact){const rows=list.reduce((acc,f,i)=>{const r=Math.floor(i/(sec.compact||2));if(!acc[r])acc[r]=[];acc[r].push(f);return acc;},[]).map((fs)=>({label:fs.map((f)=>f.label).join(' / '),fields:fs}));return {k:`${sec.id}:rows`,kind:'rows',rows,sec};}return {k:`${sec.id}:grid`,kind:'grid',fields:list,sec};};if(adv.length){if(prim.length)entries.push(body(prim));entries.push({k:`${sec.id}:fold`,kind:'fold',sec,count:adv.length,summary:summaryFor(sec,adv)});if(foldOpen(sec.id)||foldAutoOpen(sec))entries.push({k:`${sec.id}:foldBody`,kind:'foldBody',sec,fields:adv});}else if(prim.length){entries.push({k:`${sec.id}:fold`,kind:'fold',sec,count:prim.length,summary:summaryFor(sec,prim)});if(foldOpen(sec.id)||foldAutoOpenAll(sec))entries.push({k:`${sec.id}:foldBody`,kind:'foldBody',sec,fields:prim});}groups.push({sec,entries});}return groups;}
-async function submitSettingsPartial(patch){const d=await api('/api/admin/settings',json('POST',{values:patch}));applySettingsSchema(d);return d;}
-function applySettingsSchema(d){settingsSchema.value=d;for(const f of d.fields||[]){if(f.type==='secret')settingValues[f.key]='';else settingValues[f.key]=d.values?.[f.key]??f.default??'';}settingsDirty.value=false;}
-async function restoreField(field){try{await ElMessageBox.confirm(`把「${field.label}」恢复为默认值（${field.default??''}）？来源将回落为环境变量或默认。`,'恢复默认',{type:'warning',confirmButtonText:'确认恢复',cancelButtonText:'取消'});}catch{return;}await settingsAction.run(async()=>{const d=await api('/api/admin/settings/restore',json('POST',{keys:[field.key]}));applySettingsSchema(d);},{success:'已恢复默认'});}
-async function restoreSection(sec){const all=[...(sec.primary||[]),...(sec.advanced||[]),...(sec.enabledField?[sec.enabledField]:[])];try{await ElMessageBox.confirm(`把「${sec.title}」的 ${all.length} 项全部恢复为默认值？来源将回落为环境变量或默认。`,'恢复本组默认',{type:'warning',confirmButtonText:'确认恢复',cancelButtonText:'取消'});}catch{return;}await settingsAction.run(async()=>{const d=await api('/api/admin/settings/restore',json('POST',{keys:all.map((f)=>f.key)}));applySettingsSchema(d);},{success:`已恢复 ${all.length} 项默认值`});}
+// 恢复默认后整份视图回写（值/来源/修订号一起刷新）
+function applySettingsSchema(d){settingsSchema.value=d;for(const f of d.fields||[]){if(f.type==='secret')settingValues[f.key]='';else settingValues[f.key]=d.values?.[f.key]??f.default??'';savedValues[f.key]=settingValues[f.key];}settingsConflict.value=false;saveError.value='';}
 // 翻页清空选择（决策：常规列表只支持本页勾选）。这些表是客户端分页，翻页不会走 load 函数，
 // 所以单独 watch 页码；游戏目录 / 访问明细是服务端分页，已在 load 里清空。
 watch(mergedPage,()=>mergedPicked.value=new Set());watch(blacklistPage,()=>sel.blacklist.clear());watch(whitelistPage,()=>sel.whitelist.clear());watch(abusePage,()=>sel.abuse.clear());watch(devicesPage,()=>sel.devices.clear());watch(deviceBansPage,()=>sel.deviceBans.clear());watch(announcementsPage,()=>sel.announcements.clear());
@@ -980,17 +1044,17 @@ async function stopCurrent(){await stopAction.run(async()=>{const mode=syncStatu
 watch(()=>props.section,(section)=>{if(section==='games')loadGames(1);else if(section==='visitors')loadVisitorView();else if(section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(section==='wishlist')loadWishlists();else if(section==='watchlist')loadAdminWatches(1);else if(section==='settings')loadSettings();else if(section==='stats'){loadStats();loadCoverage();}});
 // AN 批（docs/UNSAVED-GUARD.md §4.4）：本组件注册三个编辑面——系统设置 / 站点通知 / 编辑游戏
 const unregisterUnsaved=[];
-onMounted(()=>{if(props.section==='games')loadGames(1);else if(props.section==='visitors')loadVisitorView();else if(props.section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(props.section==='wishlist')loadWishlists();else if(props.section==='settings'){loadSettings();loadProxyHealth();}else if(props.section==='stats'){loadStats();loadCoverage();}startProxyTimer();unregisterUnsaved.push(registerUnsavedSource({id:'settings',label:'系统设置',isDirty:()=>settingsDirty.value||proxyDialogDirty.value,save:submitSettings,discard:discardSettings}),registerUnsavedSource({id:'edit-game',label:'编辑游戏',isDirty:gameDirty,save:submitGameSave,discard:closeGameDialog}));if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',onMobileChange);else mobileQuery.addListener(onMobileChange);}});
+onMounted(()=>{if(props.section==='games')loadGames(1);else if(props.section==='visitors')loadVisitorView();else if(props.section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(props.section==='wishlist')loadWishlists();else if(props.section==='settings'){if(route.query.q)settingQuery.value=String(route.query.q);loadSettings();loadProxyHealth();window.addEventListener('pagehide',onSettingsPageHide);}else if(props.section==='stats'){loadStats();loadCoverage();}startProxyTimer();unregisterUnsaved.push(registerUnsavedSource({id:'settings',label:'系统设置',isDirty:()=>settingsConflict.value,save:flushSettings,discard:discardSettings}),registerUnsavedSource({id:'settings-proxy',label:'Steam 专用代理',isDirty:()=>proxyDialogDirty.value,save:saveProxyDialog,discard:()=>{proxyDialogDirty.value=false;proxyDialogOpen.value=false;}}),registerUnsavedSource({id:'edit-game',label:'编辑游戏',isDirty:gameDirty,save:submitGameSave,discard:closeGameDialog}));if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',onMobileChange);else mobileQuery.addListener(onMobileChange);}});
 const statusTimer=setInterval(()=>{if(props.section==='games'&&gameView.value==='tasks'){loadSyncStatus();loadAppCard();loadFreshness();}},8000);
-onBeforeUnmount(()=>{clearInterval(statusTimer);if(proxyTimer){clearInterval(proxyTimer);proxyTimer=null;}unregisterUnsaved.forEach((fn)=>fn());if(mobileQuery){if(mobileQuery.removeEventListener)mobileQuery.removeEventListener('change',onMobileChange);else mobileQuery.removeListener(onMobileChange);}});
+onBeforeUnmount(()=>{if(props.section==='settings'){void flushSettings();window.removeEventListener('pagehide',onSettingsPageHide);}settingsSaver.dispose();clearInterval(statusTimer);if(proxyTimer){clearInterval(proxyTimer);proxyTimer=null;}unregisterUnsaved.forEach((fn)=>fn());if(mobileQuery){if(mobileQuery.removeEventListener)mobileQuery.removeEventListener('change',onMobileChange);else mobileQuery.removeListener(onMobileChange);}});
 if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',onMobileChange);else mobileQuery.addListener(onMobileChange);}
 </script>
 
 <style scoped>
-.module-wrap{display:flex;flex-direction:column;gap:var(--space-14);min-width:0;padding-bottom:var(--space-24)}.module-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-13);padding:var(--space-16);box-shadow:0 3px 14px #26345a06;min-width:0}.module-tabs{display:flex;gap:5px;border-bottom:var(--space-1) solid var(--border);padding:0 var(--space-2) var(--space-10)}.module-tabs button{border:0;background:transparent;border-radius:var(--radius-8);padding:var(--space-8) 13px;color:var(--fg-muted);font-size:var(--font-12);cursor:pointer}.module-tabs button.on{background:var(--brand-soft);color:var(--brand);font-weight:650}.filterbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.filterbar>.el-input{flex:1 1 230px;max-width:360px}.filterbar>.el-select{width:155px}.metric-grid{display:grid;grid-template-columns:repeat(5,minmax(110px,1fr));gap:var(--space-10)}.metric-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-12);padding:13px 15px;display:flex;flex-direction:column;gap:9px}.clickable-grid .metric-card{cursor:pointer;transition:border-color .15s,background .15s}.clickable-grid .metric-card:hover{border-color:var(--brand)}.clickable-grid .metric-card.on{border-color:var(--brand);background:var(--brand-soft)}.clickable-grid .metric-card.on>strong{color:var(--brand)}.more-metrics{margin:var(--space-10) 0 0}.more-metrics summary{cursor:pointer;display:inline-flex;align-items:center;gap:var(--space-6);padding:var(--space-6) 11px;border:1px solid var(--border);border-radius:var(--radius-9);font-size:var(--font-12);color:var(--fg-muted);background:var(--panel);user-select:none}.more-metrics summary:hover{color:var(--brand);border-color:var(--brand)}.metric-chips{display:flex;flex-wrap:wrap;gap:7px;padding-top:var(--space-10)}.metric-chip{display:inline-flex;align-items:center;gap:var(--space-6);border:1px solid var(--border);background:var(--panel);color:var(--fg-muted);border-radius:var(--radius-pill);padding:var(--space-4) 11px;font-size:var(--font-11);cursor:pointer}.metric-chip strong{color:var(--fg);font-size:var(--font-12)}.metric-chip:hover{border-color:var(--brand);color:var(--brand)}.metric-chip.on{border-color:var(--brand);background:var(--brand-soft);color:var(--brand)}.metric-chip.plain,.price-change-cell{cursor:default}.metric-chip.plain:hover{border-color:var(--border);color:var(--fg-muted)}.metric-card>span{font-size:var(--font-11);color:var(--fg-muted)}.metric-card>strong{font-size:23px;letter-spacing:-.04em;color:var(--fg)}.metric-red strong,.price-down{color:var(--danger)!important}.metric-green strong,.price-up{color:var(--success)!important}.table-card{padding:0;overflow:hidden}.game-admin{display:flex;align-items:center;gap:var(--space-10);min-width:0}.game-admin img{width:70px;height:33px;object-fit:cover;border-radius:5px;background:var(--border);flex:none}.game-admin>div,.inline-form .el-input{min-width:0}.game-admin strong,.game-admin small,.module-wrap td small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.game-admin strong,.proxy-health-head strong{font-size:var(--font-12)}.game-admin small,.module-wrap td small{font-size:var(--font-10);color:var(--fg-muted);margin-top:3px}.tag-gap{margin:var(--space-2)}.pager{display:flex;justify-content:space-between;align-items:center;gap:var(--space-12);padding:var(--space-12) 15px;color:var(--fg-muted);font-size:var(--font-11)}.notice-card{border:1px solid var(--brand-soft);border-radius:var(--radius-12);background:var(--brand-soft);padding:var(--space-16) var(--space-18);color:var(--fg-2);font-size:var(--font-12)}.notice-card p{margin:var(--space-6) 0 0;color:var(--fg-muted);line-height:1.6}.task-actions{display:flex;align-items:center;gap:var(--space-10);flex-wrap:wrap}.task-actions label{display:flex;align-items:center;gap:5px;color:var(--fg-muted);font-size:var(--font-11)}.task-actions .el-input-number{width:118px}.task-state{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;flex-wrap:wrap}.task-state>div:first-child{display:grid;gap:7px}.task-state strong{font-size:var(--font-15)}.eyebrow-small,.cache-stats span{font-size:var(--font-10);color:var(--fg-muted)}.task-state pre{flex-basis:100%;max-height:210px;overflow:auto;background:var(--panel-2);border-radius:var(--radius-9);padding:var(--space-12);color:var(--fg-muted);font-size:var(--font-11);white-space:pre-wrap}.visitor-tabs{display:flex}.security-grid,.stats-columns{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-12)}.security-grid>.module-card{padding:var(--space-14)}.card-heading{display:flex;align-items:center;justify-content:space-between;gap:var(--space-12);margin-bottom:13px}.card-heading h3,.announcement-copy h3{font-size:var(--font-14);margin:0;color:var(--fg)}.card-heading p,.report-heading p{font-size:var(--font-11);color:var(--fg-muted);margin:var(--space-4) 0 0}.inline-form{display:flex;gap:7px;margin-bottom:var(--space-12)}.security-events{margin-top:var(--space-1)}.announcement-list{display:grid;gap:var(--space-10)}.announcement-item{display:flex;align-items:flex-start;gap:var(--space-14)}.announcement-badge{flex:none;border-radius:var(--radius-8);padding:5px var(--space-8);font-size:var(--font-10);color:var(--brand);background:var(--brand-soft)}.announcement-badge.warning{color:var(--warn);background:var(--warn-bg)}.announcement-badge.critical{color:var(--danger);background:var(--danger-bg)}.announcement-copy{flex:1;min-width:0}.announcement-copy .card-heading{justify-content:flex-start;margin:0}.announcement-copy p{font-size:var(--font-12);color:var(--fg-muted);line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.announcement-copy small{color:var(--fg-muted);font-size:var(--font-10)}.item-actions{display:flex;gap:3px}.settings-toolbar{display:flex;align-items:center;gap:var(--space-8);position:sticky;top:0;z-index:var(--z-nav);background:var(--bg-2);padding:var(--space-4) 0 var(--space-8)}.settings-toolbar .el-input{max-width:420px;flex:1}.dirty-dot{margin-left:var(--space-8);color:var(--warn)}.setting-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.setting-field{min-width:0;border:1px solid var(--border);border-radius:var(--radius-9);padding:11px}.setting-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-8);margin-bottom:var(--space-8)}.setting-head label{font-size:var(--font-11);font-weight:650;color:var(--fg-2)}.setting-field>.el-input,.setting-field>.el-select,.setting-field :deep(.el-input-number){width:100%}.setting-control{display:flex;align-items:center;gap:var(--space-8);color:var(--fg-muted);font-size:var(--font-11)}.secret-control{display:flex;align-items:center;gap:5px}.secret-control>.el-input{flex:1;min-width:100px}.secret-control :deep(.el-checkbox){margin-left:0;white-space:nowrap}.setting-help{font-size:var(--font-10);line-height:1.5;color:var(--fg-muted);margin:var(--space-6) 0 0}.report-heading{display:flex;align-items:center;gap:var(--space-8)}.report-heading>div{flex:1}.report-heading h2{font-size:var(--font-15);color:var(--fg);margin:0}.card-heading.padded{padding:var(--space-14) 15px 0}.cache-card{padding:17px}.cache-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-10);margin:var(--space-18) 0 11px}.cache-stats>div{display:grid;gap:var(--space-4)}.cache-stats strong{font-size:var(--font-21);color:var(--brand)}.backup-box{margin-top:var(--space-20);padding-top:var(--space-16);border-top:var(--space-1) solid var(--border)}.backup-row{display:flex;align-items:center;gap:var(--space-10);padding:var(--space-8) 0;border-top:var(--space-1) solid var(--panel-2);font-size:var(--font-12);color:var(--fg-muted)}.backup-row .backup-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.backup-row .backup-row-actions{display:flex;gap:var(--space-4);margin-left:auto;flex:none}.mono{font-family:ui-monospace,Consolas,monospace;font-size:var(--font-11)}.muted{color:var(--fg-muted)}
+.module-wrap{display:flex;flex-direction:column;gap:var(--space-14);min-width:0;padding-bottom:var(--space-24)}.module-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-13);padding:var(--space-16);box-shadow:0 3px 14px #26345a06;min-width:0}.module-tabs{display:flex;gap:5px;border-bottom:var(--space-1) solid var(--border);padding:0 var(--space-2) var(--space-10)}.module-tabs button{border:0;background:transparent;border-radius:var(--radius-8);padding:var(--space-8) 13px;color:var(--fg-muted);font-size:var(--font-12);cursor:pointer}.module-tabs button.on{background:var(--brand-soft);color:var(--brand);font-weight:650}.filterbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.filterbar>.el-input{flex:1 1 230px;max-width:360px}.filterbar>.el-select{width:155px}.metric-grid{display:grid;grid-template-columns:repeat(5,minmax(110px,1fr));gap:var(--space-10)}.metric-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-12);padding:13px 15px;display:flex;flex-direction:column;gap:9px}.clickable-grid .metric-card{cursor:pointer;transition:border-color .15s,background .15s}.clickable-grid .metric-card:hover{border-color:var(--brand)}.clickable-grid .metric-card.on{border-color:var(--brand);background:var(--brand-soft)}.clickable-grid .metric-card.on>strong{color:var(--brand)}.more-metrics{margin:var(--space-10) 0 0}.more-metrics summary{cursor:pointer;display:inline-flex;align-items:center;gap:var(--space-6);padding:var(--space-6) 11px;border:1px solid var(--border);border-radius:var(--radius-9);font-size:var(--font-12);color:var(--fg-muted);background:var(--panel);user-select:none}.more-metrics summary:hover{color:var(--brand);border-color:var(--brand)}.metric-chips{display:flex;flex-wrap:wrap;gap:7px;padding-top:var(--space-10)}.metric-chip{display:inline-flex;align-items:center;gap:var(--space-6);border:1px solid var(--border);background:var(--panel);color:var(--fg-muted);border-radius:var(--radius-pill);padding:var(--space-4) 11px;font-size:var(--font-11);cursor:pointer}.metric-chip strong{color:var(--fg);font-size:var(--font-12)}.metric-chip:hover{border-color:var(--brand);color:var(--brand)}.metric-chip.on{border-color:var(--brand);background:var(--brand-soft);color:var(--brand)}.metric-chip.plain,.price-change-cell{cursor:default}.metric-chip.plain:hover{border-color:var(--border);color:var(--fg-muted)}.metric-card>span{font-size:var(--font-11);color:var(--fg-muted)}.metric-card>strong{font-size:23px;letter-spacing:-.04em;color:var(--fg)}.metric-red strong,.price-down{color:var(--danger)!important}.metric-green strong,.price-up{color:var(--success)!important}.table-card{padding:0;overflow:hidden}.game-admin{display:flex;align-items:center;gap:var(--space-10);min-width:0}.game-admin img{width:70px;height:33px;object-fit:cover;border-radius:5px;background:var(--border);flex:none}.game-admin>div,.inline-form .el-input{min-width:0}.game-admin strong,.game-admin small,.module-wrap td small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.game-admin strong,.proxy-health-head strong{font-size:var(--font-12)}.game-admin small,.module-wrap td small{font-size:var(--font-10);color:var(--fg-muted);margin-top:3px}.tag-gap{margin:var(--space-2)}.pager{display:flex;justify-content:space-between;align-items:center;gap:var(--space-12);padding:var(--space-12) 15px;color:var(--fg-muted);font-size:var(--font-11)}.notice-card{border:1px solid var(--brand-soft);border-radius:var(--radius-12);background:var(--brand-soft);padding:var(--space-16) var(--space-18);color:var(--fg-2);font-size:var(--font-12)}.notice-card p{margin:var(--space-6) 0 0;color:var(--fg-muted);line-height:1.6}.task-actions{display:flex;align-items:center;gap:var(--space-10);flex-wrap:wrap}.task-actions label{display:flex;align-items:center;gap:5px;color:var(--fg-muted);font-size:var(--font-11)}.task-actions .el-input-number{width:118px}.task-state{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;flex-wrap:wrap}.task-state>div:first-child{display:grid;gap:7px}.task-state strong{font-size:var(--font-15)}.eyebrow-small,.cache-stats span{font-size:var(--font-10);color:var(--fg-muted)}.task-state pre{flex-basis:100%;max-height:210px;overflow:auto;background:var(--panel-2);border-radius:var(--radius-9);padding:var(--space-12);color:var(--fg-muted);font-size:var(--font-11);white-space:pre-wrap}.visitor-tabs{display:flex}.security-grid,.stats-columns{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-12)}.security-grid>.module-card{padding:var(--space-14)}.card-heading{display:flex;align-items:center;justify-content:space-between;gap:var(--space-12);margin-bottom:13px}.card-heading h3,.announcement-copy h3{font-size:var(--font-14);margin:0;color:var(--fg)}.card-heading p,.report-heading p{font-size:var(--font-11);color:var(--fg-muted);margin:var(--space-4) 0 0}.inline-form{display:flex;gap:7px;margin-bottom:var(--space-12)}.security-events{margin-top:var(--space-1)}.announcement-list{display:grid;gap:var(--space-10)}.announcement-item{display:flex;align-items:flex-start;gap:var(--space-14)}.announcement-badge{flex:none;border-radius:var(--radius-8);padding:5px var(--space-8);font-size:var(--font-10);color:var(--brand);background:var(--brand-soft)}.announcement-badge.warning{color:var(--warn);background:var(--warn-bg)}.announcement-badge.critical{color:var(--danger);background:var(--danger-bg)}.announcement-copy{flex:1;min-width:0}.announcement-copy .card-heading{justify-content:flex-start;margin:0}.announcement-copy p{font-size:var(--font-12);color:var(--fg-muted);line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.announcement-copy small{color:var(--fg-muted);font-size:var(--font-10)}.item-actions{display:flex;gap:3px}.settings-toolbar{display:flex;align-items:center;gap:var(--space-8);position:sticky;top:0;z-index:var(--z-nav);background:var(--bg-2);padding:var(--space-4) 0 var(--space-8)}.settings-toolbar .el-input{max-width:420px;flex:1}.dirty-dot{margin-left:var(--space-8);color:var(--warn)}.report-heading{display:flex;align-items:center;gap:var(--space-8)}.report-heading>div{flex:1}.report-heading h2{font-size:var(--font-15);color:var(--fg);margin:0}.card-heading.padded{padding:var(--space-14) 15px 0}.cache-card{padding:17px}.cache-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-10);margin:var(--space-18) 0 11px}.cache-stats>div{display:grid;gap:var(--space-4)}.cache-stats strong{font-size:var(--font-21);color:var(--brand)}.backup-box{margin-top:var(--space-20);padding-top:var(--space-16);border-top:var(--space-1) solid var(--border)}.backup-row{display:flex;align-items:center;gap:var(--space-10);padding:var(--space-8) 0;border-top:var(--space-1) solid var(--panel-2);font-size:var(--font-12);color:var(--fg-muted)}.backup-row .backup-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.backup-row .backup-row-actions{display:flex;gap:var(--space-4);margin-left:auto;flex:none}.mono{font-family:ui-monospace,Consolas,monospace;font-size:var(--font-11)}.muted{color:var(--fg-muted)}
 .app-version-grid{display:grid;grid-template-columns:repeat(4,minmax(110px,1fr));gap:var(--space-10);margin-top:var(--space-10)}.app-version-card .card-heading{margin-bottom:0}.app-version-reason{font-size:var(--font-12);overflow-wrap:anywhere}
 .adult-stats-card .card-heading{margin-bottom:var(--space-10)}.adult-stats-time{font-size:var(--font-12);overflow-wrap:anywhere}
-@media(max-width:900px){.metric-grid{grid-template-columns:repeat(3,minmax(100px,1fr))}.setting-grid{grid-template-columns:1fr}.security-grid,.stats-columns{grid-template-columns:1fr}.pager{align-items:flex-start;flex-direction:column}.form-row{gap:5px}.announcement-item{flex-wrap:wrap}.item-actions{margin-left:auto}}
+@media(max-width:900px){.metric-grid{grid-template-columns:repeat(3,minmax(100px,1fr))}.security-grid,.stats-columns{grid-template-columns:1fr}.pager{align-items:flex-start;flex-direction:column}.form-row{gap:5px}.announcement-item{flex-wrap:wrap}.item-actions{margin-left:auto}}
 @media(max-width:560px){.filterbar>.el-select{flex:1;width:auto}.metric-grid{grid-template-columns:repeat(2,minmax(100px,1fr))}.app-version-grid{grid-template-columns:repeat(2,minmax(100px,1fr))}.task-actions label{width:100%;justify-content:space-between}.task-actions label .el-input-number{width:150px}.report-heading{flex-wrap:wrap}.report-heading>div{flex-basis:100%}.inline-form{flex-wrap:wrap}.inline-form .el-input{flex:1 1 100%}.settings-toolbar{flex-wrap:wrap}.settings-toolbar .el-input{flex:1 1 100%;max-width:none}.announcement-item{gap:var(--space-8)}.announcement-copy{flex-basis:calc(100% - 55px)}.item-actions{width:100%;justify-content:flex-end}}
 .task-hint{width:100%;margin:var(--space-8) 0 0;font-size:var(--font-12);color:var(--fg-muted);overflow-wrap:anywhere}.task-estimate{font-size:11px;margin-top:2px}.task-estimate .delta-over{color:var(--warn)}
 .game-card-list{display:flex;flex-direction:column;gap:var(--space-8)}
@@ -1033,10 +1097,26 @@ if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('ch
 .ip-detail h4{margin:var(--space-6) 0 var(--space-4);font-size:var(--font-13);font-weight:600}
 .ip-detail .log-line{display:flex;gap:var(--space-12);font-size:var(--font-12);line-height:1.7;align-items:center}
 .ip-detail .log-line span:first-child{min-width:150px;color:var(--muted)}
-.settings-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}.settings-card{border:1px solid var(--border);border-radius:var(--radius-12);background:var(--panel);overflow:hidden;min-width:0}.setting-rows{display:flex;flex-direction:column;gap:6px;padding:4px 0 8px}.setting-row{display:flex;align-items:center;gap:9px;font-size:12.5px;border:1px solid var(--border);border-radius:9px;padding:7px 11px;background:var(--panel-2);flex-wrap:wrap}.setting-row .k{min-width:170px;color:var(--fg);font-weight:600;flex:1 1 170px}.setting-row .row-input{width:110px}.setting-row .src{color:var(--fg-muted);font-size:11px;margin-left:auto}.setting-row.hit{background:var(--brand-soft)}.settings-sections .settings-card-head{display:flex;align-items:center;gap:9px;padding:11px 14px;border-bottom:1px solid var(--border);background:var(--panel-2)}.settings-sections .settings-card-head h3{font-size:13px;margin:0;flex:1;font-weight:600}.settings-ico{width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;background:var(--brand-soft);border:1px solid var(--border)}.settings-card-tag{font-size:10.5px;color:var(--fg-muted);border:1px solid var(--border);background:var(--panel);border-radius:999px;padding:1px 8px}.settings-card-tag.ok{color:var(--good);border-color:var(--good);background:var(--good-bg)}.settings-sections .settings-card-body{padding:12px 14px 14px;background:var(--panel);min-width:0}.setting-textarea{width:100%}.setting-textarea :deep(.el-textarea__inner){font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;line-height:1.6}.settings-fold{display:flex;align-items:center;gap:7px;width:100%;border:0;background:var(--panel-2);color:var(--fg);padding:8px 12px;border-radius:9px;margin:8px 0 0;cursor:pointer;font-size:12.5px;text-align:left}.settings-fold .arrow{color:var(--fg-muted)}.settings-fold b{font-weight:600}.settings-fold .sum{margin-left:auto;color:var(--fg-muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}.settings-fold-body{border-top:1px dashed var(--border);padding-top:4px;margin-bottom:8px}.settings-foot{display:flex;justify-content:flex-end;padding:2px 0 10px}.setting-field.hit{background:var(--brand-soft);border-radius:9px}.setting-restore{font-size:11px}.settings-toolbar .el-checkbox{white-space:nowrap}
-@media(max-width:960px){.settings-sections{grid-template-columns:1fr}.settings-fold .sum{max-width:45%}}
-/* FY-1（docs/SETTINGS-REDESIGN.md §3.5 移动端结构部分）：≤560px 左导航收成顶部「<组名> · N 项 ▾」下拉 */
-@media(max-width:560px){.settings-page{display:block}.settings-nav{display:none}.settings-nav-mobile{display:block;margin-bottom:var(--space-10)}.settings-nav-select{width:100%}.settings-nav-select :deep(.el-select__wrapper){min-height:44px}}
+/* FY-2（docs/SETTINGS-REDESIGN.md §3.2/§3.4/§3.5）：右侧「分区标题 + 一行一项」——无卡片盒子、无「高级 N 项」折叠 */
+.settings-toolbar{display:flex;align-items:center;gap:var(--space-10);position:sticky;top:0;z-index:var(--z-nav);background:var(--bg-2);padding:var(--space-6) 0 var(--space-8)}
+.settings-toolbar .settings-search{max-width:420px;flex:1}
+.settings-hits{display:flex;flex-direction:column;gap:var(--space-2);margin:0 0 var(--space-12);padding:var(--space-6);border:1px solid var(--border);border-radius:var(--radius-12);background:var(--panel);max-height:320px;overflow:auto}
+.settings-hit{display:flex;align-items:center;justify-content:space-between;gap:var(--space-12);width:100%;min-height:38px;padding:var(--space-6) var(--space-10);border:0;border-radius:var(--radius-8);background:transparent;color:var(--fg);font-size:var(--font-12);text-align:left;cursor:pointer}
+.settings-hit:hover,.settings-hit.on{background:var(--brand-soft);color:var(--brand)}
+.settings-hit .hit-label{display:inline-flex;align-items:center;gap:var(--space-6);min-width:0;font-weight:600}
+.settings-hit .hit-adv{flex:none;font-size:var(--font-10);font-weight:500;color:var(--warn);background:var(--warn-bg);border:1px solid var(--warn-soft);border-radius:var(--radius-6);padding:0 6px}
+.settings-hit .hit-meta{flex:none;font-size:var(--font-10);color:var(--fg-muted)}
+.settings-hits-empty{margin:0;padding:var(--space-8) var(--space-10);font-size:var(--font-11);color:var(--fg-muted)}
+.settings-sections{display:flex;flex-direction:column;gap:var(--space-14);min-width:0}
+.settings-section{border-top:1px solid var(--border);padding-top:var(--space-10);min-width:0}
+.section-head{display:flex;align-items:center;gap:var(--space-10);margin-bottom:var(--space-2)}
+.section-head h3{margin:0;font-size:var(--font-14);font-weight:650;color:var(--fg)}
+.section-head .section-n{font-size:var(--font-11);color:var(--fg-muted)}
+.section-head .section-st{font-size:var(--font-10);color:var(--success);border:1px solid var(--border);background:var(--panel);border-radius:var(--radius-6);padding:1px 8px}
+.section-head .section-st.off{color:var(--fg-muted)}
+.proxy-count{font-size:var(--font-11);color:var(--fg-muted)}
+/* ≤560px（§3.5）：左导航收成顶部「<组名> · N 项 ▾」下拉（行内两段布局在 SettingsRow.vue） */
+@media(max-width:560px){.settings-page{display:block}.settings-nav{display:none}.settings-nav-mobile{display:block;margin-bottom:var(--space-10)}.settings-nav-select{width:100%}.settings-nav-select :deep(.el-select__wrapper){min-height:44px}.settings-toolbar{flex-wrap:wrap}.settings-toolbar .settings-search{flex:1 1 100%;max-width:none}.settings-hit{min-height:44px}}
 /* DF 批（docs/ALERT-MANUAL-PUSH.md + design/alert-manual-push-2026-11-18.html）：推送确认弹窗 */
 .push-line{display:flex;gap:10px;padding:5px 0;font-size:12.5px;align-items:baseline}.push-line b{width:82px;color:var(--fg-subtle);font-weight:500;flex:none}.push-list{background:var(--panel-2);border:1px solid var(--border);border-radius:9px;padding:6px 10px;margin:6px 0}.push-list>div{display:flex;justify-content:space-between;gap:8px;padding:2px 0;font-size:12.5px}.push-list .push-name{color:var(--fg)}.push-opt{display:flex;align-items:flex-start;gap:8px;margin-top:9px;font-size:12px;color:var(--fg-muted);cursor:pointer}.push-opt b{color:var(--fg);font-weight:600}.push-notice{background:var(--warn-bg);border:1px solid var(--warn-soft);color:var(--warn);border-radius:9px;padding:7px 10px;font-size:11.5px;margin-top:10px}
 /* FJ 批（docs/SYNC-JOB-GROUPS.md）：任务组视图——组展开子步骤表 / Steam 账号组认领按钮 / 移动端组卡片 */
@@ -1056,11 +1136,3 @@ if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('ch
   .admin-card .el-button { min-height: 44px; }
 }
 </style>
-
-
-
-
-
-
-
-
