@@ -396,13 +396,16 @@ onMounted(() => { loadReviews(1); });
               </div>
             </template>
           </el-table-column>
-          <el-table-column prop="ip" sortable="custom" label="IP" min-width="180">
+          <el-table-column prop="ip" sortable="custom" label="IP" min-width="150">
             <template #default="{ row }">
               <span class="vs-mono vs-ip-link" @click="openIpDetail(row.ip, { status: 'intercepted' })">{{ row.ip || '(空)' }}</span>
+              <el-tag v-if="row.status === 'pending'" type="success" size="small" class="vs-tag-gap">待审</el-tag>
+              <el-tag v-else-if="row.status === 'auto_banned'" type="info" size="small" class="vs-tag-gap">已封禁</el-tag>
+              <el-tag v-else type="warning" size="small" class="vs-tag-gap">部分已处理</el-tag>
               <small v-if="row.devices > 1" class="vs-tag-gap">· {{ row.devices }} 个设备</small>
             </template>
           </el-table-column>
-          <el-table-column prop="ruleCount" sortable="custom" label="规则摘要" width="250">
+          <el-table-column prop="ruleCount" sortable="custom" label="规则摘要" width="168">
             <template #default="{ row }">
               <el-popover placement="top" trigger="hover" :width="240" :disabled="!row.rules || row.rules.length <= 1">
                 <div class="rule-pop"><div v-for="r in row.rules" :key="r.rule">{{ r.rule }} ×{{ r.n }}</div></div>
@@ -410,18 +413,11 @@ onMounted(() => { loadReviews(1); });
               </el-popover>
             </template>
           </el-table-column>
-          <el-table-column prop="hitsTotal" sortable="custom" label="总次数" width="80" align="right" />
-          <el-table-column prop="last_seen" sortable="custom" label="首次 → 最近" min-width="190">
+          <el-table-column prop="hitsTotal" sortable="custom" label="总次数" width="70" align="right" />
+          <el-table-column prop="last_seen" sortable="custom" label="首次 → 最近" min-width="170">
             <template #default="{ row }">{{ dateTime(row.firstSeen) }} → {{ dateTime(row.lastSeen) }}</template>
           </el-table-column>
-          <el-table-column label="状态" width="110">
-            <template #default="{ row }">
-              <el-tag v-if="row.status === 'pending'" type="success" size="small">待审</el-tag>
-              <el-tag v-else-if="row.status === 'auto_banned'" type="info" size="small">已封禁</el-tag>
-              <el-tag v-else type="warning" size="small">部分已处理</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="300">
+          <el-table-column label="操作" width="276" fixed="right">
             <template #default="{ row }">
               <template v-if="row.pendingCount">
                 <el-dropdown size="small" @command="(m) => actRow(row, 'tempban', m)">

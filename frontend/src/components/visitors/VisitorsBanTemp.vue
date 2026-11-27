@@ -92,28 +92,28 @@ onMounted(() => load());
 
       <template v-if="!isMobile">
         <el-table :data="pagedRows" v-loading="loading" row-key="ip" size="small">
-          <el-table-column label="IP" min-width="170">
+          <el-table-column label="IP" min-width="160">
             <template #default="{ row }">
               <span class="mono vs-ip-link" @click="openIpDetail(row.ip, { status: row.active ? 'banned' : 'normal' })">{{ row.ip }}</span>
               <el-tag v-if="row.in_blacklist" type="danger" size="small" :title="blacklistTitle(row)" class="vs-tag-gap">已在黑名单</el-tag>
+              <small class="vs-muted" style="display:block">频率 {{ row.strikes || 0 }} · 路径 {{ row.path_strikes || 0 }}</small>
             </template>
           </el-table-column>
-          <el-table-column label="频率 / 路径命中" width="160"><template #default="{ row }">频率 {{ row.strikes || 0 }} · 路径 {{ row.path_strikes || 0 }}</template></el-table-column>
-          <el-table-column label="来源" width="130"><template #default="{ row }">{{ abuseSourceLabel(row.ban_source) }}</template></el-table-column>
-          <el-table-column label="封禁至 / 剩余" min-width="200">
+          <el-table-column label="来源" width="115"><template #default="{ row }">{{ abuseSourceLabel(row.ban_source) }}</template></el-table-column>
+          <el-table-column label="封禁至 / 剩余" min-width="180">
             <template #default="{ row }">
               <span>{{ row.banned_until ? dateTime(row.banned_until) : '—' }}</span>
               <small v-if="row.active && banRemaining(row.banned_until)" class="vs-muted" style="display:block">{{ banRemaining(row.banned_until) }}</small>
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="100">
+          <el-table-column label="状态" width="90">
             <template #default="{ row }">
               <el-tag v-if="row.active" type="warning" size="small">生效中</el-tag>
               <el-tag v-else-if="row.banned_until" type="info" size="small">已过期</el-tag>
               <el-tag v-else type="info" size="small">仅计数</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="110">
+          <el-table-column label="操作" width="110" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" :loading="saving === row.ip" @click="unbanAbuse(row)">{{ row.active ? '解除封禁' : '清除记录' }}</el-button>
             </template>

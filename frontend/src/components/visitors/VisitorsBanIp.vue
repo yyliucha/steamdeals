@@ -101,14 +101,14 @@ onMounted(load);
       <template v-if="!isMobile">
         <el-table :data="pagedRows" v-loading="loading" row-key="ip" stripe>
           <el-table-column label="IP / CIDR" min-width="170">
-            <template #default="{ row }"><span class="mono vs-ip-link" @click="openIpDetail(row.ip, { status: 'blocked', region: null, visits: row.visits, last_at: row.last_at, devices: row.devices })">{{ row.ip }}</span></template>
+            <template #default="{ row }">
+              <span class="mono vs-ip-link" @click="openIpDetail(row.ip, { status: 'blocked', region: null, visits: row.visits, last_at: row.last_at, devices: row.devices })">{{ row.ip }}</span>
+              <small class="vs-muted" style="display:block">近 7 天 {{ row.visits || 0 }} 次 · {{ row.devices || 0 }} 设备{{ row.last_at ? ' · ' + dateTime(row.last_at) : '' }}</small>
+            </template>
           </el-table-column>
-          <el-table-column label="备注" min-width="160"><template #default="{ row }">{{ row.note || '—' }}</template></el-table-column>
-          <el-table-column label="近 7 天访问" width="110" align="right"><template #default="{ row }">{{ row.visits || 0 }}</template></el-table-column>
-          <el-table-column label="最近访问" width="150"><template #default="{ row }">{{ row.last_at ? dateTime(row.last_at) : '—' }}</template></el-table-column>
-          <el-table-column label="设备数" width="90" align="right"><template #default="{ row }">{{ row.devices || 0 }}</template></el-table-column>
+          <el-table-column label="备注" min-width="140"><template #default="{ row }">{{ row.note || '—' }}</template></el-table-column>
           <el-table-column label="加入时间" width="150"><template #default="{ row }">{{ dateTime(row.created_at) }}</template></el-table-column>
-          <el-table-column label="操作" width="90">
+          <el-table-column label="操作" width="90" fixed="right">
             <template #default="{ row }"><el-button link type="primary" :loading="saving" @click="unban(row)">解封</el-button></template>
           </el-table-column>
         </el-table>

@@ -45,7 +45,7 @@ test('前端排序接线：访问分析（表头 + 持久化 + 数值 IP + 服�
   const review = read('../frontend/src/components/visitors/VisitorsReview.vue');
   assert.match(analysis, /prop="ip" sortable="custom"/);
   assert.match(analysis, /prop="visits" sortable="custom"/);
-  assert.match(analysis, /prop="last_at" sortable="custom"/);
+  assert.match(analysis, /:default-sort="ipSortState"/);
   assert.match(analysis, /admin\.visitorSort/);
   assert.match(analysis, /function visitorSortParams\(\)/);
   assert.match(analysis, /\.\.\.visitorSortParams\(\)/);
@@ -89,7 +89,7 @@ test('AZ 批：规则摘要列只显示首规则 ×n · 共 N 条规则，全部
   const review = read('../frontend/src/components/visitors/VisitorsReview.vue');
   const css = read('../frontend/src/components/visitors/visitors.css');
   // 列固定宽 + 单行省略（不再随规则数变长）
-  assert.match(review, /label="规则摘要" width="250"/);
+  assert.match(review, /label="规则摘要" width="168"/);
   assert.match(css, /\.rule-summary\{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis\}/, '单行省略样式');
   // 首规则 + 规则总数：文案收进 ruleSummary()，表格与移动卡片两处都调用它
   assert.match(review, /function ruleSummary\(row\) \{[\s\S]*?共 \$\{row\.ruleCount\} 条规则/, '文案 = 首规则 ×n · 共 N 条规则');

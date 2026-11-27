@@ -38,7 +38,11 @@ function loadSortState(key, fallback) {
   return fallback;
 }
 function saveSortState(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 隐私模式忽略 */ } }
-const ipSortState = ref(loadSortState('admin.visitorSort', { prop: 'visits', order: 'descending' }));
+const ipSortState = ref((() => {
+  const saved = loadSortState('admin.visitorSort', { prop: 'visits', order: 'descending' });
+  // 老的明细排序键 last_at 已无对应列（最近访问收进抽屉），回落访问次数
+  return { prop: saved.prop === 'ip' ? 'ip' : 'visits', order: saved.order };
+})());
 function visitorSortParams() {
   const { prop, order } = ipSortState.value;
   return { sort: VISITOR_SORT_FIELD[prop] || 'visits', order: order === 'ascending' ? 'asc' : 'desc' };
@@ -204,22 +208,19 @@ onMounted(() => loadIpStats(1));
               </div>
             </template>
           </el-table-column>
-          <el-table-column prop="ip" sortable="custom" label="IP" min-width="140">
+          <el-table-column prop="ip" sortable="custom" label="IP" min-width="150">
             <template #default="{ row }"><span class="mono vs-ip-link" @click="showDetail(row)">{{ row.ip }}</span></template>
           </el-table-column>
-          <el-table-column label="地区" width="100"><template #default="{ row }">{{ row.region || '—' }}</template></el-table-column>
-          <el-table-column prop="visits" sortable="custom" label="访问次数" width="90" align="right" />
-          <el-table-column prop="paths" label="独立路径" width="86" align="right" />
-          <el-table-column prop="devices" label="设备数" width="80" align="right" />
-          <el-table-column prop="last_at" sortable="custom" label="最近访问" width="140">
-            <template #default="{ row }"><span class="vs-muted">{{ dateTime(row.last_at) }}</span></template>
-          </el-table-column>
-          <el-table-column label="状态" width="130">
+          <el-table-column label="地区" width="92"><template #default="{ row }">{{ row.region || '—' }}</template></el-table-column>
+          <el-table-column prop="visits" sortable="custom" label="访问次数" width="86" align="right" />
+          <el-table-column prop="paths" label="独立路径" width="80" align="right" />
+          <el-table-column prop="devices" label="设备数" width="78" align="right" />
+          <el-table-column label="状态" width="118">
             <template #default="{ row }">
               <el-tag :type="statusTag(row)" size="small">{{ visitorStatusText(row) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="80" fixed="right">
+          <el-table-column label="操作" width="78" fixed="right">
             <template #default="{ row }"><el-button link type="primary" @click="showDetail(row)">详情</el-button></template>
           </el-table-column>
         </el-table>

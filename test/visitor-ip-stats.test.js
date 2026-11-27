@@ -259,17 +259,19 @@ test('前端（静态，FZ 落点）：访问分析默认 IP 统计 + 展开行�
   for (const label of ['访问次数', '独立路径', '设备数']) assert.ok(analysis.includes(label), `IP 统计列含 ${label}`);
   // 状态筛选口径移入 FZ 集中映射表（默认 active），这里只锁接线
   assert.match(analysis, /status: status\.value/, '查询带 status 参数');
-  // 黑名单统计列：近 7 天访问 / 最近访问 / 设备数
-  assert.match(banIp, /label="近 7 天访问"/, '黑名单有访问列');
-  assert.match(banIp, /label="最近访问"/, '黑名单有最近访问列');
-  assert.match(banIp, /label="设备数"/, '黑名单有设备数列');
-  // 白名单统计列：近 7 天访问 / 最近访问 / 限流（不限制）
-  assert.match(white, /label="近 7 天访问"/, '白名单有访问列');
-  assert.match(white, /label="最近访问"/, '白名单有最近访问列');
+  // 黑名单：统计信息（近 7 天访问 / 最近访问 / 设备数）作为 IP 单元格副标题保留，
+  // 桌面列按 demo 收敛为「IP / 备注 / 加入时间 / 操作」，解封列固定在最右（窄容器也点得到）。
+  assert.match(banIp, /近 7 天 \{\{ row\.visits \|\| 0 \}\} 次 · \{\{ row\.devices \|\| 0 \}\} 设备/, '黑名单保留访问/设备统计');
+  assert.match(banIp, /label="操作" width="90" fixed="right"/, '黑名单操作列固定最右');
+  assert.match(banIp, /label="加入时间"/, '黑名单有加入时间列');
+  // 白名单：访问统计同样进副标题；限流列写「不限制」
+  assert.match(white, /近 7 天 \{\{ row\.visits \|\| 0 \}\} 次/, '白名单保留访问统计');
   assert.match(white, />不限制</, '白名单限流列 = 不限制');
-  // 设备封禁页：设备码 / 指纹 + 封禁至 + 解封
+  assert.match(white, /label="操作" width="90" fixed="right"/, '白名单操作列固定最右');
+  // 设备封禁页：设备码 / 指纹 + 最近出现 + 封禁至 + 解封（操作固定最右）
   assert.match(banDevice, /设备码 \/ 指纹/, '设备表列名');
   assert.match(banDevice, /row\.device_id \|\| '无设备码'/, '无设备码标注');
   assert.match(banDevice, /label="封禁至"/, '封禁至列');
+  assert.match(banDevice, /label="操作" width="90" fixed="right"/, '设备操作列固定最右');
   assert.match(banDevice, />解封</, '解封入口');
 });

@@ -82,16 +82,15 @@ onMounted(load);
 
       <template v-if="!isMobile">
         <el-table :data="pagedRows" v-loading="loading" row-key="fingerprint" stripe>
-          <el-table-column label="设备码 / 指纹" min-width="230">
+          <el-table-column label="设备码 / 指纹" min-width="220">
             <template #default="{ row }">
               <span class="mono">{{ row.device_id || '无设备码' }}</span>
-              <small class="vs-muted" style="display:block">{{ String(row.fingerprint).slice(0, 24) }}…</small>
+              <small class="vs-muted" style="display:block">{{ String(row.fingerprint).slice(0, 24) }}…<template v-if="row.note"> · {{ row.note }}</template></small>
             </template>
           </el-table-column>
-          <el-table-column label="备注" min-width="180"><template #default="{ row }">{{ row.note || '—' }}</template></el-table-column>
-          <el-table-column label="封禁至" width="170"><template #default="{ row }">{{ untilText(row) }}</template></el-table-column>
-          <el-table-column label="加入时间" width="150"><template #default="{ row }">{{ dateTime(row.created_at) }}</template></el-table-column>
-          <el-table-column label="操作" width="90">
+          <el-table-column label="最近出现" width="150"><template #default="{ row }">{{ dateTime(row.created_at) }}</template></el-table-column>
+          <el-table-column label="封禁至" width="160"><template #default="{ row }">{{ untilText(row) }}</template></el-table-column>
+          <el-table-column label="操作" width="90" fixed="right">
             <template #default="{ row }"><el-button link type="primary" :loading="saving" @click="unban(row)">解封</el-button></template>
           </el-table-column>
         </el-table>
