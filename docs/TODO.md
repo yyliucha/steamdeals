@@ -256,7 +256,7 @@
 
   | 子批 | 内容 | 状态 | 依赖 |
   |---|---|---|---|
-  | **FY-1** | 分组重划（7 组新名：账号+安全合并、高级拆为同步与调度/运维与存储）+ `/console/settings/:group` 路由 + 左导航布局 | 待开发 | 无（左导航不涉及密钥） |
+  | **FY-1** | 分组重划（7 组新名：账号+安全合并、高级拆为同步与调度/运维与存储）+ `/console/settings/:group` 路由 + 左导航布局 | 已实现待发版 `44d29a4`+`90bb289`+`c700942` | 无（左导航不涉及密钥） |
   | **FY-2** | 行组件（分区标题 + 一行一项、去卡片盒子）+ 每项即时保存（600ms 防抖 / 1.5 秒合并 / 失败回滚）+ 搜索跨组 + 只看非默认 + 移动端 | 待开发 | FY-1；FX（`SecretField.vue` 复用） |
 
 - **验收**：FY-1 = 规格 §7 的 1/2/3；FY-2 = 规格 §7 的 4/5/6/7/8；两批都要「与 demo 一致」。
@@ -307,6 +307,7 @@
   | **GA-2** | 定时任务 **26 → 17**：合并 4 处（rename→backfill / search-tokens→readmodel / images-backfill→images / explicit-backfill→rating-backfill）+ 转手动 4 个（catalog/prune/logs/report）+ 降频 4 处（proxy-probe 30 / app-release-sync 60 / align-snapshot 120 / sonkwo 180）；被合并任务的 CLI 命令保留 | 待开发 | 建议 GA-1 先 |
 
 - **验收**：GA-1 = 规格 §7 的 1~4（含 demo 状态↔断言对照）；GA-2 = 规格 §7 的 5~8（任务集合/降频/合并逻辑/CLI 兼容）。
+
 
 
 
