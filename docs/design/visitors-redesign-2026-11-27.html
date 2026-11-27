@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>访问记录重设计 · A 任务导向五块（2026-11-27）</title>
+<title>访问记录重设计 · A 任务导向七块（2026-11-27）</title>
 <style>
   :root{
     --bg:#0b1020; --panel:#141c2e; --border:#26314d; --fg:#eef2ff; --fg2:#c9d4ec; --muted:#8d9bbb;
@@ -83,15 +83,17 @@
 
 <!-- ============ 图 1：概览 + 异常处置 ============ -->
 <section id="s1" class="shot">
-  <h1>访问记录 · 重设计（A 任务导向五块）</h1>
-  <p class="sub">左导航 5 块；待审前置、封禁集中、概览一眼看全。四个旧 tab 的重复入口合并。</p>
+  <h1>访问记录 · 重设计（A 任务导向七块）</h1>
+  <p class="sub">左导航 7 块；待审前置、封禁按类分页、概览一眼看全。四个旧 tab 的重复入口合并为单一处置入口。</p>
 
   <div class="wrap">
     <div class="nav">
       <div class="it on"><span>📊 概览</span></div>
       <div class="it"><span>🚨 异常处置</span><span class="n hot">3</span></div>
       <div class="it"><span>📈 访问分析</span><span class="n">72</span></div>
-      <div class="it"><span>⛔ 封禁管理</span><span class="n">17</span></div>
+      <div class="it"><span>⛔ IP 封禁</span><span class="n">12</span></div>
+      <div class="it"><span>🖥️ 设备封禁</span><span class="n">3</span></div>
+      <div class="it"><span>⏳ 临时封禁</span><span class="n">5</span></div>
       <div class="it"><span>✅ 白名单</span><span class="n">4</span></div>
     </div>
 
@@ -196,14 +198,14 @@
   <div class="note">抽屉只读（不在这里封禁，避免再造一个入口）；有待审时给「去异常处置」并定位该 IP；已封禁时给「去封禁管理」链接。</div>
 </section>
 
-<!-- ============ 图 3：封禁管理 + 白名单 ============ -->
+<!-- ============ 图 3：四个封禁 / 白名单页面 ============ -->
 <section id="s3" class="shot" style="display:none">
-  <h1>封禁管理 · 白名单</h1>
-  <p class="sub">旧「封禁与白名单」拆成两块：封禁管 IP/设备/临时封三类，白名单独立一块。</p>
+  <h1>四个封禁 / 白名单页面</h1>
+  <p class="sub">左导航 7 块：每个只做一件事。四类解封各自一页，不再一页塞三块。</p>
 
   <div class="grid2" style="margin-top:22px">
     <div class="card" style="margin-top:0">
-      <h2>⛔ 封禁管理 · IP 黑名单（12）</h2>
+      <h2>⛔ IP 封禁（12）</h2>
       <div class="bar"><div class="search" style="max-width:none">按 IP 搜索</div><button class="btn primary">手动添加</button></div>
       <table>
         <tr><th>IP</th><th>备注</th><th>加入时间</th><th>操作</th></tr>
@@ -211,6 +213,29 @@
         <tr><td class="mono">34.81.11.19</td><td class="muted">异常 UA</td><td class="muted">11-27 15:40</td><td><button class="btn">解封</button></td></tr>
         <tr><td class="mono">23.251.141.4</td><td class="muted">凭据爆破</td><td class="muted">11-24 20:50</td><td><button class="btn">解封</button></td></tr>
       </table>
+      <div class="note">封禁后该 IP 无法访问站点；加黑自动移白。</div>
+    </div>
+
+    <div class="card" style="margin-top:0">
+      <h2>🖥️ 设备封禁（3）</h2>
+      <div class="bar"><div class="search" style="max-width:none">按设备码 / 指纹搜索</div></div>
+      <table>
+        <tr><th>设备码 / 指纹</th><th>最近出现</th><th>封禁至</th><th>操作</th></tr>
+        <tr><td class="mono">a1b2c3… / 9f8e7d…</td><td class="muted">11-27 14:02</td><td class="muted">永久</td><td><button class="btn">解封</button></td></tr>
+        <tr><td class="mono">ffee11… / 33aa22…</td><td class="muted">11-26 09:18</td><td class="muted">11-27 16:20</td><td><button class="btn">解封</button></td></tr>
+      </table>
+      <div class="note">按指纹生效，换 IP 也命中；白名单 IP 不受影响。</div>
+    </div>
+
+    <div class="card" style="margin-top:0">
+      <h2>⏳ 临时封禁（5 生效中）</h2>
+      <div class="bar"><div class="sel">生效中 <span class="muted">▾</span></div><span class="muted">来源：频率超限 / 路径规则 / 异常 UA / 人工临时封</span></div>
+      <table>
+        <tr><th>IP</th><th>来源</th><th>到期</th><th>操作</th></tr>
+        <tr><td class="mono">35.233.44.84</td><td class="muted">频率超限</td><td class="muted">剩余 6 分钟</td><td><button class="btn">解除</button></td></tr>
+        <tr><td class="mono">176.34.12.9</td><td class="muted">漏洞路径探测</td><td class="muted">剩余 42 分钟</td><td><button class="btn">解除</button></td></tr>
+      </table>
+      <div class="note">只解除自动临时封禁，<b>不</b>删 IP 黑名单（两个概念分开）。</div>
     </div>
 
     <div class="card" style="margin-top:0">
@@ -221,35 +246,11 @@
         <tr><td class="mono">127.0.0.1</td><td class="muted">本机</td><td class="muted">不限制</td><td><button class="btn">移出</button></td></tr>
         <tr><td class="mono">203.0.113.0/24</td><td class="muted">公司出口</td><td class="muted">页面 600/分</td><td><button class="btn">移出</button></td></tr>
       </table>
-      <div class="note">白名单 IP 不受黑名单与频率限制；加白会自动移黑、清临时封禁。</div>
+      <div class="note">白名单不受黑名单与频率限制；加白自动移黑、清临时封禁。</div>
     </div>
   </div>
 
-  <div class="grid2" style="margin-top:20px">
-    <div class="card" style="margin-top:0">
-      <h2>设备封禁（3）</h2>
-      <table>
-        <tr><th>设备码 / 指纹</th><th>最近出现</th><th>操作</th></tr>
-        <tr><td class="mono">a1b2c3… / 9f8e7d…</td><td class="muted">11-27 14:02</td><td><button class="btn">解封</button></td></tr>
-        <tr><td class="mono">ffee11… / 33aa22…</td><td class="muted">11-26 09:18</td><td><button class="btn">解封</button></td></tr>
-      </table>
-      <div class="note">设备封禁按指纹生效，换 IP 也命中；白名单 IP 不受影响。</div>
-    </div>
-
-    <div class="card" style="margin-top:0">
-      <h2>临时封禁记录（abuse，5 生效中）</h2>
-      <div class="bar"><div class="sel">生效中 <span class="muted">▾</span></div><span class="muted">来源：频率超限 / 路径规则 / 异常 UA / 人工临时封</span></div>
-      <table>
-        <tr><th>IP</th><th>来源</th><th>到期</th><th>操作</th></tr>
-        <tr><td class="mono">35.233.44.84</td><td class="muted">频率超限</td><td class="muted">剩余 6 分钟</td><td><button class="btn">解除</button></td></tr>
-        <tr><td class="mono">176.34.12.9</td><td class="muted">漏洞路径探测</td><td class="muted">剩余 42 分钟</td><td><button class="btn">解除</button></td></tr>
-      </table>
-      <div class="note">只解除自动临时封禁，<b>不</b>移除 IP 黑名单（两个概念分开，避免误操作）。</div>
-    </div>
-  </div>
-
-  <div class="note" style="margin-top:20px">旧「异常审核」里的「封设备」与「设备」tab 的封禁入口，统一收进「封禁管理 → 设备封禁」；行内快捷封设备只保留在异常处置里（带二次确认）。</div>
-  <div class="note" style="margin-top:14px"><b>解封集中</b>：四类解封（IP 黑名单 / 临时封 / 设备封禁 / 白名单）全部只在本页做，其他页只读或给跳转链接。<b>状态词统一</b>：正常 / 被拦截 / 临时封 / 已封禁 / 已信任（异常审核的「待审/已处置/已忽略/自动封禁」是审核记录状态，与 IP 状态是两个维度，不混用）。</div>
+  <div class="note" style="margin-top:20px"><b>四类解封各在自己那页</b>（IP 封禁 / 设备封禁 / 临时封禁 / 白名单），其他页只读或给跳转链接。<b>状态词统一</b>：正常 / 被拦截 / 临时封 / 已封禁 / 已信任（异常审核的「待审/已处置/已忽略/自动封禁」是审核记录状态，与 IP 状态是两个维度，不混用）。</div>
 </section>
 
 <script>
@@ -261,4 +262,5 @@
 </script>
 </body>
 </html>
+
 
