@@ -82,18 +82,23 @@ test('FI/FT：后台游戏管理「内容分级」筛选（全部/成人（宽�
   assert.doesNotMatch(admin, /siteAdultDisplay/, '后台筛选不读 site.adultDisplay（管理端始终可查）');
 });
 
-test('FH/FT（保留）：后台「同步与回填」页仍有「内容分级统计」只读卡片（两行分级数字 + 最近回填时间）', () => {
-  const admin = read(ADMIN);
+test('FH/FT（保留）：同步与回填页「数据质量 → 内容分级统计」仍是只读数字（两行分级数字 + 最近回填时间）', () => {
+  // GA-1（docs/SYNC-PAGE-REDESIGN.md §2.2）：统计卡从平铺区块收进「数据质量」折叠（components/sync/SyncQualityPanel.vue），
+  // 数字来源与口径不变（/api/admin/games/stats + 调度状态里的 rating-backfill.lastRunAt）。
+  const quality = read('../frontend/src/components/sync/SyncQualityPanel.vue');
+  const syncUi = read('../frontend/src/composables/useSyncAdmin.js');
   // 这条断言守的是 FH 承诺：统计区只展示数字（成人内容（宽）/色情游戏（严格）/成熟/已回填/未回填/最近回填时间），
   // 不提供成人内容列表；FT 把成人一行拆成宽/严格两行；FI 恢复的是「游戏目录」筛选入口，统计卡片不被取代。
-  assert.match(admin, /内容分级统计/, '统计卡片标题存在');
-  assert.match(admin, /gameStats\.adult/, '显示成人内容（宽）总数');
-  assert.match(admin, /gameStats\.explicit/, '显示色情游戏（严格）总数');
-  assert.match(admin, /gameStats\.mature/, '显示成熟总数');
-  assert.match(admin, /gameStats\.ratingBackfilled/, '显示已回填数');
-  assert.match(admin, /gameStats\.ratingPending/, '显示未回填数');
-  assert.match(admin, /ratingBackfillLastRunAt/, '显示最近回填时间');
-  assert.match(admin, /find\(\(x\)=>x\.name==='rating-backfill'\)/, '最近回填时间取自调度状态里的 rating-backfill 任务');
+  assert.match(quality, /内容分级统计/, '统计卡片标题存在');
+  assert.match(quality, /state\.gamesStats\?\.adult/, '显示成人内容（宽）总数');
+  assert.match(quality, /state\.gamesStats\?\.explicit/, '显示色情游戏（严格）总数');
+  assert.match(quality, /state\.gamesStats\?\.mature/, '显示成熟总数');
+  assert.match(quality, /state\.gamesStats\?\.ratingBackfilled/, '显示已回填数');
+  assert.match(quality, /state\.gamesStats\?\.ratingPending/, '显示未回填数');
+  assert.match(quality, /ratingBackfillLastRunAt/, '显示最近回填时间');
+  assert.match(syncUi, /find\(\(x\) => x\.name === 'rating-backfill'\)/, '最近回填时间取自调度状态里的 rating-backfill 任务');
+  // 只读：统计卡里没有任何成人内容列表/查询入口
+  assert.ok(!quality.includes('/api/admin/games?'), '统计卡不发游戏列表请求（只读数字）');
 });
 
 test('FH/FT（保留）：/api/admin/games/stats 返回回填覆盖（required_age 口径）与成人/色情/成熟计数', async () => {

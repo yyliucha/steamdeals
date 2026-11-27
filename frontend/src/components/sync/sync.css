@@ -1,0 +1,87 @@
+/* GA-1（docs/SYNC-PAGE-REDESIGN.md §2.2 / §3 / §5）：同步与回填页样式。
+   作用域前缀 .sync-（由 SyncAdmin 的根节点挂载），避免污染后台其它模块。
+   断点 980px 与 demo（design/sync-page-redesign-2026-11-27.html @media(max-width:980px)）一致：
+   概览 4 卡 → 2 列、任务组行 → 两行、子步骤表横向滚动。
+   ≤768px 时控制台侧栏本来就是 ☰ 抽屉（BW 批），导航形态由 Console 负责，本页只管内容重排。 */
+.sync-page{display:flex;flex-direction:column;gap:14px;min-width:0}
+
+/* 概览 4 卡 */
+.sync-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.sync-kpi{display:flex;flex-direction:column;gap:2px;text-align:left;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:13px 16px;cursor:pointer;font:inherit;color:var(--fg);transition:border-color .12s,background .12s}
+.sync-kpi:hover{border-color:var(--brand)}
+.sync-kpi:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.sync-kpi span{font-size:var(--font-12);color:var(--fg-muted)}
+.sync-kpi b{font-size:24px;letter-spacing:-.03em;margin-top:3px}
+.sync-kpi small{font-size:11px;color:var(--fg-muted);overflow-wrap:anywhere}
+.sync-kpi.run b{color:var(--brand)}
+.sync-kpi.fail b{color:var(--danger)}
+.sync-kpi.queue b{color:var(--warn)}
+
+/* 任务组表（主区） */
+.sync-panel{background:var(--panel);border:1px solid var(--border);border-radius:13px;overflow:hidden}
+.sync-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}
+.sync-panel-head h2{font-size:15.5px;margin:0;color:var(--fg)}
+.sync-panel-head p{font-size:var(--font-12);color:var(--fg-muted);margin:4px 0 0;overflow-wrap:anywhere}
+.sync-warn{margin:10px 18px 0;border-radius:9px}
+.sync-warn p{margin:0;font-size:var(--font-12);line-height:1.7}
+.sync-rows{min-width:0}
+.sync-group{border-bottom:1px solid var(--border)}
+.sync-group:last-child{border-bottom:0}
+.sync-row{display:grid;grid-template-columns:24px minmax(140px,1.4fr) 74px 158px 118px 132px;gap:10px;align-items:center;padding:11px 18px;cursor:pointer;min-height:44px}
+.sync-row:hover,.sync-group.open .sync-row{background:var(--panel-2)}
+.sync-row:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+.sync-caret{color:var(--fg-subtle);transition:transform .15s;display:inline-block}
+.sync-caret.on{transform:rotate(90deg);color:var(--brand)}
+.sync-gname{display:flex;align-items:center;gap:8px;font-weight:650;font-size:13.5px;color:var(--fg);min-width:0}
+.sync-gname .sync-gname-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sync-muted{color:var(--fg-muted);font-size:var(--font-12);overflow-wrap:anywhere}
+.sync-mono{font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+.sync-row-2{display:none}
+.sync-steps-scroll{overflow-x:auto;background:var(--bg-2);border-top:1px solid var(--border)}
+.sync-steps{width:100%;min-width:840px;border-collapse:collapse;font-size:12.5px}
+.sync-steps th,.sync-steps td{padding:8px 14px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+.sync-steps th{color:var(--fg-muted);font-weight:500;font-size:11.5px}
+.sync-steps tr:last-child td{border-bottom:0}
+/* 四源覆盖（matched/nomatch/pending）跟在子步骤名下（原「覆盖」列的有信息量部分，不另占列） */
+.sync-step-stats{display:block;color:var(--fg-muted);font-size:11px;margin-top:2px}
+.sync-claim{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:var(--font-12);color:var(--fg-muted)}
+.sync-empty{padding:18px;text-align:center;color:var(--fg-muted);font-size:var(--font-12)}
+.sync-tag-gap{margin-left:6px}
+
+/* 折叠区 */
+.sync-fold{background:var(--panel);border:1px solid var(--border);border-radius:13px;overflow:hidden}
+.sync-fold-head{display:flex;align-items:center;gap:10px;padding:14px 18px;cursor:pointer;min-height:48px;width:100%;background:transparent;border:0;text-align:left;font:inherit;color:var(--fg)}
+.sync-fold-head:hover{background:var(--panel-2)}
+.sync-fold-head:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+.sync-fold-head h2{font-size:14.5px;margin:0}
+.sync-fold-head .sync-fold-sum{margin-left:auto;font-size:var(--font-12);color:var(--fg-muted);text-align:right;overflow-wrap:anywhere}
+.sync-fold-body{padding:6px 18px 18px;border-top:1px solid var(--border)}
+.sync-fold-hint{margin:12px 0 0;font-size:12.5px;color:var(--fg-muted)}
+.sync-stat-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:12px}
+.sync-stat-4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px}
+.sync-stat{background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:11px 13px;min-width:0}
+.sync-stat span{font-size:11.5px;color:var(--fg-muted)}
+.sync-stat b{display:block;font-size:19px;margin-top:4px;color:var(--fg);overflow-wrap:anywhere}
+.sync-stat small{display:block;font-size:11px;color:var(--fg-muted);margin-top:2px;overflow-wrap:anywhere}
+.sync-stat .sync-stat-act{margin-top:8px}
+.sync-split{height:1px;background:var(--border);margin:18px 0}
+.sync-tool-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-bottom:1px dashed var(--border)}
+.sync-tool-row:last-child{border-bottom:0}
+.sync-tool-row h3{font-size:13.5px;margin:0;color:var(--fg)}
+.sync-tool-row p{font-size:var(--font-12);color:var(--fg-muted);margin:3px 0 0;max-width:760px}
+.sync-tool-text{min-width:0}
+
+/* ≤980px（demo 同断点）：概览 2 列、任务组行两行、子步骤表横向滚动、工具行上下排 */
+@media(max-width:980px){
+  .sync-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sync-row{grid-template-columns:20px minmax(0,1fr);row-gap:4px;padding:10px 14px}
+  .sync-row .col-hide{display:none}
+  .sync-row-2{display:flex;grid-column:2;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--font-12);color:var(--fg-muted);min-width:0}
+  .sync-row-2 .sync-row-2-act{margin-left:auto}
+  .sync-panel-head{padding:12px 14px;flex-wrap:wrap}
+  .sync-stat-grid,.sync-stat-4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sync-fold-head{padding:12px 14px;flex-wrap:wrap}
+  .sync-fold-head .sync-fold-sum{margin-left:22px;flex-basis:100%;text-align:left}
+  .sync-fold-body{padding:4px 14px 16px}
+  .sync-tool-row{flex-direction:column;align-items:flex-start}
+}

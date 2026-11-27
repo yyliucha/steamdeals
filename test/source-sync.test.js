@@ -146,9 +146,14 @@ test('CC-2/3：静态契约——四源接入 CLI/后台/设置/日志，不新�
   const adminSync = readFileSync(ROOT + 'src/routes/admin-sync.js', 'utf8');
   assert.match(adminSync, /new Set\(\['catalog', 'steam-prices', 'steamall', 'itad', 'gog', 'humble', 'sonkwo'\]\)/, 'MODES 支持四源');
   assert.match(adminSync, /sourceSyncStats/, '状态接口返回四源统计');
-  assert.match(admin, /TASK_ORDER=\['steam-prices','catalog','backfill','rename','heat','itad','gog','humble','sonkwo'\]/, '任务表 9 项（四源在内）');
-  assert.match(admin, /\['steam-prices','catalog','itad','gog','humble','sonkwo'\]\.includes\(name\)/, '四源走 /api/admin/sync');
-  assert.match(admin, /row\.stats\.matched/, '任务表显示匹配/剩余');
+  // GA-1（docs/SYNC-PAGE-REDESIGN.md §2.2）：任务表搬到 components/sync/TaskGroupTable.vue——
+  // 四源仍在「多平台报价」组里，子步骤名下显示匹配/未命中/待探测（sourceStats 口径不变）；
+  // 四源「立即运行」仍走 POST /api/admin/sync {mode}（GA-2 兼容：被合并任务的 CLI 与端点在）。
+  const syncTable = readFileSync(ROOT + 'frontend/src/components/sync/TaskGroupTable.vue', 'utf8');
+  const syncUi = readFileSync(ROOT + 'frontend/src/composables/useSyncAdmin.js', 'utf8');
+  assert.match(syncUi, /sourceStats\?\.byPlatform/, '四源统计来自 /api/admin/sync/status 的 sourceStats');
+  assert.match(syncTable, /匹配 \{\{ s\.stats\.matched \}\} · 未命中 \{\{ s\.stats\.nomatch \}\} · 待探测 \{\{ s\.stats\.pending \}\}/, '子步骤行显示匹配/未命中/待探测');
+  assert.match(syncUi, /\['steam-prices', 'catalog', 'itad', 'gog', 'humble', 'sonkwo'\]\.includes\(name\)/, '四源走 /api/admin/sync');
   // 设置项 4 条 + 适配器新函数
   assert.match(settings, /sources\.itad\.limit/, 'ITAD 每轮条数设置');
   assert.match(gog, /export async function fetchById/, 'GOG fetchById');

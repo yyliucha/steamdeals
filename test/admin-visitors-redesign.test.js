@@ -242,7 +242,7 @@ test('FZ：AdminModules 只剩挂载点——games 段与旧 visitors 段互不�
   for (const gone of ['loadVisitorView', 'sel.visitors', 'mergedPicked', 'blacklistBulkActions', 'abuseBulkActions', 'openBulkDeviceBan', 'visitorSummary']) {
     assert.ok(!modules.includes(gone), `AdminModules 不得残留 ${gone}`);
   }
-  // games 段（GA 批另一工人负责）保持原样：本次只读不动
+  // games 段（GA-1 已拆成三个一级菜单）：游戏目录段仍在；gameView 三态取消（不是 FZ 动的）
   assert.match(modules, /section==='games'/, 'games 段仍在');
-  assert.match(modules, /gameView=ref\('directory'\)/, '游戏目录状态未动');
+  assert.ok(!modules.includes("gameView=ref('directory')"), 'GA-1：gameView 三态已取消（同步/对齐改一级菜单）');
 });

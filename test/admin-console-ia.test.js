@@ -253,7 +253,10 @@ test('Console：侧栏无「批量操作记录/运行日志」，有「日志审
   assert.match(c, /name:'日志审计'/, '新分组「日志审计」');
   assert.match(c, /id:'op-logs',label:'操作日志'/, '「操作日志」菜单项');
   assert.match(c, /'bulk-ops': \{ section: 'op-logs', tab: 'bulk' \}/, '?section=bulk-ops → op-logs&tab=bulk');
-  assert.match(c, /sync: \{ section: 'op-logs', tab: 'run' \}/, '?section=sync → op-logs&tab=run');
+  // GA-1（docs/SYNC-PAGE-REDESIGN.md §2.1）：`sync` 升级为一级菜单（同步与回填），
+  // 旧的 ?section=sync → op-logs&tab=run 别名映射随之删除（旧链接现在直达同步与回填页）。
+  assert.ok(!/sync:\s*\{\s*section:\s*'op-logs'/.test(c), '?section=sync 不再被映射到操作日志');
+  assert.match(c, /id:'sync',label:'同步与回填'/, '?section=sync 现在是一级菜单（同步与回填）');
   assert.match(c, /tab==='records'/, '?section=mail&tab=records → op-logs&tab=mail');
   assert.match(c, /AdminLogs v-else-if="selected === 'op-logs'"/, 'op-logs 渲染 AdminLogs');
 });
@@ -428,8 +431,12 @@ test('DT-1 验收 1：admin 菜单全量且「Steam 账号」菜单项已删除�
   assert.ok(!c.includes("id:'steam'"), '侧栏不再有「Steam 账号」菜单项（账号管理并入个人资料）');
   assert.ok(!c.includes("label:'Steam 账号'"), '「Steam 账号」文案无残留');
   // admin 全量菜单（demo ① 逐项）：
+  // GA-1（docs/SYNC-PAGE-REDESIGN.md §2.1）：原「游戏管理（内含 3 tab）」拆成三项一级菜单——
+  // 游戏目录（🎮）/ 同步与回填（🔄）/ 对齐审核（🧩），文案与 demo 逐字一致。
   for (const item of [
-    'id:\'games\',label:\'游戏管理\'',
+    'id:\'games\',label:\'游戏目录\'',
+    'id:\'sync\',label:\'同步与回填\'',
+    'id:\'align\',label:\'对齐审核\'',
     'id:\'recycle\',label:\'回收站\'',
     'id:\'announcements\',label:\'站点通知\'',
     'id:\'wishlist\',label:\'愿望单\'',
@@ -445,6 +452,8 @@ test('DT-1 验收 1：admin 菜单全量且「Steam 账号」菜单项已删除�
   ]) {
     assert.ok(c.includes(item), `admin 全量菜单应含 ${item}`);
   }
+  // 拆成三项后不应再保留「游戏管理」这一项（否则等于没拆）
+  assert.ok(!c.includes("label:'游戏管理'"), '「游戏管理」菜单项已拆成三项');
   for (const name of ["name:'内容运营'", "name:'访问与安全'", "name:'账号与服务'", "name:'日志审计'", "name:'系统'"]) {
     assert.ok(c.includes(name), `分组 ${name} 保留`);
   }

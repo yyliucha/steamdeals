@@ -166,21 +166,22 @@ test('FW-3 全 Steam 任务通用：steam-status / fetchMetadata / backfill 的 
   assert.match(softBlock, /process\.exitCode = 75;/, '429 仍走既有 exit 75（1 小时重排）不受影响');
 });
 // FW-3（docs/SLOW-SYNC.md §4、§8 验收第 7 条）：后台任务卡/任务表展示——不重设计操作区，只加状态 tag。
-// 判据：桌面表格与移动卡片两套模板都有 tag；数据来自 /api/admin/sync/status 的 forbidden / rateGate；
+// 判据：任务组的子步骤行有 tag；数据来自 /api/admin/sync/status 的 forbidden / rateGate；
 // 76 的失败原因走既有 partialReason（row.lastError ← scheduler-status.json 的 lastOutcome.error）。
-test('FW-3 后台展示静态锁：桌面任务表 + 移动卡片都有 403 冷却 / 速率闸门 tag，且读 status 新字段', () => {
-  const vue = read('frontend/src/pages/AdminModules.vue');
-  assert.match(vue, /syncStatus\.value\?\.forbidden/, 'tag 数据来自 syncStatus.forbidden');
-  assert.match(vue, /syncStatus\.value\?\.rateGate/, 'tag 数据来自 syncStatus.rateGate');
+// GA-1（docs/SYNC-PAGE-REDESIGN.md）：同步页搬到 composables/useSyncAdmin.js + components/sync/*，
+// 两类 tag 收在子步骤行的「状态」格内联显示（原桌面表/移动卡片两套模板合成一套行内重排）。
+test('FW-3 后台展示静态锁：任务组子步骤行有 403 冷却 / 速率闸门 tag，且读 status 新字段', () => {
+  const vue = read('frontend/src/composables/useSyncAdmin.js');
+  const table = read('frontend/src/components/sync/TaskGroupTable.vue');
+  assert.match(vue, /state\.status\?\.forbidden/, 'tag 数据来自 status.forbidden');
+  assert.match(vue, /state\.status\?\.rateGate/, 'tag 数据来自 status.rateGate');
   assert.match(vue, /403 冷却 · 剩余 \$\{left\} 分钟/, '文案：403 冷却 · 剩余 N 分钟');
   assert.match(vue, /速率闸门 已用 \$\{Math\.round\(used\)\}\/\$\{Math\.round\(perMin\)\}/, '文案：速率闸门 已用 N/M');
-  assert.match(vue, /<el-table-column label="限制"/, '桌面任务表新增「限制」列（不重设计操作区）');
-  const tagCount = [...vue.matchAll(/<el-tag v-if="forbiddenTagText" type="info" size="small">/g)].length;
-  assert.ok(tagCount >= 3, `403 冷却 tag 至少覆盖组表/组卡/普通任务表/普通任务卡，实际 ${tagCount} 处`);
-  const gateCount = [...vue.matchAll(/<el-tag v-if="rateGateTagText" type="info" size="small">/g)].length;
-  assert.ok(gateCount >= 3, `速率闸门 tag 同样覆盖桌面与移动，实际 ${gateCount} 处`);
-  assert.match(vue, /\{\{ partialReason\(row\) \}\}/, '76 的收尾原因通过既有「失败原因」列显示');
-  assert.match(vue, /return row\.lastError\|\|'—'/, 'partialReason 对非 backfill 任务取 row.lastError（= jobFailureError(76) 文案）');
+  assert.match(table, /<el-tag v-if="forbiddenTagText" type="info" size="small"/, '子步骤行状态格显示 403 冷却 tag');
+  assert.match(table, /<el-tag v-if="rateGateTagText" type="info" size="small"/, '子步骤行状态格显示速率闸门 tag');
+  assert.match(table, /<th>失败原因<\/th>/, '任务表保留「失败原因」列（不重设计操作区）');
+  assert.match(table, /\{\{ partialReason\(s\) \}\}/, '76 的收尾原因通过既有「失败原因」列显示');
+  assert.match(table, /return row\.lastError \|\| '—'/, 'partialReason 对非 backfill 任务取 row.lastError（= jobFailureError(76) 文案）');
   // scheduler-status.json 的 lastError 就是 outcome.error（76 时 = 「HTTP 403 收尾（进度已保留，下一轮继续）」）
   const sched = read('src/scheduler.js');
   assert.match(sched, /lastError: outcome \? outcome\.error : null/, '状态文件带 lastError（前端据此显示 403 收尾原因）');

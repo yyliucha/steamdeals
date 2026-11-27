@@ -121,13 +121,16 @@ function toggleTheme(){
     fetch('/api/prefs', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ theme: m }) }).catch(() => {});
   }
 }
-const nativeSections=['games','visitors','announcements','wishlist','watchlist','settings','stats','appeals'];
+const nativeSections=['games','sync','align','visitors','announcements','wishlist','watchlist','settings','stats','appeals'];
 // AT 批（docs/ADMIN-CONSOLE-IA.md §3）：侧栏删「批量操作记录」「运行日志」，新增「日志审计 / 操作日志」；
-// 旧书签 ?section=bulk-ops / ?section=sync 自动落到 op-logs 对应 tab，不 404（§7.4 验收 11）。
+// 旧书签 ?section=bulk-ops 自动落到 op-logs 对应 tab，不 404（§7.4 验收 11）。
+// GA-1（docs/SYNC-PAGE-REDESIGN.md §2.1）：`sync` 从「旧书签别名」升级为**真正的一级菜单**
+// （同步与回填），LEGACY_SECTION 里那条 ?section=sync → op-logs&tab=run 的映射随之删除。
 // DT-1（docs/ADMIN-PERMISSIONS.md）：删除「Steam 账号」菜单项（账号管理并入个人资料页 CX 账号卡）；
 // 管理员看其它用户绑定账号走「用户管理 → 编辑用户」弹窗（DT-3）。
 const groups=[
-  {name:'内容运营',items:[{id:'games',label:'游戏管理',glyph:'▦',description:'维护游戏目录、采集计划与数据回填'},{id:'recycle',label:'回收站',glyph:'▤',description:'查看并恢复已删除的游戏'},{id:'announcements',label:'站点通知',glyph:'▱',description:'发布和管理网站公告'},{id:'wishlist',label:'愿望单',glyph:'★',description:'全站用户愿望单，可查看与删除'},{id:'watchlist',label:'到价提醒',glyph:'🔔',description:'全站到价提醒清单（用户级 + 站点级），可查看与清理'}]},
+  // GA-1：原「游戏管理（内含 3 tab）」拆成三个一级菜单——游戏目录 / 同步与回填 / 对齐审核（图标与描述按 demo）
+  {name:'内容运营',items:[{id:'games',label:'游戏目录',glyph:'🎮',description:'维护游戏目录：筛选、编辑与批量操作'},{id:'sync',label:'同步与回填',glyph:'🔄',description:'采集任务的调度、进度与数据质量。任务由服务器自动执行；需要立即跑一次时点「立即运行」。'},{id:'align',label:'对齐审核',glyph:'🧩',description:'跨平台条目对齐的候选审核、忽略与恢复'},{id:'recycle',label:'回收站',glyph:'▤',description:'查看并恢复已删除的游戏'},{id:'announcements',label:'站点通知',glyph:'▱',description:'发布和管理网站公告'},{id:'wishlist',label:'愿望单',glyph:'★',description:'全站用户愿望单，可查看与删除'},{id:'watchlist',label:'到价提醒',glyph:'🔔',description:'全站到价提醒清单（用户级 + 站点级），可查看与清理'}]},
   {name:'访问与安全',items:[{id:'visitors',label:'访问记录',glyph:'◉',description:'流量、异常请求和访问控制'},{id:'appeals',label:'申诉管理',glyph:'❧',description:'解封申诉的受理与处理'}]},
   {name:'账号与服务',items:[{id:'profile',label:'个人资料',glyph:'👤',description:'编辑个人资料、头像与 Steam 账号绑定（仅本人可见）'},{id:'users',label:'用户管理',glyph:'♙',description:'管理账号、角色与登录权限'},{id:'sessions',label:'登录会话',glyph:'⟳',description:'查看在线会话、踢下线'},{id:'mail',label:'邮件服务',glyph:'✉',description:'配置 SMTP、邮件模板与发送测试'}]},
   {name:'日志审计',items:[{id:'op-logs',label:'操作日志',glyph:'☰',description:'用户删除 / 批量操作 / Steam 账号 / 邮件发送 / 运行与同步的审计记录'}]},
@@ -147,8 +150,9 @@ const USER_GROUPS = [
     { id: 'announcements', label: '站点公告', glyph: '▱', description: '站点发布的通知公告（只读）' },
   ] },
 ];
-// 旧书签映射：bulk-ops → op-logs&tab=bulk；sync → op-logs&tab=run（mail&tab=records 在 AdminExtras 内处理）
-const LEGACY_SECTION = { 'bulk-ops': { section: 'op-logs', tab: 'bulk' }, sync: { section: 'op-logs', tab: 'run' } };
+// 旧书签映射：bulk-ops → op-logs&tab=bulk（mail&tab=records 在 AdminExtras 内处理）。
+// GA-1（docs/SYNC-PAGE-REDESIGN.md §2.1）：`sync` 已是一级菜单（同步与回填），不再做 op-logs 别名映射。
+const LEGACY_SECTION = { 'bulk-ops': { section: 'op-logs', tab: 'bulk' } };
 // FY-1（docs/SETTINGS-REDESIGN.md §3.1）：设置页独立二级路由 /console/settings/<group>。
 // 组名校验与回落由路由 beforeEnter 保证（未知组 → sources）；这里只负责「路径 ↔ 选中态」同步。
 const SETTINGS_PATH = '/console/settings';
