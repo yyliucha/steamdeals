@@ -24,10 +24,18 @@
     "test_main": 45983939129
   },
   "release": {
-    "status": "pending",
+    "status": "success",
+    "releasedAt": "2026-11-27T14:04:50Z",
+    "by": "steamdeals-release",
     "targets": [
       "app",
       "scheduler"
-    ]
+    ],
+    "appImage": "ccr.ccs.tencentyun.com/tcb-100003189690-pljp/steamdeals:2.32.0",
+    "schedulerImage": "ccr.ccs.tencentyun.com/tcb-100003189690-pljp/steamdeals:2.32.0",
+    "siteVersion": "2.32.0",
+    "previousVersion": "2.30.3",
+    "rollbackPoint": "ccr.ccs.tencentyun.com/tcb-100003189690-pljp/steamdeals:2.30.3",
+    "notes": "app 21:54:38 成功；scheduler 22:04:50 成功（启动约 10 分钟：首次跑 slow_sync 迁移 + 预热）"
   }
 }
