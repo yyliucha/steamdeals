@@ -104,37 +104,9 @@
     </template>
 
     <!-- 访问与安全 -->
-    <template v-else-if="section==='visitors'">
-      <div class="module-tabs"><button v-for="tab in visitorTabs" :key="tab.value" :class="{on:visitorView===tab.value}" @click="visitorView=tab.value;loadVisitorView()">{{ tab.label }}</button></div>
-      <template v-if="visitorView==='visits'">
-        <div class="module-tabs sub-tabs"><button :class="{on:visitMode==='ip'}" @click="switchVisitMode('ip')">IP 统计</button><button :class="{on:visitMode==='detail'}" @click="switchVisitMode('detail')">明细</button><span class="muted">时间窗</span><el-select v-model="visitDays" style="width:104px" @change="onVisitDaysChange"><el-option label="近 1 天" :value="1"/><el-option label="近 7 天" :value="7"/><el-option label="近 30 天" :value="30"/></el-select></div>
-        <template v-if="visitMode==='detail'">
-        <div class="metric-grid"><div class="metric-card"><span>今日访问</span><strong>{{ visitorSummary.today_visits||0 }}</strong></div><div class="metric-card"><span>今日独立 IP</span><strong>{{ visitorSummary.today_ips||0 }}</strong></div><div class="metric-card"><span>今日拦截</span><strong>{{ visitorSummary.today_blocked||0 }}</strong></div><div class="metric-card"><span>黑名单</span><strong>{{ visitorSummary.blocked_count||0 }}</strong></div></div>
-        <div class="module-card filterbar"><el-select v-model="visitorFilter" @change="loadVisitors(1)"><el-option label="正常访问" value="visits"/><el-option label="已拦截" value="blocked"/><el-option label="全部记录" value="all"/></el-select><el-input v-model="visitorIp" clearable placeholder="按 IP 筛选" @keyup.enter="loadVisitors(1)"/><el-input v-model="visitorPath" clearable placeholder="按路径筛选" @keyup.enter="loadVisitors(1)"/><el-button @click="loadVisitors(1)">查询</el-button></div>
-        <BulkBar :count="sel.visitors.count" :actions="visitorsBulkActions" :running="bulkRunning" @run="(a)=>runBulk(a,sel.visitors,{refresh:()=>loadVisitors(visitorPage)})" @clear="sel.visitors.clear()"/><div class="module-card table-card"><template v-if="!isMobile"><el-table ref="visitorsTable" :data="visitors" v-loading="loading" stripe :default-sort="visitorSort" @sort-change="onVisitorSortChange" @selection-change="sel.visitors.onSelectionChange"><el-table-column type="selection" width="44"/><el-table-column prop="ip" sortable="custom" label="IP" min-width="155"><template #default="{row}"><span class="mono">{{ row.ip }}</span><small v-if="row.remote_ip && row.remote_ip!==row.ip">直连 {{ row.remote_ip }}</small></template></el-table-column><el-table-column prop="region" label="地区" width="100"/><el-table-column label="路径" min-width="220" show-overflow-tooltip><template #default="{row}">{{ row.path }}<small v-if="row.block_reason">{{ row.block_reason }}</small></template></el-table-column><el-table-column prop="status" sortable="custom" label="结果" width="100"><template #default="{row}"><el-tag v-if="row.blocked" type="danger" size="small">拦截 {{ row.status }}</el-tag><el-tag v-else-if="row.status>=400" type="warning" size="small">{{ row.status }}</el-tag><span v-else>{{ row.status||'—' }}</span></template></el-table-column><el-table-column prop="created_at" sortable="custom" label="时间" min-width="160"><template #default="{row}">{{ dateTime(row.created_at) }}</template></el-table-column><el-table-column label="操作" width="140"><template #default="{row}"><el-button link type="danger" @click="banIp(row.ip)">封禁 IP</el-button><el-button link @click="addWhitelist(row.ip)">信任</el-button></template></el-table-column></el-table></template><div v-else class="game-card-list"><div v-for="row in visitors" :key="row.id" class="admin-card"><div class="admin-card-pick"><el-checkbox :model-value="sel.visitors.has(row)" @change="sel.visitors.toggle(row)">选择</el-checkbox></div><div class="admin-card-main"><strong class="mono">{{ row.ip }}</strong><small v-if="row.remote_ip && row.remote_ip!==row.ip">直连 {{ row.remote_ip }}</small><span class="muted">{{ row.region||'—' }}</span><p class="admin-card-path">{{ row.path }}<small v-if="row.block_reason"> · {{ row.block_reason }}</small></p></div><div class="admin-card-foot"><span><el-tag v-if="row.blocked" type="danger" size="small">拦截 {{ row.status }}</el-tag><el-tag v-else-if="row.status>=400" type="warning" size="small">{{ row.status }}</el-tag><span v-else>{{ row.status||'—' }}</span> · {{ dateTime(row.created_at) }}</span><span><el-button link type="danger" @click="banIp(row.ip)">封禁 IP</el-button><el-button link @click="addWhitelist(row.ip)">信任</el-button></span></div></div></div><div class="pager"><span>共 {{ visitorTotal }} 条</span><PaginationBar v-model:page="visitorPage" v-model:page-size="visitorPageSize" :total="visitorTotal" @change="loadVisitors"/></div></div>
-        </template>
-        <template v-else>
-          <div class="module-card filterbar"><el-input v-model="ipQuery" clearable placeholder="按 IP 搜索" @keyup.enter="loadVisitorsByIp(1)"/><el-button @click="loadVisitorsByIp(1)">查询</el-button><el-select v-model="ipStatus" style="width:128px" @change="loadVisitorsByIp(1)"><el-option label="全部状态" value="all"/><el-option label="正常" value="normal"/><el-option label="被拦截" value="intercepted"/><el-option label="封禁中" value="banned"/><el-option label="已封禁" value="blocked"/></el-select><span class="muted">共 {{ ipTotal }} 个 IP（每页 {{ ipPageSize }}）</span></div>
-          <div class="module-card table-card"><template v-if="!isMobile"><el-table :data="ipRows" v-loading="loading" row-key="ip" stripe @sort-change="onIpSortChange" @expand-change="onIpExpand"><el-table-column type="expand"><template #default="{row}"><div class="ip-detail"><template v-if="ipDetails[row.ip]"><h4>最近访问（{{ visitDays }} 天内最多 20 条）</h4><div v-for="r in ipDetails[row.ip].recent" :key="r.id" class="log-line"><span class="mono">{{ dateTime(r.created_at) }}</span><span class="mono">{{ r.method }} {{ r.path }}</span><span>{{ r.status||'—' }}</span><el-tag v-if="r.blocked" type="danger" size="small">拦截</el-tag></div><el-empty v-if="!ipDetails[row.ip].recent.length" description="时间窗内没有访问" :image-size="40"/><h4>访问最多的路径</h4><div v-for="p in ipDetails[row.ip].topPaths" :key="p.path" class="log-line"><span>{{ p.path }}</span><span>{{ p.n }}</span></div><el-empty v-if="!ipDetails[row.ip].topPaths.length" description="没有路径" :image-size="40"/></template><span v-else class="muted">加载中…</span></div></template></el-table-column><el-table-column prop="ip" sortable="custom" label="IP" min-width="150"><template #default="{row}"><span class="mono">{{ row.ip }}</span></template></el-table-column><el-table-column label="地区" width="100"><template #default="{row}">{{ row.region||'—' }}</template></el-table-column><el-table-column prop="visits" sortable="custom" label="访问次数" width="100" align="right"/><el-table-column prop="last_at" sortable="custom" label="首次 → 最近" min-width="230"><template #default="{row}"><span class="muted">{{ dateTime(row.first_at) }} → {{ dateTime(row.last_at) }}</span></template></el-table-column><el-table-column prop="paths" label="独立路径" width="100" align="right"/><el-table-column prop="devices" label="设备数" width="90" align="right"/><el-table-column label="状态" width="110"><template #default="{row}"><el-tag :type="row.status==='blocked'?'danger':row.status==='banned'?'warning':row.status==='intercepted'?'warning':'info'" :effect="row.status==='intercepted'?'plain':'dark'" size="small">{{ row.status==='blocked'?'已封禁':row.status==='banned'?'封禁中 · '+banLeft(row):row.status==='intercepted'?'被拦截':'正常' }}</el-tag></template></el-table-column><el-table-column label="操作" width="140"><template #default="{row}"><el-button link type="danger" @click="banIp(row.ip)">封禁 IP</el-button><el-button link @click="addWhitelist(row.ip)">信任</el-button></template></el-table-column></el-table></template><div v-else class="game-card-list"><div v-for="row in ipRows" :key="row.ip" class="admin-card"><div class="admin-card-main"><strong class="mono">{{ row.ip }}</strong><small>{{ row.region||'—' }} · {{ dateTime(row.first_at) }} → {{ dateTime(row.last_at) }}</small><span class="muted">访问 {{ row.visits }} 次 · 路径 {{ row.paths }} · 设备 {{ row.devices }}</span><div><el-tag :type="row.status==='blocked'?'danger':row.status==='banned'?'warning':row.status==='intercepted'?'warning':'info'" :effect="row.status==='intercepted'?'plain':'dark'" size="small">{{ row.status==='blocked'?'已封禁':row.status==='banned'?'封禁中 · '+banLeft(row):row.status==='intercepted'?'被拦截':'正常' }}</el-tag></div></div><div class="admin-card-foot"><span></span><span><el-button link type="danger" @click="banIp(row.ip)">封禁</el-button><el-button link @click="addWhitelist(row.ip)">信任</el-button></span></div></div><el-empty v-if="!ipRows.length" description="时间窗内没有访问记录"/></div><div class="pager"><span>共 {{ ipTotal }} 个 IP</span><PaginationBar v-model:page="ipPage" v-model:page-size="ipPageSize" :total="ipTotal" @change="loadVisitorsByIp"/></div></div>
-        </template>
-      </template>      <template v-else-if="visitorView==='review'">
-        <div class="notice-card"><strong>异常请求由管理员审核</strong><p>系统记录异常但不自动永久封禁；审核后可封 IP、封设备或忽略。白名单可保护自己的管理出口 IP。封禁发生时该 IP 的旧待审会标记为 auto_banned 永久退出待审（「全部」视图可查）；封禁期间产生的新异常仍会以「待审」出现（状态列可据此判断是否已处理）。</p></div>
-        <div class="module-card table-card"><div class="card-heading padded"><div><h3>待审列表</h3><p>同一 IP 合并为一行，展开看逐条规则 · 共 {{ reviews.length }} 条（上限 500）</p></div><el-select v-model="reviewStatus" style="width:130px" @change="loadReviews"><el-option label="只看待审" value="pending"/><el-option label="全部（审计）" value="all"/></el-select></div><div class="merge-bar"><span>已选 {{ mergedPicked.size }} 个 IP · {{ mergedPickedCount }} 条待审</span><el-button size="small" type="danger" plain :disabled="!mergedPicked.size" :loading="bulkRunning==='approve-ip'" @click="runMergedBulk('approve-ip')">封 IP</el-button><el-button size="small" type="danger" plain :disabled="!mergedPicked.size" :loading="bulkRunning==='approve-device'" @click="runMergedBulk('approve-device')">封设备</el-button><el-button size="small" :disabled="!mergedPicked.size" :loading="bulkRunning==='reject'" @click="runMergedBulk('reject')">忽略</el-button></div><template v-if="!isMobile"><el-table ref="mergedReviewsTable" row-key="key" :data="pagedMergedReviews" v-loading="loading" :default-sort="mergedSort" @sort-change="onMergedSortChange"><el-table-column width="44"><template #default="{row}"><el-checkbox :model-value="mergedPicked.has(row.key)" :disabled="!row.pendingCount" @change="toggleMergedPick(row)"/></template></el-table-column><el-table-column type="expand"><template #default="{row}"><div class="merged-detail"><div v-for="r in row.rows" :key="r.id" class="merged-detail-row"><span class="muted">{{ r.rule }}</span><span>命中 {{ r.hits }} 次</span><span class="muted">{{ r.path||r.detail }}</span><span class="muted">{{ dateTime(r.last_seen) }}</span><el-tag v-if="r.status==='pending'" type="success" size="small">待审</el-tag><el-tag v-else-if="r.status==='approved'" type="danger" size="small">已封禁</el-tag><el-tag v-else-if="r.status==='rejected'" type="info" size="small">已忽略</el-tag><el-tag v-else type="info" size="small">自动退出</el-tag><span v-if="r.region" class="muted">{{ r.region }}</span><span v-if="r.last_ua" class="muted" :title="r.last_ua">{{ (r.last_ua||'').slice(0,40) }}</span><el-tag v-if="r.appeal_status" size="small" type="info">申诉：{{ r.appeal_status }}</el-tag><template v-if="r.status==='pending'"><el-dropdown size="small" @command="(m)=>reviewAct(r.id,'tempban',m)"><el-button link size="small">临时封<el-icon class="el-icon--right"><ArrowDown/></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item :command="10">10 分钟</el-dropdown-item><el-dropdown-item :command="60">1 小时</el-dropdown-item><el-dropdown-item :command="1440">1 天</el-dropdown-item></el-dropdown-menu></template></el-dropdown><el-button link size="small" type="danger" @click="reviewAct(r.id,'permban')">永久封</el-button><el-button link size="small" type="success" @click="reviewAct(r.id,'trust')">信任</el-button><el-button link size="small" @click="reviewAct(r.id,'ignore')">忽略</el-button></template></div></div></template></el-table-column><el-table-column prop="ip" sortable="custom" label="IP" min-width="180"><template #default="{row}"><span class="mono">{{ row.ip }}</span><small v-if="row.devices>1" style="margin-left:8px">· {{ row.devices }} 个设备</small></template></el-table-column><el-table-column prop="ruleCount" sortable="custom" label="规则摘要" width="250"><template #default="{row}"><el-popover placement="top" trigger="hover" :width="240" :disabled="!row.rules || row.rules.length<=1"><div class="rule-pop"><div v-for="r in row.rules" :key="r.rule">{{ r.rule }} ×{{ r.n }}</div></div><template #reference><span class="rule-summary">{{ row.rules[0]?.rule }} ×{{ row.rules[0]?.n }} · 共 {{ row.ruleCount }} 条规则</span></template></el-popover></template></el-table-column><el-table-column prop="hitsTotal" sortable="custom" label="总次数" width="80" align="right"/><el-table-column prop="last_seen" sortable="custom" label="首次 → 最近" min-width="190"><template #default="{row}">{{ dateTime(row.firstSeen) }} → {{ dateTime(row.lastSeen) }}</template></el-table-column><el-table-column label="状态" width="110"><template #default="{row}"><el-tag v-if="row.status==='pending'" type="success" size="small">待审</el-tag><el-tag v-else-if="row.status==='auto_banned'" type="info" size="small">已封禁</el-tag><el-tag v-else type="warning" size="small">部分已处理</el-tag></template></el-table-column><el-table-column label="操作" width="190"><template #default="{row}"><el-button v-if="row.pendingCount" link type="danger" @click="mergedAct(row,'approve-ip')">封 IP</el-button><el-button v-if="row.pendingCount && row.devices" link type="danger" @click="mergedAct(row,'approve-device')">封设备</el-button><el-button v-if="row.pendingCount" link @click="mergedAct(row,'reject')">忽略</el-button></template></el-table-column></el-table></template><div v-else class="game-card-list"><div v-for="row in pagedMergedReviews" :key="row.key" class="admin-card"><div class="admin-card-pick"><el-checkbox :model-value="mergedPicked.has(row.key)" :disabled="!row.pendingCount" @change="toggleMergedPick(row)">选择</el-checkbox></div><div class="admin-card-main"><strong class="mono">{{ row.ip }}</strong><small>首次 {{ dateTime(row.firstSeen) }} → 最近 {{ dateTime(row.lastSeen) }}</small><span class="muted">{{ row.rules[0]?.rule }} ×{{ row.rules[0]?.n }} · 共 {{ row.ruleCount }} 条规则</span><el-tag v-if="row.status==='pending'" type="success" size="small">待审</el-tag><el-tag v-else-if="row.status==='auto_banned'" type="info" size="small">已封禁</el-tag><el-tag v-else type="warning" size="small">部分已处理</el-tag><p class="admin-card-path">共 {{ row.ruleCount }} 条规则 · {{ row.hitsTotal }} 次命中 · {{ row.devices }} 个设备</p></div><div class="admin-card-foot"><span></span><span><el-button v-if="row.pendingCount" link type="danger" @click="mergedAct(row,'approve-ip')">封 IP</el-button><el-button v-if="row.pendingCount && row.devices" link type="danger" @click="mergedAct(row,'approve-device')">封设备</el-button><el-button v-if="row.pendingCount" link @click="mergedAct(row,'reject')">忽略</el-button></span></div></div></div><PaginationBar v-model:page="mergedPage" v-model:page-size="mergedPageSize" :total="sortedMergedReviews.length"/></div>
-      </template>
-      <template v-else-if="visitorView==='devices'">
-        <div class="notice-card"><strong>设备封禁按指纹生效</strong><p>换 IP 也会命中；白名单 IP 不受影响。审核弹窗「封设备」产生的封禁同样在这里管理。解封后该设备仍会出现在「最近设备」里（历史记录不删）。</p></div>
-        <div class="module-card table-card"><div class="card-heading padded"><div><h3>最近设备</h3><p>按设备指纹去重，最多 100 条</p></div><el-button text :loading="devicesLoading" @click="refreshDevices">刷新</el-button></div><BulkBar :count="sel.devices.count" :actions="devicesBulkActions" :running="bulkRunning" @run="openBulkDeviceBan" @clear="sel.devices.clear()"/><template v-if="!isMobile"><el-table ref="devicesTable" row-key="key" :data="pagedDevices" v-loading="loading" stripe @selection-change="sel.devices.onSelectionChange"><el-table-column type="selection" width="44" :selectable="(row)=>Boolean(row.fingerprint)"/><el-table-column label="最近出现" min-width="155"><template #default="{row}">{{ dateTime(row.lastAt) }}</template></el-table-column><el-table-column label="设备（按设备码聚合）" min-width="190"><template #default="{row}"><span class="mono">{{ row.deviceId||'无设备码' }}</span><small class="muted"> · 指纹 {{ String(row.fingerprint||'').slice(0,10) }}…</small></template></el-table-column><el-table-column label="IP" min-width="170" show-overflow-tooltip><template #default="{row}">{{ (row.ips||[]).join('、')||'—' }}</template></el-table-column><el-table-column prop="count" label="出现次数" width="100" align="right"/><el-table-column label="状态" width="100"><template #default="{row}"><el-tag v-if="row.banned" type="danger" size="small">已封禁</el-tag><span v-else class="muted">正常</span></template></el-table-column><el-table-column label="UA" min-width="200" show-overflow-tooltip><template #default="{row}"><span class="muted">{{ String(row.user_agent||'').slice(0,60) }}</span></template></el-table-column><el-table-column label="操作" width="100" fixed="right"><template #default="{row}"><el-button v-if="row.fingerprint" link type="danger" @click="openDeviceBan(row)">封禁</el-button></template></el-table-column></el-table></template><div v-else class="game-card-list"><div v-for="row in pagedDevices" :key="row.key" class="admin-card"><div class="admin-card-pick"><el-checkbox :model-value="sel.devices.has(row)" :disabled="!row.fingerprint" @change="sel.devices.toggle(row)">选择</el-checkbox></div><div class="admin-card-main"><strong class="mono">{{ row.deviceId||'无设备码' }}</strong><small>{{ (row.ips||[]).join('、')||'—' }} · {{ dateTime(row.lastAt) }}</small><span class="mono muted">指纹 {{ String(row.fingerprint||'').slice(0,12) }}… · 出现 {{ row.count }} 次<el-tag v-if="row.banned" type="danger" size="small" style="margin-left:6px">已封禁</el-tag></span><p class="admin-card-path">{{ String(row.user_agent||'').slice(0,60) }}</p></div><div class="admin-card-foot"><span></span><span><el-button v-if="row.fingerprint" link type="danger" @click="openDeviceBan(row)">封禁</el-button></span></div></div></div><PaginationBar v-model:page="devicesPage" v-model:page-size="devicesPageSize" :total="devices.length"/></div>
-        <div class="module-card table-card"><div class="card-heading padded"><div><h3>已封设备</h3><p>封禁至为空 = 永久</p></div><el-button text :loading="devicesLoading" @click="refreshDevices">刷新</el-button></div><BulkBar :count="sel.deviceBans.count" :actions="deviceBansBulkActions" :running="bulkRunning" @run="(a)=>runBulk(a,sel.deviceBans,{refresh:loadDevices})" @clear="sel.deviceBans.clear()"/><template v-if="!isMobile"><el-table ref="deviceBansTable" row-key="fingerprint" :data="pagedDeviceBans" v-loading="loading" stripe @selection-change="sel.deviceBans.onSelectionChange"><el-table-column type="selection" width="44"/><el-table-column label="指纹" min-width="150"><template #default="{row}"><span class="mono" :title="row.fingerprint">{{ String(row.fingerprint||'').slice(0,12) }}…</span></template></el-table-column><el-table-column label="设备 ID" min-width="130" show-overflow-tooltip><template #default="{row}"><span class="mono">{{ row.device_id||'—' }}</span></template></el-table-column><el-table-column label="封禁至" width="170"><template #default="{row}">{{ row.until ? dateTime(row.until) : '永久' }}</template></el-table-column><el-table-column label="备注" min-width="160" show-overflow-tooltip><template #default="{row}">{{ row.note||'—' }}</template></el-table-column><el-table-column label="操作" width="100" fixed="right"><template #default="{row}"><el-button link type="primary" @click="unbanDevice(row)">解封</el-button></template></el-table-column></el-table></template><div v-else class="game-card-list"><div v-for="row in pagedDeviceBans" :key="row.fingerprint||row.device_id" class="admin-card"><div class="admin-card-pick"><el-checkbox :model-value="sel.deviceBans.has(row)" @change="sel.deviceBans.toggle(row)">选择</el-checkbox></div><div class="admin-card-main"><strong class="mono">{{ String(row.fingerprint||'').slice(0,12) }}…</strong><small>{{ row.device_id||'—' }} · 封禁至 {{ row.until ? dateTime(row.until) : '永久' }}</small><p class="admin-card-path">{{ row.note||'—' }}</p></div><div class="admin-card-foot"><span></span><span><el-button link type="primary" @click="unbanDevice(row)">解封</el-button></span></div></div></div><PaginationBar v-model:page="deviceBansPage" v-model:page-size="deviceBansPageSize" :total="deviceBans.length"/></div>
-        <el-dialog v-model="deviceBanDialog.visible" title="封禁设备" width="min(400px, 92vw)"><p class="muted">指纹 {{ String(deviceBanDialog.row?.fingerprint||'').slice(0,12) }}…；该设备所有请求将被拒绝（白名单 IP 除外）。</p><el-radio-group v-model="deviceBanDialog.duration"><el-radio :value="10">10 分钟</el-radio><el-radio :value="60">1 小时</el-radio><el-radio :value="1440">1 天</el-radio><el-radio :value="'permanent'">永久</el-radio></el-radio-group><template #footer><el-button @click="deviceBanDialog.visible=false">取消</el-button><el-button type="danger" :loading="saving" @click="banDevice">确认封禁</el-button></template></el-dialog>
-      </template>
-      <template v-else>
-        <div class="security-grid"><div class="module-card"><div class="card-heading"><div><h3>IP 黑名单</h3><p>封禁后该 IP 无法访问站点</p></div><span class="heading-actions"><el-button text :loading="securityLoading" @click="refreshSecurity">刷新</el-button><el-button type="danger" plain @click="openIpDialog('black')">添加黑名单</el-button></span></div><BulkBar :count="sel.blacklist.count" :actions="blacklistBulkActions" :running="bulkRunning" @run="(a)=>runBulk(a,sel.blacklist,{refresh:loadSecurity})" @clear="sel.blacklist.clear()"/><template v-if="!isMobile"><el-table ref="blacklistTable" row-key="ip" :data="pagedBlacklist" size="small" @selection-change="sel.blacklist.onSelectionChange"><el-table-column type="selection" width="44"/><el-table-column prop="ip" label="IP / CIDR"/><el-table-column prop="note" label="备注"/><el-table-column prop="visits" label="访问" width="80" align="right"/><el-table-column label="最近访问" width="150"><template #default="{row}">{{ row.last_at?dateTime(row.last_at):"—" }}</template></el-table-column><el-table-column prop="devices" label="设备数" width="80" align="right"/><el-table-column label="操作" width="80"><template #default="{row}"><el-button link type="primary" @click="removeBlacklist(row.ip)">解封</el-button></template></el-table-column></el-table></template><div v-else class="game-card-list"><div v-for="row in pagedBlacklist" :key="row.ip" class="admin-card"><div class="admin-card-pick"><el-checkbox :model-value="sel.blacklist.has(row)" @change="sel.blacklist.toggle(row)">选择</el-checkbox></div><div class="admin-card-main"><strong class="mono">{{ row.ip }}</strong><small class="muted">近 7 天 {{ row.visits||0 }} 次 · {{ row.devices||0 }} 设备{{ row.last_at?' · '+dateTime(row.last_at):'' }}</small><p class="admin-card-path">{{ row.note||'—' }}</p></div><div class="admin-card-foot"><span></span><span><el-button link type="primary" @click="removeBlacklist(row.ip)">解封</el-button></span></div></div></div><PaginationBar v-model:page="blacklistPage" v-model:page-size="blacklistPageSize" :total="blacklist.length"/></div>
-        <div class="module-card"><div class="card-heading"><div><h3>IP 白名单</h3><p>白名单 IP 不受自动频率封禁</p></div><span class="heading-actions"><el-button text :loading="securityLoading" @click="refreshSecurity">刷新</el-button><el-button type="primary" plain @click="openIpDialog('white')">添加白名单</el-button></span></div><BulkBar :count="sel.whitelist.count" :actions="whitelistBulkActions" :running="bulkRunning" @run="(a)=>runBulk(a,sel.whitelist,{refresh:loadSecurity})" @clear="sel.whitelist.clear()"/><template v-if="!isMobile"><el-table ref="whitelistTable" row-key="ip" :data="pagedWhitelist" size="small" @selection-change="sel.whitelist.onSelectionChange"><el-table-column type="selection" width="44"/><el-table-column prop="ip" label="IP / CIDR"/><el-table-column prop="note" label="备注"/><el-table-column prop="visits" label="访问" width="80" align="right"/><el-table-column label="最近访问" width="150"><template #default="{row}">{{ row.last_at?dateTime(row.last_at):"—" }}</template></el-table-column><el-table-column prop="devices" label="设备数" width="80" align="right"/><el-table-column label="操作" width="80"><template #default="{row}"><el-button link type="danger" @click="removeWhitelist(row.ip)">移除</el-button></template></el-table-column></el-table></template><div v-else class="game-card-list"><div v-for="row in pagedWhitelist" :key="row.ip" class="admin-card"><div class="admin-card-pick"><el-checkbox :model-value="sel.whitelist.has(row)" @change="sel.whitelist.toggle(row)">选择</el-checkbox></div><div class="admin-card-main"><strong class="mono">{{ row.ip }}</strong><small class="muted">近 7 天 {{ row.visits||0 }} 次 · {{ row.devices||0 }} 设备{{ row.last_at?' · '+dateTime(row.last_at):'' }}</small><p class="admin-card-path">{{ row.note||'—' }}</p></div><div class="admin-card-foot"><span></span><span><el-button link type="danger" @click="removeWhitelist(row.ip)">移除</el-button></span></div></div></div><PaginationBar v-model:page="whitelistPage" v-model:page-size="whitelistPageSize" :total="whitelist.length"/></div></div>
-        <div class="module-card table-card security-events"><div class="card-heading"><div><h3>自动封禁记录</h3><p>临时频率限制或路径规则命中的地址；默认只显示生效中，已过期记录保留 90 天后由清理任务删除</p></div><el-select v-model="abuseFilter" size="small" class="abuse-filter" @change="onAbuseFilter"><el-option label="生效中" value="active"/><el-option label="已过期" value="expired"/><el-option label="全部" value="all"/></el-select></div><BulkBar :count="sel.abuse.count" :actions="abuseBulkActions" :running="bulkRunning" @run="(a)=>runBulk(a,sel.abuse,{refresh:loadSecurity})" @clear="sel.abuse.clear()"/><template v-if="!isMobile"><el-table ref="abuseTable" row-key="ip" :data="pagedAbuse" size="small" @selection-change="sel.abuse.onSelectionChange"><el-table-column type="selection" width="44"/><el-table-column prop="ip" label="IP" min-width="150"><template #default="{row}"><span class="mono">{{ row.ip }}</span><el-tag v-if="row.in_blacklist" type="danger" size="small" :title="`已在黑名单：${row.blacklist_entry||row.ip}${row.blacklist_note?`（${row.blacklist_note}）`:''}`">已在黑名单</el-tag></template></el-table-column><el-table-column prop="strikes" label="频率命中"/><el-table-column prop="path_strikes" label="路径命中"/><el-table-column prop="ban_source" label="来源"><template #default="{row}">{{ abuseSourceLabel(row.ban_source) }}</template></el-table-column><el-table-column label="封禁至"><template #default="{row}">{{ row.banned_until?dateTime(row.banned_until):'—' }}</template></el-table-column><el-table-column label="状态" width="90"><template #default="{row}"><el-tag v-if="row.active" type="warning" size="small">生效中</el-tag><el-tag v-else-if="row.banned_until" type="info" size="small">已过期</el-tag><el-tag v-else type="info" size="small">仅计数</el-tag></template></el-table-column><el-table-column label="操作" width="100"><template #default="{row}"><el-button link type="primary" @click="unbanAbuse(row)">{{ row.active?'解除封禁':'清除记录' }}</el-button></template></el-table-column></el-table><el-empty v-if="!pagedAbuse.length" :description="abuseFilter==='active'?'当前没有生效中的自动封禁；可切换到「已过期 / 全部」查看':'暂无记录'"/></template><div v-else class="game-card-list"><div v-for="row in pagedAbuse" :key="row.ip" class="admin-card"><div class="admin-card-pick"><el-checkbox :model-value="sel.abuse.has(row)" @change="sel.abuse.toggle(row)">选择</el-checkbox></div><div class="admin-card-main"><strong class="mono">{{ row.ip }}</strong><el-tag v-if="row.in_blacklist" type="danger" size="small">已在黑名单</el-tag><el-tag v-if="row.active" type="warning" size="small">生效中</el-tag><el-tag v-else-if="row.banned_until" type="info" size="small">已过期</el-tag><el-tag v-else type="info" size="small">仅计数</el-tag><small>频率命中 {{ row.strikes }} · 路径命中 {{ row.path_strikes }} · {{ row.ban_source||'—' }}</small><span class="muted">封禁至 {{ row.banned_until?dateTime(row.banned_until):'—' }}</span></div><div class="admin-card-foot"><span></span><span><el-button link type="primary" @click="unbanAbuse(row)">{{ row.active?'解除封禁':'清除记录' }}</el-button></span></div></div></div><PaginationBar v-model:page="abusePage" v-model:page-size="abusePageSize" :total="abuse.length"/></div>
-        <!-- EL 批（docs/ADMIN-EDIT-DIALOG.md EK-1/EK-2）：IP 黑/白名单添加弹窗（IP/备注/确认） -->
-        <el-dialog v-model="ipDialog.visible" :title="ipDialog.kind==='black'?'添加 IP 黑名单':'添加 IP 白名单'" width="min(520px, 92vw)"><p class="muted">{{ ipDialog.kind==='black'?'封禁后该 IP 无法访问站点。':'白名单 IP 不受自动频率封禁（审核弹窗「信任」也会加到这里）。' }}</p><el-form label-position="top"><el-form-item label="IP 或 CIDR"><el-input v-model="ipDialog.ip" placeholder="例如 203.0.113.7 或 203.0.113.0/24" @keyup.enter="submitIpDialog"/></el-form-item><el-form-item label="备注（可选）"><el-input v-model="ipDialog.note" maxlength="200" placeholder="备注" @keyup.enter="submitIpDialog"/></el-form-item></el-form><template #footer><el-button @click="ipDialog.visible=false">取消</el-button><el-button :type="ipDialog.kind==='black'?'danger':'primary'" :loading="saving" @click="submitIpDialog">{{ ipDialog.kind==='black'?'封禁':'信任' }}</el-button></template></el-dialog>
-      </template>
-    </template>
+    <!-- FZ 批（docs/VISITORS-REDESIGN.md）：访问记录改「七块任务导向」（左导航 + ?view=），
+         实现全部收在 components/visitors/ 下；本文件只剩挂载点，games 段不动。 -->
+    <template v-else-if="section==='visitors'"><VisitorsAdmin /></template>
 
     <!-- 愿望单（BE 批 docs/WISHLIST-SITE-ONLY.md §6；CY 批改为只读：用户私有数据，管理员不可删） -->
     <template v-else-if="section==='wishlist'">
@@ -239,8 +211,6 @@
 
     <!-- 申诉管理（O 批，docs/APPEAL-SYSTEM.md §5） -->
     <AppealsAdmin v-else-if="section==='appeals'"/>
-      <!-- 批量封禁设备：时长沿用单条弹窗的 radio（复用其 UI 约定），执行仍走统一批量接口 -->
-      <el-dialog v-model="bulkDeviceBan.visible" title="批量封禁设备" width="min(420px, 92vw)"><p class="muted">将对已选的 {{ sel.devices.count }} 个设备指纹生效；换 IP 也会命中（白名单 IP 除外）。</p><el-radio-group v-model="bulkDeviceBan.minutes"><el-radio :value="10">10 分钟</el-radio><el-radio :value="60">1 小时</el-radio><el-radio :value="1440">1 天</el-radio><el-radio :value="'permanent'">永久</el-radio></el-radio-group><template #footer><el-button @click="bulkDeviceBan.visible=false">取消</el-button><el-button type="danger" :loading="bulkRunning==='ban'" @click="submitBulkDeviceBan">确认封禁</el-button></template></el-dialog>
       <!-- EL 批（docs/ADMIN-EDIT-DIALOG.md EK-4）：Steam 专用代理内联编辑器改为弹窗（列表增删/排序/健康表/保存回写） -->
       <el-dialog v-model="proxyDialogOpen" title="Steam 专用代理" width="min(680px, 92vw)" :before-close="closeProxyDialog"><p class="muted">只作用于 Steam 域名；可配多条（按顺序尝试、最多 10 条），仅支持 http/https。保存后调度器约 15 秒内生效。</p><div class="proxy-row" v-for="(row,i) in proxyList" :key="i"><span class="proxy-index">{{ i+1 }}</span><el-input v-model="row.value" placeholder="http://127.0.0.1:7890" autocomplete="off" @input="markProxyDirty"/><el-button text size="small" :disabled="i===0" @click="moveProxy(i,-1)">上移</el-button><el-button text size="small" :disabled="i===proxyList.length-1" @click="moveProxy(i,1)">下移</el-button><el-button text size="small" type="danger" @click="removeProxy(i)">删除</el-button></div><div class="proxy-actions"><el-button text type="primary" size="small" :disabled="proxyList.length>=10" @click="addProxy">添加一条</el-button><el-button text type="danger" size="small" :disabled="!proxyList.length" @click="clearProxyList">清空全部</el-button><span v-if="proxyList.length>=10" class="muted">已达上限 10 条</span></div><div class="proxy-health"><div class="proxy-health-head"><strong>健康状态</strong><el-button text size="small" :loading="proxyProbing" @click="probeProxies">立即检测</el-button><el-button text size="small" @click="loadProxyHealth">刷新</el-button></div><el-table v-if="proxyHealth.proxies?.length" :data="proxyHealth.proxies" size="small" stripe><el-table-column prop="index" label="#" width="46"/><el-table-column prop="proxy" label="代理" min-width="190" show-overflow-tooltip/><el-table-column label="状态" width="130"><template #default="{row}"><el-tag :type="proxyStateType(row)" size="small">{{ proxyStateText(row) }}</el-tag></template></el-table-column><el-table-column label="最近检测" width="150"><template #default="{row}">{{ row.probeAt?dateTime(row.probeAt):"—" }}</template></el-table-column><el-table-column prop="fails" label="连续失败" width="82" align="right"/><el-table-column label="冷却到" min-width="150"><template #default="{row}">{{ row.downUntil?dateTime(row.downUntil):'—' }}</template></el-table-column><el-table-column label="最近错误" min-width="140" show-overflow-tooltip><template #default="{row}">{{ row.lastError || row.probeError || "—" }}</template></el-table-column></el-table><p v-else class="muted">未配置代理，或还没有健康记录</p></div><template #footer><el-button @click="cancelProxyDialog">取消</el-button><el-button type="primary" :loading="proxySaving" @click="onSaveProxyDialog">保存</el-button></template></el-dialog>
       <!-- FX 批（docs/SECRET-REVEAL.md §4）：通用出网代理 / App 同步专用代理改行内「密码框 + 眼睛」（懒加载 + 清除），EK-5 的查看/编辑弹窗已移除 -->
@@ -267,7 +237,6 @@ import { fmtDateTime as dateTime } from '../utils/siteTime.js';
 import { yuanAmount } from '../utils/money.js';
 import { isMailSettingKey, SETTINGS_GROUP_IDS, DEFAULT_SETTINGS_GROUP, isSettingsGroupId } from '../utils/settings.js';
 import { copyText } from '../utils/clipboard.js';
-import { compareIp } from '../utils/ipSort.js';
 import { nameCopyText } from '../utils/gameNames.js';
 import GameLinksDrawer from '../components/GameLinksDrawer.vue';
 import GameDetailDialog from '../components/GameDetailDialog.vue';
@@ -283,6 +252,8 @@ import SettingsRow from '../components/SettingsRow.vue';
 import { createSettingsSaver } from '../utils/settingsSave.js';
 import { CopyDocument, Check, ArrowDown } from '@element-plus/icons-vue';
 import AlignAdmin from '../components/AlignAdmin.vue';
+// FZ 批（docs/VISITORS-REDESIGN.md）：访问记录七块页面（左导航 + ?view= + IP 详情抽屉）独立组件
+import VisitorsAdmin from '../components/visitors/VisitorsAdmin.vue';
 import { registerUnsavedSource, bypassNextGuard } from '../composables/useUnsavedGuard.js';
 
 const props=defineProps({section:{type:String,required:true}});
@@ -304,16 +275,6 @@ function onMobileChange(e){isMobile.value=e.matches;}
 const theme=useTheme();
 function resetTheme(){ theme.resetToSystem(); fetch('/api/prefs',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({theme:null})}).catch(()=>{}); }
 const games=ref([]),gameStats=ref({}),gameQuery=ref(''),gamePlatform=ref(''),gameStatus=ref(''),gameRating=ref(''),gameOffers=ref(''),gamePage=ref(1),gamePageSize=ref(20),gamePages=ref(1),gameTotal=ref(0),gameView=ref('directory'),gameDialog=ref(false),activeGame=ref(null),gameDescription=ref(''),gameBlocked=ref(false),mergeDialog=ref(false),mergeForm=reactive({from:'',to:''});
-const visitorTabs=[{value:'visits',label:'访问明细'},{value:'review',label:'异常审核'},{value:'security',label:'封禁与白名单'},{value:'devices',label:'设备'}],visitorView=ref('visits'),visitorFilter=ref('visits'),visitorIp=ref(''),visitorPath=ref(''),visitors=ref([]),visitorSummary=ref({}),visitorPage=ref(1),visitorPageSize=ref(20),visitorTotal=ref(0),reviews=ref([]),reviewStatus=ref('pending'),blacklist=ref([]),whitelist=ref([]),abuse=ref([]),devices=ref([]),deviceBans=ref([]),deviceBanDialog=reactive({visible:false,row:null,duration:60});
-// BH 批（docs/VISIT-IP-STATS.md）：访问明细默认 IP 统计视图、可切回明细；时间窗 1/7/30 天
-const visitMode=ref('ip'), visitDays=ref(7), ipRows=ref([]), ipTotal=ref(0), ipPage=ref(1), ipPageSize=ref(20), ipQuery=ref(''), ipStatus=ref('all'), ipSort=ref('visits'), ipDetails=reactive({});
-async function loadVisitorsByIp(page=ipPage.value){ipPage.value=page;loading.value=true;try{const qs=new URLSearchParams({days:String(visitDays.value),page:String(page),pageSize:String(ipPageSize.value),sort:ipSort.value,status:ipStatus.value});if(ipQuery.value.trim())qs.set('q',ipQuery.value.trim());const d=await api(`/api/admin/visitors/by-ip?${qs}`);ipRows.value=d.items||[];ipTotal.value=d.total||0;}catch(e){notifyError(e);}finally{loading.value=false;}}
-// BI 批：自动临时封禁剩余时间（小时级显示「h 小时 m 分」，否则 m:ss）
-function banLeft(row){if(!row.ban_until)return '';const ms=Date.parse(row.ban_until)-Date.now();if(!(ms>0))return '';const h=Math.floor(ms/3600000),m=Math.floor(ms%3600000/60000),s=Math.floor(ms%60000/1000);return h?'剩余 '+h+' 小时 '+m+' 分':'剩余 '+m+':'+String(s).padStart(2,'0');}
-async function onIpExpand(row){if(ipDetails[row.ip])return;try{ipDetails[row.ip]=await api(`/api/admin/visitors/by-ip/${encodeURIComponent(row.ip)}?days=${visitDays.value}`);}catch(e){notifyError(e);}}
-function onIpSortChange({prop,order}){ipSort.value=!order?'visits':prop==='ip'?'ip':prop==='last_at'?'lastAt':'visits';loadVisitorsByIp(1);}
-function onVisitDaysChange(){Object.keys(ipDetails).forEach((k)=>delete ipDetails[k]);if(visitMode.value==='ip')loadVisitorsByIp(1);else loadVisitors(1);}
-function switchVisitMode(mode){visitMode.value=mode;if(mode==='ip')loadVisitorsByIp(1);else loadVisitors(1);}
 const announcements=ref([]);
 // AT 批（docs/ADMIN-CONSOLE-IA.md §3/§7）：新建/编辑通知改弹窗（表单与未保存守卫在 AnnouncementDrawer 内；EL 批由抽屉改弹窗）
 const announcementDrawer=reactive({visible:false,edit:null});
@@ -324,166 +285,18 @@ const priceReport=ref({}),priceSeries=ref({}),views=ref([]),imageStats=ref({}),b
 const backupEnabled=ref(true);
 // EC 批（docs/IMAGE-COVERAGE.md §8 EC-1）：图片覆盖看板状态（stats → 图片与备份）
 const coverage=ref({stats:{},list:{items:[],total:0}}),coveragePage=ref(1),coveragePageSize=ref(10),backfillRunning=ref(false);
-// AQ 批（docs/ADMIN-REVIEW-LISTS.md §3）：两个列表的排序状态（localStorage 持久化）
-// AQ 批（docs/ADMIN-REVIEW-LISTS.md §3）：访问明细排序（localStorage 持久化）；异常审核的明细表排序随
-// AX 批（§4.5）删除——合并视图是唯一视图，表头排序只保留合并视图的 admin.reviewMergeSort。
-const SORT_STORAGE = { visitor: 'admin.visitorSort' };
-function loadSortState(key, fallback) {
-  try {
-    const v = JSON.parse(localStorage.getItem(key) || 'null');
-    if (v && typeof v.prop === 'string' && (v.order === 'ascending' || v.order === 'descending')) return v;
-  } catch { /* 坏数据回落默认 */ }
-  return fallback;
-}
-function saveSortState(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 隐私模式忽略 */ } }
-const visitorSort = ref(loadSortState(SORT_STORAGE.visitor, { prop: 'created_at', order: 'descending' }));
-const VISITOR_SORT_FIELD = { created_at: 'time', ip: 'ip', status: 'status' };
-function visitorSortParams() {
-  const { prop, order } = visitorSort.value;
-  return { sort: VISITOR_SORT_FIELD[prop] || 'time', order: order === 'ascending' ? 'asc' : 'desc' };
-}
-function onVisitorSortChange({ prop, order }) {
-  visitorSort.value = prop && order ? { prop, order } : { prop: 'created_at', order: 'descending' };
-  saveSortState(SORT_STORAGE.visitor, visitorSort.value);
-  loadVisitors(1);
-}
-// AX 批（docs/ADMIN-REVIEW-LISTS.md §4.5）：异常审核合并视图为默认且唯一视图——
-// 不再有「按 IP 合并」开关及其 localStorage 键，明细表与逐条处置已删除。
-const mergedPicked = ref(new Set());
-function toggleMergedPick(row) { const next = new Set(mergedPicked.value); if (next.has(row.key)) next.delete(row.key); else next.add(row.key); mergedPicked.value = next; }
-const mergedSort = ref(loadSortState('admin.reviewMergeSort', { prop: 'last_seen', order: 'descending' }));
-function onMergedSortChange({ prop, order }) {
-  mergedSort.value = prop && order ? { prop, order } : { prop: 'last_seen', order: 'descending' };
-  saveSortState('admin.reviewMergeSort', mergedSort.value);
-  mergedPager.page.value = 1;
-}
-const sortedMergedReviews = computed(() => {
-  const byIp = new Map();
-  for (const r of reviews.value) {
-    const key = r.ip || '(空)';
-    if (!byIp.has(key)) byIp.set(key, { ip: r.ip || '', rows: [] });
-    byIp.get(key).rows.push(r);
-  }
-  const list = [];
-  for (const g of byIp.values()) {
-    const pending = g.rows.filter((r) => r.status === 'pending');
-    const statuses = new Set(g.rows.map((r) => r.status));
-    const ruleMap = new Map();
-    for (const r of g.rows) ruleMap.set(r.rule, (ruleMap.get(r.rule) || 0) + 1);
-    const days = g.rows.map((r) => r.last_seen || '').filter(Boolean).sort();
-    const firsts = g.rows.map((r) => r.created_at || '').filter(Boolean).sort();
-    list.push({
-      key: g.ip || '(空)',
-      ip: g.ip,
-      rows: g.rows,
-      rules: [...ruleMap.entries()].map(([rule, n]) => ({ rule, n })).sort((a, b) => b.n - a.n),
-      ruleCount: ruleMap.size,
-      hitsTotal: g.rows.reduce((s, r) => s + (Number(r.hits) || 0), 0),
-      firstSeen: firsts[0] || '',
-      lastSeen: days[days.length - 1] || '',
-      devices: new Set(g.rows.map((r) => r.fingerprint || r.device_id).filter(Boolean)).size,
-      status: pending.length ? 'pending' : (statuses.size === 1 && statuses.has('auto_banned') ? 'auto_banned' : 'partial'),
-      pendingIds: pending.map((r) => r.id),
-      pendingCount: pending.length,
-    });
-  }
-  const { prop, order } = mergedSort.value;
-  const dir = order === 'ascending' ? 1 : -1;
-  return list.sort((a, b) => {
-    let va; let vb;
-    if (prop === 'ip') return compareIp(a.ip, b.ip) * dir;
-    if (prop === 'hitsTotal') { va = a.hitsTotal; vb = b.hitsTotal; }
-    else if (prop === 'ruleCount') { va = a.ruleCount; vb = b.ruleCount; }
-    else { va = a.lastSeen; vb = b.lastSeen; }
-    if (va < vb) return -1 * dir;
-    if (va > vb) return 1 * dir;
-    return 0;
-  });
-});
-const mergedPager = useListPagination(sortedMergedReviews);
-const pagedMergedReviews = mergedPager.items;
-const mergedPickedCount = computed(() => sortedMergedReviews.value.filter((g) => mergedPicked.value.has(g.key)).reduce((s, g) => s + g.pendingCount, 0));
-const mergedPage = mergedPager.page, mergedPageSize = mergedPager.pageSize;
-async function mergedAct(row, actionKey) {
-  const labels = { 'approve-ip': '封 IP', 'approve-device': '封设备', reject: '忽略' };
-  const label = labels[actionKey];
-  let ids = row.pendingIds.slice();
-  if (actionKey === 'approve-device') {
-    const seen = new Set();
-    ids = row.rows.filter((r) => r.status === 'pending' && r.fingerprint && !seen.has(r.fingerprint) && seen.add(r.fingerprint)).map((r) => r.id);
-  }
-  if (!ids.length) return ElMessage.warning('该 IP 没有可处理的待审记录');
-  let confirmCount = null;
-  try {
-    const { value } = await ElMessageBox.prompt(
-      `将处理 ${row.ip} 的 ${row.ruleCount} 条规则 / ${row.hitsTotal} 次命中 / ${row.devices} 个设备（共 ${ids.length} 条记录）执行「${label}」，请再次输入这个数字确认`,
-      `确认${label}`,
-      { inputPattern: /^\d+$/, inputErrorMessage: '请输入数字', confirmButtonText: '确认执行', cancelButtonText: '取消', type: 'warning' },
-    );
-    if (Number(String(value).trim()) !== Number(ids.length)) { ElMessage.warning('输入的条数与待处理记录数不一致，已取消'); return; }
-    confirmCount = Number(ids.length);
-  } catch (e) { if (e === 'cancel' || e === 'close') return; throw e; }
-  bulkRunning.value = actionKey;
-  try {
-    const d = await api('/api/admin/bulk', json('POST', { target: 'reviews', action: actionKey, keys: ids, confirmCount }));
-    bulkResult.result = d; bulkResult.visible = true;
-    mergedPicked.value = new Set();
-    await loadReviews();
-  } catch (e) { notifyError(e); } finally { bulkRunning.value = ''; }
-}
-async function runMergedBulk(actionKey) {
-  const groups = sortedMergedReviews.value.filter((g) => mergedPicked.value.has(g.key));
-  if (!groups.length) return ElMessage.warning('请先勾选要操作的 IP');
-  let ids = [];
-  for (const g of groups) ids.push(...g.pendingIds);
-  if (actionKey === 'approve-device') {
-    const seen = new Set();
-    const all = groups.flatMap((g) => g.rows);
-    ids = all.filter((r) => r.status === 'pending' && r.fingerprint && !seen.has(r.fingerprint) && seen.add(r.fingerprint)).map((r) => r.id);
-  }
-  if (!ids.length) return ElMessage.warning('所选 IP 没有可处理的待审记录');
-  const labels = { 'approve-ip': '封 IP', 'approve-device': '封设备', reject: '忽略' };
-  const label = labels[actionKey];
-  const confirmCount = await promptBulkConfirm(ids.length, label);
-  if (confirmCount == null) return;
-  bulkRunning.value = actionKey;
-  try {
-    const d = await api('/api/admin/bulk', json('POST', { target: 'reviews', action: actionKey, keys: ids, confirmCount }));
-    bulkResult.result = d; bulkResult.visible = true;
-    mergedPicked.value = new Set();
-    await loadReviews();
-  } catch (e) { notifyError(e); } finally { bulkRunning.value = ''; }
-}
-const blacklistPager=useListPagination(blacklist), whitelistPager=useListPagination(whitelist), abusePager=useListPagination(abuse), announcementsPager=useListPagination(announcements), backupsPager=useListPagination(backups), devicesPager=useListPagination(devices), deviceBansPager=useListPagination(deviceBans);
-const pagedBlacklist=blacklistPager.items,blacklistPage=blacklistPager.page,blacklistPageSize=blacklistPager.pageSize;
-const pagedWhitelist=whitelistPager.items,whitelistPage=whitelistPager.page,whitelistPageSize=whitelistPager.pageSize;
-const pagedAbuse=abusePager.items,abusePage=abusePager.page,abusePageSize=abusePager.pageSize;
-const pagedDevices=devicesPager.items,devicesPage=devicesPager.page,devicesPageSize=devicesPager.pageSize;
-const pagedDeviceBans=deviceBansPager.items,deviceBansPage=deviceBansPager.page,deviceBansPageSize=deviceBansPager.pageSize;
+const announcementsPager=useListPagination(announcements), backupsPager=useListPagination(backups);
 // ---- 批量操作（docs/ADMIN-BULK-ACTIONS.md）：每张表一个 table ref + 一份多选状态 ----
 // sel.* 用 reactive 包一层，模板里才能直接写 sel.games.count（reactive 会展开内部 ref）。
-const gamesTable=ref(null),visitorsTable=ref(null),blacklistTable=ref(null),whitelistTable=ref(null),abuseTable=ref(null),devicesTable=ref(null),deviceBansTable=ref(null);
+const gamesTable=ref(null);
 const sel={
   games:reactive(useBulkSelection((r)=>r.id,gamesTable)),
-  visitors:reactive(useBulkSelection((r)=>r.ip,visitorsTable)),
   announcements:reactive(useBulkSelection((r)=>r.id,null)),
-  blacklist:reactive(useBulkSelection((r)=>r.ip,blacklistTable)),
-  whitelist:reactive(useBulkSelection((r)=>r.ip,whitelistTable)),
-  abuse:reactive(useBulkSelection((r)=>r.ip,abuseTable)),
-  devices:reactive(useBulkSelection((r)=>r.fingerprint,devicesTable)),
-  deviceBans:reactive(useBulkSelection((r)=>r.fingerprint,deviceBansTable)),
 };
 const bulkResult=reactive({visible:false,result:null}),bulkRunning=ref('');
 const gamesBulkActions=[{key:'block',label:'禁用',target:'games',action:'block',risk:'high'},{key:'unblock',label:'启用',target:'games',action:'unblock'},{key:'delete',label:'删除（进回收站）',target:'games',action:'delete',risk:'high'}];
-const visitorsBulkActions=[{key:'ban-ip',label:'封 IP',target:'visitors',action:'ban-ip',risk:'high'},{key:'trust',label:'信任（加白）',target:'visitors',action:'trust'}];
 const announcementsBulkActions=[{key:'activate',label:'启用',target:'announcements',action:'activate'},{key:'deactivate',label:'停用',target:'announcements',action:'deactivate'},{key:'delete',label:'删除',target:'announcements',action:'delete',risk:'high'}];
 // CY 批（docs/DATA-ISOLATION.md §3）：wishlistBulkActions 已移除——愿望单属用户私有数据，管理员只读
-const blacklistBulkActions=[{key:'unban',label:'解封',target:'blacklist',action:'unban'}];
-const whitelistBulkActions=[{key:'remove',label:'移出白名单',target:'whitelist',action:'remove'}];
-const abuseBulkActions=[{key:'unban',label:'解除临时封禁',target:'abuse',action:'unban'}];
-const deviceBansBulkActions=[{key:'unban',label:'解封',target:'device-bans',action:'unban'}];
-const devicesBulkActions=[{key:'ban',label:'封禁',target:'devices',action:'ban',risk:'high'}];
-const bulkDeviceBan=reactive({visible:false,minutes:60});
 // ---- 站点通知列表（新建/编辑走 AnnouncementDrawer；批量操作记录已搬进操作日志，AT 批）----
 const pagedAnnouncements=announcementsPager.items,announcementsPage=announcementsPager.page,announcementsPageSize=announcementsPager.pageSize;
 const pagedPriceChanges=useListPagination(computed(()=>[...(priceReport.value.topDrops||[]),...(priceReport.value.topRises||[])]));
@@ -560,8 +373,6 @@ async function refreshGamesAction(){await gamesAction.run(()=>refreshGames(),{su
 async function refreshStats(){await statsAction.run(()=>loadStats(),{success:'已刷新'});}
 async function refreshCoverage(){await coverageAction.run(()=>loadCoverage(),{success:'已刷新'});}
 async function refreshAdultStats(){await adultStatsAction.run(()=>loadGamesStats(),{success:'已刷新'});}
-async function refreshDevices(){await devicesAction.run(()=>loadDevices(),{success:'已刷新'});}
-async function refreshSecurity(){await securityAction.run(()=>loadSecurity(),{success:'已刷新'});}
 async function refreshWishlists(){await wishlistsAction.run(()=>loadWishlists(),{success:'已刷新'});}
 async function reloadSettings(){await settingsAction.run(()=>loadSettings(),{success:'已重新加载'});}
 // 批量执行：高危动作先让用户手输条数（服务端还会再校验 confirmCount），成功后弹结果并刷新列表。
@@ -584,12 +395,6 @@ async function runBulk(action,selection,{options,refresh}={}){
     if(refresh)await refresh();
   }catch(e){notifyError(e);}
   finally{bulkRunning.value='';}
-}
-function openBulkDeviceBan(){if(!sel.devices.count)return ElMessage.warning('请先勾选设备');bulkDeviceBan.minutes=60;bulkDeviceBan.visible=true;}
-async function submitBulkDeviceBan(){
-  bulkDeviceBan.visible=false;
-  const options={minutes:bulkDeviceBan.minutes==='permanent'?0:Number(bulkDeviceBan.minutes)};
-  await runBulk({key:'ban',label:'封禁设备',target:'devices',action:'ban',risk:'high'},sel.devices,{options,refresh:loadDevices});
 }
 
 // AG 批（docs/ADMIN-PLATFORM-LINKS.md）：平台链接抽屉 + 复制游戏名（clipboard API + execCommand 降级）
@@ -634,41 +439,7 @@ async function saveGame(){if(!activeGame.value)return;await run(async()=>{await 
 let gameSnapshot=null;
 function gameDirty(){return gameDialog.value&&gameSnapshot!==null&&JSON.stringify({description:gameDescription.value,blocked:Boolean(gameBlocked.value)})!==gameSnapshot;}
 
-async function loadVisitors(page=visitorPage.value){sel.visitors.clear();loading.value=true;visitorPage.value=page;try{const qs=new URLSearchParams({page:String(page),pageSize:String(visitorPageSize.value),filter:visitorFilter.value,ip:visitorIp.value.trim(),path:visitorPath.value.trim(),...visitorSortParams()});const d=await api(`/api/admin/visitors?${qs}`);visitors.value=d.rows||[];visitorTotal.value=d.total||0;visitorSummary.value=d.summary||{};}catch(e){notifyError(e);}finally{loading.value=false;}}
-async function loadReviews(){mergedPicked.value=new Set();loading.value=true;try{const d=await api(`/api/admin/reviews?status=${reviewStatus.value}`);reviews.value=d.reviews||[];}catch(e){notifyError(e);}finally{loading.value=false;}}
-// CF 批（docs/ADMIN-UX-SECURITY.md §4）：自动封禁来源 → 可读标签（含四类硬规则来源）
-function abuseSourceLabel(s){const m={'rate':'频率超限','rate-day':'频率超限（当天）','path':'路径规则','manual:temp':'人工临时封','auto:path-probe':'漏洞路径探测','auto:credential':'登录凭据爆破','auto:extreme-rate':'极端频率','auto:ua-list':'异常 UA 名单'};return m[s]||s||'—';}
-// CF 批（docs/ADMIN-UX-SECURITY.md §4）：单条审核四操作——临时封（10min/1h/1d）/永久封/信任/忽略
-async function reviewAct(id,action,minutes){try{const r=await fetch('/api/admin/reviews/act',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({id,action,minutes})});const d=await r.json().catch(()=>({}));if(!r.ok){ElMessage.error(d.error||`HTTP ${r.status}`);return;}ElMessage.success('已处理');await loadReviews();}catch(e){notifyError(e);}}
-// BJ 批 B1：自动封禁记录筛选（生效中=默认 / 已过期 / 全部），切换回第 1 页
-const abuseFilter=ref('active');
-function onAbuseFilter(){abusePage.value=1;loadSecurity();}
-async function loadSecurity(){sel.blacklist.clear();sel.whitelist.clear();sel.abuse.clear();loading.value=true;try{const [b,w,a]=await Promise.all([api('/api/admin/blacklist'),api('/api/admin/whitelist'),api(`/api/admin/abuse?limit=200&status=${abuseFilter.value}`)]);blacklist.value=b.ips||[];whitelist.value=w.ips||[];abuse.value=a.abuse||[];}catch(e){notifyError(e);}finally{loading.value=false;}}
-function loadVisitorView(){if(visitorView.value==='visits'){if(visitMode.value==='ip')loadVisitorsByIp(1);else loadVisitors(1);}else if(visitorView.value==='review')loadReviews();else if(visitorView.value==='devices')loadDevices();else loadSecurity();}
-async function loadDevices(){sel.devices.clear();sel.deviceBans.clear();loading.value=true;try{const [d,b]=await Promise.all([api('/api/admin/devices?limit=100'),api('/api/admin/device-bans')]);devices.value=d.devices||[];deviceBans.value=b.bans||[];}catch(e){notifyError(e);}finally{loading.value=false;}}
-function openDeviceBan(row){deviceBanDialog.visible=true;deviceBanDialog.row=row;deviceBanDialog.duration=60;}
-async function banDevice(){const row=deviceBanDialog.row;if(!row?.fingerprint)return;await run(async()=>{await api('/api/admin/devices/ban',json('POST',{fingerprint:row.fingerprint,deviceId:row.deviceId,minutes:deviceBanDialog.duration==='permanent'?0:Number(deviceBanDialog.duration)}));deviceBanDialog.visible=false;deviceBanDialog.row=null;ElMessage.success('设备已封禁');await loadDevices();});}
-async function unbanDevice(row){try{await ElMessageBox.confirm(`解封设备指纹 ${String(row.fingerprint).slice(0,12)}…？解封后该设备恢复访问。`,'确认解封',{type:'warning'});await run(async()=>{await api(`/api/admin/device-bans/${encodeURIComponent(row.fingerprint)}`,json('DELETE',{}));ElMessage.success('已解封');await loadDevices();});}catch(e){if(e!=='cancel'&&e!=='close')notifyError(e);}}
 async function mergeGames(){if(!mergeForm.from||!mergeForm.to)return ElMessage.warning('请填写源与目标 AppID');const fromAppid=Number(mergeForm.from),toAppid=Number(mergeForm.to);if(!Number.isFinite(fromAppid)||!Number.isFinite(toAppid))return ElMessage.warning('AppID 必须是数字');await run(async()=>{const d=await api('/api/admin/games/merge',json('POST',{fromAppid,toAppid}));const r=d.result||{};if(!r.merged)throw new Error({source_missing:'源游戏不存在',target_missing:'目标游戏不存在'}[r.reason]||'合并失败');mergeDialog.value=false;mergeForm.from='';mergeForm.to='';ElMessage.success(`合并完成：迁移 ${r.moved??0} 条报价，去重丢弃 ${r.dropped??0} 条`);await loadGames(1);});}
-async function banIp(ip){try{const {value:note}=await ElMessageBox.prompt(`封禁 ${ip} 后，该地址将无法访问站点。`,'确认封禁',{inputPlaceholder:'备注（可选）',confirmButtonText:'封禁',cancelButtonText:'取消'});await api('/api/admin/blacklist',json('POST',{ip,note:note?.trim()||''}));ElMessage.success('IP 已加入黑名单');await loadSecurity();}catch(e){if(e!=='cancel'&&e!=='close')notifyError(e);}}
-// EL 批（docs/ADMIN-EDIT-DIALOG.md EK-1/EK-2）：IP 黑/白名单添加从内联表单改为按钮 + 弹窗
-const ipDialog=reactive({visible:false,kind:'black',ip:'',note:''});
-function openIpDialog(kind){ipDialog.kind=kind;ipDialog.ip='';ipDialog.note='';ipDialog.visible=true;}
-async function submitIpDialog(){
-  const ip=ipDialog.ip.trim();
-  if(!ip)return ElMessage.warning('请填写 IP 或 CIDR');
-  if(ipDialog.kind==='black'){
-    await run(async()=>{await api('/api/admin/blacklist',json('POST',{ip,note:ipDialog.note.trim()}));ipDialog.visible=false;ElMessage.success('已封禁');await loadSecurity();});
-  }else{
-    await run(async()=>{const res=await api('/api/admin/whitelist',json('POST',{ip,note:ipDialog.note.trim()}));ipDialog.visible=false;ElMessage.success(res.clearedBan?'已加入白名单，并已清除该 IP 的临时封禁':'已加入白名单');await loadSecurity();});
-  }
-}
-async function removeBlacklist(ip){try{await ElMessageBox.confirm(`把 ${ip} 移出黑名单？该操作不会恢复该 IP 的自动封禁记录。`,'确认解封',{type:'warning'});}catch{return;}await run(async()=>{await api(`/api/admin/blacklist/${encodeURIComponent(ip)}`,{method:'DELETE'});ElMessage.success('已解封');await loadSecurity();});}
-// EL 批（docs/ADMIN-EDIT-DIALOG.md EK-2）：内联表单已改弹窗；行内快捷入口（访问明细「信任」）仍直接加白
-async function addWhitelist(existingIp){const ip=existingIp||'';if(!ip)return ElMessage.warning('请填写 IP 或 CIDR');await run(async()=>{const res=await api('/api/admin/whitelist',json('POST',{ip,note:''}));ElMessage.success(res.clearedBan?'已加入白名单，并已清除该 IP 的临时封禁':'已加入白名单');await loadSecurity();});}
-async function removeWhitelist(ip){await run(async()=>{await api(`/api/admin/whitelist/${encodeURIComponent(ip)}`,{method:'DELETE'});ElMessage.success('已移出白名单');await loadSecurity();});}
-// BJ 批 C1：解封粒度——只清自动封禁（ip_abuse），绝不移除 IP 黑名单；按钮文案按状态切换
-async function unbanAbuse(row){const ip=row.ip;const active=Boolean(row.active);try{await ElMessageBox.confirm(active?`解除 ${ip} 的临时封禁？只解除自动临时封禁，不会移除 IP 黑名单；该 IP 若在黑名单中仍无法访问。`:`清除 ${ip} 的封禁记录？只删除记录，不会移除 IP 黑名单；该 IP 若在黑名单中仍无法访问。`,'确认',{type:'warning'});}catch{return;}await run(async()=>{await api(`/api/admin/abuse/${encodeURIComponent(ip)}`,{method:'DELETE'});ElMessage.success(active?'临时封禁已解除':'记录已清除');await loadSecurity();});}
 // 状态列悬停提示：备注 + 处理时间（docs/BAN-AND-SECURITY-FIXES.md §5.2）
 
 async function loadAnnouncements(){sel.announcements.clear();loading.value=true;try{const d=await api('/api/admin/announcements?limit=200');announcements.value=d.announcements||[];}catch(e){notifyError(e);}finally{loading.value=false;}}
@@ -952,7 +723,7 @@ async function restoreField(field){
 function applySettingsSchema(d){settingsSchema.value=d;for(const f of d.fields||[]){if(f.type==='secret')settingValues[f.key]='';else settingValues[f.key]=d.values?.[f.key]??f.default??'';savedValues[f.key]=settingValues[f.key];}settingsConflict.value=false;saveError.value='';}
 // 翻页清空选择（决策：常规列表只支持本页勾选）。这些表是客户端分页，翻页不会走 load 函数，
 // 所以单独 watch 页码；游戏目录 / 访问明细是服务端分页，已在 load 里清空。
-watch(mergedPage,()=>mergedPicked.value=new Set());watch(blacklistPage,()=>sel.blacklist.clear());watch(whitelistPage,()=>sel.whitelist.clear());watch(abusePage,()=>sel.abuse.clear());watch(devicesPage,()=>sel.devices.clear());watch(deviceBansPage,()=>sel.deviceBans.clear());watch(announcementsPage,()=>sel.announcements.clear());
+watch(announcementsPage,()=>sel.announcements.clear());
 watch(gameView,(view)=>{if(view==='tasks'){loadSyncStatus();loadAppCard();loadGamesStats();loadFreshness();}else loadGames(1);});
 
 const priceMetrics=computed(()=>[{label:'降价',value:priceReport.value.drops||0,tone:'metric-red'},{label:'涨价',value:priceReport.value.rises||0,tone:''},{label:'新史低',value:priceReport.value.newLows||0,tone:'metric-green'},{label:'价格变化',value:priceReport.value.changed||0,tone:''}]);
@@ -1055,10 +826,10 @@ async function runSteamClaim(){
 }
 async function stopCurrent(){await stopAction.run(async()=>{const mode=syncStatus.value?.run?.mode||'';const path=mode==='rename'?'/api/admin/rename/stop':mode==='heat'?'/api/admin/heat/stop':'/api/admin/backfill/stop';await api(path,json('POST',{}));ElMessage.success('已请求停止');await loadSyncStatus();});}
 
-watch(()=>props.section,(section)=>{if(section==='games')loadGames(1);else if(section==='visitors')loadVisitorView();else if(section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(section==='wishlist')loadWishlists();else if(section==='watchlist')loadAdminWatches(1);else if(section==='settings')loadSettings();else if(section==='stats'){loadStats();loadCoverage();}});
+watch(()=>props.section,(section)=>{if(section==='games')loadGames(1);else if(section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(section==='wishlist')loadWishlists();else if(section==='watchlist')loadAdminWatches(1);else if(section==='settings')loadSettings();else if(section==='stats'){loadStats();loadCoverage();}});
 // AN 批（docs/UNSAVED-GUARD.md §4.4）：本组件注册三个编辑面——系统设置 / 站点通知 / 编辑游戏
 const unregisterUnsaved=[];
-onMounted(()=>{if(props.section==='games')loadGames(1);else if(props.section==='visitors')loadVisitorView();else if(props.section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(props.section==='wishlist')loadWishlists();else if(props.section==='settings'){if(route.query.q)settingQuery.value=String(route.query.q);loadSettings();loadProxyHealth();window.addEventListener('pagehide',onSettingsPageHide);}else if(props.section==='stats'){loadStats();loadCoverage();}startProxyTimer();unregisterUnsaved.push(registerUnsavedSource({id:'settings',label:'系统设置',isDirty:()=>settingsConflict.value,save:flushSettings,discard:discardSettings}),registerUnsavedSource({id:'settings-proxy',label:'Steam 专用代理',isDirty:()=>proxyDialogDirty.value,save:saveProxyDialog,discard:()=>{proxyDialogDirty.value=false;proxyDialogOpen.value=false;}}),registerUnsavedSource({id:'edit-game',label:'编辑游戏',isDirty:gameDirty,save:submitGameSave,discard:closeGameDialog}));if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',onMobileChange);else mobileQuery.addListener(onMobileChange);}});
+onMounted(()=>{if(props.section==='games')loadGames(1);else if(props.section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(props.section==='wishlist')loadWishlists();else if(props.section==='settings'){if(route.query.q)settingQuery.value=String(route.query.q);loadSettings();loadProxyHealth();window.addEventListener('pagehide',onSettingsPageHide);}else if(props.section==='stats'){loadStats();loadCoverage();}startProxyTimer();unregisterUnsaved.push(registerUnsavedSource({id:'settings',label:'系统设置',isDirty:()=>settingsConflict.value,save:flushSettings,discard:discardSettings}),registerUnsavedSource({id:'settings-proxy',label:'Steam 专用代理',isDirty:()=>proxyDialogDirty.value,save:saveProxyDialog,discard:()=>{proxyDialogDirty.value=false;proxyDialogOpen.value=false;}}),registerUnsavedSource({id:'edit-game',label:'编辑游戏',isDirty:gameDirty,save:submitGameSave,discard:closeGameDialog}));if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',onMobileChange);else mobileQuery.addListener(onMobileChange);}});
 const statusTimer=setInterval(()=>{if(props.section==='games'&&gameView.value==='tasks'){loadSyncStatus();loadAppCard();loadFreshness();}},8000);
 onBeforeUnmount(()=>{if(props.section==='settings'){void flushSettings().catch(() => {});window.removeEventListener('pagehide',onSettingsPageHide);}settingsSaver.dispose();clearInterval(statusTimer);if(proxyTimer){clearInterval(proxyTimer);proxyTimer=null;}unregisterUnsaved.forEach((fn)=>fn());if(mobileQuery){if(mobileQuery.removeEventListener)mobileQuery.removeEventListener('change',onMobileChange);else mobileQuery.removeListener(onMobileChange);}});
 if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',onMobileChange);else mobileQuery.addListener(onMobileChange);}

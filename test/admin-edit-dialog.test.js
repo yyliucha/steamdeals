@@ -14,21 +14,26 @@ const align = read('../frontend/src/components/AlignAdmin.vue');
 const links = read('../frontend/src/components/GameLinksDrawer.vue');
 
 test('EK-1/EK-2：IP 黑/白名单添加改按钮 + 弹窗，页面不再有添加内联表单', () => {
-  assert.doesNotMatch(modules, /newBlockIp/, '黑名单内联输入已移除');
-  assert.doesNotMatch(modules, /newAllowIp/, '白名单内联输入已移除');
-  assert.match(modules, /添加黑名单/, '黑名单添加按钮');
-  assert.match(modules, /添加白名单/, '白名单添加按钮');
-  assert.match(modules, /openIpDialog\('black'\)/, '黑名单弹窗入口');
-  assert.match(modules, /openIpDialog\('white'\)/, '白名单弹窗入口');
-  assert.match(modules, /v-model="ipDialog\.visible"/, 'IP 添加弹窗挂载');
-  assert.match(modules, /width="min\(520px, 92vw\)"/, '弹窗宽度 min(520px, 92vw)');
-  assert.match(modules, /label="IP 或 CIDR"/, '弹窗含 IP 输入');
-  assert.match(modules, /label="备注（可选）"/, '弹窗含备注输入');
-  assert.match(modules, /submitIpDialog/, '弹窗确认提交');
-  assert.match(modules, /\/api\/admin\/blacklist/, '黑名单提交接口不变');
-  assert.match(modules, /\/api\/admin\/whitelist/, '白名单提交接口不变');
-  // 行内快捷入口（访问明细「信任」）仍保留直接加白
-  assert.match(modules, /addWhitelist\(row\.ip\)/, '行内信任快捷入口保留');
+  // FZ 批（docs/VISITORS-REDESIGN.md）：黑名单/白名单各自独立成页（components/visitors/），
+  // EK-1/EK-2 的「按钮 + 弹窗」口径不变，落点更新；行内「信任」快捷入口按决策 11 收进异常处置。
+  const blackIp = read('../frontend/src/components/visitors/VisitorsBanIp.vue');
+  const whiteIp = read('../frontend/src/components/visitors/VisitorsWhitelist.vue');
+  const review = read('../frontend/src/components/visitors/VisitorsReview.vue');
+  for (const [name, src, addText] of [['黑名单', blackIp, '手动添加'], ['白名单', whiteIp, '添加']]) {
+    assert.doesNotMatch(src, /newBlockIp|newAllowIp/, `${name}无内联输入`);
+    assert.ok(src.includes(addText), `${name}添加按钮`);
+    assert.match(src, /function openAddDialog/, `${name}弹窗入口`);
+    assert.match(src, /<el-dialog v-model="dialog"/, `${name}弹窗挂载`);
+    assert.match(src, /width="min\(520px, 92vw\)"/, `${name}弹窗宽度 min(520px, 92vw)`);
+    assert.match(src, /placeholder="IP 或 CIDR/, `${name}弹窗含 IP 输入`);
+    assert.match(src, /placeholder="备注（可选）"/, `${name}弹窗含备注输入`);
+    assert.match(src, /async function submitAdd/, `${name}弹窗确认提交`);
+  }
+  assert.match(blackIp, /\/api\/admin\/blacklist/, '黑名单提交接口不变');
+  assert.match(whiteIp, /\/api\/admin\/whitelist/, '白名单提交接口不变');
+  // 行内「信任」快捷入口按 FZ 决策 11 收进唯一处置入口（异常处置的行内动作）
+  assert.match(review, /actRow\(row, 'trust'\)/, '信任只在异常处置行内');
+  assert.ok(!modules.includes('addWhitelist(row.ip)'), '旧访问明细的行内信任入口已移除');
 });
 
 test('EK-3：站点通知新建/编辑由抽屉改弹窗（表单一致、URL 直达、未保存守卫保留）', () => {

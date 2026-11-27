@@ -47,16 +47,29 @@ test('CF 图三：游戏管理 4 主指标 + 更多指标折叠（10 项 chips�
 });
 
 test('CF 审核四操作：临时封（10min/1h/1d）/永久封/信任/忽略 + 证据字段', () => {
-  assert.match(modules, /reviewAct\(r\.id,'tempban',m\)/, '临时封下拉');
-  assert.match(modules, /reviewAct\(r\.id,'permban'\)/, '永久封');
-  assert.match(modules, /reviewAct\(r\.id,'trust'\)/, '信任');
-  assert.match(modules, /reviewAct\(r\.id,'ignore'\)/, '忽略');
-  assert.match(modules, /r\.region/, '地区证据');
-  assert.match(modules, /r\.last_ua/, 'UA 证据');
-  assert.match(modules, /r\.appeal_status/, '申诉状态证据');
+  // FZ 批（docs/VISITORS-REDESIGN.md）：审核四操作搬到「异常处置」组件（行内四动作），
+  // 来源标签搬到 utils/visitorStatus.js 集中映射表；断言语义不变。
+  const review = readFileSync(join(FRONT, 'components', 'visitors', 'VisitorsReview.vue'), 'utf8');
+  const banTemp = readFileSync(join(FRONT, 'components', 'visitors', 'VisitorsBanTemp.vue'), 'utf8');
+  const status = readFileSync(join(FRONT, 'utils', 'visitorStatus.js'), 'utf8');
+  assert.match(review, /actRow\(row, 'tempban', m\)/, '临时封下拉');
+  assert.match(review, /:command="10"/, '10 分钟');
+  assert.match(review, /:command="60"/, '1 小时');
+  assert.match(review, /:command="1440"/, '1 天');
+  assert.match(review, /actRow\(row, 'permban'\)/, '永久封');
+  assert.match(review, /actRow\(row, 'trust'\)/, '信任');
+  assert.match(review, /actRow\(row, 'ignore'\)/, '忽略');
+  assert.match(review, /r\.region/, '地区证据');
+  assert.match(review, /r\.last_ua/, 'UA 证据');
+  assert.match(review, /r\.appeal_status/, '申诉状态证据');
   assert.match(adminUi, /ElDropdown/, 'ElDropdown 注册（三处：import/样式/use）');
   assert.match(adminUi, /dropdown-menu\/style\/css/, 'dropdown 样式');
-  assert.match(modules, /abuseSourceLabel/, '自动封禁来源标签（auto:path-probe/credential/extreme-rate/ua-list）');
+  assert.match(status, /abuseSourceLabel/, '自动封禁来源标签集中在 visitorStatus.js');
+  assert.match(status, /'auto:path-probe': '漏洞路径探测'/, '漏洞路径探测来源');
+  assert.match(status, /'auto:credential': '登录凭据爆破'/, '凭据爆破来源');
+  assert.match(status, /'auto:extreme-rate': '极端频率'/, '极端频率来源');
+  assert.match(status, /'auto:ua-list': '异常 UA 名单'/, '异常 UA 来源');
+  assert.match(banTemp, /abuseSourceLabel\(row\.ban_source\)/, '临时封禁页用集中来源标签');
 });
 
 test('CF 申诉可见性：未封禁只提示不展示表单；后端校验封禁上下文', () => {

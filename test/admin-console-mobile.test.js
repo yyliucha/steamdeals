@@ -90,9 +90,14 @@ test('EP：AdminModules 任务健康/价格变化/浏览排行/缺图列表都�
     assert.ok(modules.includes(`${cardVFor} `) || modules.includes(cardVFor), `${name}：卡片按同一数据源渲染`);
     assert.match(modules, new RegExp(`${cardVFor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^]{0,240}?class="admin-card"`), `${name}：卡片用既有 .admin-card 结构`);
   }
-  // EP 前 9 个分支（游戏/访问/待审/设备/黑白名单/自动封禁）+ EP 新增 4 个 = ≥13
-  const branches = (modules.match(/v-else class="game-card-list"/g) || []).length;
-  assert.ok(branches >= 13, `AdminModules 卡片分支 ≥13（实际 ${branches}）`);
+  // EP 前 9 个分支（游戏/访问/待审/设备/黑白名单/自动封禁）+ EP 新增 4 个 = ≥13。
+  // FZ 批（docs/VISITORS-REDESIGN.md）：访问记录七块搬到 components/visitors/*，卡片分支数与
+  // 「页面是否卡片化」一起统计（拆文件不改行为，总量不得下降）。
+  const visitorSources = ['VisitorsReview', 'VisitorsAnalysis', 'VisitorsBanIp', 'VisitorsBanDevice', 'VisitorsBanTemp', 'VisitorsWhitelist']
+    .map((n) => readFileSync(`${ROOT}frontend/src/components/visitors/${n}.vue`, 'utf8'));
+  const branches = (modules.match(/v-else class="game-card-list"/g) || []).length
+    + visitorSources.reduce((sum, src) => sum + (src.match(/v-else class="game-card-list"/g) || []).length, 0);
+  assert.ok(branches >= 13, `后台列表卡片分支 ≥13（实际 ${branches}）`);
   // 断点统一到 760（旧代码在 onMounted 里另挂了 720 监听，旋转后会在 720–760 之间跳回表格）
   assert.match(modules, /matchMedia\('\(max-width: 760px\)'\)/, 'isMobile 断点 760');
   assert.match(modules, /mobileQuery\.addEventListener\('change',onMobileChange\)/, '断点变化监听 760（不另挂 720）');
@@ -143,6 +148,9 @@ test('EP：卡片操作按钮触摸目标 ≥44px（全部已卡片化后台页�
       `${name}：卡片内按钮 ≥44px`,
     );
   }
+  // FZ 批：访问记录七块共用一份 visitors.css（.vs-page 作用域），760 断点下卡片按钮同样 ≥44px
+  const visitorsCss = readFileSync(`${ROOT}frontend/src/components/visitors/visitors.css`, 'utf8').replace(/\s+/g, '');
+  assert.ok(visitorsCss.includes('.vs-page.admin-card.el-button{min-height:44px}'), '访问记录七块：卡片内按钮 ≥44px');
 });
 
 test('EP：控制台普通用户列表（会话/到价提醒/愿望单）既有卡片分支不回归', () => {

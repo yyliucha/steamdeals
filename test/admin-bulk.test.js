@@ -77,28 +77,27 @@ function bulk(base, cookie, payload, ip = ADMIN_IP) {
 const adminGet = (base, cookie, path) =>
   fetch(base + path, { headers: { 'x-forwarded-for': ADMIN_IP, cookie } });
 
-test('前端：12 个表格列表 + 站点通知 + 异常审核合并视图都接入了多选与批量工具条', () => {
+test('前端：多选与批量工具条接线（游戏/通知/到价提醒 + 异常处置合并视图）', () => {
   const modules = readFileSync(fileURLToPath(new URL('../frontend/src/pages/AdminModules.vue', import.meta.url)), 'utf8');
   const extras = readFileSync(fileURLToPath(new URL('../frontend/src/pages/AdminExtras.vue', import.meta.url)), 'utf8');
   const consoleVue = readFileSync(fileURLToPath(new URL('../frontend/src/pages/Console.vue', import.meta.url)), 'utf8');
+  const review = readFileSync(fileURLToPath(new URL('../frontend/src/components/visitors/VisitorsReview.vue', import.meta.url)), 'utf8');
   const count = (text, needle) => text.split(needle).length - 1;
 
-  // 表格勾选列：游戏目录/访问明细/最近设备/已封设备/黑名单/白名单/自动封禁 + 回收站/用户/登录会话；
-  // AX 批起异常审核只有按 IP 合并视图（勾选用 el-checkbox，不再有明细表 selection 列）；
-  // CY 批（docs/DATA-ISOLATION.md §3）：愿望单改为只读，勾选列与批量工具条已移除；
-  // CU-2（docs/USER-ALERTS-GOVERNANCE.md §2）：到价提醒表格新增勾选列（仅站点级行可选；
-  // 批量迁移/批量删除走专用接口 admin/watchlist/migrate|delete，不用统一 BulkBar）
-  assert.equal(count(modules, 'type="selection"'), 8, 'AdminModules 应有 8 个勾选列（CY 批移除愿望单；CU-2 到价提醒 +1）');
+  // FZ 批（docs/VISITORS-REDESIGN.md §2/§6）：访问记录七块里只有「异常处置」保留批量（封 IP / 封设备 / 忽略，
+  // 用合并行的 el-checkbox + merge-bar）；四个封禁/白名单页每页只做一件事（解封/添加），不再带批量解封；
+  // 访问分析只读。因此 AdminModules 只剩游戏目录与到价提醒两个 selection 列。
+  assert.equal(count(modules, 'type="selection"'), 2, 'AdminModules 应有 2 个勾选列（游戏目录 + 到价提醒；访问记录已拆出）');
   assert.equal(count(extras, 'type="selection"'), 3, 'AdminExtras 应有 3 个勾选列（回收站/用户/登录会话 BK 批）');
-  // 站点通知与异常审核合并视图：卡片/合并行没有表格勾选列，用 el-checkbox
+  // 站点通知：卡片/合并行没有表格勾选列，用 el-checkbox；异常处置合并视图同理
   assert.match(modules, /sel\.announcements\.has\(a\)/, '站点通知卡片要有勾选框');
-  assert.match(modules, /mergedPicked\.has\(row\.key\)/, '异常审核合并视图要有勾选框（AX 批：默认唯一视图）');
-  // 每个列表都要有工具条（AdminModules 7 个 + AdminExtras 3 个）；
-  // BW 批起 AdminExtras 三个列表的桌面表格与手机卡片各一个 BulkBar（同一选择集），共 6 个
-  assert.equal(count(modules, '<BulkBar'), 8, 'AdminModules 应有 8 个批量工具条（CY 批移除愿望单）');
+  assert.match(review, /mergedPicked\.has\(row\.key\)/, '异常处置合并视图要有勾选框（AX 批：默认唯一视图）');
+  assert.match(review, /<div class="merge-bar">[\s\S]{0,600}?runMergedBulk\('approve-ip'\)[\s\S]{0,400}?runMergedBulk\('approve-device'\)[\s\S]{0,300}?runMergedBulk\('reject'\)/, '异常处置批量三动作（封 IP / 封设备 / 忽略）');
+  // 每个列表都要有工具条（AdminModules 游戏/通知 2 个 + AdminExtras 3 个×桌面/手机）
+  assert.equal(count(modules, '<BulkBar'), 2, 'AdminModules 应有 2 个批量工具条（游戏目录 + 站点通知）');
   assert.equal(count(extras, '<BulkBar'), 6, 'AdminExtras 应有 6 个批量工具条（回收站/用户/登录会话 × 桌面/手机两视图，BW 批）');
   // 翻页清空：合并视图翻页清空 IP 选择；服务端分页靠 load 清、其余客户端分页靠 watch 页码清
-  assert.match(modules, /watch\(mergedPage,\(\)=>mergedPicked\.value=new Set\(\)\)/, '合并视图翻页应清空选择');
+  assert.match(review, /watch\(mergedPage, \(\) => \{ mergedPicked\.value = new Set\(\); \}\)/, '合并视图翻页应清空选择');
   // 审计页入口（AT 批起）：批量操作记录并入「日志审计 / 操作日志」，旧书签 bulk-ops 映射到 op-logs&tab=bulk
   assert.match(consoleVue, /id:'op-logs'/, 'Console 侧栏要有「操作日志」');
   assert.match(consoleVue, /'bulk-ops': \{ section: 'op-logs', tab: 'bulk' \}/, '旧书签 bulk-ops 必须映射到 op-logs&tab=bulk（不 404）');

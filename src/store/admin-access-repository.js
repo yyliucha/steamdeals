@@ -76,8 +76,52 @@ export function visitorOrderClause(sort = 'time', order = 'desc') {
   return `id ${dir}`;
 }
 
-export async function listVisitorLogs(q, { page = 1, pageSize = 50, ip = null, path = null, filter = 'visits', sort = 'time', order = 'desc', days = null } = {}) {
-  const blockedCond = filter === 'blocked' ? 'and blocked' : filter === 'all' ? '' : 'and not blocked';
+/**
+ * FZ 批（docs/VISITORS-REDESIGN.md §4、§7-5）：访问明细视图的状态口径——与 by-ip 的 IP 状态
+ * 派生**同一套**（已封禁 > 已信任 > 临时封 > 被拦截 > 正常），保证「IP 统计」与「明细」两视图对得上。
+ *
+ * status（新口径，路由显式传入）优先：active / normal / intercepted / banned / blocked / trusted / all；
+ * filter（旧口径，仅兼容老书签/老调用方）只在 status 缺省时生效：visits（未拦截）/ blocked（已拦截）/ all。
+ * 「有效访问 active」= 该 IP 不在黑名单、也不在白名单（已封禁 / 已信任都移出默认视图；
+ * 「临时封」未到期的 IP 仍留在默认视图，见规格 §1 决策 6）。
+ */
+const VISITOR_IP_FILTERS = {
+  notBlockedIp: 'not exists (select 1 from ip_blacklist b where b.ip = visitor_logs.ip)',
+  notTrustedIp: 'not exists (select 1 from ip_whitelist w where w.ip = visitor_logs.ip)',
+  activeBan: 'exists (select 1 from ip_abuse a where a.ip = visitor_logs.ip and a.banned_until > now())',
+};
+
+/** 明细视图状态条件（全静态常量拼接，不拼用户输入）。 */
+export function visitorLogStatusCond(status, filter = 'visits') {
+  const { notBlockedIp, notTrustedIp, activeBan } = VISITOR_IP_FILTERS;
+  const mode = status || (filter === 'blocked' ? 'rowblocked' : filter === 'all' ? 'all' : 'visits');
+  switch (mode) {
+    case 'active':
+      return `${notBlockedIp} and ${notTrustedIp}`;
+    case 'blocked':
+      return 'exists (select 1 from ip_blacklist b where b.ip = visitor_logs.ip)';
+    case 'trusted':
+      return 'exists (select 1 from ip_whitelist w where w.ip = visitor_logs.ip)';
+    case 'banned':
+      return `${notBlockedIp} and ${notTrustedIp} and ${activeBan}`;
+    case 'intercepted':
+      return `blocked and ${notBlockedIp} and ${notTrustedIp} and not ${activeBan}`;
+    case 'normal':
+      // 与 by-ip 的「正常」同口径：该 IP 在整个访问历史里没有任何被拦截行（不只当前行未拦截），
+      // 否则同一个 IP 会同时出现在「被拦截」与「正常」两个筛选里，两视图对不上。
+      return `not blocked and ${notBlockedIp} and ${notTrustedIp} and not ${activeBan} and not exists (select 1 from visitor_logs bl where bl.ip = visitor_logs.ip and bl.blocked)`;
+    case 'visits':
+      return 'not blocked';
+    case 'rowblocked':
+      return 'blocked';
+    default:
+      return '';
+  }
+}
+
+export async function listVisitorLogs(q, { page = 1, pageSize = 50, ip = null, path = null, filter = 'visits', status = null, sort = 'time', order = 'desc', days = null } = {}) {
+  const statusCond = visitorLogStatusCond(status, filter);
+  const blockedCond = statusCond ? `and (${statusCond})` : '';
   // BH 批（docs/VISIT-IP-STATS.md §3.1）：时间窗与 IP 统计视图共用；days 由服务端白名单校验后传入
   const where = `where ($1 = '' or ip = $1 or remote_ip = $1) and ($2 = '' or path like '%' || $2 || '%') ${blockedCond} and ($5::int is null or created_at >= now() - ($5::int * interval '1 day'))`;
   // 计数查询只传 3 个参数：未被引用的 $3/$4 会让 PG 无法推断参数类型（42P18），所以把时间窗占位符换成 $3
@@ -113,8 +157,11 @@ export async function visitorSummary(q) {
 export async function listVisitorsByIp(q, { days = 7, page = 1, pageSize = 20, q: kw = '', sort = 'visits', status = 'all' } = {}) {
   const windowSql = `created_at >= now() - ($1::int * interval '1 day')`;
   const kwSql = `($2 = '' or ip ilike '%' || $2 || '%')`;
-  // BI 批（docs/VISIT-IP-STATS.md §8）：状态四态 + 状态筛选；手动黑名单优先于自动临时封禁
-  const statusSql = `($3 = 'all' or status = $3)`;
+  // BI 批（docs/VISIT-IP-STATS.md §8）：状态四态 + 状态筛选；手动黑名单优先于自动临时封禁。
+  // FZ 批（docs/VISITORS-REDESIGN.md §4）：新增 trusted（白名单派生）与 active（有效访问 = 不在黑/白名单）；
+  // 派生顺序固定为 已封禁 > 已信任 > 临时封 > 被拦截 > 正常（与明细视图 visitorLogStatusCond 同口径）。
+  // 条件里始终引用 $3（即使 active 分支只用常量），避免未引用参数导致 PG 无法推断类型（42P18）。
+  const statusSql = "($3 = 'all' or ($3 = 'active' and status not in ('blocked','trusted')) or status = $3)";
   const base = `
      select ip,
             count(*)::int as visits,
@@ -134,6 +181,7 @@ export async function listVisitorsByIp(q, { days = 7, page = 1, pageSize = 20, q
               where a.ip = visitor_logs.ip and a.banned_until > now()
               limit 1) as ban_source,
             case when exists (select 1 from ip_blacklist b where b.ip = visitor_logs.ip) then 'blocked'
+                 when exists (select 1 from ip_whitelist w where w.ip = visitor_logs.ip) then 'trusted'
                  when exists (select 1 from ip_abuse a where a.ip = visitor_logs.ip and a.banned_until > now()) then 'banned'
                  when bool_or(blocked) then 'intercepted'
                  else 'normal' end as status
@@ -155,6 +203,31 @@ export async function listVisitorsByIp(q, { days = 7, page = 1, pageSize = 20, q
     [days, kw, status, pageSize, (page - 1) * pageSize],
   );
   return { total: count.rows[0]?.n ?? 0, rows: rows.rows };
+}
+
+/**
+ * FZ 批（docs/VISITORS-REDESIGN.md §2、§4）：访问记录「概览」6 张数字卡——一次查询返回全部 6 个数：
+ *   今日请求 today_requests（含被拦截的请求，被拦截是其子集）
+ *   被拦截 today_blocked（今日 blocked=true 的请求数）
+ *   待审 pending_reviews（待审队列**行数** = 按 IP 合并后的行数，与 /api/admin/reviews 的队列行一致；
+ *       与「待审规则条数」是两个数——处置一个 IP 让本数减 1，规格 §7-6 的「计数同步」口径）
+ *   临时封 temp_bans（ip_abuse 中 banned_until 未到期的 IP 数）
+ *   黑名单 blacklist / 白名单 whitelist（条目数，含 CIDR 条目）
+ */
+export async function visitorOverview(q) {
+  const r = await q(
+    `select (select count(*)::int from visitor_logs
+              where created_at >= date_trunc('day', now())) as today_requests,
+            (select count(*)::int from visitor_logs
+              where blocked and created_at >= date_trunc('day', now())) as today_blocked,
+            (select count(distinct coalesce(ip, ''))::int from abuse_reviews
+              where status = 'pending') as pending_reviews,
+            (select count(*)::int from ip_abuse
+              where banned_until is not null and banned_until > now()) as temp_bans,
+            (select count(*)::int from ip_blacklist) as blacklist,
+            (select count(*)::int from ip_whitelist) as whitelist`,
+  );
+  return r.rows[0];
 }
 
 /** 展开行：该 IP 时间窗内最近 20 条访问 + 访问最多的路径 top 5（BH 批 §3.1）。 */

@@ -1,0 +1,125 @@
+/* FZ 批（docs/VISITORS-REDESIGN.md §2/§5）：访问记录七块页面的共享样式。
+   由 VisitorsAdmin.vue 顶层 import 一次；类名统一 .vs- 前缀 + 卡片类挂在 .vs-page 下，
+   避免与其它后台组件（各自 scoped 的 .admin-card / .metric-card）互相影响。 */
+
+/* ---------------- 页面骨架：左侧导航 + 主区 ---------------- */
+.vs-page{display:flex;gap:22px;align-items:flex-start;width:100%;min-width:0}
+.vs-nav{width:224px;flex:none;position:sticky;top:var(--space-12);display:flex;flex-direction:column;gap:2px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-12);padding:10px 9px}
+.vs-nav-item{display:flex;align-items:center;gap:9px;width:100%;min-height:42px;padding:9px 11px;border:0;border-radius:9px;background:transparent;color:var(--fg-2);font-size:var(--font-13);text-align:left;cursor:pointer}
+.vs-nav-item:hover{background:var(--panel-2)}
+.vs-nav-item.on{background:var(--brand-soft);color:var(--fg);font-weight:650;box-shadow:inset 3px 0 0 var(--brand)}
+.vs-nav-ico{flex:none;font-size:var(--font-14);line-height:1}
+.vs-nav-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vs-nav-count{flex:none;font-size:var(--font-10);color:var(--fg-muted);background:var(--panel-2);border-radius:999px;padding:1px 8px}
+.vs-nav-item.on .vs-nav-count{color:var(--brand);background:var(--panel)}
+.vs-nav-count.hot{color:var(--danger);background:var(--danger-bg);font-weight:650}
+.vs-nav-item.on .vs-nav-count.hot{color:var(--danger);background:var(--danger-bg)}
+.vs-nav-foot{margin-top:var(--space-12);padding:11px 11px 3px;border-top:1px solid var(--border);font-size:var(--font-11);line-height:1.7;color:var(--fg-muted)}
+.vs-main{flex:1;min-width:0}
+.vs-crumb{font-size:var(--font-11);color:var(--fg-muted);margin:0 0 var(--space-8)}
+.vs-crumb span{padding:0 6px;color:var(--fg-subtle)}
+.vs-head h2{font-size:var(--font-18);letter-spacing:-.02em;margin:0;color:var(--fg)}
+.vs-head p{font-size:var(--font-12);color:var(--fg-muted);margin:5px 0 0}
+.vs-nav-mobile{display:none}
+.vs-stack{display:flex;flex-direction:column;gap:var(--space-14);min-width:0}
+
+/* ---------------- 卡片 / 标题 / 工具栏 ---------------- */
+.vs-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-13);padding:var(--space-16);box-shadow:0 3px 14px #26345a06;min-width:0}
+.vs-card.table-card{padding:0;overflow:hidden}
+.vs-card-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-12);margin-bottom:13px;flex-wrap:wrap}
+.vs-card-head.padded{padding:var(--space-14) 15px 0}
+.vs-card-head h3{font-size:var(--font-14);margin:0;color:var(--fg)}
+.vs-card-head p{font-size:var(--font-11);color:var(--fg-muted);margin:var(--space-4) 0 0}
+.vs-heading-actions{display:flex;align-items:center;gap:var(--space-8);flex-wrap:wrap}
+.vs-toolbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.vs-toolbar > .el-input{flex:1 1 220px;max-width:340px}
+.vs-toolbar > .el-select{width:168px}
+.vs-seg{display:inline-flex;background:var(--panel-2);border:1px solid var(--border);border-radius:9px;padding:2px;gap:2px}
+.vs-seg button{border:0;background:transparent;color:var(--fg-muted);border-radius:7px;padding:6px 12px;font-size:var(--font-12);cursor:pointer;min-height:32px}
+.vs-seg button.on{background:var(--panel);color:var(--brand);font-weight:650;box-shadow:0 1px 3px #26345a14}
+.vs-muted{color:var(--fg-muted);font-size:var(--font-11)}
+.vs-mono{font-family:ui-monospace,Consolas,monospace;font-size:var(--font-11)}
+.vs-note{border:1px solid var(--brand-soft);border-radius:var(--radius-12);background:var(--brand-soft);padding:var(--space-14) var(--space-16);color:var(--fg-2);font-size:var(--font-12);line-height:1.7}
+.vs-note strong{display:block;margin-bottom:4px;color:var(--fg)}
+.vs-note.warn{border-color:var(--warn-bg);background:var(--warn-bg)}
+.vs-note b{color:var(--fg)}
+
+/* ---------------- 概览数字卡 ---------------- */
+.vs-cards{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:var(--space-12)}
+.vs-kpi{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-12);padding:14px 16px;display:flex;flex-direction:column;gap:6px;text-align:left;min-width:0}
+.vs-kpi span{font-size:var(--font-11);color:var(--fg-muted)}
+.vs-kpi b{font-size:26px;letter-spacing:-.03em;color:var(--fg);font-weight:650}
+.vs-kpi.clickable{cursor:pointer;transition:border-color .15s,background .15s}
+.vs-kpi.clickable:hover{border-color:var(--brand)}
+.vs-kpi.hot{border-color:var(--danger);background:var(--danger-bg)}
+.vs-kpi.hot b{color:var(--danger)}
+.vs-kpi.warn{border-color:var(--warn);background:var(--warn-bg)}
+.vs-kpi.warn b{color:var(--warn)}
+
+/* ---------------- 分页 / 移动卡片 ---------------- */
+.vs-pager{display:flex;justify-content:space-between;align-items:center;gap:var(--space-12);padding:var(--space-12) 15px;color:var(--fg-muted);font-size:var(--font-11)}
+.vs-page .game-card-list{display:flex;flex-direction:column;gap:var(--space-8);padding:var(--space-10) 12px 0}
+.vs-page .admin-card{border:1px solid var(--border);border-radius:var(--radius-12);padding:var(--space-10) var(--space-12);background:var(--panel)}
+.vs-page .admin-card-main{display:flex;flex-direction:column;gap:var(--space-6);min-width:0}
+.vs-page .admin-card-main .mono{font-family:ui-monospace,Consolas,monospace;font-size:var(--font-13);overflow-wrap:anywhere}
+.vs-page .admin-card-main small{color:var(--fg-muted);font-size:var(--font-11);overflow-wrap:anywhere}
+.vs-page .admin-card-path{margin:0;color:var(--fg-muted);font-size:var(--font-12);overflow-wrap:anywhere}
+.vs-page .admin-card-foot{display:flex;justify-content:space-between;align-items:center;gap:var(--space-8);margin-top:var(--space-8);font-size:var(--font-12);color:var(--fg-muted);flex-wrap:wrap}
+.vs-page .admin-card-foot > span:last-child{display:flex;gap:var(--space-4);flex-wrap:wrap}
+.vs-page .admin-card-pick{display:flex;align-items:center;justify-content:flex-end}
+.vs-ip-link{cursor:pointer;color:var(--brand)}
+.vs-ip-link:hover{text-decoration:underline}
+.vs-row-focus{outline:2px solid var(--brand);outline-offset:-2px}
+.vs-tag-gap{margin-left:var(--space-6)}
+/* 规则摘要（异常处置）：单行省略 + hover 弹层（AZ 批口径，原在 AdminModules scoped 样式里） */
+.rule-summary{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rule-pop>div{font-size:var(--font-12);line-height:1.8;white-space:nowrap}
+/* 展开行（IP 统计）：最近访问 / 路径 top（原 AdminModules .ip-detail 搬到这里） */
+.vs-page .ip-detail{padding:2px 8px}
+.vs-page .ip-detail h4{margin:var(--space-6) 0 var(--space-4);font-size:var(--font-13);font-weight:600}
+.vs-page .ip-detail .log-line{display:flex;gap:var(--space-12);font-size:var(--font-12);line-height:1.7;align-items:center}
+.vs-page .ip-detail .log-line span:first-child{min-width:150px;color:var(--fg-muted)}
+
+/* ---------------- IP 详情抽屉 ---------------- */
+.vs-drawer-head{display:flex;align-items:center;justify-content:space-between;gap:12px;font-weight:650;font-size:var(--font-15,15px)}
+.vs-drawer-head .mono{font-family:ui-monospace,Consolas,monospace;font-size:var(--font-13);font-weight:400}
+.vs-drawer-body{display:flex;flex-direction:column;gap:var(--space-14)}
+.vs-kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px dashed var(--border);font-size:var(--font-12)}
+.vs-kv span{color:var(--fg-muted)}
+.vs-kpi3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.vs-kpi3 > div{background:var(--panel-2);border:1px solid var(--border);border-radius:9px;padding:9px 10px;font-size:var(--font-11);color:var(--fg-muted)}
+.vs-kpi3 b{display:block;font-size:18px;color:var(--fg);margin-top:3px}
+.vs-drawer-body h4{font-size:var(--font-13);color:var(--fg-2);margin:0;font-weight:600}
+.vs-mini{width:100%;border-collapse:collapse;font-size:var(--font-12)}
+.vs-mini td,.vs-mini th{padding:7px 6px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+.vs-mini tr:last-child td{border-bottom:0}
+.vs-mini .mono{font-family:ui-monospace,Consolas,monospace;overflow-wrap:anywhere}
+.vs-drawer-foot{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.vs-empty{color:var(--fg-muted);font-size:var(--font-12);padding:8px 0}
+.vs-evidence{display:flex;flex-wrap:wrap;gap:var(--space-8);font-size:var(--font-11);color:var(--fg-muted)}
+
+/* ---------------- 撤销 toast ---------------- */
+.vs-toast{display:inline-flex;align-items:center;gap:12px;flex-wrap:wrap}
+.vs-toast-act{color:var(--brand);cursor:pointer;font-weight:650}
+.vs-toast-act:hover{text-decoration:underline}
+
+@media(max-width:1100px){
+  .vs-cards{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+/* 760 断点与后台其余列表一致：左导航收成顶部下拉、列表改卡片、触摸目标 ≥44px */
+@media(max-width:760px){
+  .vs-page{display:block}
+  .vs-nav{display:none}
+  .vs-nav-mobile{display:block;margin-bottom:var(--space-10)}
+  .vs-nav-mobile .el-select{width:100%}
+  .vs-nav-mobile .el-select__wrapper{min-height:44px}
+  .vs-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .vs-toolbar > .el-input{flex:1 1 100%;max-width:none}
+  .vs-toolbar > .el-select{flex:1 1 46%;width:auto}
+  .vs-kpi b{font-size:22px}
+  .vs-pager{flex-direction:column;align-items:flex-start}
+  .vs-page .admin-card .el-button{min-height:44px}
+  .vs-card-head{align-items:flex-start;flex-direction:column}
+  .vs-drawer-foot{justify-content:space-between}
+  .vs-drawer-foot .el-button{min-height:44px;flex:1}
+}

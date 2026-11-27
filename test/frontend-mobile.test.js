@@ -48,9 +48,17 @@ test('AdminModules 手机卡片分支存在，断点 760 响应式', () => {
   assert.match(adminModules, /v-if="!isMobile"/, '桌面端保留表格');
   assert.match(adminModules, /max-width: 760px/, '手机断点 760');
   assert.match(adminModules, /addEventListener\('change'/, '断点变化监听（resize/旋转）');
-  // 游戏目录 + 访问记录各 tab（访问明细/待审/最近设备/已封设备/黑名单/白名单/自动封禁）都要有卡片分支
-  const cardBranches = (adminModules.match(/v-else class="game-card-list"/g) || []).length;
-  assert.ok(cardBranches >= 8, `访问记录各 tab 都要有卡片分支，实际 ${cardBranches}`);
+  // 游戏目录 + 访问记录各块（概览/异常处置/访问分析/四个封禁白名单页）都要有卡片分支。
+  // FZ 批（docs/VISITORS-REDESIGN.md）：访问记录搬到 components/visitors/*，统计范围跟着扩到新组件。
+  const read = (p) => readFileSync(ROOT + p, 'utf8');
+  const visitors = [
+    'VisitorsReview', 'VisitorsAnalysis', 'VisitorsBanIp', 'VisitorsBanDevice', 'VisitorsBanTemp', 'VisitorsWhitelist',
+  ].map((n) => read(`frontend/src/components/visitors/${n}.vue`));
+  const cardBranches = (adminModules.match(/v-else class="game-card-list"/g) || []).length
+    + visitors.reduce((sum, src) => sum + (src.match(/v-else class="game-card-list"/g) || []).length, 0);
+  assert.ok(cardBranches >= 8, `访问记录各块都要有卡片分支，实际 ${cardBranches}`);
+  // 每个访问记录子页至少一个卡片分支（不能只有桌面表格）
+  for (const src of visitors) assert.match(src, /v-else class="game-card-list"/, '访问记录子页有手机卡片分支');
 });
 
 // ---------------------------------------------------------------- BY 批（docs/MOBILE-APP-UPDATE.md §4.5/§5）

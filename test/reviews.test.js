@@ -759,14 +759,19 @@ test('/api/ban/state 自带限流：突发请求出现 429（防探测）', asyn
 });
 
 test('前端：待审状态列 4 种标签 + 口径 A 说明文案', () => {
-  const modules = readFileSync(fileURLToPath(new URL('../frontend/src/pages/AdminModules.vue', import.meta.url)), 'utf8');
-  for (const label of ['>待审<', '>已封禁<', '>已忽略<', '>自动退出<']) {
-    assert.ok(modules.includes(label), `状态列应有 ${label}`);
+  // FZ 批（docs/VISITORS-REDESIGN.md）：实现搬到 components/visitors/VisitorsReview.vue；
+  // 状态标签改由 utils/visitorStatus.js 的 REVIEW_STATUS 集中映射（文案仍是这四种）。
+  const review = readFileSync(fileURLToPath(new URL('../frontend/src/components/visitors/VisitorsReview.vue', import.meta.url)), 'utf8');
+  const status = readFileSync(fileURLToPath(new URL('../frontend/src/utils/visitorStatus.js', import.meta.url)), 'utf8');
+  for (const pair of ["pending: { label: '待审'", "approved: { label: '已处置'", "rejected: { label: '已忽略'", "auto_banned: { label: '自动封禁'"]) {
+    assert.ok(status.includes(pair), `状态映射应有 ${pair}`);
   }
+  assert.match(review, /reviewStatusMeta\(r\.status\)\.label/, '展开行状态取集中映射');
+  assert.match(review, /reviewStatusMeta\(r\.status\)\.tag/, '标签色也取集中映射');
   // AX 批（docs/ADMIN-REVIEW-LISTS.md §4.5）：明细表已删，展开行仍能看到每条规则的规则/命中/路径/时间/状态
-  assert.match(modules, /class="merged-detail-row"/, '合并视图展开行保留逐条规则明细');
-  assert.match(modules, /封禁期间产生的新异常仍会以「待审」出现/, '说明文案应为口径 A');
-  assert.ok(!modules.includes('解封后自动恢复显示'), '旧口径文案应移除');
+  assert.match(review, /class="merged-detail-row"/, '合并视图展开行保留逐条规则明细');
+  assert.match(review, /封禁期间产生的新异常仍会以「待审」出现/, '说明文案应为口径 A');
+  assert.ok(!review.includes('解封后自动恢复显示'), '旧口径文案应移除');
 });
 
 // ---------------------------------------------------------------- BR 批（docs/BAN-AND-SECURITY-FIXES.md §11）
@@ -963,7 +968,9 @@ test('CO-5/B4-2 第八轮：admin-access-repository.js 签名不变 + pg.js re-e
   // 搬家函数签名与拆分前一致（旧 db.* 导入签名不变）
   assert.match(AA_REPO, /export async function viewStats\(q, \{ limit = 20 \} = \{\}\)/, 'viewStats 签名与拆分前一致');
   assert.match(AA_REPO, /export function visitorOrderClause\(sort = 'time', order = 'desc'\)/, 'visitorOrderClause 签名与拆分前一致');
-  assert.match(AA_REPO, /export async function listVisitorLogs\(q, \{ page = 1, pageSize = 50, ip = null, path = null, filter = 'visits', sort = 'time', order = 'desc', days = null \} = \{\}\)/, 'listVisitorLogs 签名与拆分前一致');
+  // FZ 批（docs/VISITORS-REDESIGN.md §4）：listVisitorLogs 增加 status（新口径，默认 null=按 filter 回落），
+  // 其余参数与拆分前一致；旧 filter 口径保留兼容。
+  assert.match(AA_REPO, /export async function listVisitorLogs\(q, \{ page = 1, pageSize = 50, ip = null, path = null, filter = 'visits', status = null, sort = 'time', order = 'desc', days = null \} = \{\}\)/, 'listVisitorLogs 签名（含 FZ 新增 status）');
   assert.match(AA_REPO, /export async function visitorSummary\(q\)/, 'visitorSummary 签名与拆分前一致');
   assert.match(AA_REPO, /export async function listVisitorsByIp\(q, \{ days = 7, page = 1, pageSize = 20, q: kw = '', sort = 'visits', status = 'all' \} = \{\}\)/, 'listVisitorsByIp 签名与拆分前一致');
   assert.match(AA_REPO, /export async function visitorIpDetail\(q, \{ ip, days = 7 \} = \{\}\)/, 'visitorIpDetail 签名与拆分前一致');

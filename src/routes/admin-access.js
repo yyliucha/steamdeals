@@ -93,17 +93,33 @@ export async function handleAdminAccessAdmin(ctx) {
     const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize') ?? 20) || 20, 5), 200);
     const ip = String(url.searchParams.get('ip') ?? '').trim();
     const p = String(url.searchParams.get('path') ?? '').trim();
-    // filter=visits（默认，正常访问）| blocked（被拦截）| all
-    const filter = String(url.searchParams.get('filter') ?? 'visits');
+    // FZ 批（docs/VISITORS-REDESIGN.md §4/§7-5）：明细视图与 IP 统计同口径——status 白名单新增
+    // active（默认，排除黑名单+白名单）与 trusted（白名单派生）。旧 filter 参数保留兼容：
+    // 只传 filter、不传 status 的老书签仍按旧口径（visits=未拦截 / blocked / all）。
+    const rawStatus = String(url.searchParams.get('status') ?? '');
+    const rawFilter = String(url.searchParams.get('filter') ?? '');
+    const visitorStatuses = ['active', 'normal', 'intercepted', 'banned', 'blocked', 'trusted', 'all'];
+    const status = url.searchParams.has('status')
+      ? (visitorStatuses.includes(rawStatus) ? rawStatus : 'active')
+      : (['visits', 'blocked', 'all'].includes(rawFilter) ? null : 'active');
+    const filter = ['visits', 'blocked', 'all'].includes(rawFilter) ? rawFilter : 'visits';
     // AQ 批（docs/ADMIN-REVIEW-LISTS.md §3.2）：排序白名单，非法值回落默认，不拼接用户输入
     const rawSort = String(url.searchParams.get('sort') ?? '');
     const sort = ['time', 'ip', 'status'].includes(rawSort) ? rawSort : 'time';
     const order = String(url.searchParams.get('order') ?? '') === 'asc' ? 'asc' : 'desc';
     const rawDays = Number(url.searchParams.get('days') ?? 0);
     const days = [1, 7, 30].includes(rawDays) ? rawDays : null;
-    const list = await db.listVisitorLogs(q, { page, pageSize, ip: ip || null, path: p || null, filter, sort, order, days });
+    const list = await db.listVisitorLogs(q, { page, pageSize, ip: ip || null, path: p || null, filter, status, sort, order, days });
     const summary = await db.visitorSummary(q);
-    json(res, 200, { ...list, page, pageSize, filter, pages: Math.max(1, Math.ceil(list.total / pageSize)), summary });
+    json(res, 200, { ...list, page, pageSize, filter, status: status ?? filter, pages: Math.max(1, Math.ceil(list.total / pageSize)), summary });
+    return true;
+  }
+
+  // FZ 批（docs/VISITORS-REDESIGN.md §4）：概览 6 张数字卡——一次查询返回 6 个数（今日请求/被拦截/
+  // 待审/临时封/黑名单/白名单）。放在 by-ip 之前，避免与后面的 /by-ip/... 正则分支互相打扰。
+  if (path === '/api/admin/visitors/overview' && req.method === 'GET') {
+    if (!requireAdmin()) return true;
+    json(res, 200, await db.visitorOverview(q));
     return true;
   }
 
@@ -117,9 +133,10 @@ export async function handleAdminAccessAdmin(ctx) {
     const kw = String(url.searchParams.get('q') ?? '').trim().slice(0, 80);
     const rawSort = String(url.searchParams.get('sort') ?? '');
     const sort = ['visits', 'lastAt', 'ip'].includes(rawSort) ? rawSort : 'visits';
-    // BI 批（docs/VISIT-IP-STATS.md §8）：状态筛选白名单（全部/正常/被拦截/封禁中/已封禁）
+    // BI 批（docs/VISIT-IP-STATS.md §8）：状态筛选白名单（全部/正常/被拦截/封禁中/已封禁）；
+    // FZ 批：新增 active（默认，有效访问 = 排除已封禁 + 已信任）与 trusted（白名单派生）。
     const rawStatus = String(url.searchParams.get('status') ?? '');
-    const status = ['normal', 'intercepted', 'banned', 'blocked'].includes(rawStatus) ? rawStatus : 'all';
+    const status = ['active', 'normal', 'intercepted', 'banned', 'blocked', 'trusted', 'all'].includes(rawStatus) ? rawStatus : 'active';
     const data = await db.listVisitorsByIp(q, { days, page, pageSize, q: kw, sort, status });
     json(res, 200, {
       items: data.rows,

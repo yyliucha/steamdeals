@@ -132,11 +132,17 @@ test('GET /api/admin/visitors/by-ip：401/403/200；days 与 sort 白名单回�
     assert.ok(Array.isArray(ok.body.items) && ok.body.items.length > 0, 'items');
     assert.ok(ok.body.total >= 2);
     assert.equal(ok.body.sort, 'visits');
-    assert.equal(ok.body.status, 'all', '默认状态 = 全部');
+    // FZ 批（docs/VISITORS-REDESIGN.md §4 决策 4/11）：默认状态从「全部」改为「有效访问 active」
+    // （排除已封禁 + 已信任）；「全部」仍可显式请求。
+    assert.equal(ok.body.status, 'active', '默认状态 = 有效访问（active）');
+    const all = await getJson(`${base}/api/admin/visitors/by-ip?days=7&status=all`, admin);
+    assert.equal(all.body.status, 'all', 'status=all 仍受支持（历史可查）');
     const weird = await getJson(`${base}/api/admin/visitors/by-ip?days=999&sort=evil&status=evil`, admin);
     assert.equal(weird.body.days, 7, 'days 非法回落 7');
     assert.equal(weird.body.sort, 'visits', 'sort 非法回落默认');
-    assert.equal(weird.body.status, 'all', 'status 非法回落 all');
+    assert.equal(weird.body.status, 'active', 'status 非法回落 active（新默认）');
+    const interceptedAll = await getJson(`${base}/api/admin/visitors/by-ip?days=7`, admin);
+    assert.ok(interceptedAll.body.items.some((r) => r.ip === IP_A), '「被拦截」属于有效访问（未封禁/未信任），默认视图仍出现');
     // BI 批：status 筛选（自动封禁中的 IP 只出现在 banned）
     await q("insert into ip_abuse (ip, strikes, banned_until, ban_source) values ($1, 1, now() + interval '10 minutes', 'rate')", [IP_A]);
     const bannedOnly = await getJson(`${base}/api/admin/visitors/by-ip?days=7&status=banned`, admin);
@@ -237,33 +243,33 @@ test('listDevices：按 device_id 聚合（多 IP/UA），无设备码回退指�
   }
 });
 
-test('前端（静态）：默认 IP 统计视图 + 展开行、两张表统计列、设备列按设备码', () => {
-  const modules = read('../frontend/src/pages/AdminModules.vue');
-  assert.match(modules, /const visitMode=ref\('ip'\)/, '默认 IP 统计视图');
-  assert.match(modules, /switchVisitMode\('detail'\)/, '可切回明细');
-  assert.match(modules, /\/api\/admin\/visitors\/by-ip\?/, '接 IP 统计接口');
-  assert.match(modules, /type="expand"/, 'IP 行可展开');
-  assert.match(modules, /最近访问（\{\{ visitDays \}\} 天内最多 20 条）/, '展开行显示最近访问');
-  assert.match(modules, /访问最多的路径/, '展开行显示路径 top');
-  for (const label of ['访问次数', '独立路径', '设备数', '已封禁', '被拦截', '封禁中']) {
-    assert.ok(modules.includes(label), `IP 统计列/状态含 ${label}`);
-  }
-  // BI 批：自动临时封禁显示 + 状态筛选
-  assert.match(modules, /ipStatus=ref\('all'\)/, '状态筛选默认全部');
-  assert.match(modules, /status:ipStatus\.value/, '查询带 status 参数');
-  assert.match(modules, /<el-option label="封禁中" value="banned"\/>/, '筛选含封禁中');
-  assert.match(modules, /<el-option label="已封禁" value="blocked"\/>/, '筛选含已封禁');
-  assert.match(modules, /'封禁中 · '\+banLeft\(row\)/, '封禁中显示剩余时间');
-  assert.match(modules, /function banLeft\(row\)/, '剩余时间计算');
-  assert.match(modules, /row\.status==='banned'/, '状态列区分自动封禁');
-  // 两张表统计列（黑名单/白名单各一份）
-  assert.equal((modules.match(/label="访问" width="80" align="right"/g) || []).length, 2, '黑白名单各加访问列');
-  assert.equal((modules.match(/label="最近访问" width="150"/g) || []).length, 2, '黑白名单各加最近访问列');
-  assert.equal((modules.match(/prop="devices" label="设备数" width="80"/g) || []).length, 2, '黑白名单各加设备数列');
-  // 设备：按设备码聚合、无设备码标注、封禁仍可用指纹
-  assert.match(modules, /设备（按设备码聚合）/, '设备表列名');
-  assert.match(modules, /row\.deviceId\|\|'无设备码'/, '无设备码标注');
-  assert.match(modules, /\(row\.ips\|\|\[\]\)\.join/, '多 IP 汇总展示');
-  assert.match(modules, /openDeviceBan\(row\)/, '封禁入口保留');
-  assert.match(modules, /deviceId:row\.deviceId/, '封禁请求带 deviceId');
+test('前端（静态，FZ 落点）：访问分析默认 IP 统计 + 展开行；四个封禁页各自的统计列', () => {
+  // FZ 批（docs/VISITORS-REDESIGN.md）：访问记录拆七块——IP 统计/展开行在 VisitorsAnalysis.vue，
+  // 黑白名单统计列分到 VisitorsBanIp.vue / VisitorsWhitelist.vue，设备列在 VisitorsBanDevice.vue。
+  const analysis = read('../frontend/src/components/visitors/VisitorsAnalysis.vue');
+  const banIp = read('../frontend/src/components/visitors/VisitorsBanIp.vue');
+  const banDevice = read('../frontend/src/components/visitors/VisitorsBanDevice.vue');
+  const white = read('../frontend/src/components/visitors/VisitorsWhitelist.vue');
+  assert.equal((analysis.match(/const mode = ref\('ip'\)/) || []).length, 1, '默认 IP 统计视图');
+  assert.match(analysis, /switchMode\('detail'\)/, '可切回明细');
+  assert.match(analysis, /\/api\/admin\/visitors\/by-ip\?/, '接 IP 统计接口');
+  assert.match(analysis, /type="expand"/, 'IP 行可展开');
+  assert.match(analysis, /最近访问（最近 \{\{ days \}\} 天内最多 20 条）/, '展开行显示最近访问');
+  assert.match(analysis, /访问最多的路径/, '展开行显示路径 top');
+  for (const label of ['访问次数', '独立路径', '设备数']) assert.ok(analysis.includes(label), `IP 统计列含 ${label}`);
+  // 状态筛选口径移入 FZ 集中映射表（默认 active），这里只锁接线
+  assert.match(analysis, /status: status\.value/, '查询带 status 参数');
+  // 黑名单统计列：近 7 天访问 / 最近访问 / 设备数
+  assert.match(banIp, /label="近 7 天访问"/, '黑名单有访问列');
+  assert.match(banIp, /label="最近访问"/, '黑名单有最近访问列');
+  assert.match(banIp, /label="设备数"/, '黑名单有设备数列');
+  // 白名单统计列：近 7 天访问 / 最近访问 / 限流（不限制）
+  assert.match(white, /label="近 7 天访问"/, '白名单有访问列');
+  assert.match(white, /label="最近访问"/, '白名单有最近访问列');
+  assert.match(white, />不限制</, '白名单限流列 = 不限制');
+  // 设备封禁页：设备码 / 指纹 + 封禁至 + 解封
+  assert.match(banDevice, /设备码 \/ 指纹/, '设备表列名');
+  assert.match(banDevice, /row\.device_id \|\| '无设备码'/, '无设备码标注');
+  assert.match(banDevice, /label="封禁至"/, '封禁至列');
+  assert.match(banDevice, />解封</, '解封入口');
 });
