@@ -86,9 +86,6 @@ const SETTINGS_META = {
   'site.baseRegion': { section: 'sync-region', tier: 'primary' },
   'site.baseCurrency': { section: 'sync-region', tier: 'primary' },
   // 站点与内容——常用 4 项 + 推荐与评分折叠
-  // FY-1（docs/SETTINGS-REDESIGN.md §2）：时区原属「高级」组、但展示在「站点与内容」卡（跨组 keys）；
-  // 重划为「对象」组后必须只归一组，故归 site，并删掉「高级 · 时区与显示」重复分区。
-  'system.timezone': { section: 'site', tier: 'primary' },
   'site.adultDisplay': { section: 'site', tier: 'primary' },
   'site.publicUrl': { section: 'site', tier: 'primary' },
   // FV 批（docs/HEAD-FOOT-INJECTION.md §2）：head/foot 注入——站点与内容卡常用区（text 多行）
@@ -96,6 +93,8 @@ const SETTINGS_META = {
   'site.footInjection': { section: 'site', tier: 'primary' },
   'app.mobileRedirectEnabled': { section: 'site', tier: 'primary' },
   'app.syncIntervalMin': { section: 'schedule', tier: 'advanced', sum: 'App 版本同步 {v} 分' },
+  // FY-1（docs/SETTINGS-REDESIGN.md §2）：时区原属「高级」组、但展示在「站点与内容」卡（跨组 keys）；
+  // 重划为「对象」组后必须只归一组（否则会被两张卡重复渲染），故 group 归 site，并删掉「时区与显示」重复分区。
   'system.timezone': { section: 'site', tier: 'primary' },
   'app.deviceRateMax': { section: 'recommend', tier: 'primary' },
   'app.deviceRateWindowSec': { section: 'recommend', tier: 'primary' },

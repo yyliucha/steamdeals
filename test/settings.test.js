@@ -584,6 +584,15 @@ test('FY-1 分组重划：7 个对象组、112 项每项恰好一组（不重不
     assert.equal(isSettingsGroupId(bad), false, `${String(bad)} 非法组（/console/settings/:group 回落 sources）`);
   }
   assert.deepEqual(ADVANCED_SETTINGS_GROUPS, ['schedule', 'ops'], '初始化向导继续跳过原「高级」拆分出的两组');
+
+  // ⑦ SETTINGS_META 不得有重复 key（对象字面量重复键静默后者生效，等于默默丢掉一处展示归属；
+  //    FY-1 迁移时就踩过一次 system.timezone 重复）。
+  const metaSrc = readFileSync(new URL('../src/settings.js', import.meta.url), 'utf8');
+  const metaStart = metaSrc.indexOf('const SETTINGS_META = {');
+  const metaBlock = metaSrc.slice(metaStart, metaSrc.indexOf('\n};', metaStart));
+  const metaKeys = [...metaBlock.matchAll(/^\s*'([^']+)':\s*\{/gm)].map((m) => m[1]);
+  assert.ok(metaKeys.length >= 70, `SETTINGS_META 解析到 ${metaKeys.length} 个 key（应有 section 展示归属的项）`);
+  assert.equal(new Set(metaKeys).size, metaKeys.length, 'SETTINGS_META 无重复 key');
 });
 
 test('CQ isDefaultValue：int/bool/enum/string 类型敏感比较，null 视作默认', () => {
