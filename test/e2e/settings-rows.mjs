@@ -83,6 +83,12 @@ async function main() {
 
     await goSettings('sources');
     await browser.screenshot(join(SHOTS, 'fy2-desktop-sources.png'));
+    // demo（design/settings-redesign-2026-11-27.html）是暗色稿：再抓一张暗色（跟随系统媒体查询）便于逐项对照
+    await browser.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    await sleep(400);
+    await browser.screenshot(join(SHOTS, 'fy2-desktop-sources-dark.png'));
+    await browser.send('Emulation.setEmulatedMedia', { features: [] });
+    await sleep(200);
 
     // ── 验收 3：分区标题 + 一行一项；无卡片盒子、无折叠
     const structure = await evalJs(`(() => {
