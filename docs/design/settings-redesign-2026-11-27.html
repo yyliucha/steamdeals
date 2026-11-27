@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>系统设置重设计 · C 方案（2026-11-27）</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#141c2e; --panel2:#182238; --border:#26314d;
+    --fg:#eef2ff; --fg2:#c9d4ec; --muted:#8d9bbb; --brand:#5b8cff; --brand-soft:#1c2a4a;
+    --ok:#34d399; --warn:#fbbf24; --danger:#f87171; --mono:ui-monospace,Consolas,"Courier New",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;padding:30px 34px}
+  h1{font-size:25px;margin:0 0 8px;letter-spacing:-.02em}
+  h2{font-size:18px;margin:0 0 14px}
+  p{margin:0}
+  .sub{color:var(--muted);font-size:14px}
+  .wrap{display:flex;gap:22px;margin-top:22px;max-width:1240px}
+  .nav{width:236px;flex:none;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px 10px;display:flex;flex-direction:column;gap:2px}
+  .nav .grp{display:flex;align-items:center;justify-content:space-between;padding:11px 12px;border-radius:9px;color:var(--fg2);font-size:14.5px;cursor:pointer}
+  .nav .grp:hover{background:#1b2540}
+  .nav .grp.on{background:var(--brand-soft);color:#fff;font-weight:650;box-shadow:inset 3px 0 0 var(--brand)}
+  .nav .grp .n{font-size:12px;color:var(--muted);background:#1d2842;border-radius:20px;padding:1px 8px}
+  .nav .grp.on .n{color:#bcd0ff;background:#243a66}
+  .nav .foot{margin-top:auto;padding:12px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted);line-height:1.7}
+  .main{flex:1;min-width:0}
+  .crumb{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+  .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .page-head h2{font-size:22px;margin:0}
+  .page-head p{color:var(--muted);font-size:13.5px;margin-top:5px}
+  .tools{display:flex;align-items:center;gap:12px;margin:18px 0 8px}
+  .search{flex:1;max-width:420px;display:flex;align-items:center;gap:9px;background:#0e1524;border:1.5px solid #2c3a5a;border-radius:10px;padding:0 14px;height:44px;color:#6f7d9e}
+  .search svg{width:18px;height:18px;flex:none}
+  .check{display:flex;align-items:center;gap:8px;color:var(--fg2);font-size:13.5px}
+  .box{width:18px;height:18px;border-radius:5px;border:1.5px solid #3c4a6c;display:inline-block}
+  .box.on{background:var(--brand);border-color:var(--brand)}
+  .section{margin-top:20px;border-top:1px solid var(--border);padding-top:14px}
+  .sec-head{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  .sec-head h3{font-size:15px;margin:0;color:#fff}
+  .sec-head .n{font-size:12px;color:var(--muted)}
+  .sec-head .st{font-size:12px;color:var(--ok);border:1px solid #1f5741;background:#0e2019;border-radius:6px;padding:1px 8px}
+  .item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:13px 6px;border-bottom:1px solid #1d2740}
+  .item:hover{background:#131c30}
+  .item .label{min-width:0}
+  .item .label b{font-size:14.5px;font-weight:600;color:var(--fg)}
+  .item .label .h{display:block;font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5}
+  .item .label .meta{display:flex;align-items:center;gap:8px;margin-top:5px}
+  .src{font-size:11px;border:1px solid var(--border);border-radius:5px;padding:1px 7px;color:var(--muted)}
+  .restore{font-size:11.5px;color:#6f7d9e;cursor:pointer;text-decoration:underline dotted}
+  .restore:hover{color:var(--brand)}
+  .adv{font-size:11px;color:#c9a24a;border:1px solid #4a3a15;background:#211a0d;border-radius:5px;padding:1px 7px}
+  .ctrl{display:flex;align-items:center;gap:10px}
+  .sw{width:44px;height:24px;border-radius:14px;background:#2b3654;position:relative;flex:none}
+  .sw.on{background:var(--brand)}
+  .sw i{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.15s}
+  .sw.on i{left:23px}
+  .num{width:120px;background:#0e1524;border:1.5px solid #2c3a5a;border-radius:9px;padding:0 12px;height:40px;color:var(--fg);font-size:14px;display:flex;align-items:center;font-variant-numeric:tabular-nums}
+  .pwd{width:290px;background:#0e1524;border:1.5px solid #2c3a5a;border-radius:9px;padding:0 6px 0 13px;height:40px;display:flex;align-items:center;gap:8px;color:#a9b8da;font-family:var(--mono);letter-spacing:2px}
+  .eye{width:32px;height:32px;border:0;background:transparent;color:#8fa3cc;cursor:pointer;border-radius:7px;display:flex;align-items:center;justify-content:center}
+  .eye svg{width:20px;height:20px}
+  .save-state{font-size:12px;display:flex;align-items:center;gap:6px;white-space:nowrap}
+  .save-state.saving{color:var(--warn)}
+  .save-state.done{color:var(--ok)}
+  .save-state.fail{color:var(--danger)}
+  .spin{width:13px;height:13px;border:2px solid #4a3a15;border-top-color:var(--warn);border-radius:50%;display:inline-block}
+  .note{background:#18223a;border:1px solid #2b3a63;border-radius:10px;padding:12px 15px;font-size:13.5px;color:#c2cdea;margin-top:16px}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin-top:10px}
+  th,td{border:1px solid var(--border);padding:10px 13px;text-align:left;vertical-align:top}
+  th{background:#1a2338;color:var(--fg2);font-size:13.5px}
+  td{color:#ccd6ec}
+  .mono{font-family:var(--mono);font-size:13px}
+  .arrow{color:var(--brand)}
+  .phone{width:392px;background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:16px}
+  .mnav{display:flex;align-items:center;justify-content:space-between;background:#0e1524;border:1px solid #2c3a5a;border-radius:9px;padding:11px 14px;font-size:14px;margin-bottom:14px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px 20px}
+  .k{color:#7f8fb3;font-size:13px}
+</style>
+</head>
+<body>
+
+<!-- ============ 图 1：整体布局 ============ -->
+<section id="s1" class="shot">
+  <h1>系统设置 · 重设计（C 方案：左导航 + 二级页面）</h1>
+  <p class="sub">横向 7 tab 换成左侧竖排导航；右侧一页一组、一行一项；改完即存。左侧点一下换组，浏览器后退可回。</p>
+
+  <div class="wrap">
+    <div class="nav">
+      <div class="grp on"><span>📡 数据源</span><span class="n">33</span></div>
+      <div class="grp"><span>🌐 站点与外观</span><span class="n">14</span></div>
+      <div class="grp"><span>🔐 账号与安全</span><span class="n">15</span></div>
+      <div class="grp"><span>🔔 提醒与通知</span><span class="n">8</span></div>
+      <div class="grp"><span>🛰️ 网络与代理</span><span class="n">7</span></div>
+      <div class="grp"><span>⏱️ 同步与调度</span><span class="n">12</span></div>
+      <div class="grp"><span>🗄️ 运维与存储</span><span class="n">11</span></div>
+      <div class="foot">v2.31.0 · 配置修订 42<br>改一项即存，约 15 秒生效</div>
+    </div>
+
+    <div class="main">
+      <div class="crumb">管理控制台 <span class="arrow">/</span> 系统设置 <span class="arrow">/</span> 数据源</div>
+      <div class="page-head">
+        <div>
+          <h2>数据源</h2>
+          <p>各采集平台的开关、间隔、API Key 与区服。</p>
+        </div>
+      </div>
+
+      <div class="tools">
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>
+          搜索设置项，例如 Steam、代理、SMTP（命中自动跳组）
+        </div>
+        <label class="check"><span class="box"></span>只看非默认</label>
+      </div>
+
+      <div class="section">
+        <div class="sec-head"><h3>全局</h3><span class="n">6 项</span></div>
+        <div class="item">
+          <div class="label"><b>Steam 首轮延迟（秒）</b><span class="h">启动后等待多久开始第一轮采集，避免所有源同时打满。</span>
+            <div class="meta"><span class="src">数据库</span><span class="restore">恢复默认</span></div>
+          </div>
+          <div class="ctrl"><div class="num">30</div><span class="save-state done">✓ 已保存</span></div>
+        </div>
+        <div class="item">
+          <div class="label"><b>杉果首轮延迟（秒）</b>
+            <div class="meta"><span class="src">默认值</span><span class="restore">恢复默认</span></div>
+          </div>
+          <div class="ctrl"><div class="num">180</div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="sec-head"><h3>Steam</h3><span class="n">7 项</span><span class="st">已启用</span></div>
+        <div class="item">
+          <div class="label"><b>启用</b><span class="h">关闭后 Steam 价格、状态、热度、Deck 发现全部停止。</span></div>
+          <div class="ctrl"><div class="sw on"><i></i></div></div>
+        </div>
+        <div class="item">
+          <div class="label"><b>价格刷新间隔（分钟）</b><span class="h">定时刷新已有 Steam 报价；建议 1440（每天一次），越短越容易撞 429。</span>
+            <div class="meta"><span class="src">数据库</span><span class="restore">恢复默认</span></div>
+          </div>
+          <div class="ctrl"><div class="num">1440</div><span class="save-state done">✓ 已保存</span></div>
+        </div>
+        <div class="item">
+          <div class="label"><b>Steam Web API Key</b><span class="h">用于游戏库 / 愿望单同步；采集价格不依赖它。</span>
+            <div class="meta"><span class="src">数据库</span><span class="restore">恢复默认</span></div>
+          </div>
+          <div class="ctrl"><div class="pwd">●●●●●●●●●●●●<button class="eye" title="显示明文"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3.2"/></svg></button></div></div>
+        </div>
+        <div class="item">
+          <div class="label"><b>状态判定限速（毫秒）</b><span class="adv">高级</span>
+            <div class="meta"><span class="src">默认值</span><span class="restore">恢复默认</span></div>
+          </div>
+          <div class="ctrl"><div class="num">1500</div></div>
+        </div>
+        <div class="item">
+          <div class="label"><b>状态判定每轮上限</b><span class="adv">高级</span></div>
+          <div class="ctrl"><div class="num">12000</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">① 左导航 7 组全部是「对象名」，不再有「高级」这种混维度 tab；② 右侧从「卡片 + 折叠」改成「分区标题 + 一行一项」，层级 3 → 2；③ 一屏能看到 2 个分区的完整项，比原来多 2~3 倍。</div>
+</section>
+
+<!-- ============ 图 2：交互细节 ============ -->
+<section id="s2" class="shot" style="display:none">
+  <h1>交互细节</h1>
+  <p class="sub">即时保存、hover 才出现来源与恢复默认、搜索跨组跳转、只看非默认。</p>
+
+  <div class="grid2" style="margin-top:22px">
+    <div class="card">
+      <h2>① 即时保存三态（不用点保存）</h2>
+      <div class="item" style="border-bottom:1px solid #1d2740">
+        <div class="label"><b>钉钉 Webhook 地址</b><div class="meta"><span class="src">数据库</span></div></div>
+        <div class="ctrl"><div class="num">…</div><span class="save-state saving"><span class="spin"></span>保存中</span></div>
+      </div>
+      <div class="item" style="border-bottom:1px solid #1d2740">
+        <div class="label"><b>价格刷新间隔（分钟）</b></div>
+        <div class="ctrl"><div class="num">1440</div><span class="save-state done">✓ 已保存</span></div>
+      </div>
+      <div class="item">
+        <div class="label"><b>Steam 状态判定每轮上限</b></div>
+        <div class="ctrl"><div class="num" style="border-color:#5a2b2b">60000</div><span class="save-state fail">✕ 超出上限，已回滚</span></div>
+      </div>
+      <p class="note" style="margin-top:14px">改控件 → 行内出现「保存中…」→「✓ 已保存」（2 秒后淡出）；失败则回滚原值并标红，<b>不会静默丢改动</b>。</p>
+    </div>
+
+    <div class="card">
+      <h2>② hover 才出现：来源徽标 + 恢复默认</h2>
+      <div class="item"><div class="label"><b>价格刷新间隔（分钟）</b></div><div class="ctrl"><div class="num">1440</div></div></div>
+      <div class="item" style="background:#131c30">
+        <div class="label"><b>价格刷新间隔（分钟）</b>
+          <div class="meta"><span class="src">数据库</span><span class="restore">恢复默认</span></div>
+        </div>
+        <div class="ctrl"><div class="num">1440</div></div>
+      </div>
+      <p class="note" style="margin-top:14px">上来（默认）只有 label + 值；<b>鼠标移上去</b>才显示「数据库 / 环境变量 / 默认值」与「恢复默认」。一屏 10+ 个链接的视觉噪音消失。</p>
+    </div>
+
+    <div class="card">
+      <h2>③ 搜索：跨组命中 + 自动跳组</h2>
+      <div class="search" style="max-width:none;margin-bottom:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg><span style="color:#cbd6f0">API Key</span></div>
+      <div class="item"><div class="label"><b>Steam Web API Key</b><div class="meta"><span class="src">数据源 · Steam</span></div></div><div class="ctrl"><span class="k">→ 点击跳到「数据源」</span></div></div>
+      <div class="item"><div class="label"><b>ITAD API Key</b><div class="meta"><span class="src">数据源 · ITAD</span></div></div><div class="ctrl"><span class="k">→ 点击跳到「数据源」</span></div></div>
+      <div class="item"><div class="label"><b>App 同步专用代理</b><div class="meta"><span class="src">网络与代理</span></div></div><div class="ctrl"><span class="k">→ 跳到「网络与代理」</span></div></div>
+      <p class="note" style="margin-top:14px">搜索在<b>当前页顶部常驻</b>，跨 7 组找；点结果直接跳到对应组并高亮该项。</p>
+    </div>
+
+    <div class="card">
+      <h2>④ 只看非默认</h2>
+      <div class="tools" style="margin:0 0 8px">
+        <label class="check"><span class="box on"></span>只看非默认</label>
+        <span class="k">当前组 33 项 → 只剩 5 项</span>
+      </div>
+      <div class="item"><div class="label"><b>Steam 首轮延迟（秒）</b></div><div class="ctrl"><div class="num">30</div></div></div>
+      <div class="item"><div class="label"><b>Steam 价格刷新间隔</b></div><div class="ctrl"><div class="num">720</div></div></div>
+      <div class="item"><div class="label"><b>ITAD API Key</b></div><div class="ctrl"><div class="pwd">●●●●●●●●●●●●</div></div></div>
+      <div class="item"><div class="label"><b>Deck 发现间隔（分钟）</b></div><div class="ctrl"><div class="num">30</div></div></div>
+      <p class="note" style="margin-top:14px">排查「谁把默认值改了」时，打开它整页只剩改动过的项；状态记忆到 localStorage。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 图 3：分组重划 + 路由 + 移动端 ============ -->
+<section id="s3" class="shot" style="display:none">
+  <h1>分组重划 · 路由 · 移动端</h1>
+  <p class="sub">7 组全部改成「对象」维度；每组一个独立 URL，可深链可后退。</p>
+
+  <div class="grid2" style="margin-top:22px">
+    <div class="card">
+      <h2>旧 7 tab → 新 7 组</h2>
+      <table>
+        <tr><th>旧</th><th>新</th></tr>
+        <tr><td>数据源与采集 33</td><td><b>数据源</b> 33</td></tr>
+        <tr><td>站点与内容 14</td><td><b>站点与外观</b> 14</td></tr>
+        <tr><td>账号与登录 4 + 安全与限流 11</td><td><b>账号与安全</b> 15</td></tr>
+        <tr><td>通知与提醒 8</td><td><b>提醒与通知</b> 8</td></tr>
+        <tr><td>网络与代理 7</td><td><b>网络与代理</b> 7</td></tr>
+        <tr><td>高级 · 调度与熔断 12</td><td><b>同步与调度</b> 12</td></tr>
+        <tr><td>高级 · 备份 5 + 缓存图片 6</td><td><b>运维与存储</b> 11</td></tr>
+      </table>
+      <p class="note" style="margin-top:14px">「高级」这个混维度名字消失——它其实是「同步」+「运维」两类；拆出来后 7 个名字都是对象。</p>
+    </div>
+
+    <div class="card">
+      <h2>路由与深链</h2>
+      <table>
+        <tr><th>地址</th><th>行为</th></tr>
+        <tr><td class="mono">/console/settings/sources</td><td>数据源（默认页）</td></tr>
+        <tr><td class="mono">/console/settings/network</td><td>网络与代理</td></tr>
+        <tr><td class="mono">/console/settings/schedule</td><td>同步与调度</td></tr>
+        <tr><td class="mono">/console/settings?q=API+Key</td><td>跨组搜索（可分享）</td></tr>
+      </table>
+      <p class="note" style="margin-top:14px">点左侧导航 = 换 URL（pushState），<b>浏览器后退能回到上一组</b>；收藏某个组即直达。后端 schema 不动，仍是 `GET /api/admin/settings`。</p>
+    </div>
+  </div>
+
+  <h2 style="margin-top:28px">移动端（392px）</h2>
+  <div class="phone">
+    <div class="mnav"><span>📡 数据源 · 33 项</span><span style="color:#8fa3cc">切换 ▾</span></div>
+    <div class="item" style="grid-template-columns:1fr;gap:8px"><div class="label"><b>Steam 价格刷新间隔</b></div><div class="ctrl"><div class="num" style="width:100%">1440</div></div></div>
+    <div class="item" style="grid-template-columns:1fr;gap:8px"><div class="label"><b>Steam Web API Key</b></div><div class="ctrl"><div class="pwd" style="width:100%">●●●●●●●●●●●●<button class="eye"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3.2"/></svg></button></div></div></div>
+    <p class="note" style="margin-top:12px">左导航收成顶部「切换 ▾」下拉；每项控件换行占满宽；实时保存状态显示在控件下方。</p>
+  </div>
+</section>
+
+<script>
+  const m = new URLSearchParams(location.search).get('shot');
+  if (m) {
+    const keep = 's' + m;
+    document.querySelectorAll('section.shot').forEach((el) => { el.style.display = el.id === keep ? '' : 'none'; });
+  }
+</script>
+</body>
+</html>

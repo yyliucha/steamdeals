@@ -182,6 +182,7 @@
 | **ES** | 生产 pg_trgm 索引命中复核（EXPLAIN，部署侧执行） | [ROADMAP.md](ROADMAP.md)「体验与性能优化」段尾注 | 待排查 | ✅ 本轮已给 |
 | **FW** | ⚙️ 调整：慢慢同步——heat 100 款/10 分钟 + 过期阈值 30 天；steam-discovery 10 页/30 分钟 + fallback 10/轮 + 页游标（`app_meta`）；403/429 都切代理（按代理冷却 + 每请求 3 条 + 速率闸门 30 次/分钟，修订 PROXY-POOL 决策 1）；403 软退出 76 + 预警节流；拆 FW-1 / FW-2 / FW-3 | [SLOW-SYNC.md](SLOW-SYNC.md)、[PROXY-POOL.md](PROXY-POOL.md) §12 | 已发布 v2.31.0（2026-11-27；FW-1 `7c21b29` / FW-2 `09c7036` / FW-3 `cde8ea9`+`ee85ffb`；QA-FW-1/2/3 全放行） | ✅ 本轮已给 |
 | **FX** | ⚙️ 调整：后台密钥查看统一——8 个 secret 在四种布局分支统一「**密码框 + 眼睛图标**原地切换明文/密文」（懒加载、30 秒自动回密文、未改动不提交）；审计写 `audit_logs`（`admin.secret_revealed`）；抽 `SecretField.vue` | [SECRET-REVEAL.md](SECRET-REVEAL.md)、demo `design/secret-reveal-2026-11-27.html` | 待开发（2026-11-27 确认，含 demo） | ✅ 本轮已给 |
+| **FY** | ⚙️ 调整：系统设置页重设计——左导航 7 组（重划，去「高级」混维度）+ `/console/settings/:group` 二级路由 + 去卡片盒子（层级 3→2）+ 每项即时保存（防抖 + 合并）+ 工具栏只留搜索/只看非默认 | [SETTINGS-REDESIGN.md](SETTINGS-REDESIGN.md)、demo `design/settings-redesign-2026-11-27.html` | 待开发（2026-11-27 确认，含 demo；依赖 FX） | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
 
