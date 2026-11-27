@@ -275,13 +275,20 @@ export function useSyncAdmin() {
     const today = parts.prices + parts.status + parts.names + parts.images;
     const run = state.status?.run || null;
     const elapsedMin = run?.startedAt ? Math.max(0, Math.round((Date.now() - new Date(run.startedAt).getTime()) / 60000)) : null;
-    // 回填类任务带进度（done/limit/百分比/速度）——原「任务实时进度」块并进概览卡（规格 §3-5）
+    // 运行中 = 调度器状态文件里 running 的子步骤（定时任务）+ 后台手动触发的当前任务（syncState.run，去重）。
+    // 旧页「任务健康」块讲的就是这件事，GA-1 并进概览卡（规格 §3-5）。
+    const busySteps = [];
+    for (const g of groups.value) for (const s of g.steps || []) if (s.running) busySteps.push(s);
+    const webMode = state.status?.running ? String(run?.mode || '') : '';
+    const webRunning = Boolean(webMode) && !busySteps.some((s) => s.name === webMode);
+    const runningCount = busySteps.length + (webRunning ? 1 : 0);
+    // 回填类任务带进度（done/limit/百分比/速度）——原「任务实时进度」块并进概览卡
     const p = state.status?.running ? state.backfillProgress : null;
     const progress = p && Number(p.limit) > 0 ? { done: Number(p.done) || 0, limit: Number(p.limit) || 0, percent: Number(p.percent) || 0, ratePerMin: Number(p.ratePerMin) || 0 } : null;
     return {
-      running: runningJob.value ? 1 : 0,
-      runningLabel: runningJob.value ? (TASK_LABELS[runningJob.value] || runningJob.value) : '空闲',
-      runningElapsedMin: elapsedMin,
+      running: runningCount,
+      runningLabel: busySteps[0]?.label || (webMode ? TASK_LABELS[webMode] || webMode : '空闲'),
+      runningElapsedMin: runningCount ? elapsedMin : null,
       runningProgress: progress,
       failed: failedGroups.value.length,
       failedNames: failedGroups.value.slice(0, 2).map((g) => g.label),
@@ -560,7 +567,9 @@ export function useSyncAdmin() {
     groupFailTitle,
     groupOpenText,
     runnableStep: (name) => RUNNABLE_STEP_MODES.includes(name),
-    stepRunLabel: (name) => (name === 'heat' ? '热度回填' : name === 'backfill' ? '增量回填' : name === 'rename' ? '重写名字' : name === 'explicit-backfill' ? '色情游戏回填' : name === 'steam-status' ? '状态判定' : '立即运行'),
+    // 子步骤按钮文案统一「立即运行」（与 demo 一致；跑什么看同一行的「子步骤」列）。
+    // 旧页的「热度回填 / 增量回填 / 重写名字」按 mode 改文案会让同一列出现三种措辞，反而不一致。
+    stepRunLabel: () => '立即运行',
     loadStatus,
     loadFreshness,
     loadGamesStats,

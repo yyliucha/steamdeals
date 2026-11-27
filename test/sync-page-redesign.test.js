@@ -146,7 +146,10 @@ test('GA-1 验收 4：任务组表——组行展开、组级/子步骤级立即
 });
 
 test('GA-1 验收 4：运行中任务并入概览卡与组行（不再有独立「任务健康」块），停止/进度能力不丢', () => {
-  assert.match(composable, /running: runningJob\.value \? 1 : 0/, '运行中并入概览卡');
+  // 运行中 = 调度器状态文件里 running 的子步骤 + 后台手动触发的当前任务（去重）——旧「任务健康」块的信息
+  assert.match(composable, /for \(const s of g\.steps \|\| \[\]\) if \(s\.running\) busySteps\.push\(s\)/, '调度器 running 子步骤计入概览卡');
+  assert.match(composable, /const webRunning = Boolean\(webMode\) && !busySteps\.some\(\(s\) => s\.name === webMode\)/, '后台手动任务计入且去重');
+  assert.match(composable, /running: runningCount/, '概览卡「运行中」= 运行中子步骤数');
   assert.match(composable, /runningElapsedMin/, '概览卡显示已跑时长');
   assert.match(composable, /runningProgress/, '回填类进度（done/limit/百分比）并入概览卡');
   assert.match(kpiBar, /已补 \{\{ kpi\.runningProgress\.done/, '概览卡显示补跑进度');
