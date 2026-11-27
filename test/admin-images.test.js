@@ -42,7 +42,10 @@ test('CO-5/B4-2 第十六轮：admin-images.js 四条路由分支齐全（删任
   assert.match(AI_ROUTES, /\(startSteamJobImpl \?\? startSteamJob\)\(\{/, 'backfill 启动替身优先级与拆分前一致');
   // 域专属取值：imageStats 走共享 images.js 模块、看板行/列表走 repository
   assert.match(AI_ROUTES, /images\.imageStats\(\)/, '缓存统计走共享 images.js');
-  assert.match(AI_ROUTES, /db\.imageCoverageRows\(q\)/, '看板行走 repository（pg.js re-export 壳）');
+  // GB 批（docs/IMAGE-PAGE-CONSOLE-FIX.md §2.1）：统计改 SQL 聚合——不再全表拉行（19.6 万行 → 503）
+  assert.match(AI_ROUTES, /db\.imageCoverageTotals\(q\)/, 'GB：看板总数走 repository 的 count 聚合');
+  assert.match(AI_ROUTES, /db\.imageCoverageHeaderByAppids\(q, /, 'GB：负缓存 appid 走小 IN 查询');
+  assert.ok(!/db\.imageCoverageRows\(/.test(AI_ROUTES), 'GB：看板分支不得再调用全表 imageCoverageRows');
   assert.match(AI_ROUTES, /db\.imageCoverageMissingRows\(q, \{/, '看板列表走 repository 新函数');
 });
 
@@ -83,9 +86,16 @@ test('CO-5/B4-2 第十六轮：admin-images-repository.js 签名不变 + pg.js r
   // 域内联 SQL 抽出的新函数
   assert.match(AI_REPO, /export async function imageCoverageMissingRows\(q, \{ missAppids = \[\], pageSize = 50, offset = 0 \} = \{\}\)/, '看板列表内联 SQL 已抽 imageCoverageMissingRows');
   assert.match(AI_REPO, /g\.steam_appid::text = any\(\$1::text\[\]\)/, 'any($1::text[]) 谓词随函数搬家');
+  // GB 批（docs/IMAGE-PAGE-CONSOLE-FIX.md §2.1）：看板统计改 SQL 聚合的两个新函数（count + 小 IN 查询）
+  assert.match(AI_REPO, /export async function imageCoverageTotals\(q\)/, 'GB：count 聚合函数存在');
+  assert.match(AI_REPO, /export async function imageCoverageHeaderByAppids\(q, appids = \[\]\)/, 'GB：负缓存 appid 小查询函数存在');
   assert.ok(!/create table/.test(AI_REPO), 'repository 不搬 DDL');
   // pg.js 必须 re-export（旧 db.* 导入签名不变；test 与 routes/admin-images.js 照旧走聚合壳）
-  assert.match(AI_PG, /export \{ imageCoverageRows, imageCoverageMissingRows \} from '\.\/admin-images-repository\.js'/, 'pg.js 必须 re-export 两个函数');
+  assert.match(
+    AI_PG,
+    /export \{\s*imageCoverageHeaderByAppids,\s*imageCoverageMissingRows,\s*imageCoverageRows,\s*imageCoverageTotals,\s*\} from '\.\/admin-images-repository\.js'/,
+    'pg.js 必须 re-export 四个函数（GB 批新增两个聚合函数）',
+  );
   // 旧定义不得残留在 pg.js（双实现会漂移）
   assert.ok(!/export (async )?function imageCoverageRows/.test(AI_PG), 'pg.js 不允许保留旧函数定义（只许 re-export）');
   // 边界判据锁：跨模块共用图片 SQL 留在 pg.js（image-backfill.js 回填 / steam-status.js 顺带补齐共用）

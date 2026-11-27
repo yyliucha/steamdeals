@@ -23,7 +23,7 @@
 | 项 | 内容 |
 |---|---|
 | `manifest.webmanifest` | `name: SteamDeals`、`short_name: SteamDeals`、`start_url: /`、`display: standalone`、`orientation: portrait`、`theme_color`（与 `main.css` 暗色 token 对齐）、`background_color`、`icons`（192/512 各一份 + `purpose: maskable`） |
-| 图标 | 由现有 `web/favicon.svg` 导出 192/512 PNG；`apple-touch-icon` 文件已有，补 `<link>` 引用 |
+| 图标 | 由现有 `web/favicon.svg` 导出 192/512 PNG；`apple-touch-icon` 文件已有，补 `<link>` 引用。GB 批（2026-11-27）：`frontend/public/apple-touch-icon.png`（180×180，由 `icon-512.png` 缩放）已补，与 manifest/图标同走 `frontendDir` 白名单；`web/apple-touch-icon.png` 仅作无构建产物时的 `outDir` 回退 |
 | meta | `frontend/index.html` 补 `theme-color`、`<link rel="manifest">`、`apple-mobile-web-app-*`（capable / status-bar-style / title） |
 | 全屏 | `display: standalone`，从桌面图标启动无地址栏 |
 | 网络失败提示 | 统一拦截 fetch 失败（断网 / 超时）：页面级空态「网络不可用，请检查连接后重试」+ 可重试提示；**不缓存、不排队重放** |
@@ -98,7 +98,7 @@
 | `frontend/public/manifest.webmanifest` | **新增**：`name/short_name=SteamDeals`、`start_url="/"`、`display="standalone"`、`orientation="portrait"`、`theme_color`、`background_color`、`icons`（192/512，其一 `purpose:"maskable"`） |
 | `frontend/public/icon-192.png`、`icon-512.png` | **新增**：由 `web/favicon.svg` 导出（`frontend/public` 目录当前不存在，需创建；Vite root 是 `frontend/`，public 内容会原样拷到 dist 根） |
 | `frontend/index.html` | 补 `<link rel="manifest" href="/manifest.webmanifest">`、`<meta name="theme-color" content="…">`、`<link rel="apple-touch-icon" href="/apple-touch-icon.png">`、`apple-mobile-web-app-capable/status-bar-style/title` |
-| `src/server.js` 的 `serveFrontendStatic`（约 2826 行） | **【最易漏】静态白名单**：现在只有 `/`、若干页面路径、`/assets/*` 从 `frontendDir` 出，其余全走 `outDir`（`out/` 静态曲线页）。必须把 `/manifest.webmanifest`、`/icon-192.png`、`/icon-512.png` 加进 `frontendDir` 分支（或加 `/icon-` 前缀规则），否则**构建成功但线上 404** |
+| `src/server.js` 的 `serveFrontendStatic`（约 2826 行） | **【最易漏】静态白名单**：现在只有 `/`、若干页面路径、`/assets/*` 从 `frontendDir` 出，其余全走 `outDir`（`out/` 静态曲线页）。必须把 `/manifest.webmanifest`、`/icon-192.png`、`/icon-512.png` 加进 `frontendDir` 分支（或加 `/icon-` 前缀规则），否则**构建成功但线上 404**。GB 批（2026-11-27）补登记 `/apple-touch-icon.png`（同款 404 坑，见 [IMAGE-PAGE-CONSOLE-FIX.md](IMAGE-PAGE-CONSOLE-FIX.md) §2.2） |
 | `frontend/src/pages/Home.vue`（`request()` 约 170 行） | 网络失败统一提示：fetch 抛错（断网/超时）→ 页面级「网络不可用，请检查连接后重试」+ 可重试；**不缓存、不排队重放** |
 | `frontend/src/pages/Home.vue` 浮层 | 返回键入栈：`filterDrawer`（约 73 行）、`noticeDialog`（约 81 行）、`detailVisible`（约 163 行）打开时 `history.pushState`，`popstate` 关最上层浮层；可抽 `useBackGuard(visibleRef)` |
 | `frontend/src/composables/useVersionGuard.js` | **新增**：启动 + `visibilitychange` 比对 `/api/site` 的 `version`（`src/server.js:657`），不一致显示「已更新到 vX.Y.Z，点击刷新」；离线静默跳过；`AUTO_RELOAD=false` |

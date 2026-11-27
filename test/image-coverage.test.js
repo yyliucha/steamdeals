@@ -250,6 +250,20 @@ test('EC-1 覆盖看板：数字与 SQL 一致、缺图列表分页标原因、r
     assert.equal(cleared.cleared, 1, '清了 1 条负缓存');
     const after = await (await fetch(`${base}/api/admin/images/coverage`, { headers: { cookie: adminCookie } })).json();
     assert.equal(after.stats.missing, 1, 'reset-miss 后缺图数回落');
+    // GB 批（docs/IMAGE-PAGE-CONSOLE-FIX.md §2.1）：负缓存改「只查这几个 appid」的 any($1::int[]) 小查询，
+    // 口径必须与原全表 byAppid.has() 过滤一致——库外 appid 与已删除游戏都不能虚增缺图数。
+    assert.equal((await fetch(`${base}/img/steam/999999/header`)).status, 404, '库里没有的 appid 也进负缓存');
+    const outside = await (await fetch(`${base}/api/admin/images/coverage`, { headers: { cookie: adminCookie } })).json();
+    assert.equal(outside.stats.missing, 1, '库外 appid 的负缓存不计入缺图');
+    assert.equal((await fetch(`${base}/img/steam/992003/header`)).status, 404, '992003 再 404 → 重新进负缓存');
+    const again404 = await (await fetch(`${base}/api/admin/images/coverage`, { headers: { cookie: adminCookie } })).json();
+    assert.equal(again404.stats.missing, 2, '在库且有 header_image 的 404 计入 cdn404');
+    await q('update games set deleted = true where steam_appid = 992003');
+    const deleted = await (await fetch(`${base}/api/admin/images/coverage`, { headers: { cookie: adminCookie } })).json();
+    assert.equal(deleted.stats.totalGames, 2, '已删除游戏不计入总数');
+    assert.equal(deleted.stats.withHeaderImage, 1);
+    assert.deepEqual(deleted.stats.missingByReason, { noHeader: 1, cdn404: 0, fetchFailed: 0 }, '已删除游戏不计缺图原因');
+    assert.equal(deleted.stats.missing, 1);
   } finally {
     await srv.close();
     await store.close();
@@ -314,6 +328,91 @@ test('EC-2 手动回填接口：匿名 401、普通用户 403、管理员 202、
   } finally {
     await srv.close();
     await store.close();
+    if (savedCaptcha === undefined) delete process.env.CAPTCHA_ENABLED;
+    else process.env.CAPTCHA_ENABLED = savedCaptcha;
+  }
+});
+
+// ---------------------------------------------------------------- GB 批（docs/IMAGE-PAGE-CONSOLE-FIX.md）
+// GB-1：coverage 看板原本全表拉行（线上约 19.6 万行 → Node 内存 filter → 超 requestTimeoutMs=15000
+// → 503、数字全「—」），改 SQL 聚合。反向自检：把路由改回 db.imageCoverageRows(q) → 本用例红；
+// 把聚合 SQL 改回 select 行级列 → 本用例红；把 any($1::int[]) 查询的 not deleted 去掉 → 本用例红。
+
+test('GB-1 coverage 看板改 SQL 聚合：路由不再全表拉行（静态锁）', () => {
+  const routes = readFileSync(new URL('../src/routes/admin-images.js', import.meta.url), 'utf8');
+  const repo = readFileSync(new URL('../src/store/admin-images-repository.js', import.meta.url), 'utf8');
+  assert.match(routes, /db\.imageCoverageTotals\(q\)/, '总数/有 header 数走 repository 的 count 聚合');
+  assert.match(routes, /db\.imageCoverageHeaderByAppids\(q, /, '负缓存 appid 走 any($1::int[]) 小查询');
+  assert.doesNotMatch(
+    routes,
+    /db\.imageCoverageRows\(/,
+    '看板分支不得再调用全表 imageCoverageRows（线上 19.6 万行 → 15s 请求超时 503）',
+  );
+  assert.match(
+    repo,
+    /select count\(\*\)::int as total, count\(header_image\)::int as with_header from games where steam_appid is not null and not deleted/,
+    '总数口径 = 单条 count 聚合（不再 select 行级列）',
+  );
+  assert.match(repo, /export async function imageCoverageHeaderByAppids\(q, appids = \[\]\)/, '负缓存 appid 查询已抽 repository');
+  assert.match(repo, /where steam_appid = any\(\$1::int\[\]\) and not deleted/, '小查询走 any($1::int[]) 且已删除游戏不算在库');
+});
+
+test('GB-1/GB-2 coverage 20 万行量级：数字与 SQL 口径一致、响应 < 1s', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gb-img-'));
+  const savedImgDir = process.env.IMG_DIR;
+  const savedCaptcha = process.env.CAPTCHA_ENABLED;
+  process.env.IMG_DIR = dir;
+  process.env.CAPTCHA_ENABLED = '0';
+  const store = await openStore('pglite:', {});
+  await db.migrate(store);
+  const q = (sql, p) => store.query(sql, p);
+  let srv;
+  try {
+    // 20 万行（与线上 19.6 万同量级）：每 10 行 1 行缺 header_image、每 20 行 1 行已删除
+    await q(
+      `insert into games (steam_appid, name, header_image, deleted)
+       select 9000000 + i, 'GB Load ' || i,
+              case when i % 10 = 0 then null
+                   else 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/' || (9000000 + i) || '/header.jpg' end,
+              (i % 20 = 0)
+         from generate_series(1, 200000) as s(i)`,
+    );
+    await db.createUser(q, { username: 'admin', password: 'admin123456', role: 'admin' });
+    srv = await startApiServer({ query: q, port: 0, host: '127.0.0.1' });
+    const base = `http://127.0.0.1:${srv.port}`;
+    const login = await fetch(`${base}/api/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin123456' }),
+    });
+    assert.equal(login.status, 200, '登录 admin');
+    const adminCookie = (login.headers.get('set-cookie') ?? '').split(';')[0];
+    const sql = (
+      await q(
+        'select count(*)::int as total, count(header_image)::int as with_header from games where steam_appid is not null and not deleted',
+      )
+    ).rows[0];
+    assert.equal(sql.total, 190000, '造数口径自检：已删除 1 万行不进总数');
+    const started = Date.now();
+    const res = await fetch(`${base}/api/admin/images/coverage`, { headers: { cookie: adminCookie } });
+    const elapsed = Date.now() - started;
+    assert.equal(res.status, 200, '看板接口必须 200（改前全表拉行会 503 请求超时）');
+    const body = await res.json();
+    assert.equal(body.stats.totalGames, sql.total, 'totalGames = SQL count(*)（已删除不计）');
+    assert.equal(body.stats.withHeaderImage, sql.with_header, 'withHeaderImage = SQL count(header_image)');
+    assert.equal(body.stats.missingByReason.noHeader, sql.total - sql.with_header, 'noHeader = total - with_header');
+    assert.equal(body.stats.missing, sql.total - sql.with_header, '无负缓存时 missing = noHeader');
+    assert.equal(body.list.total, sql.total - sql.with_header, '缺图分页列表 total 与看板缺图数一致');
+    assert.ok(elapsed < 1000, `20 万行量级响应必须 < 1s（实测 ${elapsed}ms）`);
+    console.log(
+      `[GB-1] 20 万行 coverage 响应 ${elapsed}ms（total=${sql.total} / withHeader=${sql.with_header} / missing=${body.stats.missing}）`,
+    );
+  } finally {
+    await srv?.close?.();
+    await store.close();
+    rmSync(dir, { recursive: true, force: true });
+    if (savedImgDir === undefined) delete process.env.IMG_DIR;
+    else process.env.IMG_DIR = savedImgDir;
     if (savedCaptcha === undefined) delete process.env.CAPTCHA_ENABLED;
     else process.env.CAPTCHA_ENABLED = savedCaptcha;
   }

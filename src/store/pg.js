@@ -237,7 +237,14 @@ export {
 // 共用候选谓词）属跨模块共用 SQL 留本文件；games 表 DDL 在本文件 SCHEMA 不搬。
 // 这里 re-export 保持旧 db.* 导入签名不变（routes/admin-images.js、server.js 其它段
 // 与现有测试照旧走 pg.js 聚合壳）。
-export { imageCoverageRows, imageCoverageMissingRows } from './admin-images-repository.js';
+// GB 批（docs/IMAGE-PAGE-CONSOLE-FIX.md §2.1）：看板统计改 SQL 聚合——imageCoverageTotals（count）
+// 与 imageCoverageHeaderByAppids（只查负缓存 appid）随域新增，一起 re-export。
+export {
+  imageCoverageHeaderByAppids,
+  imageCoverageMissingRows,
+  imageCoverageRows,
+  imageCoverageTotals,
+} from './admin-images-repository.js';
 // CO-5/B4-2 第十六轮（docs/DESIGN-AUDIT.md B4）：admin-users 域（B4 #11：后台用户批量
 // /api/admin/users*、bulk、bulk-ops + DT-4 后台重置密码发码）SQL 落 admin-users-repository.js——
 // 用户 CRUD（unlockUser/updateUser/deleteUserAudited/listUserDeletions）、批量操作审计与

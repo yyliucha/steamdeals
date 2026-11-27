@@ -71,9 +71,23 @@ test('index.html 引用 manifest / theme-color / apple-touch-icon', () => {
   assert.ok(html.includes(`content="${manifest.theme_color}"`), 'theme-color 要与 manifest 一致');
   assert.match(html, /<link[^>]+rel="apple-touch-icon"[^>]+href="\/apple-touch-icon\.png"/, '缺 apple-touch-icon');
   assert.match(html, /<meta[^>]+name="apple-mobile-web-app-capable"[^>]+content="yes"/, '缺 apple-mobile-web-app-capable');
+  // GB 批（docs/IMAGE-PAGE-CONSOLE-FIX.md §2.3）：旧 apple- 标签 iOS 仍认、必须保留；
+  // 新规范标签 mobile-web-app-capable 也要同时存在，否则 Chrome console 报弃用提示。
+  assert.match(html, /<meta[^>]+name="mobile-web-app-capable"[^>]+content="yes"/, '缺 mobile-web-app-capable（新规范标签）');
   assert.match(html, /<meta[^>]+name="apple-mobile-web-app-status-bar-style"/, '缺 apple status-bar-style');
   assert.match(html, /<meta[^>]+name="apple-mobile-web-app-title"[^>]+content="SteamDeals"/, '缺 apple title');
-  assert.ok(existsSync(join(ROOT, 'web', 'apple-touch-icon.png')), 'apple-touch-icon.png 不存在');
+  assert.ok(existsSync(join(ROOT, 'web', 'apple-touch-icon.png')), 'web/apple-touch-icon.png 不存在（无构建产物时的 outDir 回退）');
+});
+
+test('GB：apple-touch-icon.png 真实存在（180×180）且登记为 PWA 根文件（防 404）', () => {
+  const file = join(PUBLIC, 'apple-touch-icon.png');
+  assert.ok(existsSync(file), 'frontend/public/apple-touch-icon.png 不存在 → index.html 引用它必然 404');
+  assert.deepEqual(pngSize(file), { width: 180, height: 180 }, 'Apple 推荐 180×180（从 icon-512.png 缩放）');
+  assert.equal(
+    isFrontendPublicFile('/apple-touch-icon.png'),
+    true,
+    '必须登记为 PWA 根文件：否则构建产物 dist 里的图标不被服务，仍会 404',
+  );
 });
 
 // BS 批（docs/MOBILE-APP-TWA.md §4）：service worker 改为「可清缓存离线」——
@@ -126,7 +140,7 @@ test('服务端从 frontendDir 提供 manifest/图标，曲线页仍走 outDir',
   try {
     writeFileSync(join(frontendDir, 'index.html'), '<!doctype html><title>app</title>');
     copyFileSync(MANIFEST_FILE, join(frontendDir, 'manifest.webmanifest'));
-    for (const name of ['icon-192.png', 'icon-512.png']) copyFileSync(join(PUBLIC, name), join(frontendDir, name));
+    for (const name of ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) copyFileSync(join(PUBLIC, name), join(frontendDir, name));
     writeFileSync(join(outDir, 'chart-105600.html'), '<html>curve</html>');
 
     const manifestRes = callStatic(frontendDir, outDir, '/manifest.webmanifest');
@@ -134,7 +148,7 @@ test('服务端从 frontendDir 提供 manifest/图标，曲线页仍走 outDir',
     assert.match(manifestRes.headers['content-type'], /^application\/manifest\+json/);
     assert.deepEqual(manifestRes.body, readFileSync(MANIFEST_FILE), '内容要与 frontend/public 一致');
 
-    for (const name of ['icon-192.png', 'icon-512.png']) {
+    for (const name of ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) {
       const iconRes = callStatic(frontendDir, outDir, `/${name}`);
       assert.equal(iconRes.status, 200, `${name} 必须能访问`);
       assert.equal(iconRes.headers['content-type'], 'image/png');

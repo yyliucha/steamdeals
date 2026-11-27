@@ -2175,9 +2175,12 @@ function serveStatic(res, outDir, pathname, { cacheControl = null } = {}) {
 export function isFrontendPublicFile(pathname) {
   // BS 批（docs/MOBILE-APP-TWA.md §3.2/§4/§5）：TWA 校验文件、service worker、APK 下载都走 frontendDir，
   // 必须登记——否则"构建成功但线上 404"（本项目老坑：manifest/图标、/login 都踩过）
+  // GB 批（docs/IMAGE-PAGE-CONSOLE-FIX.md §2.2）：apple-touch-icon 与 PWA 图标同源（frontend/public），
+  // 不登记就会回落到 outDir（web/ 旧图标）或直接 404——登记后 dist 里的 180×180 才真正被服务。
   return (
     pathname === '/manifest.webmanifest' ||
     pathname.startsWith('/icon-') ||
+    pathname === '/apple-touch-icon.png' ||
     pathname === '/.well-known/assetlinks.json' ||
     pathname === '/sw.js' ||
     pathname.startsWith('/app/')

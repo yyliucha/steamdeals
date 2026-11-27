@@ -62,27 +62,38 @@ export async function handleAdminImagesAdmin(ctx) {
   // EC 批（docs/IMAGE-COVERAGE.md §8 EC-1）：图片覆盖看板——
   // 缺图集合 = header_image 为 null 的游戏 ∪ 负缓存（header 尺寸）里有记录的游戏；
   // 列表原因三种：header_image 空 / CDN 404（负缓存 notfound）/ 抓取失败（负缓存 error）。
+  // GB 批（docs/IMAGE-PAGE-CONSOLE-FIX.md §1/§2.1）：统计改 SQL 聚合——原 imageCoverageRows 是
+  // 全表查询（线上约 19.6 万行拉到 Node 内存再 filter），超 requestTimeoutMs=15000 → 503、看板全空；
+  // 现在只跑 count 聚合 + 负缓存 appid 的小 IN 查询 + 缺图分页，响应契约不变。
   if (path === '/api/admin/images/coverage' && req.method === 'GET') {
     if (!requireAdmin()) return true;
     const page = Math.max(Number(url.searchParams.get('page') ?? 1) || 1, 1);
     const pageSize = Math.min(Math.max(Number(url.searchParams.get('pageSize') ?? 50) || 50, 1), 200);
-    const rows = await db.imageCoverageRows(q);
-    const byAppid = new Map(rows.map((r) => [r.steamAppid, r]));
-    const totalGames = rows.length;
-    const withHeader = rows.filter((r) => r.headerImage).length;
-    const noHeader = totalGames - withHeader;
-    // 负缓存 key 形如 `<appid>/header`；只看 header 尺寸，且库里有该游戏才算看板缺图
+    const totals = await db.imageCoverageTotals(q);
+    const totalGames = totals.total;
+    const withHeader = totals.withHeader;
+    const noHeader = Math.max(totalGames - withHeader, 0);
+    // 负缓存 key 形如 `<appid>/header`；只看 header 尺寸。先收集 appid 集合（内存 Map，量小），
+    // 再用一次 any($1::int[]) 查这些 appid 是否在库、是否有 header_image（不再全表拉行）。
     const missByAppid = new Map();
     for (const [key, miss] of imgMissCache) {
       if (!key.endsWith('/header')) continue;
       const appid = Number(key.slice(0, -'/header'.length));
-      if (!Number.isFinite(appid) || !byAppid.has(appid)) continue;
+      if (!Number.isFinite(appid)) continue;
       missByAppid.set(appid, miss);
     }
+    const headerByAppid = new Map(
+      (await db.imageCoverageHeaderByAppids(q, [...missByAppid.keys()])).map((r) => [r.steamAppid, r.headerImage]),
+    );
     let cdn404 = 0;
     let fetchFailed = 0;
     for (const [appid, miss] of missByAppid) {
-      if (!byAppid.get(appid)?.headerImage) continue; // header_image 空优先级更高，计入 noHeader
+      // 库外（含已删除）的游戏不算看板缺图：与 EC 批 byAppid.has(appid) 过滤同义
+      if (!headerByAppid.has(appid)) {
+        missByAppid.delete(appid);
+        continue;
+      }
+      if (!headerByAppid.get(appid)) continue; // header_image 空优先级更高，计入 noHeader
       if (miss?.kind === 'notfound') cdn404 += 1;
       else fetchFailed += 1;
     }

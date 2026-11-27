@@ -216,7 +216,8 @@ test('CO-5/B4-2 第十轮：admin-settings 路由分支不得双实现（server.
   assert.ok(!/const mailTestCooldown = new Map\(\)/.test(ST_SERVER), '测试邮件冷却 Map 不得残留在 server.js（随域移入）');
   // 边界锁：跨域共用的邮件发送（users 邮箱绑定）与设置路由留宿主
   assert.match(ST_SERVER, /await authRoutes\.handleEmailAuth\(\{ path, req, res, q, logger, json, readBody, captcha, ip \}\)/, '邮箱验证码 auth-routes 入口留 server.js（跨域）');
-  assert.match(ST_SERVER, /handleSettingsRoutes\(\{ path, req, res, q, store, logger, json, readBody, user, afterHydrate/, '/api/admin/settings* 留 server.js（settings-routes.js 独立模块）');
+  // FX（975bfce）给 handleSettingsRoutes 增加了 ip 参数（设置页速率限制上下文），断言同步带上——否则 test:1 常红
+  assert.match(ST_SERVER, /handleSettingsRoutes\(\{ path, req, res, q, store, logger, json, readBody, user, ip, afterHydrate/, '/api/admin/settings* 留 server.js（settings-routes.js 独立模块）');
   assert.match(ST_SERVER, /await handleAdminUsersAdmin\(\{/, 'users 邮箱发码路由已随 admin-users 域拆到 routes/admin-users.js（B4 #11）');
 });
 
