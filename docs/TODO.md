@@ -27,7 +27,7 @@
 |---|---|---|
 | 🐞 缺陷 | 4 | EO、ER、EU、EX |
 | ✨ 功能 | 0 | — |
-| ⚙️ 调整 | 10 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FW |
+| ⚙️ 调整 | 11 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FW / FX |
 | 🧹 技术债 | 2 | EN、FC |
 | 🧪 测试基建 | 0 | — |
 | 📝 文档流程 | 0 | — |
@@ -216,3 +216,22 @@
 - **需求**：后台统计卡片显示 adult_flag 总数 / mature_flag 总数 / 回填覆盖 / 最近回填时间——**只显示数字**，
   无成人内容列表（配合 FG）。
 - **验收**：见规格 §2（数字与 API 一致；无内容列表；测试全绿）。
+
+## FX. 待开发（⚙️ 调整）：后台密钥查看统一——8 个 secret 覆盖四种布局，查看/编辑/清除三动作
+
+**状态：** 待开发
+**类型：** ⚙️ 调整（后台设置页：现有功能缺口补齐 + 交互统一）
+**优先级：** P2 —— 线上卡片布局丢失「查看」入口，管理员无法核对已录入的 Key / 授权码 / 代理
+**依赖：** 无
+**解锁：** 无
+**规格**：[SECRET-REVEAL.md](SECRET-REVEAL.md)
+**demo**：[design/secret-reveal-2026-11-27.html](design/secret-reveal-2026-11-27.html)（+ 同名 `.png`，1180×2700）
+
+- **现状（2026-11-27 代码核实）**：后端 `GET /api/admin/settings/value?key=` 已有（只允许 secret、单 key、
+  记 `settings.revealed` 日志，`src/settings-routes.js:47-56`）；但前端旧布局分支有「查看」按钮
+  （`AdminModules.vue:204` 的 `isPlainGroup`），**CQ 批卡片化后的 `grid` / `foldBody` 分支只渲染密码框**；
+  代理类走「编辑弹窗里查看当前值」，明文进输入框有误保存风险。
+- **范围**：8 个 secret（Steam API Key / ITAD Key / SMTP 授权码 / 通用 Webhook / 企业微信 / 3 个代理）在四种
+  布局分支统一「查看 / 编辑 / 清除」三动作；抽 `SecretField.vue` 组件；查看**无二次确认**直接显示、
+  **30 秒自动隐藏**、审计写 `audit_logs`（`admin.secret_revealed`，只记 key 名不含值）。
+- **验收**：见规格 §7（7 条）+ 与 demo 一致。
