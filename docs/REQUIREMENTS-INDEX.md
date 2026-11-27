@@ -185,6 +185,7 @@
 | **FY** | ⚙️ 调整：系统设置页重设计——左导航 7 组（重划，去「高级」混维度）+ `/console/settings/:group` 二级路由 + 去卡片盒子（层级 3→2）+ 每项即时保存（防抖 + 合并）+ 工具栏只留搜索/只看非默认 | [SETTINGS-REDESIGN.md](SETTINGS-REDESIGN.md)、demo `design/settings-redesign-2026-11-27.html` | 待开发（2026-11-27 确认，含 demo；依赖 FX） | ✅ 本轮已给 |
 | **FZ** | ⚙️ 调整：访问记录重设计——左导航七块（概览/异常处置/访问分析/IP 封禁/设备封禁/临时封禁/白名单）+ 概览 6 张数字卡 + **处置只留异常处置一个入口**（访问分析只读）+ **IP 详情抽屉** + 封禁/信任后移出（toast 5 秒撤销）+ **四类解封各在自己那页 + 状态词统一**；新增 overview 接口、status 加 active/trusted | [VISITORS-REDESIGN.md](VISITORS-REDESIGN.md)、demo `design/visitors-redesign-2026-11-27.html` | 待开发（2026-11-27 确认，含 demo；**暂不排开发**） | ✅ 本轮已给 |
 | **GA** | ⚙️ 调整：游戏管理拆分 + 同步与回填页重设计——内容运营拆三个一级菜单（游戏目录/同步与回填/对齐审核）+ 页内「概览 4 卡 → 任务组表（主）→ 折叠数据质量 / 折叠工具」，告警收表头、运行中并入概览；**+ 定时任务精简 26→19**（合并 4 处 / 转手动 3 个 / prune 周→天 / 降频 4 处，CLI 命令保留）；拆 GA-1 界面 / GA-2 精简 | [SYNC-PAGE-REDESIGN.md](SYNC-PAGE-REDESIGN.md)、**可交互 demo** `design/sync-page-redesign-2026-11-27.html` | 待开发（2026-11-27 确认，含可交互 demo；两子批） | ✅ 本轮已给 |
+| **GB** | 🐞 缺陷：数据统计「图片与备份」console 三报错——coverage 接口全表拉 19.6 万行致 503（看板全「—」）+ apple-touch-icon 404 + apple meta 弃用；第四条 `unload` 为百度统计噪音不修 | [IMAGE-PAGE-CONSOLE-FIX.md](IMAGE-PAGE-CONSOLE-FIX.md) | 待开发（2026-11-27 实测确认） | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
 

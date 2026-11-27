@@ -25,7 +25,7 @@
 
 | 类型 | 数量 | 编号 |
 |---|---|---|
-| 🐞 缺陷 | 4 | EO、ER、EU、EX |
+| 🐞 缺陷 | 5 | EO、ER、EU、EX、GB |
 | ✨ 功能 | 0 | — |
 | ⚙️ 调整 | 14 | EP / EV / EW / EY / FB / FD / FF / FG / FH / FW / FX / FY / FZ / GA |
 | 🧹 技术债 | 2 | EN、FC |
@@ -307,6 +307,26 @@
   | **GA-2** | 定时任务 **26 → 19**：合并 4 处（rename→backfill / search-tokens→readmodel / images-backfill→images / explicit-backfill→rating-backfill）+ 转手动 3 个（catalog/logs/report）+ **prune 保留但周→天** + 降频 4 处（proxy-probe 30 / app-release-sync 60 / align-snapshot 120 / sonkwo 180）；被合并任务的 CLI 命令保留 | 待开发 | 建议 GA-1 先 |
 
 - **验收**：GA-1 = 规格 §7 的 1~4（含 demo 状态↔断言对照）；GA-2 = 规格 §7 的 5~8（任务集合/降频/合并逻辑/CLI 兼容）。
+
+## GB. 待开发（🐞 缺陷）：数据统计「图片与备份」console 三报错——coverage 超时 503 / apple-touch-icon 404 / apple meta 弃用
+
+**状态：** 待开发
+**类型：** 🐞 缺陷（线上可用性 + 页面规范化）
+**优先级：** P1 —— 图片覆盖看板打不开（503），数字全显示「—」
+**依赖：** 无
+**解锁：** 无
+**规格**：[IMAGE-PAGE-CONSOLE-FIX.md](IMAGE-PAGE-CONSOLE-FIX.md)
+
+- **现象（所有者 2026-11-27 截图）**：访问「数据统计 → 图片与备份」时 console 三条报错，且图片覆盖看板
+  「游戏总数 / 有 header_image / 本地已缓存 / 缺图」全部显示「—」。
+- **根因**：① `GET /api/admin/images/coverage` 用 `imageCoverageRows()` **全表拉约 19.6 万行**再在内存统计 →
+  超 15s 请求超时 → 503；② `frontend/index.html` 引用 `/apple-touch-icon.png`，但 `frontend/public/` 无此文件 → 404；
+  ③ 只写了弃用的 `apple-mobile-web-app-capable`，缺 `mobile-web-app-capable`。第四条（`unload` 权限策略）来自
+  百度统计脚本，**第三方噪音、不修**。
+- **范围**：coverage 统计改 SQL 聚合（两次 count + 小 IN 查询 + 分页，响应契约不变）；补 `apple-touch-icon.png`（180×180）
+  或改引用指向已存在图标；`index.html` 补 `mobile-web-app-capable` + `test/pwa.test.js` 断言。
+- **不做**：百度统计 `unload`；看板前端失败态（「加载失败 + 重试」，等 FY-2 改完 `AdminModules.vue` 后另批）。
+- **验收**：见规格 §3（4 条：接口 <1s 或 SQL 静态断言、数字与库口径一致、图标/meta 存在、测试与构建全绿）。
 
 
 
