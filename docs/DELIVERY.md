@@ -249,6 +249,13 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 
 
+### 当前状态（2026-11-28，v2.33.0 待发版——FZ / GA 两批已质检通过）
+
+- 本批范围：**FZ**（访问记录七块重设计 + 唯一处置入口 + IP 抽屉 + 四类解封 + 状态词统一）、**GA-1**（游戏管理拆三项 + 同步与回填页重设计）、**GA-2**（定时任务 26→19：合并 4 / 转手动 3 / prune 周→天 / 降频 4）。
+- 验证：主链 `test:1~4` 全绿（31/37/42/36 文件）；`api.test.js` 41/41；`scheduler-slim` 7/7；`sync-page-redesign` 9/9；`frontend:build` ✓；`scan` 干净。
+- 发布清单 `docs/releases/v2.33.0.json`（targets `["app","scheduler"]`——GA-2 改了 `src/scheduler.js`，必须重启调度器）。
+- 未纳入：GC（恢复默认回落）/ GD（App 深色，App 仓库）——均待发版。
+
 ### 当前状态（2026-11-27，v2.32.0 已发布——CI 三绿）
 
 - 本批范围：**FX**（密钥查看统一：`SecretField.vue` + 审计 `admin.secret_revealed`）、**FY-1**（设置页 7 组重划 + `/console/settings/:group` 路由 + 左导航）、**FY-2**（分区标题 + 一行一项 + 每项即时保存 + 跨组搜索 + 只看非默认 + 移动端）、**GB**（图片覆盖看板 503 改 SQL 聚合 + apple-touch-icon 404 + apple mobile meta）。
