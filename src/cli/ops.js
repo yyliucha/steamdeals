@@ -17,7 +17,7 @@ import { openStore, ping } from '../store/index.js';
 import { startApiServer } from '../server.js';
 import * as db from '../store/pg.js';
 import { ingestOffers } from '../ingest.js';
-import { missingPriceAppids, mergePriceOffers, writeBackfillProgress } from '../backfill.js';
+import { missingPriceAppids, mergePriceOffers, writeBackfillProgress, hasChineseName } from '../backfill.js';
 import { applySteamDetails, entryFromMeta, runRatingBackfillRound, runExplicitBackfillRound } from '../steam-status.js';
 import { fetchMetadata } from '../adapters/steam-meta.js';
 import { syncPrices } from '../adapters/steam.js';
@@ -476,6 +476,10 @@ export function createCliOps(ctx) {
     let fallback = 0;
     let failed = 0;
     let batches = 0;
+    // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：rename 合并进来——顺带带回的中文名款数
+    // （GetItems 本来就是 schinese，同一批响应零额外请求；--no-rename 可退回旧口径）。
+    let renamed = 0;
+    const includeRename = flag('no-rename') == null;
     // BL-2（docs/BACKFILL-THROUGHPUT.md §3.2/§3.4）：进度文件与 429 观测
     let partial = false;
     let count429 = 0;
@@ -534,7 +538,7 @@ export function createCliOps(ctx) {
       // ER：listBackfillCandidates 的签名是 q 查询函数（不是 store 对象）——传 store 会
       // TypeError: q is not a function，backfill 第一批就失败（与上面 countBackfillCandidates
       // 的 v2.28.4 修复同一根因，当轮只修了计数那一半）。
-      const rows = await withStore((s) => db.listBackfillCandidates(s.query, { limit: size }));
+      const rows = await withStore((s) => db.listBackfillCandidates(s.query, { limit: size, includeRename }));
       const appids = rows.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0);
       if (!appids.length) {
         console.log('没有需要回填的游戏了');
@@ -637,8 +641,10 @@ export function createCliOps(ctx) {
         await withStore(async (store) => {
           const q = (sql, p) => store.query(sql, p);
           for (const item of items) {
-            await db.upsertGameMeta(q, item);
+            const wrote = await db.upsertGameMeta(q, item);
             stored += 1;
+            // GA-2：写入后落库名就是中文名 → 计入「顺带带回中文名」（覆盖保护挡住的人工名不算）
+            if (hasChineseName(item.nameZh) && wrote.name === item.nameZh) renamed += 1;
             // V 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §14.3）：appdetails 来源的条目
             // （normalizeOfficial，含分级字段）顺带落状态与分级；GetItems 条目没有分级字段，
             // entryFromMeta 判定不了时只写已有的、不推游标——steam-status 之后仍会选中它们。
@@ -667,7 +673,8 @@ export function createCliOps(ctx) {
 
       done += appids.length;
       const rate = Math.round((done / Math.max(1, Date.now() - startedMs)) * 60000);
-      console.log(`  批次 ${batches}：本批 ${appids.length} 款，写入 ${items.length}，回退 ${fallback}，失败 ${failed}；累计 ${done}/${limit}（${rate} 款/分钟）`);
+      // GA-2：中文名计数追加在行尾（不改句式——parseBackfillProgress 的批次行正则仍要能解析）
+      console.log(`  批次 ${batches}：本批 ${appids.length} 款，写入 ${items.length}，回退 ${fallback}，失败 ${failed}；累计 ${done}/${limit}（${rate} 款/分钟）${includeRename ? ` · 中文名 ${renamed}` : ''}`);
       writeProgress('running');
       if (items.length && batchPriced === 0) {
         logger.warn('backfill.batch_no_price', {
@@ -681,8 +688,8 @@ export function createCliOps(ctx) {
     }
 
     writeProgress('ok');
-    logger.info('backfill.done', { done, stored, priced, fallback, failed, batches, elapsedMs: Date.now() - startedMs });
-    console.log(`完成：处理 ${done} 款，元数据 ${stored} 条，价格 ${priced} 条，单条回退 ${fallback}，失败 ${failed}`);
+    logger.info('backfill.done', { done, stored, priced, fallback, failed, batches, renamed, elapsedMs: Date.now() - startedMs });
+    console.log(`完成：处理 ${done} 款，元数据 ${stored} 条，价格 ${priced} 条，单条回退 ${fallback}，失败 ${failed}${includeRename ? `，顺带带回中文名 ${renamed} 款` : ''}`);
     if (stored > 0 && priced === 0) {
       console.warn('⚠️ 一条价格都没拿到：GetItems 与 appdetails 回退都没返回价格（可能全部免费/锁区，或 Steam 接口异常）。');
       logger.warn('backfill.no_prices', { stored, hint: 'getitems+appdetails both empty' });
@@ -812,17 +819,23 @@ export function createCliOps(ctx) {
     const batch = Math.max(1, Math.min(Number(flag('batch', '30')) || 30, 100));
     // 硬约束 6：采集限速 ≥1 秒/请求；默认 1.5s（在 Steam 200 次/5 分钟配额内）
     const rateMs = Math.max(1000, Math.min(Number(flag('rate', '1500')) || 1500, 60000));
+    // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：explicit-backfill 的候选并入 strict 色情分级分支
+    // （默认开；--no-explicit 可退回旧口径，手动 explicit-backfill 命令仍单独保留）。
+    const strict = flag('no-explicit') == null;
 
     const result = await withStore((store) =>
-      runRatingBackfillRound((sql, p) => store.query(sql, p), { limit, batch, rateMs, logger }),
+      runRatingBackfillRound((sql, p) => store.query(sql, p), { limit, batch, rateMs, logger, strict }),
     );
 
     if (result.aborted429) {
       console.log(`撞 HTTP 429：本轮提前收尾（已处理 ${result.done} 款），1 小时后自动重试`);
       process.exitCode = 75;
     }
-    console.log(`完成：处理 ${result.done} 款，写分级 ${result.wrote} 条（本轮新判 adult ${result.adultWrote} / mature ${result.matureWrote}），失败 ${result.failed}${result.aborted429 ? '（HTTP 429 提前收轮）' : ''}`);
+    console.log(
+      `完成：处理 ${result.done} 款，写分级 ${result.wrote} 条（本轮新判 adult ${result.adultWrote} / mature ${result.matureWrote} / explicit ${result.explicitWrote}），失败 ${result.failed}${result.aborted429 ? '（HTTP 429 提前收轮）' : ''}`,
+    );
     console.log(`adult 计数：${result.before.adult} → ${result.after.adult}（+${result.after.adult - result.before.adult}）；mature：${result.before.mature} → ${result.after.mature}（+${result.after.mature - result.before.mature}）`);
+    if (strict) console.log('候选已含 strict 色情分级分支（原 explicit-backfill 的存量），无需单独再跑 explicit-backfill');
   }
 
   /**
@@ -914,6 +927,16 @@ export function createCliOps(ctx) {
       }
       // B5 批：fixed 只计「出现差异的行」，修复走 refresh* 唯一写入路径（不是自拼 SQL）
       logger.info('readmodel.check', { checked: result.checked, suspect: result.suspect, diffs: result.diffs.length, fixed: result.fixed, fix });
+      // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：search-tokens-rebuild 合并进来——对账收尾顺带
+      // 做一轮增量 token 重建（纯本地计算、零 Steam 请求；候选自带收敛，无变化时秒退）。
+      // --tokens 0 关闭；--tokens-limit 调整每轮上限（调度器默认 50000）。
+      const tokensOff = String(flag('tokens', '1')) === '0';
+      if (!tokensOff) {
+        const tokenLimit = Math.max(1, Math.min(Number(flag('tokens-limit', '50000')) || 50000, 1000000));
+        const t = await withStore((store) => db.rebuildSearchTokens((sql, p) => store.query(sql, p), { limit: tokenLimit }));
+        logger.info('readmodel.tokens_rebuilt', { processed: t.processed, written: t.written, limit: tokenLimit });
+        console.log(`顺带重建搜索 token（增量）：处理 ${t.processed} 行，写入 ${t.written} 行（token 未变化的跳过）`);
+      }
       if (result.diffs.length && !fix) process.exitCode = 1; // 对账不通过非零退出（调度器可观测）
       return;
     }
@@ -1129,7 +1152,24 @@ export function createCliOps(ctx) {
       return;
     }
     if (sub !== 'pull') {
-      throw new Error('用法: node src/cli.js images pull [--limit 200] [--sleep 300] [--sizes capsule_sm_120,header] | images backfill [--limit 100] [--sleep 1200] | images stats | images prune --max-bytes <字节>');
+      throw new Error('用法: node src/cli.js images pull [--limit 200] [--sleep 300] [--sizes capsule_sm_120,header] [--backfill-limit 100] | images backfill [--limit 100] [--sleep 1200] | images stats | images prune --max-bytes <字节>');
+    }
+    // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：images-backfill 合并进来——每轮 pull 之前先补一批缺图
+    // （header_image 为空的游戏逐 appid 重同步元数据，限速 ≥1s/请求；--backfill-limit 0 关闭）。
+    const backfillLimit = Math.min(Math.max(Number(flag('backfill-limit', '100')) || 0, 0), 500);
+    if (backfillLimit > 0) {
+      const backfillSleep = Math.max(1000, Number(flag('backfill-sleep', '1200')) || 1200);
+      const steamMeta = await import('../adapters/steam-meta.js');
+      const { backfillMissingHeaders } = await import('../image-backfill.js');
+      const r = await withStore((store) =>
+        backfillMissingHeaders((sql, p) => store.query(sql, p), {
+          fetchMeta: (appids) => steamMeta.fetchMetadata(appids, { logger }),
+          limit: backfillLimit,
+          sleepMs: backfillSleep,
+          logger,
+        }),
+      );
+      console.log(`顺带补缺图：扫描 ${r.scanned} 款，补 header_image ${r.filled} 款，失败 ${r.failed} 款，跳过 ${r.skipped} 款`);
     }
     const limit = Math.min(Math.max(Number(flag('limit', '200')) || 200, 1), 5000);
     const sleepMs = Math.max(0, Number(flag('sleep', '300')) || 0);

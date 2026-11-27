@@ -99,7 +99,8 @@ test('CO-5/B4-2 第十七轮：admin-games-repository.js 签名不变 + pg.js re
   assert.ok(!/export (async )?function listDeletedGames/.test(AG_PG), 'pg.js 不允许保留 listDeletedGames 定义（只许 re-export）');
   // 边界判据锁：跨模块共用 SQL 留在 pg.js（#21 域搜索 / CLI merge / align 域共用）
   assert.match(AG_PG, /export function gameKeywordSql\(kwParam, \{ appidAsInt = false, appidAsText = false, tokenCond = null \} = \{\}\)/, 'gameKeywordSql 留 pg.js（#21 域共用片段）');
-  assert.match(AG_PG, /export function backfillCandidateWhere\(\{ includeCooldown = true, includeSkip = true, excludeStates = true \} = \{\}\)/, 'backfillCandidateWhere 留 pg.js（CLI 回填共用）');
+  // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：签名加 includeRename（rename 合并进 backfill，候选池并集）
+  assert.match(AG_PG, /export function backfillCandidateWhere\(\{ includeCooldown = true, includeSkip = true, excludeStates = true, includeRename = false \} = \{\}\)/, 'backfillCandidateWhere 留 pg.js（CLI 回填共用）');
   assert.match(AG_PG, /export async function mergeGames\(/, 'mergeGames 留 pg.js（CLI/align 共用）');
 });
 

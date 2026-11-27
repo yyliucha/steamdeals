@@ -1988,7 +1988,23 @@ test('FJ：组级立即运行与 steam-claim 端点——权限/错误路径/无
     assert.equal(claim.status, 400, '未配置 STEAM_CLAIM_* 返回 400');
     assert.match((await claim.json()).error, /STEAM_CLAIM_USERNAME/);
 
+    // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7 / §7-8）：手动任务（不进调度器）的「立即运行」端点
+    // GET 不收（只有 POST）、匿名 401（上面已断言）、未知任务 404、不可运行任务 400（不 spawn 子进程）。
+    assert.equal((await fetch(`${base}/api/admin/sync/manual`, { headers: { cookie: admin.cookie } })).status, 404, 'GET 未命中本路由（不是 200）');
+    const noSuchManual = await adminPost('/api/admin/sync/manual');
+    assert.equal(noSuchManual.status, 404, '缺 name → 未知的手动任务 404');
+    assert.match((await noSuchManual.json()).error, /未知的手动任务/);
+    const notRunnable = await fetch(`${base}/api/admin/sync/manual`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: admin.cookie },
+      body: JSON.stringify({ name: 'catalog' }),
+    });
+    // 测试环境没有 STEAM_API_KEY → catalog 手动任务不可运行（400 + 原因），不会真的起子进程
+    assert.equal(notRunnable.status, 400, '不可运行的手动任务返回 400');
+    assert.match((await notRunnable.json()).error, /手动任务不可运行/);
+
     // 组内全部未到期 → 200 started:false（写临时状态文件：所有子步骤 lastRunAt=now）
+    // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：steam-meta 组只剩 3 步（rename / explicit-backfill 已合并）
     const file = join(tmpdir(), `fj-sched-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
     const prevEnv = process.env.SCHEDULER_STATUS_FILE;
     process.env.SCHEDULER_STATUS_FILE = file;
@@ -2001,9 +2017,7 @@ test('FJ：组级立即运行与 steam-claim 端点——权限/错误路径/无
           jobs: [
             { name: 'steam-status', lastRunAt: nowIso },
             { name: 'rating-backfill', lastRunAt: nowIso },
-            { name: 'explicit-backfill', lastRunAt: nowIso },
             { name: 'backfill', lastRunAt: nowIso },
-            { name: 'rename', lastRunAt: nowIso },
           ],
         }),
       );
@@ -2012,7 +2026,7 @@ test('FJ：组级立即运行与 steam-claim 端点——权限/错误路径/无
       const body = await none.json();
       assert.equal(body.started, false);
       assert.match(body.reason, /没有到期/);
-      assert.deepEqual(body.skipped, ['steam-status', 'rating-backfill', 'explicit-backfill', 'backfill', 'rename'], '五个未到期子步骤全部跳过');
+      assert.deepEqual(body.skipped, ['steam-status', 'rating-backfill', 'backfill'], '三个未到期子步骤全部跳过');
     } finally {
       if (prevEnv == null) delete process.env.SCHEDULER_STATUS_FILE;
       else process.env.SCHEDULER_STATUS_FILE = prevEnv;

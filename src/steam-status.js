@@ -290,12 +290,22 @@ export async function runSteamStatusRound(
  * - backfill_at 1 天冷却：断点续跑（中断后重跑跳过当天已处理行），次日重采幂等；
  * - 高嫌疑优先：genres/tags 含 色情/Nudity/Sexual 的排前面（先确认最重要的成人游戏）。
  */
-export async function listRatingBackfillCandidates(q, { limit = 30 } = {}) {
+/**
+ * EF 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §9）：内容分级回填候选。
+ * GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：`strict` 打开时把 explicit-backfill 的候选并入
+ * 「strict 色情分级」分支——除了「required_age 未采到」的行，还包含
+ * `adult_flag=true 且 explicit_flag=false` 的行（存量约 4759 个，需要重采一次 descriptor ids
+ * 才能判定 explicit）。两支候选走同一轮 appdetails 请求、同一写入路径，因此合并后不增加请求数。
+ */
+export async function listRatingBackfillCandidates(q, { limit = 30, strict = false } = {}) {
   const size = Math.min(Math.max(Number(limit) || 30, 1), 100);
+  // strict：色情分级分支（explicit-backfill 原候选谓词，1 天冷却断点续跑、explicit=true 退出候选）
+  const strictWhere = 'g.adult_flag and not g.explicit_flag';
+  const predicate = strict ? `(g.required_age is null or (${strictWhere}))` : 'g.required_age is null';
   const r = await q(
     'select g.steam_appid from games g ' +
       'where g.steam_appid is not null and not g.deleted ' +
-      'and g.required_age is null ' +
+      `and ${predicate} ` +
       "and (g.backfill_at is null or g.backfill_at < now() - interval '1 day') " +
       "order by (case when (coalesce(array_to_string(g.genres, '|'), '') || '|' || coalesce(array_to_string(g.tags, '|'), '')) ~* '(色情|nudity|sexual)' then 0 else 1 end), g.id " +
       'limit $1',
@@ -312,11 +322,14 @@ export async function listRatingBackfillCandidates(q, { limit = 30 } = {}) {
  * cnEntry/hkEntry=null：不写 steam_status、不写价格 offer——本位币价格口径不受影响）。
  * 限速按「每个请求」计（rateMs ≥ 1s）；撞 429 立即收轮（aborted429=true，调用方 exit 75
  * 由调度器 1 小时后重排）；开工前 / 收工后各记一次 adult/mature 计数（验收① steam.meta.backfill_before/done）。
- * fetchMetadataImpl 可注入（测试离线验证）；返回 { done, wrote, adultWrote, matureWrote, failed, batches, aborted429, before, after, elapsedMs }。
+ * fetchMetadataImpl 可注入（测试离线验证）；返回 { done, wrote, adultWrote, matureWrote, explicitWrote, failed, batches, aborted429, before, after, elapsedMs }。
+ * GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：strict=true（默认）时候选并入 explicit-backfill 的
+ * 「色情分级」分支，一轮里既补 required_age 未采到的行、也复判 adult 但未 explicit 的行；
+ * strict=false 退回旧口径（只看 required_age is null）。
  */
 export async function runRatingBackfillRound(
   q,
-  { limit = 200000, batch = 30, rateMs = 1500, fetchMetadataImpl = null, logger = null } = {},
+  { limit = 200000, batch = 30, rateMs = 1500, fetchMetadataImpl = null, logger = null, strict = true } = {},
 ) {
   const fetchMeta = fetchMetadataImpl ?? fetchMetadata;
   const size = Math.min(Math.max(Number(limit) || 200000, 1), 200000);
@@ -327,6 +340,8 @@ export async function runRatingBackfillRound(
   let wrote = 0;
   let adultWrote = 0;
   let matureWrote = 0;
+  // GA-2：strict 分支同时承担原 explicit-backfill 的存量（成年人游戏重采一次判定 explicit_flag）
+  let explicitWrote = 0;
   let failed = 0;
   let batches = 0;
   let aborted429 = false;
@@ -343,11 +358,11 @@ export async function runRatingBackfillRound(
   // EI 批（docs/STEAM-SYNC-STATUS-AND-RATING.md §11）：分级回填走内容区（默认 us）
   const cc = contentRegion();
   const before = await countRating();
-  logger?.info?.('steam.meta.backfill_before', { total: before.total, adult: before.adult, mature: before.mature, contentRegion: cc });
+  logger?.info?.('steam.meta.backfill_before', { total: before.total, adult: before.adult, mature: before.mature, contentRegion: cc, strict });
 
   while (done < size && !aborted429) {
     const stepSize = Math.min(step, size - done);
-    const appids = await listRatingBackfillCandidates(q, { limit: stepSize });
+    const appids = await listRatingBackfillCandidates(q, { limit: stepSize, strict });
     if (!appids.length) break;
     batches += 1;
 
@@ -372,12 +387,14 @@ export async function runRatingBackfillRound(
     let batchWrote = 0;
     let batchAdult = 0;
     let batchMature = 0;
+    let batchExplicit = 0;
     for (const appid of metas.keys()) {
       const outcome = await applySteamDetails(q, { appid, cnEntry: null, hkEntry: null, meta: metas.get(appid), logger });
       if (outcome.ratingWritten) {
         batchWrote += 1;
         if (outcome.rating?.adultFlag) batchAdult += 1;
         if (outcome.rating?.matureFlag) batchMature += 1;
+        if (outcome.rating?.explicitFlag) batchExplicit += 1;
       }
     }
     // 冷却记账：正常时无论拿没拿到数据都记一笔（当天不再重复请求，防下架行空转）；
@@ -386,8 +403,9 @@ export async function runRatingBackfillRound(
     wrote += batchWrote;
     adultWrote += batchAdult;
     matureWrote += batchMature;
+    explicitWrote += batchExplicit;
     done += appids.length;
-    logger?.info?.('steam.meta.backfill_batch', { batch: batches, done, wrote: batchWrote, adult: batchAdult, mature: batchMature, failed });
+    logger?.info?.('steam.meta.backfill_batch', { batch: batches, done, wrote: batchWrote, adult: batchAdult, mature: batchMature, explicit: batchExplicit, failed });
   }
 
   const after = await countRating();
@@ -396,6 +414,7 @@ export async function runRatingBackfillRound(
     wrote,
     adultWrote,
     matureWrote,
+    explicitWrote,
     failed,
     batches,
     total: after.total,
@@ -405,9 +424,10 @@ export async function runRatingBackfillRound(
     matureAfter: after.mature,
     aborted429,
     contentRegion: cc,
+    strict,
     elapsedMs: Date.now() - startedMs,
   });
-  return { done, wrote, adultWrote, matureWrote, failed, batches, aborted429, before, after, elapsedMs: Date.now() - startedMs };
+  return { done, wrote, adultWrote, matureWrote, explicitWrote, failed, batches, aborted429, before, after, elapsedMs: Date.now() - startedMs };
 }
 
 // ---------------------------------------------------------------- FT：色情游戏（严格分级）存量回填（docs/EXPLICIT-RATING.md §2.2）

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { jobsFromEnv, jobGroupsFromEnv, groupsFromJobs, steamClaimArgs, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, theoreticalRunSeconds, jobRuntimeEstimates, registerCircuitReset, resetCircuit, applyRetry, syncRunModeFor, jobFailureError, jobFailedReason, outcomeFor, forbiddenAlertDecision, shouldNotifyForbiddenRecovered, STEAM_STATUS_LIMIT_DEFAULT } from '../src/scheduler.js';
+import { jobsFromEnv, jobGroupsFromEnv, groupsFromJobs, steamClaimArgs, dueJobs, describeSchedule, forwardedArgs, recordJobResult, isCircuited, CIRCUIT, followUpArgs, writeStatusFile, lightConcurrency, STEAM_HEAVY, planTick, lastRunMsFromRows, auditJobs, steamDailyBudgetMinutes, applySteamBudget, theoreticalRunSeconds, jobRuntimeEstimates, registerCircuitReset, resetCircuit, applyRetry, syncRunModeFor, jobFailureError, jobFailedReason, outcomeFor, forbiddenAlertDecision, shouldNotifyForbiddenRecovered, STEAM_STATUS_LIMIT_DEFAULT, manualJobsFromEnv, manualJobByName, MANUAL_JOBS, JOB_GROUPS } from '../src/scheduler.js';
 
 test('轻任务并行上限：SCHEDULER_LIGHT_CONCURRENCY 可调（1–8），默认 3，非法回落默认', () => {
   assert.equal(lightConcurrency({}), 3);
@@ -30,15 +30,21 @@ const FULL_ENV = {
   REPORT_ENABLED: '0',
 };
 
-test('AC1：auditJobs——缺 Key 提示 catalog/steam-accounts，被 *_ENABLED=0 关掉的任务逐条提示，配置齐全为空', () => {
+test('AC1：auditJobs——缺 Key 提示 steam-accounts，被 *_ENABLED=0 关掉的任务逐条提示，配置齐全为空；catalog 转手动后不再报警', () => {
   const missingKey = auditJobs({ ...FULL_ENV, STEAM_API_KEY: '' });
-  assert.ok(missingKey.some((w) => w.name === 'catalog' && /STEAM_API_KEY/.test(w.reason)), '缺 Key 要提示 catalog');
   assert.ok(missingKey.some((w) => w.name === 'steam-accounts' && /STEAM_API_KEY/.test(w.reason)), '缺 Key 要提示 steam-accounts');
+  // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：catalog 已转手动（MANUAL_JOBS），不再是「该有的定时任务」，
+  // 可运行性由 manualJobsFromEnv 的 runnable/reason 表达（见下一条用例）。
+  assert.ok(!missingKey.some((w) => w.name === 'catalog'), 'catalog 已转手动，不再进定时任务告警');
 
   const disabled = auditJobs({ ...FULL_ENV, STEAM_ENABLED: '0', SONKWO_ENABLED: '0' });
   assert.ok(disabled.some((w) => w.name === 'heat' && w.reason === 'STEAM_ENABLED=0'));
   assert.ok(disabled.some((w) => w.name === 'steam-prices' && w.reason === 'STEAM_ENABLED=0'));
   assert.ok(disabled.some((w) => w.name === 'sonkwo' && w.reason === 'SONKWO_ENABLED=0'));
+  // 转手动 / 合并掉的任务即便配了开关也不再出现在告警里（不是「该有的定时任务」）
+  for (const gone of ['catalog', 'logs', 'report', 'rename', 'explicit-backfill', 'images-backfill', 'search-tokens-rebuild']) {
+    assert.ok(!disabled.some((w) => w.name === gone), `${gone} 不该出现在定时任务告警里（已转手动/合并）`);
+  }
 
   assert.deepEqual(auditJobs(FULL_ENV), [], '配置齐全时不应有警告');
 });
@@ -65,64 +71,72 @@ test('AC11：状态文件带健康面板字段（耗时/结果/失败原因）�
   }
 });
 
-test('默认任务表（FJ 批：按 12 组顺序重排，steam-claim 已移出定时），各自间隔', () => {
-  const jobs = jobsFromEnv({});
+test('默认任务表（GA-2：19 个定时任务 · 按 12 组顺序重排；合并 4 处 + 转手动 3 个），各自间隔', () => {
+  // 19 个 = 配齐 STEAM_API_KEY + 提醒通道的生产形态（缺 Key 时 steam-accounts 不出现在表里，见下一条用例）
+  const key = '0123456789ABCDEF0123456789ABCDEF';
+  const jobs = jobsFromEnv({ STEAM_API_KEY: key, ALERT_WEBHOOK_URL: 'https://example.com/hook' });
+  // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：26 → 19。被合并/转手动的不再出现：
+  //   rename / search-tokens-rebuild / images-backfill / explicit-backfill（合并）、catalog / logs / report（转手动）。
   assert.deepEqual(jobs.map((j) => j.name), [
-    'steam-prices', 'steam-status', 'rating-backfill', 'explicit-backfill', 'backfill', 'rename', 'sonkwo', 'itad', 'gog', 'humble',
-    'steam-discovery', 'discover', 'images', 'images-backfill', 'readmodel', 'search-tokens-rebuild', 'prune', 'logs',
+    'steam-prices', 'steam-status', 'rating-backfill', 'backfill', 'sonkwo', 'itad', 'gog', 'humble',
+    'steam-discovery', 'discover', 'images', 'readmodel', 'prune', 'steam-accounts',
     'heat', 'app-release-sync', 'align-snapshot', 'proxy-probe', 'alerts',
   ]);
+  assert.equal(jobs.length, 19, '定时任务恰好 19 个（不多不少）');
+  assert.equal(jobsFromEnv({}).length, 18, '缺 STEAM_API_KEY 时少一个 steam-accounts（其余 18 个照旧）');
   // FR 批（docs/BACKUP-AS-FEATURE.md §2.1）：backup 已移出调度任务——不再定时自动跑、不再走 CLI 自动链路
   assert.ok(!jobs.some((j) => j.name === 'backup'), 'FR：backup 不在调度任务表（改回手动后台功能）');
+  // GA-2：转手动 3 个 + 合并 4 处（合掉的连名字都不该在定时表里）
+  for (const gone of ['catalog', 'logs', 'report', 'rename', 'explicit-backfill', 'images-backfill', 'search-tokens-rebuild', 'steam-claim']) {
+    assert.ok(!jobs.some((j) => j.name === gone), `${gone} 不在定时任务表（转手动/已合并/手动按钮）`);
+  }
   const interval = (name) => jobs.find((j) => j.name === name).intervalMin;
   assert.equal(interval('steam-prices'), 1440, 'Steam 价格默认每天刷新');
   assert.equal(interval('heat'), 10, 'FW 批：热度默认每 10 分钟一轮（100 款/轮 ≈ 14 天播种，稳态 30 天一轮）');
   assert.equal(interval('steam-discovery'), 30, 'FW 批：Steam 发现默认每 30 分钟一轮（10 页 + 10 回退/轮）');
   assert.equal(interval('steam-status'), 1440, 'Steam 状态判定默认每天一次（X 批）');
-  assert.equal(interval('rename'), 10080, '重写名字默认每周一次');
   assert.equal(interval('rating-backfill'), 1440, 'EF 批：内容分级回填默认每天一轮（cc=us 重采描述符）');
-  assert.equal(interval('explicit-backfill'), 10080, 'FT 批：色情游戏存量回填默认 7 天兜底一轮（手动「立即运行」为主）');
-  assert.equal(interval('backfill'), 1440, 'BL 批：增量回填默认每天一轮');
-  assert.equal(interval('prune'), 10080, '清理默认每周一次');
-  assert.equal(interval('readmodel'), 1440, 'AV 批：读模型对账默认每天一次');
-  assert.equal(interval('proxy-probe'), 10, 'BB 批：代理健康探测默认每 10 分钟');
+  assert.equal(interval('backfill'), 1440, 'BL 批：增量回填默认每天一轮（GA-2：并入 rename 的中文名）');
+  assert.equal(interval('prune'), 1440, 'GA-2：清理保留定时但周（10080）→ 天（1440）');
+  assert.equal(interval('readmodel'), 1440, 'AV 批：读模型对账默认每天一次（GA-2：并入搜索 token 增量重建）');
+  assert.equal(interval('proxy-probe'), 30, 'GA-2：代理健康探测 10 → 30 分钟');
+  assert.equal(interval('sonkwo'), 180, 'GA-2：杉果同步 60 → 180 分钟');
   assert.equal(interval('itad'), 1440);
   assert.equal(interval('gog'), 720);
   assert.equal(interval('humble'), 720);
   assert.equal(interval('discover'), 720);
-  assert.equal(interval('logs'), 7 * 1440, '日志每 7 天清理一次');
   assert.equal(interval('alerts'), 360);
-  assert.equal(interval('images'), 240, '封面图补缓存默认每 4 小时');
-  assert.equal(interval('images-backfill'), 360, 'EC 批：缺图回填默认每 6 小时一轮');
-  assert.equal(interval('app-release-sync'), 15, 'DR 批：App Release 同步默认每 15 分钟（原 60；settings app.syncIntervalMin 热加载可改）');
-  assert.equal(interval('align-snapshot'), 30, 'DL 批：对齐审核快照后台生成默认每 30 分钟');
+  assert.equal(interval('images'), 240, '封面图补缓存默认每 4 小时（GA-2：顺带补缺图）');
+  assert.equal(interval('app-release-sync'), 60, 'GA-2：App Release 同步 15 → 60 分钟');
+  assert.equal(interval('align-snapshot'), 120, 'GA-2：对齐审核快照后台生成 30 → 120 分钟');
   const args = (name) => jobs.find((j) => j.name === name).args;
   assert.deepEqual(args('discover'), ['discover', 'sonkwo', '--ahead', '60', '--max-misses', '12']);
-  assert.deepEqual(args('images'), ['images', 'pull', '--limit', '500', '--sleep', '300'], 'BC 批：每轮补图默认 500');
-  assert.deepEqual(args('images-backfill'), ['images', 'backfill', '--limit', '100', '--sleep', '1200'], 'EC 批：缺图回填默认每轮 100 款、限速 1.2s/请求');
-  assert.ok(!jobsFromEnv({ IMAGES_BACKFILL_ENABLED: '0' }).some((j) => j.name === 'images-backfill'), 'EC 批：IMAGES_BACKFILL_ENABLED=0 可关闭');
+  assert.deepEqual(
+    args('images'),
+    ['images', 'pull', '--limit', '500', '--sleep', '300', '--backfill-limit', '100', '--backfill-sleep', '1200'],
+    'GA-2：images 每轮顺带补缺图（默认 100 款、限速 1.2s/请求，参数沿用 images-backfill 时代）',
+  );
   assert.deepEqual(args('steam-prices'), ['sync', 'steam-prices', '--limit', '200000', '--batch', '5000'], 'EU-2：价格刷新默认每轮分批 5000（约 4–5 分钟，批间落断点）');
   assert.deepEqual(args('heat'), ['heat', '--limit', '100', '--sleep', '1700'], 'FW 批：每轮 100 款（轮内保持 1.7s/款 ≈ 2.8 分钟）');
   assert.deepEqual(args('steam-discovery'), ['steam-discovery', '--pages', '10', '--fallback', '10'], 'FW 批：每轮 10 页 + 10 条名称回退');
   assert.deepEqual(args('steam-status'), ['steam-status', '--limit', '20000', '--rate', '1500'], 'FP 批：状态判定默认每轮 2 万（env 可配 3–5 万）');
-  assert.deepEqual(args('rename'), ['rename', '--limit', '200000', '--batch', '100', '--sleep', '1500']);
-  assert.deepEqual(args('rating-backfill'), ['rating-backfill', '--limit', '20000', '--batch', '30', '--rate', '1500'], 'FP 批：分级回填默认每天上限 2 万、限速 1.5s/款');
-  assert.deepEqual(args('explicit-backfill'), ['explicit-backfill', '--limit', '5000', '--batch', '30', '--rate', '1500'], 'FT 批：色情游戏回填默认每轮 5000、限速 1.5s/款');
+  assert.deepEqual(args('rating-backfill'), ['rating-backfill', '--limit', '20000', '--batch', '30', '--rate', '1500'], 'FP 批：分级回填默认每天上限 2 万、限速 1.5s/款（GA-2：含 strict 色情分级候选）');
   assert.deepEqual(args('backfill'), ['backfill', '--limit', '20000', '--batch', '100', '--sleep', '3000'], 'FP 批：回填默认每天上限 2 万');
   assert.deepEqual(args('prune'), ['prune']);
-  assert.deepEqual(args('readmodel'), ['readmodel', 'check', '--sample', '200', '--fix'], 'B5 批：每日抽样 200 对账 + 自动修复（手动 check 默认仍只报告）');
-  assert.equal(interval('search-tokens-rebuild'), 360, 'DS 批：搜索 token 增量重建默认每 6 小时一轮');
-  assert.deepEqual(args('search-tokens-rebuild'), ['search-tokens', '--limit', '50000'], 'DS 批：每轮上限 5 万行（轻任务，无 Steam 请求）');
-  assert.ok(!jobsFromEnv({ SEARCH_TOKENS_ENABLED: '0' }).some((j) => j.name === 'search-tokens-rebuild'), 'DS 批：SEARCH_TOKENS_ENABLED=0 可关闭');
+  assert.deepEqual(
+    args('readmodel'),
+    ['readmodel', 'check', '--sample', '200', '--fix', '--tokens-limit', '50000'],
+    'B5 批：每日抽样 200 对账 + 自动修复；GA-2：收尾顺带重建搜索 token（每轮 5 万行上限）',
+  );
   assert.deepEqual(args('proxy-probe'), ['probe', '--proxy'], 'BB 批：探测命令与参数');
   assert.ok(!jobsFromEnv({ PROXY_PROBE_ENABLED: '0' }).some((j) => j.name === 'proxy-probe'), 'BB 批：PROXY_PROBE_ENABLED=0 可关闭');
 });
 
-test('DL align-snapshot：默认开、30 分钟间隔、首轮延迟 30 秒；env 可覆盖；显式可关', () => {
+test('DL/GA-2 align-snapshot：默认开、120 分钟间隔、首轮延迟 30 秒；env 可覆盖；显式可关', () => {
   const def = jobsFromEnv({}).find((j) => j.name === 'align-snapshot');
   assert.ok(def, '默认启用（ALIGN_SNAPSHOT_ENABLED !== 0）');
   assert.deepEqual(def.args, ['align-snapshot'], 'CLI 子命令 args');
-  assert.equal(def.intervalMin, 30, '默认每 30 分钟');
+  assert.equal(def.intervalMin, 120, 'GA-2：默认每 120 分钟（原 30）');
   assert.equal(def.initialDelaySec, 30, '首轮延迟 30 秒（空表兜底生成）');
 
   const custom = jobsFromEnv({
@@ -137,27 +151,18 @@ test('DL align-snapshot：默认开、30 分钟间隔、首轮延迟 30 秒；en
   assert.equal(syncRunModeFor({ name: 'align-snapshot', args: ['align-snapshot'] }), 'align-snapshot', '任务 → sync_runs mode 映射');
 });
 
-test('目录同步任务：有 STEAM_API_KEY 才出现，参数可覆盖，STEAM_ENABLED=0 一并关闭', () => {
-  const key = '0123456789ABCDEF';
-  const withKey = jobsFromEnv({ STEAM_API_KEY: key }).find((j) => j.name === 'catalog');
-  assert.ok(withKey, '配了 key 应有目录同步任务');
-  assert.deepEqual(withKey.args, ['sync', 'catalog']);
-  assert.equal(withKey.intervalMin, 10080);
-  assert.equal(withKey.initialDelaySec, 3600);
-
-  assert.ok(!jobsFromEnv({}).some((j) => j.name === 'catalog'), '没有 key 不该出现目录同步任务');
-  assert.ok(
-    !jobsFromEnv({ STEAM_API_KEY: key, STEAM_ENABLED: '0' }).some((j) => j.name === 'catalog'),
-    'STEAM_ENABLED=0 时关闭',
-  );
-
-  const custom = jobsFromEnv({
-    STEAM_API_KEY: key,
-    STEAM_CATALOG_INTERVAL_MIN: '60',
-    STEAM_CATALOG_INITIAL_DELAY_SEC: '30',
-  }).find((j) => j.name === 'catalog');
-  assert.equal(custom.intervalMin, 60);
-  assert.equal(custom.initialDelaySec, 30);
+test('GA-2 目录同步：已转手动（不进调度器），CLI 命令与「立即运行」入口保留（manualJobsFromEnv）', () => {
+  const key = '0123456789ABCDEF0123456789ABCDEF';
+  assert.ok(!jobsFromEnv({ STEAM_API_KEY: key }).some((j) => j.name === 'catalog'), 'catalog 不再进定时任务表（转手动）');
+  assert.ok(!jobsFromEnv({}).some((j) => j.name === 'catalog'), '没有 key 同样不出现');
+  // 手动清单：参数与调度器时代一致（sync catalog），可运行性由 STEAM_ENABLED / STEAM_API_KEY 决定
+  const on = manualJobsFromEnv({ STEAM_API_KEY: key }).find((j) => j.name === 'catalog');
+  assert.deepEqual(on.args, ['sync', 'catalog'], 'CLI 参数不变（被合并/转手动任务的命令与参数不删）');
+  assert.equal(on.runnable, true, '配了 key 可手动运行');
+  const noKey = manualJobsFromEnv({}).find((j) => j.name === 'catalog');
+  assert.equal(noKey.runnable, false, '缺 Key 时按钮置灰');
+  assert.match(noKey.reason, /STEAM_API_KEY/, '给出不可运行原因');
+  assert.equal(manualJobsFromEnv({ STEAM_API_KEY: key, STEAM_ENABLED: '0' }).find((j) => j.name === 'catalog').runnable, false, 'STEAM_ENABLED=0 也不可运行');
 });
 
 test('Steam 账号同步任务：有 STEAM_API_KEY 才出现，间隔/首轮延迟/账号间隔可覆盖', () => {
@@ -200,33 +205,55 @@ test('FJ steam-claim：已移出定时任务，steamClaimArgs 只在配置齐全
   );
 });
 
-test('重写名字任务：参数与间隔可用环境变量覆盖，STEAM_ENABLED=0 一并关闭', () => {
-  const custom = jobsFromEnv({
-    STEAM_RENAME_LIMIT: '5000',
-    STEAM_RENAME_INTERVAL_MIN: '60',
-    STEAM_RENAME_INITIAL_DELAY_SEC: '30',
-  }).find((j) => j.name === 'rename');
-  assert.deepEqual(custom.args, ['rename', '--limit', '5000', '--batch', '100', '--sleep', '1500']);
-  assert.equal(custom.intervalMin, 60);
-  assert.equal(custom.initialDelaySec, 30);
-
+test('重写名字：已合并进 backfill（不再单独定时），CLI 命令与参数保留可手动跑', () => {
+  const jobs = jobsFromEnv({ STEAM_ENABLED: '1' });
+  assert.ok(!jobs.some((j) => j.name === 'rename'), 'GA-2：rename 不再进定时任务表（并入 backfill 顺带写中文名）');
+  // 被合并任务的 CLI 命令与参数不删：ops 域仍然注册 rename 命令，参数解析（--limit/--batch/--sleep）仍在
+  const ops = readFileSync(new URL('../src/cli/ops.js', import.meta.url), 'utf8');
+  assert.match(ops, /rename:\s*cmdRename/, 'CLI rename 命令仍注册（兼容「仍可手动跑」）');
+  assert.match(ops, /async function cmdRename\(\)/, 'cmdRename 实现保留');
+  assert.match(ops, /cmdRename\(\)\s*\{[\s\S]{0,400}?flag\('limit', '200000'\)/, 'CLI rename 的 --limit 参数解析保留（命令与参数不删）');
+  // STEAM_ENABLED=0 时 Steam 重任务整体关闭
   const off = jobsFromEnv({ STEAM_ENABLED: '0' });
-  assert.ok(!off.some((j) => j.name === 'rename'), 'STEAM_ENABLED=0 时应关闭');
   assert.ok(!off.some((j) => j.name === 'steam-prices'));
   assert.ok(!off.some((j) => j.name === 'heat'));
+  assert.ok(!off.some((j) => j.name === 'backfill'), 'backfill 也随 STEAM_ENABLED=0 关闭（合并后的中文名一起停）');
 });
 
-test('配置了提醒通道才会启用价格报表推送任务', () => {
-  const off = jobsFromEnv({});
-  assert.ok(!off.some((j) => j.name === 'report'), '没有通道时不该有 report 任务');
+test('GA-2 价格报表：已转手动（不受提醒通道影响进调度器），manualJobsFromEnv 仍受通道/开关约束', () => {
+  assert.ok(!jobsFromEnv({ ALERT_WEBHOOK_URL: 'https://example.com/hook' }).some((j) => j.name === 'report'), 'GA-2：report 不再进定时任务表');
+  const withChannel = manualJobsFromEnv({ ALERT_WEBHOOK_URL: 'https://example.com/hook' }).find((j) => j.name === 'report');
+  assert.ok(withChannel, '手动清单里有 report');
+  assert.deepEqual(withChannel.args, ['report', 'price', '--hours', '24', '--notify'], 'CLI 参数与调度器时代一致');
+  assert.equal(withChannel.runnable, true, '有提醒通道可手动运行');
 
-  const on = jobsFromEnv({ ALERT_WEBHOOK_URL: 'https://example.com/hook' });
-  const report = on.find((j) => j.name === 'report');
-  assert.ok(report, '有通道时应启用');
-  assert.deepEqual(report.args, ['report', 'price', '--hours', '24', '--notify']);
+  const noChannel = manualJobsFromEnv({}).find((j) => j.name === 'report');
+  assert.equal(noChannel.runnable, false, '没有通道时不可运行（reason 提示）');
+  assert.match(noChannel.reason, /提醒通道/, '原因：未配置提醒通道');
 
-  const disabled = jobsFromEnv({ ALERT_WEBHOOK_URL: 'https://example.com/hook', REPORT_ENABLED: '0' });
-  assert.ok(!disabled.some((j) => j.name === 'report'), 'REPORT_ENABLED=0 可关闭');
+  const disabled = manualJobsFromEnv({ ALERT_WEBHOOK_URL: 'https://example.com/hook', REPORT_ENABLED: '0' }).find((j) => j.name === 'report');
+  assert.equal(disabled.runnable, false, 'REPORT_ENABLED=0 可关闭');
+  assert.equal(disabled.reason, 'REPORT_ENABLED=0');
+});
+
+test('GA-2 日志清理：已转手动（不进调度器），CLI 命令保留；prune 保留定时但改天级', () => {
+  assert.ok(!jobsFromEnv({}).some((j) => j.name === 'logs'), 'logs 不再进定时任务表');
+  const logs = manualJobsFromEnv({}).find((j) => j.name === 'logs');
+  assert.deepEqual(logs.args, ['logs', 'prune', '--days', '7'], 'CLI 命令与参数不删（仍可手动跑）');
+  assert.equal(logs.runnable, true, '默认可手动运行');
+  assert.equal(manualJobsFromEnv({ LOGS_PRUNE_ENABLED: '0' }).find((j) => j.name === 'logs').runnable, false, 'LOGS_PRUNE_ENABLED=0 可关');
+  // prune 例外：保留定时、周（10080）→ 天（1440）
+  assert.equal(jobsFromEnv({}).find((j) => j.name === 'prune').intervalMin, 1440, 'GA-2：prune 每天一次');
+  assert.ok(!jobsFromEnv({ PRUNE_ENABLED: '0' }).some((j) => j.name === 'prune'), 'PRUNE_ENABLED=0 仍可关闭');
+});
+
+test('GA-2 手动任务清单：catalog / logs / report / steam-claim 四项 + manualJobByName 取参', () => {
+  const list = manualJobsFromEnv({ STEAM_API_KEY: '0123456789ABCDEF0123456789ABCDEF', STEAM_CLAIM_USERNAME: 'admin', STEAM_CLAIM_STEAM_ID: '76561198000000000' });
+  assert.deepEqual(list.map((j) => j.name), ['catalog', 'logs', 'report', 'steam-claim'], '手动任务恰好 4 个（demo 手动组一致）');
+  assert.ok(list.every((j) => typeof j.label === 'string' && j.label.length), '每个都有中文 label（前端直接渲染）');
+  assert.deepEqual(list.find((j) => j.name === 'steam-claim').args, ['steam-claim', 'admin', '76561198000000000'], 'steam-claim 参数来自 steamClaimArgs');
+  assert.equal(manualJobByName('logs', {}).name, 'logs', '按名取任务');
+  assert.equal(manualJobByName('nope', {}), null, '未知任务返回 null（端点 404）');
 });
 
 test('没配任何提醒通道时 alerts 只做只读检查，不标记已通知', () => {
@@ -269,7 +296,10 @@ test('显式禁用或间隔为 0 的任务会被剔除', () => {
     READMODEL_ENABLED: '0',
     PROXY_PROBE_ENABLED: '0',
   });
-  assert.deepEqual(jobs.map((j) => j.name), ['rating-backfill', 'explicit-backfill', 'backfill', 'rename', 'sonkwo', 'steam-discovery', 'images-backfill', 'search-tokens-rebuild', 'prune', 'heat', 'app-release-sync', 'align-snapshot', 'alerts']);
+  // GA-2：定时表只剩 19 个——剔除 itad / steam-prices / steam-status / gog / humble / discover / images /
+  // readmodel / proxy-probe 后剩 9 个（无 STEAM_API_KEY 时 steam-accounts 本来就不出现；
+  // logs 已转手动不在表内，LOGS_PRUNE_ENABLED 自然无影响）
+  assert.deepEqual(jobs.map((j) => j.name), ['rating-backfill', 'backfill', 'sonkwo', 'steam-discovery', 'prune', 'heat', 'app-release-sync', 'align-snapshot', 'alerts']);
 });
 
 test('从未跑过的任务在 initialDelay 之后才算到点', () => {
@@ -492,23 +522,23 @@ test('B3：实测耗时优先——steamDailyBudgetMinutes 用 sync_runs 平均�
   const env = {};
   const theo = steamDailyBudgetMinutes(env);
   assert.ok(theo.total > 0, '无实测时理论预算可用');
-  // 实测：六个 mode 各给平均秒（steam-status 实测 300s/轮 vs 理论 5h，证明预算跟着实测走）
+  // 实测：五个 mode 各给平均秒（steam-status 实测 300s/轮 vs 理论 5h，证明预算跟着实测走）
+  // GA-2：explicit-backfill 已并入 rating-backfill（不单独计预算），实测表里也不该再有它
   const observed = new Map([
     ['steam-prices', 60],
     ['heat', 120],
     ['steam-status', 300],
     ['backfill', 600],
     ['rating-backfill', 30],
-    ['explicit-backfill', 30],
   ]);
   const obs = steamDailyBudgetMinutes(env, observed);
   assert.equal(obs.priceMin, 1, '价格：60s × 1 轮/天 = 1 分钟');
   assert.equal(obs.heatMin, 288, '热度：120s × 144 轮/天（FW 批默认 10 分钟间隔）= 288 分钟');
   assert.equal(obs.statusMin, 5, '状态：300s × 1 轮/天 = 5 分钟');
   assert.equal(obs.backfillDailyMin, 10, '回填：600s × 1 轮/天 = 10 分钟');
-  assert.equal(obs.ratingBackfillDailyMin, 0.5, 'EF 分级回填：30s × 1 轮/天 = 0.5 分钟');
-  assert.equal(obs.explicitBackfillDailyMin, (30 * (1440 / 10080)) / 60, 'FT 色情游戏回填：30s × 7 天 1 轮 = 约 0.071 分钟/天');
-  assert.equal(obs.total, 288 + 16.5 + (30 * (1440 / 10080)) / 60, '总预算 = 实测之和（不再按理论常数）');
+  assert.equal(obs.ratingBackfillDailyMin, 0.5, 'EF 分级回填：30s × 1 轮/天 = 0.5 分钟（GA-2 含 strict 分支）');
+  assert.equal(obs.explicitBackfillDailyMin, undefined, 'GA-2：explicit-backfill 不再单独计预算（合并进 rating-backfill）');
+  assert.equal(obs.total, 288 + 16.5, '总预算 = 实测之和（不再按理论常数）');
   // 缺样本回落理论：只有 heat 有实测，其余回落
   const partial = steamDailyBudgetMinutes(env, new Map([['heat', 0.1]]));
   assert.equal(partial.heatMin, (0.1 * (1440 / 10)) / 60, 'heat 用实测（0.1s × 144 轮/天）');
@@ -550,16 +580,18 @@ test('B3：applySteamBudget 预算来源实测——实测超预算同样触发�
   assert.equal(ok.adjusted, false, '实测预算内不调整');
 });
 
-test('B3：jobRuntimeEstimates 只覆盖六个 Steam 重任务，obsSec 来自实测、无实测为 null', () => {
+test('B3：jobRuntimeEstimates 只覆盖五个 Steam 重任务，obsSec 来自实测、无实测为 null', () => {
   const jobs = jobsFromEnv({});
   const observed = new Map([['heat', 42]]);
   const est = jobRuntimeEstimates(jobs, {}, observed);
-  assert.deepEqual([...est.keys()].sort(), ['backfill', 'explicit-backfill', 'heat', 'rating-backfill', 'steam-prices', 'steam-status'].sort(), '只给六个 Steam 重任务（FT 批加 explicit-backfill）');
+  // GA-2：explicit-backfill 不再定时 → 不再出现在任务卡估算里（并入 rating-backfill）
+  assert.deepEqual([...est.keys()].sort(), ['backfill', 'heat', 'rating-backfill', 'steam-prices', 'steam-status'].sort(), '只给五个 Steam 重任务');
   const heat = est.get('heat');
   assert.equal(heat.obsSec, 42, '实测秒透传');
   assert.equal(heat.estSec, theoreticalRunSeconds({}).heat, '理论估算保留');
   assert.equal(est.get('steam-prices').obsSec, null, '无实测 obsSec=null（任务卡标注「理论」）');
   assert.ok(!est.has('catalog'), 'catalog 不在预算口径内');
+  assert.ok(!est.has('explicit-backfill'), 'GA-2：explicit-backfill 不在预算口径内（已合并）');
 });
 
 test('B3：writeStatusFile 带 estimate 字段，前端任务卡显示实际/估算差（静态锁）', () => {
@@ -573,11 +605,12 @@ test('B3：writeStatusFile 带 estimate 字段，前端任务卡显示实际/估
   const sonkwo = payload.jobs.find((j) => j.name === 'sonkwo');
   assert.equal(sonkwo.estimate, null, '非预算任务不带 estimate');
   // 前端接线（静态）：任务表显示「估算」与差值文案
-  const admin = readFileSync(new URL('../frontend/src/pages/AdminModules.vue', import.meta.url), 'utf8');
-  assert.match(admin, /估算 \{\{ estimateText\(row\) \}\}/, '任务卡显示估算');
-  assert.match(admin, /deltaText\(row\)/, '任务卡显示实际与估算差');
-  assert.match(admin, /j\.estimate/, 'taskRows 透传 estimate 字段');
-  assert.match(admin, /（理论）/, '无实测样本时估算标注「理论」');
+  // GA-1（docs/SYNC-PAGE-REDESIGN.md）：任务组表搬到 components/sync/TaskGroupTable.vue（口径不变）
+  const syncTable = readFileSync(new URL('../frontend/src/components/sync/TaskGroupTable.vue', import.meta.url), 'utf8');
+  const syncUi = readFileSync(new URL('../frontend/src/composables/useSyncAdmin.js', import.meta.url), 'utf8');
+  assert.match(syncTable, /估算 \{\{ fmtDur\(Math\.round\(\(s\.estimate\.obsSec \?\? s\.estimate\.estSec\) \* 1000\)\) \}\}\{\{ s\.estimate\.obsSec == null \? '（理论）' : '' \}\}/, '任务卡显示估算（无实测样本时标注「理论」）');
+  assert.match(syncTable, /s\.estimate/, '子步骤行透传 estimate 字段');
+  assert.match(syncUi, /estimate: j\.estimate \|\| null/, 'stepRow 透传 estimate（与状态文件同口径）');
 });
 
 test('AC-9/BL-1：回填候选新游戏优先 + 四态排除 + 默认每天 5000（静态断言）', () => {
@@ -781,10 +814,10 @@ test('EU 批静态锁：scheduler 停机语义 + 前端「被重启中断」显�
   assert.match(sched, /wait for running jobs/, 'stop 日志标注排空语义');
   // EU-2：分批参数进任务表
   assert.match(sched, /STEAM_PRICE_BATCH/, 'steam-prices 分批可配置');
-  // 前端三处显示「被重启中断」（任务卡 / 健康条 / 同步记录）
-  const adminModules = readFileSync(new URL('../frontend/src/pages/AdminModules.vue', import.meta.url), 'utf8');
-  assert.match(adminModules, /lastResult==='interrupted'/, '任务表「上次结果」列支持 interrupted');
-  assert.match(adminModules, /被重启中断/, '任务表显示「被重启中断」');
+  // 前端三处显示「被重启中断」（任务组表子步骤行 / 健康条 / 同步记录）；GA-1 起任务组表在 components/sync/
+  const syncTable = readFileSync(new URL('../frontend/src/components/sync/TaskGroupTable.vue', import.meta.url), 'utf8');
+  assert.match(syncTable, /lastResult === 'interrupted'/, '任务表「上次结果」列支持 interrupted');
+  assert.match(syncTable, /被重启中断/, '任务表显示「被重启中断」');
   const adminLogs = readFileSync(new URL('../frontend/src/pages/AdminLogs.vue', import.meta.url), 'utf8');
   assert.match(adminLogs, /j\.lastResult === 'interrupted'/, '健康条 jobState 支持 interrupted');
   assert.match(adminLogs, /interrupted: '被重启中断'/, '同步记录 status 映射支持 interrupted');
@@ -807,9 +840,9 @@ test('EU 批静态锁：scheduler 停机语义 + 前端「被重启中断」显�
 // sync_runs 仍按子步骤原 mode 记录；steam-claim 移出定时改后台手动按钮。
 // 反向自检口径：删掉 planTick 的 groupBusy 检查 → 组内串行断言红；删掉 JOB_GROUPS 某组 → 12 组断言红。
 
-test('FJ：12 个任务组——组名/顺序固定，组内子步骤按优先级；扁平 jobs 带 group 字段', () => {
+test('FJ/GA-2：12 个任务组——组名/顺序固定（组数不随任务精简变化），组内子步骤按优先级；扁平 jobs 带 group 字段', () => {
   const groups = jobGroupsFromEnv({});
-  assert.equal(groups.length, 12, '固定 12 组');
+  assert.equal(groups.length, 12, '固定 12 组（GA-2 任务 26→19，但组数不变：每组至少还剩 1 个子步骤）');
   assert.deepEqual(
     groups.map((g) => g.name),
     ['steam-prices', 'steam-meta', 'multi-platform', 'catalog-discovery', 'images', 'index', 'system', 'steam-accounts', 'heat', 'app-release', 'align-snapshot', 'proxy-alerts'],
@@ -818,13 +851,28 @@ test('FJ：12 个任务组——组名/顺序固定，组内子步骤按优先�
   assert.equal(groups[0].label, 'Steam 价格', '组带中文 label');
   assert.deepEqual(
     groups.find((g) => g.name === 'steam-meta').steps.map((s) => s.name),
-    ['steam-status', 'rating-backfill', 'explicit-backfill', 'backfill', 'rename'],
-    '元数据组优先级：未探测 → 缺分级 → 缺严格分级 → 缺说明 → 缺中文名',
+    ['steam-status', 'rating-backfill', 'backfill'],
+    'GA-2：元数据组 3 步——rename/explicit-backfill 已并入 backfill/rating-backfill',
+  );
+  assert.deepEqual(
+    groups.find((g) => g.name === 'system').steps.map((s) => s.name),
+    ['prune'],
+    'GA-2：系统维护组只剩 prune（logs 转手动，组仍保留）',
+  );
+  assert.deepEqual(
+    groups.find((g) => g.name === 'images').steps.map((s) => s.name),
+    ['images'],
+    'GA-2：图片同步组只剩 images（images-backfill 已合并）',
+  );
+  assert.deepEqual(
+    groups.find((g) => g.name === 'index').steps.map((s) => s.name),
+    ['readmodel'],
+    'GA-2：索引维护组只剩 readmodel（search-tokens-rebuild 已合并）',
   );
   assert.deepEqual(
     groups.find((g) => g.name === 'proxy-alerts').steps.map((s) => s.name),
     ['proxy-probe', 'alerts'],
-    '无提醒通道时 report 不进组（启用才出现）',
+    'GA-2：代理与提醒组 2 步（report 转手动，组仍保留）',
   );
   const jobs = jobsFromEnv({});
   assert.ok(jobs.every((j) => typeof j.group === 'string' && j.group), '每个 job 都带 group 字段');
@@ -838,9 +886,9 @@ test('FJ：12 个任务组——组名/顺序固定，组内子步骤按优先�
 test('FJ：planTick 组内串行——同组多个到期子步骤只派发优先级最高的一个', () => {
   const jobs = jobsFromEnv({});
   const meta = jobs.filter((j) => j.group === 'steam-meta');
-  assert.equal(meta.length, 5, '元数据组 5 步（FT 批加 explicit-backfill）');
+  assert.equal(meta.length, 3, 'GA-2：元数据组 3 步');
   const plan = planTick({ due: meta, heavySlot: null, running: new Set(), lightMax: 3, jobs });
-  assert.equal(plan.heavy.length, 1, '同组 5 步同 tick 只发一个');
+  assert.equal(plan.heavy.length, 1, '同组 3 步同 tick 只发一个');
   assert.equal(plan.heavy[0].name, 'steam-status', '按组内优先级发 steam-status（未探测最优先）');
 
   // 组内已有子步骤在跑：该组本 tick 不派发任何子步骤（不并发抢 appdetails）
@@ -882,11 +930,11 @@ test('FJ：writeStatusFile 输出 groups（12 组含 label 与子步骤状态）
     assert.equal(payload.groups.length, 12, '状态文件含 12 组');
     const meta = payload.groups.find((g) => g.name === 'steam-meta');
     assert.equal(meta.label, 'Steam 元数据');
-    assert.deepEqual(meta.steps.map((s) => s.name), ['steam-status', 'rating-backfill', 'explicit-backfill', 'backfill', 'rename'], '组内子步骤状态');
+    assert.deepEqual(meta.steps.map((s) => s.name), ['steam-status', 'rating-backfill', 'backfill'], '组内子步骤状态（GA-2：3 步）');
     assert.ok(meta.steps[0].nextRunAt, '子步骤行含 nextRunAt');
     assert.equal(payload.jobs.find((j) => j.name === 'backfill').group, 'steam-meta', 'jobs 行带 group（兼容旧字段）');
     const sonkwo = payload.jobs.find((j) => j.name === 'sonkwo');
-    assert.equal(sonkwo.intervalMin, 60, '子步骤间隔不变（组不引入新参数）');
+    assert.equal(sonkwo.intervalMin, 180, 'GA-2：子步骤间隔 60 → 180（组不引入新参数，只是继承任务值）');
   } finally {
     rmSync(file, { force: true });
   }

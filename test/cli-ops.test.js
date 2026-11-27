@@ -112,8 +112,9 @@ test('ER-① backfill 真实跑通：候选查询按 q 函数签名传参，不�
   assert.match(OPS_SRC, /db\.countBackfillCandidates\(s\.query\)/, 'countBackfillCandidates 传 q 函数');
   assert.match(
     OPS_SRC,
-    /db\.listBackfillCandidates\(s\.query, \{ limit: size \}\)/,
-    'listBackfillCandidates 传 q 函数（v2.28.4 只修了 count 那一半）',
+    // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：候选池并入「中文名待补」分支（includeRename）
+    /db\.listBackfillCandidates\(s\.query, \{ limit: size, includeRename \}\)/,
+    'listBackfillCandidates 传 q 函数（v2.28.4 只修了 count 那一半）；GA-2 带 includeRename（rename 已合并）',
   );
 });
 

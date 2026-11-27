@@ -105,6 +105,17 @@ export function parseRenameProgress(output) {
   };
 }
 
+// ---------------------------------------------------------------- GA-2：rename 合并进 backfill
+
+/**
+ * GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：中文名判定（与 rename 命令的计数同口径）——
+ * 含 CJK 统一表意文字即视为「拿到中文名」。backfill 每批写入后用它统计本轮顺带带回的中文名数，
+ * 不再单独跑 rename 定时任务。
+ */
+export function hasChineseName(text) {
+  return /[\u4e00-\u9fa5]/.test(String(text ?? ''));
+}
+
 // ---------------------------------------------------------------- GetItems → 报价
 
 /**

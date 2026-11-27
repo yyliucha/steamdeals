@@ -2956,7 +2956,7 @@ export async function upsertGameMeta(q, item) {
   if (row && !row.inserted) {
     await refreshSearchTokens(q, { id: Number(row.id), name: row.name, nameEn: row.name_en });
   }
-  return { id: Number(row.id), created: row.inserted === true };
+  return { id: Number(row.id), created: row.inserted === true, name: row.name ?? null, nameEn: row.name_en ?? null };
 }
 
 // ---------------------------------------------------------------- BP：DLC（docs/GAME-DLC.md §3.1）
@@ -3070,26 +3070,40 @@ export async function markBackfilled(q, appids = []) {
  *   no_price（国区无价）保留（可能后续有价）；
  * - BL-3：失败隔离期内（backfill_skip_until）不入选；
  * - 1 天冷却（backfill_at）可选（统计口径不带，运行中候选带）。
+ * - GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：includeRename=true 时并入 rename 的候选
+ *   （name 为空 / 不含简中）——GetItems 本来就是 schinese，同一批响应顺带写中文名；
+ *   改名支不受四态排除影响（free/coming_soon 照样要中文名，rename 时代的候选口径如此）。
  */
-export function backfillCandidateWhere({ includeCooldown = true, includeSkip = true, excludeStates = true } = {}) {
+export function backfillCandidateWhere({ includeCooldown = true, includeSkip = true, excludeStates = true, includeRename = false } = {}) {
   const parts = ['g.steam_appid is not null and not g.deleted'];
   if (includeCooldown) parts.push("(g.backfill_at is null or g.backfill_at < now() - interval '1 day')");
-  parts.push(
+  const fills =
     "(g.description is null or g.description = '' or not exists (select 1 from offers o where o.game_id = g.id and o.platform_code = 'steam') " +
-      'or (g.header_image is null and exists (select 1 from offers o where o.game_id = g.id)))',
-  );
-  if (excludeStates) parts.push("coalesce(g.steam_status, '') not in ('free', 'coming_soon', 'region_locked', 'not_found')");
+    'or (g.header_image is null and exists (select 1 from offers o where o.game_id = g.id)))';
+  if (includeRename) {
+    const rename = "(g.name is null or g.name = '' or g.name !~ '[一-龥]')";
+    const states = excludeStates ? "coalesce(g.steam_status, '') not in ('free', 'coming_soon', 'region_locked', 'not_found')" : 'true';
+    parts.push(`(${rename} or (${fills} and ${states}))`);
+  } else {
+    parts.push(fills);
+    if (excludeStates) parts.push("coalesce(g.steam_status, '') not in ('free', 'coming_soon', 'region_locked', 'not_found')");
+  }
   if (includeSkip) parts.push('(g.backfill_skip_until is null or g.backfill_skip_until < now())');
   return parts.join(' and ');
 }
 
-/** 回填候选列表（AC-9：新游戏优先，按收录时间倒序）。 */
-export async function listBackfillCandidates(q, { limit }) {
+/**
+ * 回填候选列表（AC-9：新游戏优先，按收录时间倒序）。
+ * GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：includeRename=true 时候选池 = 回填候选 ∪「中文名待补」候选
+ * （backfill 命令默认带上；rename 已合并进 backfill，同一批 GetItems 顺带写中文名，零额外请求）。
+ * 统计/其它老调用方不传 → 保持旧口径（不把「只缺中文名」的行算进回填候选数）。
+ */
+export async function listBackfillCandidates(q, { limit, includeRename = false }) {
   // FP 批 P2（docs/SYNC-HARDENING.md §2）：429 队列优先——上一轮撞 429 的 appid 排最前（attempts 少的先补）
   const r = await q(
     `select g.steam_appid from games g ` +
       `left join sync_429_queue sq on sq.steam_appid = g.steam_appid ` +
-      `where ${backfillCandidateWhere()} ` +
+      `where ${backfillCandidateWhere({ includeRename })} ` +
       `order by (sq.steam_appid is not null) desc, sq.attempts asc nulls last, g.created_at desc nulls last, g.id desc limit $1`,
     [limit],
   );

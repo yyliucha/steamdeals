@@ -32,32 +32,93 @@ export const STEAM_STATUS_LIMIT_DEFAULT = 20000;
 // 而是组行 + 展开子步骤。组只是调度层：组内到期子步骤按声明顺序（= 优先级）串行执行，
 // 子步骤仍按原 mode 写 sync_runs（历史/告警/健康面板/熔断恢复不变）。steam-claim 移出定时，
 // 改后台「Steam 账号」组手动按钮触发（steamClaimArgs 取参数，未配置时返回 null）。
+//
+// GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：定时任务 26 → 19——合并 4 处（rename→backfill、
+// search-tokens-rebuild→readmodel、images-backfill→images、explicit-backfill→rating-backfill）、
+// 转手动 3 个（catalog / logs / report）、prune 保留但周→天。组仍为 12 个（系统维护只剩 prune，
+// 目录与发现剩 steam-discovery + discover——组名/顺序不变，组内子步骤随任务集合收窄）。
 export const JOB_GROUPS = [
   { name: 'steam-prices', label: 'Steam 价格', steps: ['steam-prices'] },
-  { name: 'steam-meta', label: 'Steam 元数据', steps: ['steam-status', 'rating-backfill', 'explicit-backfill', 'backfill', 'rename'] },
+  { name: 'steam-meta', label: 'Steam 元数据', steps: ['steam-status', 'rating-backfill', 'backfill'] },
   { name: 'multi-platform', label: '多平台报价', steps: ['sonkwo', 'itad', 'gog', 'humble'] },
-  { name: 'catalog-discovery', label: '目录与发现', steps: ['catalog', 'steam-discovery', 'discover'] },
-  { name: 'images', label: '图片同步', steps: ['images', 'images-backfill'] },
-  { name: 'index', label: '索引维护', steps: ['readmodel', 'search-tokens-rebuild'] },
-  { name: 'system', label: '系统维护', steps: ['prune', 'logs'] },
+  { name: 'catalog-discovery', label: '目录与发现', steps: ['steam-discovery', 'discover'] },
+  { name: 'images', label: '图片同步', steps: ['images'] },
+  { name: 'index', label: '索引维护', steps: ['readmodel'] },
+  { name: 'system', label: '系统维护', steps: ['prune'] },
   { name: 'steam-accounts', label: 'Steam 账号', steps: ['steam-accounts'] },
   { name: 'heat', label: '热度回填', steps: ['heat'] },
   { name: 'app-release', label: 'App 版本同步', steps: ['app-release-sync'] },
   { name: 'align-snapshot', label: '对齐快照', steps: ['align-snapshot'] },
-  { name: 'proxy-alerts', label: '代理与提醒', steps: ['proxy-probe', 'alerts', 'report'] },
+  { name: 'proxy-alerts', label: '代理与提醒', steps: ['proxy-probe', 'alerts'] },
 ];
 
+/**
+ * GA-2（docs/SYNC-PAGE-REDESIGN.md §1 决策 8 / §3.7）：**手动任务**——不再进调度器，
+ * 但 CLI 命令与后台「立即运行」入口都保留（spec §7-8）。
+ *
+ * 单一事实源：后台「手动任务（不进调度器）」组由 manualJobsFromEnv() 渲染
+ * （`/api/admin/sync/status` 的 manualJobs 字段），触发走 `POST /api/admin/sync/manual`——
+ * 前端不写死任务清单，参数与调度器时代的默认值一致。
+ *
+ * steam-claim 也在清单里（它需要用户名/SteamID 参数，参数由 steamClaimArgs 决定，
+ * 未配置时 runnable=false + reason，按钮置灰而不是静默失败）。
+ */
+export const MANUAL_JOBS = [
+  {
+    name: 'catalog',
+    label: '目录同步（全量）',
+    // 原来每周定时跑一次 Steam 全量目录（幂等：已存在的 appid 跳过）；GA-2 转手动。
+    args: ['sync', 'catalog'],
+    enabled: (env) => env.STEAM_ENABLED !== '0' && String(env.STEAM_API_KEY ?? '').trim().length > 10,
+    reason: (env) => (String(env.STEAM_ENABLED ?? '') === '0' ? 'STEAM_ENABLED=0' : String(env.STEAM_API_KEY ?? '').trim().length > 10 ? null : 'STEAM_API_KEY 未配置'),
+  },
+  {
+    name: 'logs',
+    label: '日志清理',
+    args: ['logs', 'prune', '--days', '7'],
+    enabled: (env) => env.LOGS_PRUNE_ENABLED !== '0',
+    reason: (env) => (String(env.LOGS_PRUNE_ENABLED ?? '') === '0' ? 'LOGS_PRUNE_ENABLED=0' : null),
+  },
+  {
+    name: 'report',
+    label: '价格报表',
+    args: ['report', 'price', '--hours', '24', '--notify'],
+    enabled: (env) => env.REPORT_ENABLED !== '0' && hasNotifier(env),
+    reason: (env) => (String(env.REPORT_ENABLED ?? '') === '0' ? 'REPORT_ENABLED=0' : hasNotifier(env) ? null : '未配置提醒通道'),
+  },
+  {
+    name: 'steam-claim',
+    label: '认领未归属账号',
+    args: null, // 参数由 steamClaimArgs 生成（用户名 + SteamID）
+    enabled: (env) => Boolean(steamClaimArgs(env)),
+    reason: (env) => (steamClaimArgs(env) ? null : '未配置 STEAM_CLAIM_USERNAME / STEAM_CLAIM_STEAM_ID'),
+  },
+];
+
+/** GA-2：手动任务清单（含可运行性与不可运行原因），供 `/api/admin/sync/status` 与「立即运行」端点共用。 */
+export function manualJobsFromEnv(env = process.env) {
+  return MANUAL_JOBS.map((j) => ({
+    name: j.name,
+    label: j.label,
+    runnable: Boolean(j.enabled(env)),
+    reason: j.reason(env),
+    args: j.name === 'steam-claim' ? steamClaimArgs(env) : [...j.args],
+  }));
+}
+
+/** GA-2：按名字取手动任务（端点用）；未知名字或不可运行返回 null。 */
+export function manualJobByName(name, env = process.env) {
+  return manualJobsFromEnv(env).find((j) => j.name === String(name ?? '').trim()) ?? null;
+}
+
 export function jobsFromEnv(env = process.env) {
+  // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：定时任务 26 → 19。
+  // 移出定时（改手动，CLI 命令保留）：catalog / logs / report（见 MANUAL_JOBS）。
+  // 合并进其它任务（不再各自定时，CLI 命令保留）：
+  //   rename → backfill（取 appdetails 时顺带写中文名）、search-tokens-rebuild → readmodel
+  //   （对账后顺带增量重建 token）、images-backfill → images（每轮顺带补缺图）、
+  //   explicit-backfill → rating-backfill（候选并入 strict 色情分级分支）。
   const flat = [
-    {
-      name: 'catalog',
-      // 每周同步一次 Steam 全量目录（幂等：已存在的 appid 跳过）——新游戏自动进库，
-      // 不需要人去控制台点「导入目录」。需要 STEAM_API_KEY，没配时该任务不出现。
-      args: ['sync', 'catalog'],
-      intervalMin: num(env.STEAM_CATALOG_INTERVAL_MIN, 10080),
-      initialDelaySec: num(env.STEAM_CATALOG_INITIAL_DELAY_SEC, 3600),
-      enabled: env.STEAM_ENABLED !== '0' && String(env.STEAM_API_KEY ?? '').trim().length > 10,
-    },
     {
       name: 'steam-prices',
       // 每日只刷新已经有 Steam 报价的游戏；初次导入/补详情由后台回填完成。
@@ -115,8 +176,9 @@ export function jobsFromEnv(env = process.env) {
       // CJ 批（docs/APP-AUTO-UPDATE-PAGE.md §4）：同步 App Release 到本地（轻任务，不进 STEAM_HEAVY；GitHub API 每轮 1 次调用）
       // DR 批（docs/APP-INSTANT-UPDATE.md §3.1）：默认 60→15 分钟；settings app.syncIntervalMin 可改（DB 热加载，
       // env APP_RELEASE_SYNC_INTERVAL_MIN 兜底——水合后本处读到的已是 DB 值，保存设置后任务表重建生效）。
+      // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：15 → 60 分钟（App 发版是低频动作，没必要每刻钟打一次 GitHub API）。
       args: ['app-sync'],
-      intervalMin: num(env.APP_RELEASE_SYNC_INTERVAL_MIN, 15),
+      intervalMin: num(env.APP_RELEASE_SYNC_INTERVAL_MIN, 60),
       initialDelaySec: num(env.APP_RELEASE_SYNC_INITIAL_DELAY_SEC, 300),
       enabled: env.APP_RELEASE_SYNC_ENABLED !== '0',
     },
@@ -125,19 +187,11 @@ export function jobsFromEnv(env = process.env) {
       // DL 批（docs/ALIGN-SNAPSHOT.md §5）：对齐审核快照后台生成——每轮算数据签名，与最新快照
       // 不同（或超 24h）才重算写库；失败写快照 error + sync_runs 原因（任务健康条红标）。
       // 首轮延迟 30 秒：部署后空表兜底生成，前台首次进入不再长时间「生成中」。
+      // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：30 → 120 分钟。
       args: ['align-snapshot'],
-      intervalMin: num(env.ALIGN_SNAPSHOT_INTERVAL_MIN, 30),
+      intervalMin: num(env.ALIGN_SNAPSHOT_INTERVAL_MIN, 120),
       initialDelaySec: num(env.ALIGN_SNAPSHOT_INITIAL_DELAY_SEC, 30),
       enabled: env.ALIGN_SNAPSHOT_ENABLED !== '0',
-    },
-    {
-      name: 'rename',
-      // 每周重写一次名字：目录导入留下的机器英文名补成中文（英文挪进 name_en），
-      // 顺带覆盖"后来才补了简中"的游戏。选择条件自带收敛，没名字可改时秒退。
-      args: ['rename', '--limit', String(num(env.STEAM_RENAME_LIMIT, 200000)), '--batch', '100', '--sleep', '1500'],
-      intervalMin: num(env.STEAM_RENAME_INTERVAL_MIN, 10080),
-      initialDelaySec: num(env.STEAM_RENAME_INITIAL_DELAY_SEC, 7200),
-      enabled: env.STEAM_ENABLED !== '0',
     },
     {
       name: 'rating-backfill',
@@ -146,20 +200,12 @@ export function jobsFromEnv(env = process.env) {
       // 与价格/热度/回填共用 200 次/5 分钟配额 → STEAM_HEAVY 互斥串行；候选自带收敛
       // （required_age 已采到即不再选），全量播完后日常增量由 steam-status 维护。429 收轮 exit 75，1 小时后自动重排续跑。
       // FP 批（docs/SYNC-HARDENING.md §2 P2）：默认上限 5000 → 20000（env 可配）。
+      // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：explicit-backfill 合并进来——候选并入
+      // 「strict 色情分级」分支（adult_flag=true 且 explicit_flag=false 的行），同一次 appdetails
+      // 响应同时写分级与 explicit_flag，不再单独占一个定时任务（CLI explicit-backfill 仍可手动跑）。
       args: ['rating-backfill', '--limit', String(num(env.STEAM_RATING_BACKFILL_LIMIT, 20000)), '--batch', '30', '--rate', String(num(env.STEAM_RATING_BACKFILL_RATE_MS, 1500))],
       intervalMin: num(env.STEAM_RATING_BACKFILL_INTERVAL_MIN, 1440),
       initialDelaySec: num(env.STEAM_RATING_BACKFILL_INITIAL_DELAY_SEC, 14400),
-      enabled: env.STEAM_ENABLED !== '0',
-    },
-    {
-      name: 'explicit-backfill',
-      // FT 批（docs/EXPLICIT-RATING.md §2.2）：色情游戏（严格分级）存量回填——候选 =
-      // adult_flag=true 且 explicit_flag=false（存量约 4759 个，约 2 小时/轮）；1 天冷却断点续跑，
-      // explicit=true 退出候选收敛。以存量回填为主、手动「立即运行」触发，默认 7 天兜底重扫一次
-      // （冷却 1 天，7 天间隔下每轮重扫存量、可捕捉 descriptor 变更）；STEAM_HEAVY 互斥串行。
-      args: ['explicit-backfill', '--limit', String(num(env.STEAM_EXPLICIT_BACKFILL_LIMIT, 5000)), '--batch', '30', '--rate', String(num(env.STEAM_EXPLICIT_BACKFILL_RATE_MS, 1500))],
-      intervalMin: num(env.STEAM_EXPLICIT_BACKFILL_INTERVAL_MIN, 10080),
-      initialDelaySec: num(env.STEAM_EXPLICIT_BACKFILL_INITIAL_DELAY_SEC, 21600),
       enabled: env.STEAM_ENABLED !== '0',
     },
     {
@@ -168,6 +214,8 @@ export function jobsFromEnv(env = process.env) {
       // （GetItems + appdetails 回退）。选择条件自带收敛（有说明+报价的跳过），没活时秒退；
       // 与其它 Steam 任务串行不抢限流。BL-1：每周 → 每天、上限 5 万 → 5000（稳态小步收敛）。
       // FP 批（docs/SYNC-HARDENING.md §2 P2）：默认上限 5000 → 20000（env 可配）。
+      // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：rename 合并进来——候选池并入「中文名待补」分支
+      // （name 为空或不含简中），GetItems 本来就是 schinese，同一次响应顺带写中文名、零额外请求。
       args: ['backfill', '--limit', String(num(env.STEAM_BACKFILL_LIMIT, 20000)), '--batch', '100', '--sleep', '3000'],
       intervalMin: num(env.STEAM_BACKFILL_INTERVAL_MIN, 1440),
       initialDelaySec: num(env.STEAM_BACKFILL_INITIAL_DELAY_SEC, 10800),
@@ -183,11 +231,14 @@ export function jobsFromEnv(env = process.env) {
       enabled: env.STEAM_ENABLED !== '0' && String(env.STEAM_API_KEY ?? '').trim().length > 10,
     },
     // FJ 批：steam-claim 已移出定时任务——后台「Steam 账号」组的手动按钮触发（steamClaimArgs 取参数）。
+    // GA-2：catalog / logs / report 同样移出定时（见 MANUAL_JOBS），只剩 prune 留在「系统维护」组。
     {
       name: 'prune',
-      // 每周清理：访问记录 180 天、采集/任务记录 90 天、验证码 7 天
+      // 定期清理：访问记录 180 天、采集/任务记录 90 天、验证码 7 天
+      // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：保留定时但 10080（周）→ 1440（天）——
+      // 转手动会让库膨胀，周级又太松（零外部请求，天级成本可忽略）。
       args: ['prune'],
-      intervalMin: num(env.PRUNE_INTERVAL_MIN, 10080),
+      intervalMin: num(env.PRUNE_INTERVAL_MIN, 1440),
       initialDelaySec: 43200,
       enabled: env.PRUNE_ENABLED !== '0',
     },
@@ -195,8 +246,9 @@ export function jobsFromEnv(env = process.env) {
       name: 'proxy-probe',
       // BB 批（docs/PROXY-POOL.md §11.4）：每 10 分钟 CONNECT 探测代理池一次；只做协议层 CONNECT，
       // 不请求 Steam 业务接口（不占配额），探测失败不写业务冷却（避免误杀），结果落 health 文件 probe* 字段。
+      // GA-2：10 → 30 分钟（探测只是健康巡检，热路径请求失败会即时标记，不必 10 分钟一轮）。
       args: ['probe', '--proxy'],
-      intervalMin: num(env.PROXY_PROBE_INTERVAL_MIN, 10),
+      intervalMin: num(env.PROXY_PROBE_INTERVAL_MIN, 30),
       initialDelaySec: num(env.PROXY_PROBE_INITIAL_DELAY_SEC, 120),
       enabled: env.PROXY_PROBE_ENABLED !== '0',
     },
@@ -207,25 +259,18 @@ export function jobsFromEnv(env = process.env) {
       // 修复走 refresh* 唯一写入路径（口径与对账一致、幂等），自动修复把「列表价与详情不一致」
       // 的窗口上限压到 24 小时；变更优先增量校验优先扫「底层比快照新」的疑似陈旧行。
       // 发现差异仍记 readmodel.check（diffs/fixed 字段），修复不静默；手动 check 默认仍只报告不修。
-      args: ['readmodel', 'check', '--sample', String(num(env.READMODEL_SAMPLE, 200)), '--fix'],
+      // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：search-tokens-rebuild 合并进来——对账收尾顺带做
+      // 一轮增量 token 重建（纯本地计算、零 Steam 请求；--tokens 0 可关，--tokens-limit 调上限）。
+      args: ['readmodel', 'check', '--sample', String(num(env.READMODEL_SAMPLE, 200)), '--fix', '--tokens-limit', String(num(env.READMODEL_TOKENS_LIMIT, 50000))],
       intervalMin: num(env.READMODEL_INTERVAL_MIN, 1440),
       initialDelaySec: num(env.READMODEL_INITIAL_DELAY_SEC, 3600),
       enabled: env.READMODEL_ENABLED !== '0',
     },
     {
-      name: 'search-tokens-rebuild',
-      // DS 批（docs/SEARCH-ALIASES.md §3）：增量重算派生搜索 token（search_tokens 为空/从未生成/
-      // 名字在生成后被改过的行）；轻任务（纯本地计算、无 Steam 请求），每 6 小时一轮、
-      // 每轮上限 5 万行——迁移后存量约 19.8 万行首轮铺满约 1 天，此后每轮秒退。--full 全量重建走 CLI。
-      args: ['search-tokens', '--limit', String(num(env.SEARCH_TOKENS_LIMIT, 50000))],
-      intervalMin: num(env.SEARCH_TOKENS_INTERVAL_MIN, 360),
-      initialDelaySec: num(env.SEARCH_TOKENS_INITIAL_DELAY_SEC, 900),
-      enabled: env.SEARCH_TOKENS_ENABLED !== '0',
-    },
-    {
       name: 'sonkwo',
       args: ['sync', 'sonkwo'],
-      intervalMin: num(env.SONKWO_INTERVAL_MIN, 60),
+      // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：60 → 180 分钟（杉果国内源无配额压力，3 小时一轮够）。
+      intervalMin: num(env.SONKWO_INTERVAL_MIN, 180),
       initialDelaySec: num(env.SONKWO_INITIAL_DELAY_SEC, 180),
       enabled: env.SONKWO_ENABLED !== '0',
     },
@@ -261,14 +306,7 @@ export function jobsFromEnv(env = process.env) {
     // FR 批（docs/BACKUP-AS-FEATURE.md §2.1）：backup 已移出调度任务——不再定时自动跑、
     // 不再走 CLI 自动链路，改为后台「统计 → 图片与备份」手动功能（POST /api/admin/backup）。
     // HEAVY_MAINT / 低峰窗口仍保留 backup 名字：手动触发经 runSyncTracked 的备份照旧走 maint 槽。
-    {
-      name: 'logs',
-      // 每 7 天清理一次日志文件，避免无限增长
-      args: ['logs', 'prune', '--days', '7'],
-      intervalMin: num(env.LOGS_PRUNE_DAYS, 7) * 1440,
-      initialDelaySec: 900,
-      enabled: env.LOGS_PRUNE_ENABLED !== '0',
-    },
+    // GA-2：logs 也移出定时（MANUAL_JOBS）——日志清理改后台「立即运行」，prune 不再顺带清日志。
     {
       name: 'alerts',
       // 只有配了任意提醒通道才在检查后标记已通知，否则只做只读检查，避免静默吞掉提醒
@@ -280,6 +318,8 @@ export function jobsFromEnv(env = process.env) {
     {
       name: 'images',
       // 封面图补缓存：下载到 data/images（宿主机卷），之后前台直接读本地文件，不再依赖 CDN/代理
+      // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：images-backfill 合并进来——每轮 pull 之前先补一批缺图
+      // （header_image 为空的游戏逐 appid 重同步元数据，限速 ≥1.2s/请求；--backfill-limit 0 可关）。
       args: [
         'images',
         'pull',
@@ -287,34 +327,14 @@ export function jobsFromEnv(env = process.env) {
         String(num(env.IMAGES_LIMIT, 500)),
         '--sleep',
         String(num(env.IMAGES_SLEEP_MS, 300)),
+        '--backfill-limit',
+        String(num(env.IMAGES_BACKFILL_LIMIT, 100)),
+        '--backfill-sleep',
+        String(num(env.IMAGES_BACKFILL_SLEEP_MS, 1200)),
       ],
       intervalMin: num(env.IMAGES_INTERVAL_MIN, 240),
       initialDelaySec: num(env.IMAGES_INITIAL_DELAY_SEC, 1200),
       enabled: env.IMAGES_ENABLED !== '0',
-    },
-    {
-      name: 'images-backfill',
-      // EC 批（docs/IMAGE-COVERAGE.md §8 EC-2）：缺图回填——header_image 为空的游戏逐 appid
-      // 重同步元数据补封面（限速 ≥1s/请求防 429）；补完即收敛，缺图数逐轮下降。
-      args: [
-        'images',
-        'backfill',
-        '--limit',
-        String(num(env.IMAGES_BACKFILL_LIMIT, 100)),
-        '--sleep',
-        String(num(env.IMAGES_BACKFILL_SLEEP_MS, 1200)),
-      ],
-      intervalMin: num(env.IMAGES_BACKFILL_INTERVAL_MIN, 360),
-      initialDelaySec: num(env.IMAGES_BACKFILL_INITIAL_DELAY_SEC, 1800),
-      enabled: env.IMAGES_BACKFILL_ENABLED !== '0',
-    },
-    {
-      name: 'report',
-      // 价格报表推送：只在配置了提醒通道时启用（--notify 内部还会再判断一次）
-      args: ['report', 'price', '--hours', '24', '--notify'],
-      intervalMin: num(env.REPORT_INTERVAL_MIN, 1440),
-      initialDelaySec: num(env.REPORT_INITIAL_DELAY_SEC, 900),
-      enabled: env.REPORT_ENABLED !== '0' && hasNotifier(env),
     },
   ].filter((j) => j.enabled && j.intervalMin > 0);
   // FJ 批：按 JOB_GROUPS 的组顺序与组内优先级重排（组只是调度层，子步骤原 mode 不变），
@@ -488,11 +508,15 @@ const SYNC_LIKE = new Set(['steam', 'sonkwo', 'itad', 'gog', 'humble', 'discover
 // Steam 重任务：与后台手动同步/回填/热度共用配额与槽位，有手动任务在跑时让路。
 // 它们都打 store.steampowered.com/appdetails（200 次/5 分钟配额），必须串行互斥。
 // steam-status 也在其中（X 批）：逐 appid 全量请求，与价格/热度/回填并列重任务槽。
+// GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：rename / explicit-backfill / catalog 已移出定时，
+// 保留在集合里是给「手动立即运行」留槽位语义（它们仍打同一配额，仍必须与定时任务串行互斥）。
 export const STEAM_HEAVY = new Set(['steam-prices', 'rename', 'backfill', 'rating-backfill', 'explicit-backfill', 'heat', 'steam-status', 'steam-discovery', 'catalog']);
 
 // FP 批（docs/SYNC-HARDENING.md §2 P1）：heavy 分两槽——heavySteam（价格/状态/回填/发现，STEAM_HEAVY）
 // 与 heavyMaint（backup/prune/logs）互不影响，同一时刻各槽最多一个任务。
 // backup/prune 额外受低峰窗口约束（maintWindow），logs 只占槽不限时段。
+// GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：logs 移出定时但集合保留——手动「立即运行」日志清理时
+// 仍占 maint 槽（与 backup/prune 串行），槽位语义不随定时清单收缩。
 export const HEAVY_MAINT = new Set(['backup', 'prune', 'logs']);
 
 /** FP 批：任务归属的 heavy 槽组名——maint（backup/prune/logs）或 steam（其余重任务）。 */
@@ -504,7 +528,8 @@ export function heavyGroupFor(name) {
 // 允许在 heat/steam-prices 等长任务运行时并行执行——否则 heat 首轮播种 9 小时会饿死所有其它源。
 // DL 批：align-snapshot 是本地库计算（不占外部配额），归轻任务受并行上限约束。
 // FP 批：backup/logs 移出轻任务 → heavyMaint 独立槽（不再与价格/状态抢槽，也不受 lightMax 上限）。
-const LIGHT_JOBS = new Set(['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'alerts', 'images', 'images-backfill', 'align-snapshot']);
+// GA-2：images-backfill 已并入 images（同一个任务），轻任务清单随之收窄。
+const LIGHT_JOBS = new Set(['sonkwo', 'itad', 'gog', 'humble', 'discover', 'steam-accounts', 'alerts', 'images', 'align-snapshot']);
 
 /** 轻任务并行上限（环境变量 SCHEDULER_LIGHT_CONCURRENCY 可调，默认 3，范围 1–8）。 */
 export function lightConcurrency(env = process.env) {
@@ -720,8 +745,12 @@ export function describeSchedule(jobs) {
 
 // ---------------------------------------------------------------- AC-4：每日 Steam 配额预算
 
-/** AC-4 的五个 Steam 重任务 mode 列表（B3 批共用：预算/任务卡估算只覆盖这五个；EF 批加 rating-backfill）。 */
-export const STEAM_BUDGET_MODES = ['steam-prices', 'heat', 'steam-status', 'backfill', 'rating-backfill', 'explicit-backfill'];
+/**
+ * AC-4 的 Steam 重任务 mode 列表（B3 批共用：预算/任务卡估算只覆盖这些；EF 批加 rating-backfill）。
+ * GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：explicit-backfill 合进 rating-backfill 后不再单独占预算
+ * （候选并入 strict 分支，同一轮的速率上限还是 rating-backfill 的 limit）——预算口径只剩五个。
+ */
+export const STEAM_BUDGET_MODES = ['steam-prices', 'heat', 'steam-status', 'backfill', 'rating-backfill'];
 
 /**
  * AC-4 单轮理论耗时（秒）——口径与任务实现一致：
@@ -730,7 +759,8 @@ export const STEAM_BUDGET_MODES = ['steam-prices', 'heat', 'steam-status', 'back
  *  - steam-status：每款平均 2 次请求 × rate；
  *  - backfill：每 100 款一批 GetItems 间隔 3s + 每批最多 10 个单条回退（各 0.4s）；
  *  - rating-backfill（EF 批）：每款 1 次请求 × rate（默认 1.5s）。
- *  - explicit-backfill（FT 批）：每款 1 次请求 × rate（默认 1.5s）。
+ *
+ * GA-2：explicit-backfill 已并入 rating-backfill（候选不同、链路相同），不再单独计一轮耗时。
  */
 export function theoreticalRunSeconds(env = process.env) {
   const backfillLimit = num(env.STEAM_BACKFILL_LIMIT, 20000);
@@ -740,7 +770,6 @@ export function theoreticalRunSeconds(env = process.env) {
     'steam-status': num(env.STEAM_STATUS_LIMIT, 20000) * 2 * (num(env.STEAM_STATUS_RATE_MS, 1500) / 1000),
     backfill: (backfillLimit / 100) * 3 + (backfillLimit / 100) * 10 * 0.4,
     'rating-backfill': num(env.STEAM_RATING_BACKFILL_LIMIT, 20000) * (num(env.STEAM_RATING_BACKFILL_RATE_MS, 1500) / 1000),
-    'explicit-backfill': num(env.STEAM_EXPLICIT_BACKFILL_LIMIT, 5000) * (num(env.STEAM_EXPLICIT_BACKFILL_RATE_MS, 1500) / 1000),
   };
 }
 
@@ -759,7 +788,6 @@ export function steamDailyBudgetMinutes(env = process.env, observed = null) {
     'steam-status': perDay(num(env.STEAM_STATUS_INTERVAL_MIN, 1440)),
     backfill: perDay(num(env.STEAM_BACKFILL_INTERVAL_MIN, 1440)),
     'rating-backfill': perDay(num(env.STEAM_RATING_BACKFILL_INTERVAL_MIN, 1440)),
-    'explicit-backfill': perDay(num(env.STEAM_EXPLICIT_BACKFILL_INTERVAL_MIN, 10080)),
   };
   const secOf = (mode) => {
     const obs = observed?.get?.(mode);
@@ -771,7 +799,6 @@ export function steamDailyBudgetMinutes(env = process.env, observed = null) {
   const backfillRoundMin = secOf('backfill') / 60;
   const backfillDailyMin = (secOf('backfill') * runsPerDay.backfill) / 60;
   const ratingBackfillDailyMin = (secOf('rating-backfill') * runsPerDay['rating-backfill']) / 60;
-  const explicitBackfillDailyMin = (secOf('explicit-backfill') * runsPerDay['explicit-backfill']) / 60;
   return {
     priceMin,
     heatMin,
@@ -779,8 +806,7 @@ export function steamDailyBudgetMinutes(env = process.env, observed = null) {
     backfillRoundMin,
     backfillDailyMin,
     ratingBackfillDailyMin,
-    explicitBackfillDailyMin,
-    total: priceMin + heatMin + statusMin + backfillDailyMin + ratingBackfillDailyMin + explicitBackfillDailyMin,
+    total: priceMin + heatMin + statusMin + backfillDailyMin + ratingBackfillDailyMin,
   };
 }
 
@@ -820,7 +846,7 @@ export function applySteamBudget(jobs, env = process.env, logger = null, observe
     });
     return { jobs, budget, adjusted: false };
   }
-  const others = budget.priceMin + budget.heatMin + budget.backfillDailyMin + budget.ratingBackfillDailyMin + budget.explicitBackfillDailyMin;
+  const others = budget.priceMin + budget.heatMin + budget.backfillDailyMin + budget.ratingBackfillDailyMin;
   const statusTargetMin = Math.max(120, 1440 - others); // 至少给 status 留 2 小时
   // B3 批：每款速率优先用实测（observed 平均秒 ÷ 当前限额），没有实测才用理论 2×rate
   const statusLimit = num(env.STEAM_STATUS_LIMIT, 20000);
@@ -847,8 +873,11 @@ export function applySteamBudget(jobs, env = process.env, logger = null, observe
 }
 
 /**
- * AC1（docs/SYNC-FAILURE-MODES.md AC1）：该有但没有的任务——缺 `STEAM_API_KEY`（catalog/steam-accounts）
- * 或被 `*_ENABLED=0` 显式关闭的任务。返回警告清单，后台「同步与回填」页显式提示，不静默消失。
+ * AC1（docs/SYNC-FAILURE-MODES.md AC1）：该有但没有的任务——缺 `STEAM_API_KEY`（steam-accounts）
+ * 或被 `*_ENABLED=0` 显式关闭的**定时**任务。返回警告清单，后台「同步与回填」页显式提示，不静默消失。
+ * GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：catalog / logs / report 已转手动（MANUAL_JOBS），
+ * 不再是「该有的定时任务」——它们的可运行性由 manualJobsFromEnv 的 runnable/reason 表达，
+ * 这里只审仍在调度器里的 19 个任务。
  */
 export function auditJobs(env = process.env) {
   const jobs = jobsFromEnv(env);
@@ -856,16 +885,13 @@ export function auditJobs(env = process.env) {
   const warnings = [];
   const hasKey = String(env.STEAM_API_KEY ?? '').trim().length > 10;
   if (!hasKey) {
-    if (!present.has('catalog')) warnings.push({ name: 'catalog', reason: 'STEAM_API_KEY 未配置' });
     if (!present.has('steam-accounts')) warnings.push({ name: 'steam-accounts', reason: 'STEAM_API_KEY 未配置' });
   }
   const switches = [
     ['steam-prices', 'STEAM_ENABLED'],
     ['heat', 'STEAM_ENABLED'],
     ['steam-status', 'STEAM_ENABLED'],
-    ['rename', 'STEAM_ENABLED'],
     ['rating-backfill', 'STEAM_ENABLED'],
-    ['explicit-backfill', 'STEAM_ENABLED'],
     ['backfill', 'STEAM_ENABLED'],
     ['sonkwo', 'SONKWO_ENABLED'],
     ['itad', 'ITAD_ENABLED'],
@@ -873,17 +899,11 @@ export function auditJobs(env = process.env) {
     ['humble', 'HUMBLE_ENABLED'],
     ['discover', 'DISCOVER_ENABLED'],
     ['prune', 'PRUNE_ENABLED'],
-    ['logs', 'LOGS_PRUNE_ENABLED'],
     ['alerts', 'ALERTS_ENABLED'],
     ['images', 'IMAGES_ENABLED'],
-    ['images-backfill', 'IMAGES_BACKFILL_ENABLED'],
   ];
   for (const [name, envName] of switches) {
     if (!present.has(name) && String(env[envName] ?? '') === '0') warnings.push({ name, reason: `${envName}=0` });
-  }
-  // report 的开关还有第二道条件：配置了提醒通道才出现
-  if (!present.has('report') && String(env.REPORT_ENABLED ?? '') !== '0') {
-    warnings.push({ name: 'report', reason: '未配置提醒通道' });
   }
   return warnings;
 }

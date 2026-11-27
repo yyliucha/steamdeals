@@ -237,7 +237,8 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   assert.match(cli, /match\.summary/, 'match.summary 日志');
   assert.match(cliSync, /MATCH_ON_SONKWO/, '收尾开关');
   assert.match(cliSync, /resolveDealSteamAppid/, 'ITAD 跳转反解接入');
-  assert.match(admin, /对齐审核/, '游戏管理新 tab');
+  // GA-1（docs/SYNC-PAGE-REDESIGN.md §2.1）：对齐审核从「游戏管理 tab」升级为一级 section
+  assert.match(admin, /section==='align'/, '对齐审核是一级 section（原游戏管理 tab）');
   assert.match(alignAdmin, /不可自动撤销/, '确认不可撤销提示');
   assert.match(alignAdmin, /api\/admin\/align\/ignore/, '忽略接线');
 
@@ -270,7 +271,7 @@ test('CD 接线：审核 API / 对齐页 / 调度收尾 / 映射表 静态契约
   assert.match(snapMod, /ALIGN_SNAPSHOT_MAX_AGE_MS_DEFAULT = 24/, '24h 强制重算兜底');
   assert.match(snapMod, /align\.snapshot_failed/, '生成失败日志');
   assert.match(sched, /name: 'align-snapshot'/, '调度任务 align-snapshot 存在（硬规则 9）');
-  assert.match(sched, /ALIGN_SNAPSHOT_INTERVAL_MIN, 30/, '默认每 30 分钟');
+  assert.match(sched, /ALIGN_SNAPSHOT_INTERVAL_MIN, 120/, 'GA-2：默认每 120 分钟（原 30）');
   assert.match(sched, /ALIGN_SNAPSHOT_INITIAL_DELAY_SEC, 30/, '首轮延迟 30 秒（空表兜底生成）');
   assert.match(cli, /'align-snapshot': cmdAlignSnapshot/, 'CLI 子命令接线（runSyncTracked 健康可见）');
   assert.match(cli, /ensureAlignSnapshot/, 'CLI 走共享 ensureAlignSnapshot');

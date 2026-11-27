@@ -15,9 +15,10 @@
 //   · POST /api/admin/rename          重写名字（目录导入机器英文名 → 中文，默认间隔 1500ms）
 //   · POST /api/admin/rename/stop     停止重写名字
 //   · GET  /api/admin/rename/status   重写名字状态（running/busy/progress/last）
+//   · POST /api/admin/sync/manual     GA-2：手动任务（不进调度器）立即运行（catalog/logs/report/steam-claim）
 //
 // 单入口（位置语义，见 docs/ARCHITECTURE.md「域路由拆分模式」§15.3）：
-//   · handleAdminSyncAdmin(ctx)：requireAdmin 就绪后的管理段——本域全部 13 条路由
+//   · handleAdminSyncAdmin(ctx)：requireAdmin 就绪后的管理段——本域全部 14 条路由
 //     （管理段形态先例=申诉域 handleAppealAdmin / 公告域 handleAnnouncementsAdmin /
 //     admin-access 域 handleAdminAccessAdmin）。
 //   返回值约定：true = 已处理并结束响应；false = 未命中本域，宿主继续。凡写过响应的分支
@@ -37,7 +38,7 @@
 //   · 跨域共用 SQL（insertSyncRun/finishSyncRun/runningSyncRun/markStaleSyncRuns/
 //     sourceSyncStats 等）留 pg.js（见 admin-sync-repository.js 头部归属判定）。
 import * as db from '../store/pg.js';
-import { auditJobs as auditSchedulerJobs, resetCircuit, jobsFromEnv, steamClaimArgs, syncRunModeFor } from '../scheduler.js';
+import { auditJobs as auditSchedulerJobs, resetCircuit, jobsFromEnv, steamClaimArgs, syncRunModeFor, manualJobsFromEnv, manualJobByName } from '../scheduler.js';
 import { readFileSync } from 'node:fs';
 // FW-3（docs/SLOW-SYNC.md §3.2/§4、§8 验收第 7 条）：/api/admin/sync/status 带 403 冷却与全站速率闸门状态。
 import { readSteam403Info } from '../http.js';
@@ -164,9 +165,41 @@ export async function handleAdminSyncAdmin(ctx) {
     return true;
   }
 
-  // steam-claim 手动分支：把历史未归属账号认领给指定用户一次（幂等，原 FJ 批移出的定时任务）
-  if (path === '/api/admin/steam-claim' && req.method === 'POST') {
+  // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：手动任务（不进调度器）的「立即运行」入口——
+  // catalog / logs / report / steam-claim 保留 CLI 命令，这里只做触发（参数取 MANUAL_JOBS 的默认值，
+  // 与调度器时代的参数一致）。前端「手动任务（不进调度器）」组的按钮走这条路由，
+  // 清单与可运行性由 /api/admin/sync/status 的 manualJobs 下发（前端不写死）。
+  if (path === '/api/admin/sync/manual' && req.method === 'POST') {
     if (!requireAdmin()) return true;
+    const body = await readBody(req);
+    const job = manualJobByName(body.name, process.env);
+    if (!job) {
+      json(res, 404, { error: '未知的手动任务' });
+      return true;
+    }
+    if (!job.runnable) {
+      json(res, 400, { error: `手动任务不可运行：${job.reason || '未配置'}` });
+      return true;
+    }
+    try {
+      // steam-claim 的 mode 与其 CLI 子命令同名（sync_runs 记录口径不变）
+      const mode = job.name === 'steam-claim' ? 'steam-claim' : String(job.args?.[0] ?? job.name);
+      const started = await startSteamJob({ mode, args: ['src/cli.js', ...job.args], by: user.username });
+      logger?.info('api.manual_job_started', { name: job.name, runId: started.runId, by: user.username });
+      invalidateSyncStatusCache();
+      json(res, 202, { started: true, name: job.name, runId: started.runId, pid: started.pid });
+      return true;
+    } catch (err) {
+      if (err.code === 'BUSY') {
+        json(res, 409, { error: err.message, run: err.run });
+        return true;
+      }
+      throw err;
+    }
+  }
+
+  // steam-claim 手动分支：把历史未归属账号认领给指定用户一次（幂等，原 FJ 批移出的定时任务）
+  if (path === '/api/admin/steam-claim' && req.method === 'POST') {    if (!requireAdmin()) return true;
     const args = steamClaimArgs(process.env);
     if (!args) {
       json(res, 400, { error: '未配置 STEAM_CLAIM_USERNAME / STEAM_CLAIM_STEAM_ID' });
@@ -239,6 +272,9 @@ export async function handleAdminSyncAdmin(ctx) {
       rateGate,
       // AC1（docs/SYNC-FAILURE-MODES.md）：该有但没有的任务，后台显式提示（缺 Key / 被 *_ENABLED=0 关闭）
       warnings: auditSchedulerJobs(process.env),
+      // GA-2（docs/SYNC-PAGE-REDESIGN.md §3.7）：手动任务清单（不进调度器）——后台「手动任务」组
+      // 按返回渲染（name/label/runnable/reason），「立即运行」走 POST /api/admin/sync/manual。
+      manualJobs: manualJobsFromEnv(process.env),
     };
     syncStatusCache.value = syncStatusPayload;
     syncStatusCache.at = Date.now();
