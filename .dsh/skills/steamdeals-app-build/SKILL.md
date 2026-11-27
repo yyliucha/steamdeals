@@ -16,6 +16,8 @@ description: SteamDeals App（F:\dsh\steamdeals-app，yyliucha/steamdeals-app）
 
 - **触发词**：所有者说「**发 app-vX.Y.Z**」（或「发 App」= 用当前 main 的版本号自动发）。
   只有明确收到该指令才动手——日常开发只提交推 main，不建 Release。
+  （**2026-11-27 区分**：站点构建已改为「`质检通过` 即可由开发/监工自动触发」，但 **App 构建仍需所有者点名**——
+  App `versionCode` 与站点版本不同步，且 App 依赖站点先发布。）
 - **前置**：App 仓库 main 已含本批全部 App 改动并推送；版本号已按 §1 递增（`app/build.gradle.kts`）。
 - 与 `steamdeals-build` 联动：站点构建会话发现本批条目标注「**涉及 App 仓库**：是」时，
   会**同步调用本技能**发对应 App 版本（见站点 build 技能 §3.8）。

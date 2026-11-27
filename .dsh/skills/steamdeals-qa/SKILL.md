@@ -49,7 +49,10 @@ description: SteamDeals/gameprice 的质检关：输入是 todo.md 的编号，�
   质检按该编号在 [docs/TODO.md](../../../docs/TODO.md) 找到条目与规格，不接受"你去看我提交"这种转述。
 - **检查完必须回写状态**：把该条目从 `待质检` 改成 `质检通过` 或 `质检打回`（打回时在条目里写一句打回摘要），
   并在 `docs/REQUIREMENTS-INDEX.md` 同步；**质检不写 `已发布`**（那是发版后的事）。`质检通过` 条目**仍留在
-  [TODO.md](TODO.md)**（等构建）；发布后由 `steamdeals-build` 把它移入 [DONE.md](DONE.md)。
+  [TODO.md](TODO.md)**（待构建）；发布后由 `steamdeals-build` 把它移入 [DONE.md](DONE.md)。
+- **放行后触发构建（2026-11-27 所有者新规）**：本批条目全部 `质检通过` 后，**通知/调用 `steamdeals-build` 执行构建**，
+  不必再等所有者「构建」指令；质检会话自身不构建（只判不改），由开发/监工会话调用构建技能。若所有者已声明
+  「先别构建」，以所有者为准。
   回写即可——README 不再有「开发进度」生成块（2026-11-12 起下线，没有 `todo:progress` 命令与 `docs-progress` 门禁）。
 - **并发写 TODO/INDEX/DONE**：回写状态前按 [HANDOVER.md](HANDOVER.md) §10.1 探测占用（含 `docs/.ledger-lock` 清单锁）；
   被占用就跳过状态回写，照常完成判定、报告与结论（注明「状态回写待补」），由收尾复盘按 §10.3 补回。

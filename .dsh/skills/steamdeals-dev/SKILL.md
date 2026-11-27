@@ -1,6 +1,6 @@
 ---
 name: steamdeals-dev
-description: F:\dsh\gameprice（SteamDeals 跨平台游戏比价）的开发规范：排期与状态唯一来源是 docs/TODO.md（开工先认领编号、完工把条目状态改成"已实现待发版"），完整流程见 docs/HANDOVER.md；职责只到"代码改动 + 测试用例"，不碰服务器、不碰生产数据、不擅自发版；任何改动必须真跑改动相关测试 / frontend:build / scan 并贴输出（主链全量按需、由 CI 自动兜底），且同步更新 docs/PROJECT-OVERVIEW.md，最后等"构建 vX.Y.Z"人工指令；提交推 main 后直接调用 steamdeals-qa 质检（不必等所有者发话，需核对它的「功能清单」表），打回项补齐才算交付；每次结束必须汇报"已做哪些 TODO 编号 / 未做哪些及原因"；TODO 被其他会话占用时按 §1.1 立即停手并上报所有者，不自行等待/覆盖。动 gameprice 代码前必读。
+description: F:\dsh\gameprice（SteamDeals 跨平台游戏比价）的开发规范：排期与状态唯一来源是 docs/TODO.md（开工先认领编号、完工把条目状态改成"已实现待发版"），完整流程见 docs/HANDOVER.md；职责只到"代码改动 + 测试用例"，不碰服务器、不碰生产数据、不擅自发版；任何改动必须真跑改动相关测试 / frontend:build / scan 并贴输出（主链全量按需、由 CI 自动兜底），且同步更新 docs/PROJECT-OVERVIEW.md；**质检通过后可直接调用 steamdeals-build 构建**（2026-11-27 起，不必等所有者「构建」；所有者可随时叫停）；提交推 main 后直接调用 steamdeals-qa 质检（不必等所有者发话，需核对它的「功能清单」表），打回项补齐才算交付；每次结束必须汇报"已做哪些 TODO 编号 / 未做哪些及原因"；TODO 被其他会话占用时按 §1.1 立即停手并上报所有者，不自行等待/覆盖。动 gameprice 代码前必读。
 ---
 
 # gameprice 开发规范（职责范围：只做开发）
@@ -22,7 +22,8 @@ description: F:\dsh\gameprice（SteamDeals 跨平台游戏比价）的开发规�
 >
 > **分工**：聊需求、定方案、写规格用 `steamdeals-requirements`；本技能只负责把规格变成代码 + 测试；
 > 验收核对用 `steamdeals-qa`（提交推 main 后**直接调用**、不用问所有者；它会输出「功能清单」表；打回项补齐才算交付）；
-> 构建发版用 `steamdeals-build`（收到所有者「构建」指令后加载执行，版本号自动推算，本技能 §8 已改为引用它）。
+> 构建发版用 `steamdeals-build`（**2026-11-27 起：QA 放行后可直接调用**，不必等所有者「构建」指令——触发规则见该技能 §0；
+> 版本号自动推算，本技能 §8 已改为引用它）。
 > 拿到的是交接单（`docs/<TOPIC>.md` + TODO 条目）时，先按它的「范围 / 落点 / 验收」核对，再动手。
 
 项目：包名 `steamdeals`（当前版本以 `package.json` 为准）。Node ≥22.5（ESM）+ PostgreSQL 15 + Vue 3/Vite/Element Plus + Docker Compose。
@@ -279,4 +280,5 @@ node scripts/commit-own.mjs <编号> "<type>(<scope>): <摘要>" -- <自己的�
 **发版完成**：汇报格式以 `steamdeals-build` 技能的 §4 为准（版本号 + 推算依据 + tag/CI + 服务器待部署 + 未发布条目清单）。
 
 任何没跑过的验证都要明说"未验证，仅目检"——这是本项目最忌讳的失败模式（历史上出现过三次"代码看着对、数据其实错"）。
+
 

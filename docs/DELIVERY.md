@@ -43,16 +43,15 @@ npm run frontend:dev           # 另开终端：Vite 5174，/api 代理到 8090�
 
 ## 3. 提交与发版（构建镜像）完整步骤
 
-> **构建由人工下令触发（硬规则 5）。** 打 tag 并 push 会立即触发 CI 构建并推送镜像，
-> **只有收到项目所有者明确的"构建 vX.Y.Z"指令后才能执行**；日常改动只提交并推送 `main`
-> （推 main 不会触发构建），tag 与构建时机由人决定。代码就绪后把"待发版"状态写进本文末尾的
-> 「当前状态」，等人下令。
+> **构建触发（2026-11-27 所有者新规）。** 打 tag 并 push 会立即触发 CI 构建并推送镜像；
+> **批次条目 `质检通过` 后，开发/监工会话可直接执行构建**（不必再等所有者「构建 vX.Y.Z」指令；所有者可随时叫停）。
+> 日常改动只提交并推送 `main`（推 main 不触发构建）；规则见 `.dsh/skills/steamdeals-build/SKILL.md` §0。
 
 **构建镜像 = 打 annotated tag 并 push。** 推 tag 自动触发两个 GitHub Actions workflow，不需要手工跑 docker。
 
 > **BS 批（docs/MOBILE-APP-TWA.md §5.3）：APK 必须先入库、再下令构建。**
 > 镜像构建时 `frontend/public/**` 才会被拷进 `dist/`——本机出 APK → 放 `frontend/public/app/` + 更新同目录
-> `latest.json` → 提交推 main，**之后**再下令「构建 vX.Y.Z」；先构建后放包 = 该版镜像里没有包，`/app` 页面 404。
+> `latest.json` → 提交推 main，**之后**再触发构建（2026-11-27 起由开发/监工直接构建）；先构建后放包 = 该版镜像里没有包，`/app` 页面 404。
 >
 > **BY 批（docs/MOBILE-APP-UPDATE.md §5）：App 内置更新的发版清单**
 > ① `android/twa-manifest.json` / `app/build.gradle` 的 `appVersionName/appVersionCode` = 本次版本（**单调递增**，
@@ -80,7 +79,7 @@ git add -A
 git commit -m "feat(范围): 摘要"
 git push origin main
 
-# ⑤ 打 annotated tag 并推送（= 触发构建；**必须先收到"构建 vX.Y.Z"的人工指令**）
+# ⑤ 打 annotated tag 并推送（= 触发构建；2026-11-27 起：批次 `质检通过` 即可，无需人工指令）
 git tag -a vX.Y.Z -m "SteamDeals X.Y.Z：<一句话摘要>"
 git push origin vX.Y.Z
 
@@ -970,3 +969,4 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 - **修复**：该引用改纯文本（main 提交 b07b644；tag 侧由修复提交 04159dde 携带，干净检出下 docs 测试 5/5 绿）。
 - **发布处理（所有者 2026-11-24 决定：重打 v2.28.9，不升 2.28.10）**：删除旧 tag → 在 3f45cee 上追加修复提交 **04159dde** → 重推 tag **v2.28.9**；镜像只含 FE，**不含** main 上未质检的 FG/FH（7e0387d）。重跑双绿：docker-hub **45311706854**（test/smoke/publish 全 success）、docker-tcr **45311706752**（test/publish 全 success）。原「由 v2.28.10 覆盖发布」的记录作废（2026-11-24 10:55 更正）。
 - **test-main**：主干同期被其它会话连续推送（FG/FH、ER、FF、EO 等），运行被 concurrency 取消（手动触发 45315881851 ❌取消、main afae71a 的 45317333999 ❌取消）；本批以两条 tag run 内的 `npm test`（tag 提交 04159dde，与镜像完全一致）+ baseline-gate 全绿为准；主干全链由夜班监工的 v2.28.10 构建兜底。
+

@@ -1,6 +1,6 @@
 ---
 name: steamdeals-build
-description: SteamDeals/gameprice 的构建发版技能：收到所有者「构建（vX.Y.Z）」指令后加载执行——版本号必须连续递增、禁止跳号（修复 → 小版本 +1，含新功能 → 大版本 +1，主版本 X.0.0 需所有者点名）、构建门禁（只有「质检通过」的条目进版本，存在质检打回/未质检则拒绝）、文档落地（CHANGELOG/README/PROJECT-OVERVIEW/TODO/REQUIREMENTS-INDEX/DELIVERY）、验证（本批相关测试 + frontend:build / scan / api.test；全量主链由 CI 自动兜底）、提交推 main、打 annotated tag 推 tag、盯 CI 双绿、按 HANDOVER §3 汇报；不擅自打 tag、不碰服务器、不提前改版本号。
+description: SteamDeals/gameprice 的构建发版技能：**质检通过后即可触发**（2026-11-27 所有者新规——开发/监工会话直接调用，不必再等所有者的「构建」指令；所有者仍可随时叫停）——版本号必须连续递增、禁止跳号（修复 → 小版本 +1，含新功能 → 大版本 +1，主版本 X.0.0 需所有者点名）、构建门禁（只有「质检通过」的条目进版本，存在质检打回/未质检则拒绝）、文档落地（CHANGELOG/README/PROJECT-OVERVIEW/TODO/REQUIREMENTS-INDEX/DELIVERY）、验证（本批相关测试 + frontend:build / scan / api.test；全量主链由 CI 自动兜底）、提交推 main、打 annotated tag 推 tag、盯 CI 双绿、按 HANDOVER §3 汇报；构建双绿后写 `docs/releases/vX.Y.Z.json` 清单并交接 `steamdeals-release` 发布（服务器只经受限账号操作）；不提前改版本号。
 ---
 
 # 构建与发版（SteamDeals / gameprice）
@@ -21,12 +21,20 @@ description: SteamDeals/gameprice 的构建发版技能：收到所有者「构�
 > （junction 与「不维护第二份副本」的完整说明见 `steamdeals-requirements` SKILL.md 头部）。
 >
 > **分工**：`steamdeals-dev` 实现并验证 → `steamdeals-qa` 验收核对（TODO 改「质检通过」）→
-> **`steamdeals-build` 发布**（本技能）。构建命令由**所有者**发出；本技能负责把「质检通过」的条目打成镜像版本。
+> **`steamdeals-build` 发布**（本技能）。**触发**：批次条目为 `质检通过` 后，由开发/监工会话**直接调用**；
+> 所有者仍可随时叫停。本技能负责把「质检通过」的条目打成镜像版本。
 
 ## 0. 触发与前置
 
-- **触发词**：所有者说「**构建**」（或「构建 vX.Y.Z」）。**只有明确收到该指令才动手**——日常开发只提交推 main，
-  打 tag = 触发 GitHub Actions 构建镜像（硬规则 5）。
+- **触发规则（2026-11-27 所有者新规，取代「必须等构建指令」）**：
+  - **质检通过即可构建**：批次条目在 `docs/TODO.md` 为 `质检通过`（QA 放行）后，**开发会话或监工会话可直接调用本技能**，
+    不必再等所有者说「构建」——日常开发提交推 main → QA 放行 → 直接进入构建流程；
+  - **触发者**：开发会话（完工且 QA 通过后）/ 监工会话（批量调度时）；**需求会话不构建**（不产出可质检代码）；
+  - **仍然硬性保留**：① 版本号连续递增、禁止跳号（§1）；② 主版本 `X.0.0` 仍需所有者点名；③ 构建门禁——有
+    `质检打回` / `已实现待发版（未质检）` 的条目**拒绝构建**（§2.1）；④ 构建独占资源登记（§0）；⑤ CI 三绿 + DELIVERY 记录 + §4 汇报；
+  - **所有者可随时叫停**：所有者说「先别构建 / 等我说 / 只发某几项」时，以所有者指令为准（在 TODO 条目或监工心跳里留痕）；
+  - **App 构建不变**：`steamdeals-app-build` 仍由所有者给 `app-vX.Y.Z` 指令（App versionCode 与站点版本不同步）。
+  - 打 tag = 触发 GitHub Actions 构建镜像；**不再需要**所有者的口头「构建」作为前置条件。
 - **构建是独占资源（2026-11-19 起）**：同一时刻只允许一个「打 tag 构建」；开工先在
   [docs/ACTIVE-SESSIONS.md](../../../docs/ACTIVE-SESSIONS.md) 登记（条目=版本号 / 独占资源=打 tag 构建），
   收工（CI 双绿记录提交后）注销。构建期间**不要并行开另一个构建会话**。
@@ -148,10 +156,17 @@ gh auth switch --user boxiang-sun_shortcut          # 切回默认账号
 
 双绿标准：docker-hub（test / smoke / publish 全 success）、docker-tcr（test / publish 全 success）。
 
-### 3.7 收尾
+### 3.7 收尾与发布交接（2026-11-27 起）
 
 - `docs/DELIVERY.md` 该版本条目补 CI run id 与结论，单独 `docs(delivery): vX.Y.Z CI 双绿记录` 提交推 main；
-- 汇报（§4）。服务器升级由**部署人员**按 [docs/DEPLOY.md](../../../docs/DEPLOY.md) 执行，开发侧不碰服务器。
+- **写发布清单** `docs/releases/vX.Y.Z.json`（schema 见 `steamdeals-release` §0），关键是 `targets`：
+  - 改了 `src/scheduler.js` / 采集适配器（`src/adapters/**`）/ 调度任务 / `docker-compose.scheduler.yml` → 含 `scheduler`；
+  - 只改 Web/API/前端/文档 → `["app"]`；
+  - 两块都改 → `["app","scheduler"]`；
+  - 拿不准时默认 `["app"]`（宁可不重启调度器）；
+  - 同时写 `tag`、`registryTag`（版本号去掉 `v`）、CI run id、本批 TODO 编号、`notes`；
+- **交接发布**：立即加载 `steamdeals-release` 技能，按清单执行发布（不再等部署人员手动操作，也不手工 SSH）；
+- 发布结果以 `steamdeals-release` §4 的汇报为准，本技能只负责“已写清单、已交接”。
 
 ### 3.8 App 联动发版（2026-11-19 起）
 - **发布顺序硬规则（2026-11-25）**：若 App 依赖站点的新 API/接口，**必须站点版本先发布并验证线上接口可用，再发布 App**；
@@ -174,7 +189,7 @@ gh auth switch --user boxiang-sun_shortcut          # 切回默认账号
 ✅ 验证：本批相关测试全绿（<文件列表>）/ frontend:build / scan 干净 / api.test.js N 项（动过 API 时）
 🧪 测试报告：本会话不跑——发版后由独立报告会话执行（e2e 全量 + PDF 到 F:\dsh\e2e-reports\），见 TODO DJ
 🚀 CI：docker-hub <run-id>（test/smoke/publish 全绿）；docker-tcr <run-id>（test/publish 全绿）
-🖥 服务器：待部署人员按 docs/DELIVERY.md 升级到 X.Y.Z（开发侧不执行）
+🚀 发布：已写清单 docs/releases/vX.Y.Z.json 并交接 steamdeals-release（结果见其汇报）
 ⚠️ 未发布/未纳入：<编号> —— 原因：<质检打回 / 未质检 / 不在本批>
 ```
 
