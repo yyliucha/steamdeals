@@ -345,6 +345,10 @@ test('FY-1：系统设置左导航 7 组 + /console/settings/:group 路由 + 横
   assert.match(modules, /版本 \{\{ settingsSchema\?\.version\|\|'—' \}\} · 配置修订 \{\{ settingsSchema\?\.revision\|\|0 \}\}/, '底部显示 版本 · 配置修订');
   assert.match(modules, /改一项即存，约 15 秒生效/, '底部「改一项即存，约 15 秒生效」（即时保存文案占位，FY-2 才实现）');
   assert.match(modules, /const settingsGroups=computed[\s\S]{0,220}SETTINGS_GROUP_IDS\.map/, '7 组顺序取前端 id 白名单、标题/图标以 schema 为准');
+  // 当前组的唯一事实源 = URL（route.params.group）→ 浏览器后退换回上一组 URL 时页面自动跟着变
+  assert.match(modules, /const activeSettingsGroup=computed\(\(\)=>\{const id=String\(route\.params\.group\?\?''\)/, '当前组从 URL route.params.group 读（后退即回上一组）');
+  assert.match(modules, /const activeSettingsGroupList=computed\([\s\S]{0,120}activeSettingsGroupItem/, '右侧只渲染 URL 指向的那一组');
+  assert.match(modules, /<section v-for="group in activeSettingsGroupList"/, '分区渲染绑定当前组（不是横向 tab 的 v-for）');
 
   // ③ 验收 3：面包屑「管理控制台 / 系统设置 / 当前组」
   assert.match(modules, /管理控制台 <span>\/<\/span> 系统设置 <span>\/<\/span> \{\{ activeSettingsGroupItem\?\.title \}\}/, '面包屑三级');
