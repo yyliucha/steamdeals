@@ -1,0 +1,21 @@
+{
+  "version": "2.30.3",
+  "tag": "v2.30.3",
+  "targets": ["app"],
+  "image": "ccr.ccs.tencentyun.com/tcb-100003189690-pljp/steamdeals",
+  "registryTag": "2.30.3",
+  "ci": {
+    "docker_hub": "success",
+    "docker_tcr": "success"
+  },
+  "scope": [],
+  "notes": "基线：发布技能接管时的线上版本（2026-11-27 由 steamdeals-release 记录，非本技能构建）",
+  "builtAt": "2026-11-26T00:00:00Z",
+  "release": {
+    "status": "baseline",
+    "releasedAt": "2026-11-27T09:00:00Z",
+    "by": "steamdeals-release",
+    "targets": ["app"],
+    "siteVersion": "2.30.3"
+  }
+}
