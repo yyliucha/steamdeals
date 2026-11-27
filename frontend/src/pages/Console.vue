@@ -34,7 +34,9 @@
         <div class="admin-heading">
           <div class="m-head-row">
             <button v-if="isMobile" type="button" class="m-menu-btn" aria-label="打开菜单" @click="navDrawer=true">☰</button>
-            <div>
+            <!-- FY-1（docs/SETTINGS-REDESIGN.md §3.2）：系统设置页自带「面包屑 + 组标题 + 描述」，
+                 这里不再重复渲染通用面包屑/标题，避免两行「系统设置」叠在一起。 -->
+            <div v-if="selected!=='settings'">
               <div class="admin-crumb">管理中心 <span>/</span> {{ selectedItem?.group }}</div>
               <h1>{{ selectedItem?.label }}</h1>
               <p>{{ selectedItem?.description }}</p>
@@ -147,7 +149,14 @@ const USER_GROUPS = [
 ];
 // 旧书签映射：bulk-ops → op-logs&tab=bulk；sync → op-logs&tab=run（mail&tab=records 在 AdminExtras 内处理）
 const LEGACY_SECTION = { 'bulk-ops': { section: 'op-logs', tab: 'bulk' }, sync: { section: 'op-logs', tab: 'run' } };
-const selected=ref(String(route.query.section||'games'));
+// FY-1（docs/SETTINGS-REDESIGN.md §3.1）：设置页独立二级路由 /console/settings/<group>。
+// 组名校验与回落由路由 beforeEnter 保证（未知组 → sources）；这里只负责「路径 ↔ 选中态」同步。
+const SETTINGS_PATH = '/console/settings';
+const DEFAULT_SETTINGS_PATH = `${SETTINGS_PATH}/sources`;
+function onSettingsRoute() { return route.path === SETTINGS_PATH || route.path.startsWith(`${SETTINGS_PATH}/`); }
+const selected=ref(onSettingsRoute()?'settings':String(route.query.section||'games'));
+// 路径变化（进入设置 / 左导航换组）时选中「系统设置」；换组时 AdminModules 读 route.params.group 渲染
+watch(() => route.path, () => { if (onSettingsRoute()) selected.value = 'settings'; });
 // DT-1（docs/ADMIN-PERMISSIONS.md）：角色判定——isAdminUser 决定管理菜单与 admin 组件；
 // isUserRole 决定普通用户 5 页菜单与 UserSections 渲染（loadMe 完成前 user 为 null，按现状渲染）。
 const isUserRole = computed(() => Boolean(user.value && user.value.role !== 'admin'));
@@ -155,6 +164,8 @@ const isAdminUser = computed(() => user.value?.role === 'admin');
 // URL 里的 section 变化（如指标卡「已删除」跳转回收站）时同步选中态
 watch(()=>route.query.section,(v)=>{
   const id=String(v??'');
+  // FY-1：旧书签 ?section=settings → 新的二级路由默认组（普通用户走下面的无权限分支落个人资料）
+  if(id==='settings'&&user.value?.role==='admin'){selected.value='settings';router.replace(DEFAULT_SETTINGS_PATH).catch(()=>{});return;}
   if(id==='mail'&&route.query.tab==='records'){ // 旧书签 mail 发送记录 → 操作日志 · 邮件发送
     router.replace({path:'/console',query:{section:'op-logs',tab:'mail'}}).catch(()=>{});
     return;
@@ -190,8 +201,9 @@ const visibleGroups=computed(()=>{
     return allowed&&matches;
   })})).filter(g=>g.items.length);
 });
-// AN 批（docs/UNSAVED-GUARD.md §4.3）：切菜单前先过离开确认——不要先改 selected 再拦
-async function select(item){ if(item.id===selected.value)return; if(!(await requestLeave()))return; selected.value=item.id; navDrawer.value=false; await router.replace({path:'/console',query:{section:item.id}}); if(item.id==='appeals')loadAppealsPending(); }
+// AN 批（docs/UNSAVED-GUARD.md §4.3）：切菜单前先过离开确认——不要先改 selected 再拦。
+// FY-1：菜单「系统设置」进二级路由默认组（push 而非 replace——后退能回到上一个模块/上一组）。
+async function select(item){ if(item.id===selected.value)return; if(!(await requestLeave()))return; selected.value=item.id; navDrawer.value=false; if(item.id==='settings'){ await router.push(DEFAULT_SETTINGS_PATH); } else { await router.replace({path:'/console',query:{section:item.id}}); } if(item.id==='appeals')loadAppealsPending(); }
 // BW 批：手机顶栏通知铃 → 站点通知模块（DT-1：普通用户菜单也有站点公告，按角色取菜单池）
 function goAnnouncements(){const pool=isUserRole.value?USER_GROUPS:groups;const item=pool.flatMap((g)=>g.items).find((i)=>i.id==='announcements');if(item)select(item);}
 // 当前菜单项的「未保存修改」小圆点（与邮件配置的小标一致）
@@ -244,6 +256,8 @@ onMounted(async()=>{try{
     }
   }
   // 旧书签映射也要在直开时生效（watch 不触发首帧）
+  // FY-1：管理员用旧书签 ?section=settings 直开 → 换成新的二级路由默认组（组名进 URL，可深链可后退）
+  if(isAdmin&&String(route.query.section??'')==='settings'){selected.value='settings';router.replace(DEFAULT_SETTINGS_PATH).catch(()=>{});}
   const legacy=LEGACY_SECTION[selected.value];
   if(legacy){selected.value=legacy.section;router.replace({path:'/console',query:{...legacy}}).catch(()=>{});}
   else if(selected.value==='mail'&&route.query.tab==='records'){router.replace({path:'/console',query:{section:'op-logs',tab:'mail'}}).catch(()=>{});}

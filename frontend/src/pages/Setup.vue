@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
+import { isAdvancedSettingsGroup } from '../utils/settings.js';
 
 const status = ref(null);
 const schema = ref(null);
@@ -28,7 +29,8 @@ onMounted(async () => {
     if (!config.response.ok) throw new Error(config.body.error || `HTTP ${config.response.status}`);
     schema.value = config.body;
     for (const field of config.body.fields || []) {
-      if (field.group === 'advanced' || field.advanced) continue;
+      // FY-1：原「高级」组拆成同步与调度 / 运维与存储——初始化向导继续跳过（既有行为不变）
+      if (isAdvancedSettingsGroup(field.group) || field.advanced) continue;
       values[field.key] = field.type === 'bool' ? Boolean(config.body.values?.[field.key]) : (config.body.values?.[field.key] ?? '');
     }
   } catch (err) {
@@ -46,7 +48,7 @@ async function complete() {
   try {
     const settings = {};
     for (const field of (schema.value?.fields || [])) {
-      if (field.group === 'advanced' || field.advanced) continue;
+      if (isAdvancedSettingsGroup(field.group) || field.advanced) continue;
       const value = values[field.key];
       if (field.type === 'secret' && !String(value || '').trim()) continue;
       if (value === '' || value == null) continue;
@@ -84,7 +86,7 @@ async function complete() {
           <el-form-item label="密码"><el-input v-model="admin.password" type="password" show-password autocomplete="new-password" placeholder="至少 8 位" /></el-form-item>
           <el-form-item label="确认密码"><el-input v-model="admin.confirm" type="password" show-password autocomplete="new-password" /></el-form-item>
         </div></section>
-        <section v-for="group in schema.groups || []" :key="group.id" class="setup-card" v-show="group.id !== 'advanced' && (schema.fields || []).some(f => f.group === group.id && !f.advanced)">
+        <section v-for="group in schema.groups || []" :key="group.id" class="setup-card" v-show="!isAdvancedSettingsGroup(group.id) && (schema.fields || []).some(f => f.group === group.id && !f.advanced)">
           <h2>{{ group.title }}</h2><p v-if="group.description">{{ group.description }}</p>
           <el-form-item v-for="field in (schema.fields || []).filter(f => f.group === group.id && !f.advanced)" :key="field.key" :label="field.label">
             <el-switch v-if="field.type === 'bool'" v-model="values[field.key]" />

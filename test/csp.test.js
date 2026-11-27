@@ -74,7 +74,7 @@ test('设置项：security.csp.mode 默认 enforce，三档齐全（save 校验�
   const d = settings.SETTING_MAP.get('security.csp.mode');
   assert.ok(d, 'EN 批：security.csp.mode 设置项存在（页面可改、热加载）');
   assert.equal(d.type, 'enum');
-  assert.equal(d.group, 'security', '落在「安全与限流」平铺分组，设置页可直接看到');
+  assert.equal(d.group, 'access', '落在「账号与安全」平铺分组（FY-1：auth + security 合并），设置页可直接看到');
   assert.equal(d.env, 'SECURITY_CSP_MODE', 'env 兜底名固定');
   assert.equal(d.default, 'enforce', '所有者决策（docs/CSP-HARDENING.md）：默认直接发正式 CSP');
   assert.deepEqual(d.options, ['enforce', 'report-only', 'off'], '三档：正式 / 只报告（观察收敛期）/ 关闭（回滚）');

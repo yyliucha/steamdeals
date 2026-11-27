@@ -86,6 +86,9 @@ const SETTINGS_META = {
   'site.baseRegion': { section: 'sync-region', tier: 'primary' },
   'site.baseCurrency': { section: 'sync-region', tier: 'primary' },
   // 站点与内容——常用 4 项 + 推荐与评分折叠
+  // FY-1（docs/SETTINGS-REDESIGN.md §2）：时区原属「高级」组、但展示在「站点与内容」卡（跨组 keys）；
+  // 重划为「对象」组后必须只归一组，故归 site，并删掉「高级 · 时区与显示」重复分区。
+  'system.timezone': { section: 'site', tier: 'primary' },
   'site.adultDisplay': { section: 'site', tier: 'primary' },
   'site.publicUrl': { section: 'site', tier: 'primary' },
   // FV 批（docs/HEAD-FOOT-INJECTION.md §2）：head/foot 注入——站点与内容卡常用区（text 多行）
@@ -145,14 +148,17 @@ export const SETTINGS_SECTIONS = [
   { group: 'sources', id: 'sync-region', title: '同步区域', icon: '🌍', hint: '内容统一美国 · 价格本位币', keys: ['sync.contentRegion', 'site.baseRegion', 'site.baseCurrency'] },
   { group: 'site', id: 'site', title: '站点与内容', icon: '🌐', keys: ['site.adultDisplay', 'site.publicUrl', 'app.mobileRedirectEnabled', 'system.timezone', 'site.headInjection', 'site.footInjection'] },
   { group: 'site', id: 'recommend', title: '推荐与评分', icon: '⭐', foldTitle: '推荐与评分' },
-  { group: 'advanced', id: 'schedule', title: '调度与熔断', icon: '🔧', foldTitle: '调度与熔断' },
-  { group: 'advanced', id: 'backup', title: '备份与日志', icon: '🗄️', foldTitle: '备份与日志' },
-  { group: 'advanced', id: 'cache', title: '缓存与图片', icon: '🖼️', foldTitle: '缓存与图片' },
-  { group: 'advanced', id: 'timezone', title: '时区与显示', icon: '🧭', foldTitle: '时区与显示', keys: ['system.timezone'] },
+  // FY-1（docs/SETTINGS-REDESIGN.md §2）：原「高级」拆成两个对象组——
+  // 调度与熔断卡 → schedule（同步与调度）；备份与日志 + 缓存与图片卡 → ops（运维与存储）。
+  // 「时区与显示」卡删除：system.timezone 已在上面「站点与内容」卡的 keys 里（同一 key 不再跨两组重复渲染）。
+  { group: 'schedule', id: 'schedule', title: '调度与熔断', icon: '🔧', foldTitle: '调度与熔断' },
+  { group: 'ops', id: 'backup', title: '备份与日志', icon: '🗄️', foldTitle: '备份与日志' },
+  { group: 'ops', id: 'cache', title: '缓存与图片', icon: '🖼️', foldTitle: '缓存与图片' },
 ];
 
-// CQ 批：分组内其余（alerts/auth/security/network）保持平铺，分区回退到分组本身。
-export const PLAIN_GROUPS = new Set(['alerts', 'auth', 'security', 'network']);
+// CQ 批：分组内其余（alerts/access/network）保持平铺，分区回退到分组本身。
+// FY-1（docs/SETTINGS-REDESIGN.md §2）：auth + security 合并为 access（账号与安全），仍是平铺组。
+export const PLAIN_GROUPS = new Set(['alerts', 'access', 'network']);
 
 const def = (key, env, group, label, type, defaultValue, extra = {}) => ({
   key,
@@ -236,7 +242,7 @@ export const SETTINGS = [
   // DR 批（docs/APP-INSTANT-UPDATE.md §3.1）：App Release 同步间隔 60→15 分钟可配（DB 热加载，
   // env APP_RELEASE_SYNC_INTERVAL_MIN 兜底；保存后调度器约 15 秒内重建任务表生效）。
   // 语义上属调度间隔，进「调度与熔断」折叠组（不挤占「站点与内容」常用 4 项，CQ 契约不变）。
-  def('app.syncIntervalMin', 'APP_RELEASE_SYNC_INTERVAL_MIN', 'advanced', 'App 版本同步间隔（分钟）', 'int', 15, {
+  def('app.syncIntervalMin', 'APP_RELEASE_SYNC_INTERVAL_MIN', 'schedule', 'App 版本同步间隔（分钟）', 'int', 15, {
     min: 1,
     max: 10080,
     help: '站点同步 GitHub Release（App 最新版）的轮询间隔；发版后想立即可更新，可在「游戏管理 → 同步与回填」的 App 版本卡点「立即同步」。',
@@ -340,56 +346,56 @@ export const SETTINGS = [
   }),
 
   // ---- 账号与登录（AK-3，docs/AUTH-REDESIGN.md §4.6）----
-  def('auth.registrationEnabled', 'AUTH_REGISTRATION_ENABLED', 'auth', '开放用户注册', 'bool', true, {
+  def('auth.registrationEnabled', 'AUTH_REGISTRATION_ENABLED', 'access', '开放用户注册', 'bool', true, {
     help: '关闭后注册接口返回 403；SMTP 未配置时注册同样不可用（503）。',
   }),
   // BK 批（docs/SESSION-MANAGEMENT.md §3.7）：会话空闲超时与 IP/UA 绑定
-  def('auth.sessionIdleDays', 'AUTH_SESSION_IDLE_DAYS', 'auth', '会话空闲失效天数（0=关闭）', 'int', 7, {
+  def('auth.sessionIdleDays', 'AUTH_SESSION_IDLE_DAYS', 'access', '会话空闲失效天数（0=关闭）', 'int', 7, {
     min: 0,
     max: 90,
     help: '登录会话空闲超过该天数后失效（下次请求时判定，行删除交给 prune）；0 表示不限制空闲。',
   }),
-  def('auth.sessionBindIp', 'AUTH_SESSION_BIND_IP', 'auth', '会话绑定 IP（/24、/64 前缀）', 'bool', true, {
+  def('auth.sessionBindIp', 'AUTH_SESSION_BIND_IP', 'access', '会话绑定 IP（/24、/64 前缀）', 'bool', true, {
     help: 'IP 网段变化（IPv4 /24、IPv6 /64 之外）时会话失效，防会话被盗用；关闭后不再校验 IP。',
   }),
-  def('auth.sessionBindUa', 'AUTH_SESSION_BIND_UA', 'auth', '会话绑定浏览器（家族+主版本）', 'bool', true, {
+  def('auth.sessionBindUa', 'AUTH_SESSION_BIND_UA', 'access', '会话绑定浏览器（家族+主版本）', 'bool', true, {
     help: '浏览器家族或主版本变化时会话失效；小版本升级不影响。',
   }),
 
   // ---- 安全与限流（BR 批，docs/BAN-AND-SECURITY-FIXES.md §11.3）----
-  def('security.rateLimit.pageMax', 'RATE_LIMIT_PAGE_MAX', 'security', '页面请求限流（次/分钟）', 'int', 120, {
+  def('security.rateLimit.pageMax', 'RATE_LIMIT_PAGE_MAX', 'access', '页面请求限流（次/分钟）', 'int', 120, {
     min: 1,
     max: 10000,
     help: '页面桶窗口上限（默认 120）：正常浏览翻页不被误封；封禁期内的页面 GET 不再累计升级计数。',
   }),
-  def('security.rateLimit.apiMax', 'RATE_LIMIT_API_MAX', 'security', 'API 请求限流（次/分钟）', 'int', 150, {
+  def('security.rateLimit.apiMax', 'RATE_LIMIT_API_MAX', 'access', 'API 请求限流（次/分钟）', 'int', 150, {
     min: 1,
     max: 10000,
     help: 'API 独立桶窗口上限（默认 150）：脚本/纯接口高频仍会被拦，且封禁期内的升级计数只累计 API 请求。',
   }),
 
   // ---- 自动封禁策略（CF 批，docs/ADMIN-UX-SECURITY.md §3）----
-  def('security.autoBan.mode', 'SECURITY_AUTOBAN_MODE', 'security', '自动封禁模式', 'enum', 'strict', {
+  def('security.autoBan.mode', 'SECURITY_AUTOBAN_MODE', 'access', '自动封禁模式', 'enum', 'strict', {
     options: ['strict', 'off', 'legacy'],
     help: 'strict=只按硬规则自动临时封（漏洞路径/凭据爆破/极端频率/异常 UA），普通超频只 429；off=只 429 + 人工审核；legacy=旧三振（回退用）。',
   }),
-  def('security.autoBan.pathDistinctMax', 'SECURITY_AUTOBAN_PATH_MAX', 'security', '漏洞路径：不同签名数（次/窗口）', 'int', 3, {
+  def('security.autoBan.pathDistinctMax', 'SECURITY_AUTOBAN_PATH_MAX', 'access', '漏洞路径：不同签名数（次/窗口）', 'int', 3, {
     min: 1,
     max: 100,
     help: '窗口内命中不同扫描器签名路径的数量达到该值即自动临时封。',
   }),
-  def('security.autoBan.pathWindowSec', 'SECURITY_AUTOBAN_PATH_WINDOW', 'security', '漏洞路径窗口（秒）', 'int', 600, { min: 60, max: 86400 }),
-  def('security.autoBan.credentialIpMax', 'SECURITY_AUTOBAN_CRED_MAX', 'security', '登录失败/IP（次/15 分钟）', 'int', 50, {
+  def('security.autoBan.pathWindowSec', 'SECURITY_AUTOBAN_PATH_WINDOW', 'access', '漏洞路径窗口（秒）', 'int', 600, { min: 60, max: 86400 }),
+  def('security.autoBan.credentialIpMax', 'SECURITY_AUTOBAN_CRED_MAX', 'access', '登录失败/IP（次/15 分钟）', 'int', 50, {
     min: 5,
     max: 1000,
     help: '同 IP 15 分钟登录失败达到该值即自动临时封；20 次起仍只返回 429，账号 5 次锁 15 分钟不变。',
   }),
-  def('security.autoBan.extremeMultiplier', 'SECURITY_AUTOBAN_EXTREME_MULT', 'security', '极端频率倍数', 'int', 5, { min: 2, max: 100 }),
-  def('security.autoBan.extremeWindows', 'SECURITY_AUTOBAN_EXTREME_WINDOWS', 'security', '极端频率连续窗口数', 'int', 2, { min: 1, max: 10 }),
-  def('security.autoBan.uaPatterns', 'SECURITY_AUTOBAN_UA_PATTERNS', 'security', '异常 UA 名单（逗号/换行分隔）', 'string', 'sqlmap,nikto,masscan,zgrab,nuclei,wpscan,gobuster,dirbuster,metasploit,acunetix,nessus', {
+  def('security.autoBan.extremeMultiplier', 'SECURITY_AUTOBAN_EXTREME_MULT', 'access', '极端频率倍数', 'int', 5, { min: 2, max: 100 }),
+  def('security.autoBan.extremeWindows', 'SECURITY_AUTOBAN_EXTREME_WINDOWS', 'access', '极端频率连续窗口数', 'int', 2, { min: 1, max: 10 }),
+  def('security.autoBan.uaPatterns', 'SECURITY_AUTOBAN_UA_PATTERNS', 'access', '异常 UA 名单（逗号/换行分隔）', 'string', 'sqlmap,nikto,masscan,zgrab,nuclei,wpscan,gobuster,dirbuster,metasploit,acunetix,nessus', {
     help: 'UA 命中名单关键词视为异常 UA，同 IP 10 分钟 ≥2 次自动临时封。',
   }),
-  def('security.autoBan.banLadderMin', 'SECURITY_AUTOBAN_LADDER', 'security', '封禁阶梯（分钟，逗号分隔）', 'string', '10,60,1440', {
+  def('security.autoBan.banLadderMin', 'SECURITY_AUTOBAN_LADDER', 'access', '封禁阶梯（分钟，逗号分隔）', 'string', '10,60,1440', {
     help: '同一天第 1/2/3 次自动封禁时长，第 3 次起封顶 1 天；跨天重置；永不自动永久。',
   }),
 
@@ -397,7 +403,7 @@ export const SETTINGS = [
   // 为什么做成业务设置而不是部署期 env：这是运行期策略开关，切观察/回滚不该重新部署；
   // 保存后 hydrateSettings 写回 SECURITY_CSP_MODE，下一次请求即生效（与 RATE_LIMIT_* 同一机制）。
   // 所有者 2026-11-24 决策：默认直接发正式 Content-Security-Policy；report-only 仅观察期可用。
-  def('security.csp.mode', 'SECURITY_CSP_MODE', 'security', 'CSP 安全策略模式', 'enum', 'enforce', {
+  def('security.csp.mode', 'SECURITY_CSP_MODE', 'access', 'CSP 安全策略模式', 'enum', 'enforce', {
     options: CSP_MODES,
     help: 'enforce=正式拦截（默认）；report-only=只报告不拦截（观察/收敛期用，违规仍在浏览器控制台与 csp.violation 日志）；off=不发 CSP 头（紧急回滚）。',
   }),
@@ -458,27 +464,27 @@ export const SETTINGS = [
   }),
 
   // ---- 高级 ----
-  def('system.circuitThreshold', 'CIRCUIT_THRESHOLD', 'advanced', '熔断阈值（连续失败次数）', 'int', 3, { min: 1, max: 100 }),
-  def('system.circuitCooldownMin', 'CIRCUIT_COOLDOWN_MIN', 'advanced', '熔断暂停（分钟）', 'int', 360, { min: 1, max: 10080 }),
+  def('system.circuitThreshold', 'CIRCUIT_THRESHOLD', 'schedule', '熔断阈值（连续失败次数）', 'int', 3, { min: 1, max: 100 }),
+  def('system.circuitCooldownMin', 'CIRCUIT_COOLDOWN_MIN', 'schedule', '熔断暂停（分钟）', 'int', 360, { min: 1, max: 10080 }),
   // FW 批（docs/SLOW-SYNC.md §1.2 决策 7~12、§5）：403/429 切代理与全站速率闸门。
   // 放「调度与熔断」卡折叠区（与 system.circuitThreshold 同区）；全部可回滚到 AM-1 行为。
-  def('sync.rotateOn403', 'SYNC_ROTATE_ON_403', 'advanced', 'Steam 403 切换代理', 'bool', true, {
+  def('sync.rotateOn403', 'SYNC_ROTATE_ON_403', 'schedule', 'Steam 403 切换代理', 'bool', true, {
     help: '撞 403 时按代理记冷却（60s/5min/30min）并换下一条可用代理，全池被拒才写全局冷却。关闭 = 退回 AM-1 行为（同一个出口等冷却再试）。',
   }),
-  def('sync.rotateOn429', 'SYNC_ROTATE_ON_429', 'advanced', 'Steam 429 切换代理', 'bool', true, {
+  def('sync.rotateOn429', 'SYNC_ROTATE_ON_429', 'schedule', 'Steam 429 切换代理', 'bool', true, {
     help: '撞 429 时同样换下一条代理（Retry-After 只记到该代理），但全站总预算不变（见下方速率闸门）。关闭 = 退回 AM-1 行为。',
   }),
-  def('sync.rateGatePerMin', 'SYNC_RATE_GATE_PER_MIN', 'advanced', '全站速率闸门（次/分钟）', 'int', 30, {
+  def('sync.rateGatePerMin', 'SYNC_RATE_GATE_PER_MIN', 'schedule', '全站速率闸门（次/分钟）', 'int', 30, {
     min: 1,
     max: 40,
     help: 'Steam 全部业务请求共用这一份预算（含代理重试），切 IP 不增加总请求量：Steam 硬上限 200 次/5 分钟 = 40/分钟，默认 30 留 25% 余量。调大更容易撞 429。',
   }),
-  def('sync.rotateMaxPerRequest', 'SYNC_ROTATE_MAX_PER_REQUEST', 'advanced', '每请求最多试几条代理', 'int', 3, {
+  def('sync.rotateMaxPerRequest', 'SYNC_ROTATE_MAX_PER_REQUEST', 'schedule', '每请求最多试几条代理', 'int', 3, {
     min: 1,
     max: 10,
     help: '一个逻辑请求因 403/429 最多换几条代理（默认 3），避免一条链路把整个代理池跑一遍；代理连不上的失败不受此限。',
   }),
-  def('sync.rateMaxWaitMs', 'SYNC_RATE_MAX_WAIT_MS', 'advanced', '闸门等待上限（毫秒）', 'int', 300000, {
+  def('sync.rateMaxWaitMs', 'SYNC_RATE_MAX_WAIT_MS', 'schedule', '闸门等待上限（毫秒）', 'int', 300000, {
     min: 0,
     max: 3600000,
     help: '等速率闸门 token 的累计等待上限（默认 300000 = 5 分钟）；超过则本轮中断（COOLDOWN_ABORT → exit 75 + interrupted，不继续占槽）。',
@@ -486,53 +492,56 @@ export const SETTINGS = [
   // FW-3（docs/SLOW-SYNC.md §1.3 决策 16、§5）：403 预警节流——连续 ≥ 阈值次且距上次发信 ≥ 窗口分钟
   // 才发 1 封（复用任务失败邮件通道/收件人回退链）；任务成功且曾预警 → 发 1 封恢复通知。
   // 放「调度与熔断」折叠区（与上面 5 项同区）。
-  def('sync.forbiddenAlertThreshold', 'SYNC_FORBIDDEN_ALERT_THRESHOLD', 'advanced', '403 预警连续次数阈值', 'int', 3, {
+  def('sync.forbiddenAlertThreshold', 'SYNC_FORBIDDEN_ALERT_THRESHOLD', 'schedule', '403 预警连续次数阈值', 'int', 3, {
     min: 1,
     max: 50,
     help: '同一任务连续软退出（403 收尾）达到该次数才发预警邮件（默认 3）；单次 403 是风控常态，不刷屏。',
   }),
-  def('sync.forbiddenAlertWindowMin', 'SYNC_FORBIDDEN_ALERT_WINDOW_MIN', 'advanced', '403 预警最小间隔（分钟）', 'int', 60, {
+  def('sync.forbiddenAlertWindowMin', 'SYNC_FORBIDDEN_ALERT_WINDOW_MIN', 'schedule', '403 预警最小间隔（分钟）', 'int', 60, {
     min: 10,
     max: 1440,
     help: '同一任务两次 403 预警之间的最小间隔（默认 60 分钟）；窗口内即使继续 403 也不重复发信，任务恢复后发 1 封恢复通知。',
   }),
-  def('system.chartOnSync', 'CHART_ON_SYNC', 'advanced', '采集后生成静态页', 'bool', false, {
+  def('system.chartOnSync', 'CHART_ON_SYNC', 'schedule', '采集后生成静态页', 'bool', false, {
     help: '内置 Web 服务直接读数据库，默认不需要静态页；使用 nginx 托管 out/ 时才开启。',
   }),
   // FR 批（docs/BACKUP-AS-FEATURE.md §2.3）：语义改为「允许后台手动备份」，默认 false——
   // backup 已移出调度任务（不再定时自动跑），此开关只控制后台「统计 → 图片与备份」的
   // 「立即备份」按钮与 POST /api/admin/backup 接口（false → 按钮禁用 + 403「备份功能已关闭」）。
-  def('system.backupEnabled', 'BACKUP_ENABLED', 'advanced', '允许后台手动备份', 'bool', false, {
+  def('system.backupEnabled', 'BACKUP_ENABLED', 'schedule', '允许后台手动备份', 'bool', false, {
     help: '开启后后台「统计 → 图片与备份」可手动创建备份；备份不再定时自动执行。关闭时「立即备份」按钮禁用。',
   }),
-  def('system.backupIntervalMin', 'BACKUP_INTERVAL_MIN', 'advanced', '备份间隔（分钟）', 'int', 1440, { min: 0, max: 10080, advanced: true }),
-  def('system.backupInitialDelaySec', 'BACKUP_INITIAL_DELAY_SEC', 'advanced', '备份首轮延迟（秒）', 'int', 3600, { min: 0, max: 86400, advanced: true }),
-  def('system.logsPruneEnabled', 'LOGS_PRUNE_ENABLED', 'advanced', '定期清理日志', 'bool', true, { advanced: true }),
-  def('system.logsPruneDays', 'LOGS_PRUNE_DAYS', 'advanced', '日志保留天数', 'int', 7, { min: 1, max: 365, advanced: true }),
-  def('system.logLevel', 'LOG_LEVEL', 'advanced', '日志级别', 'enum', 'info', { options: LOG_LEVELS }),
-  def('system.timezone', 'TZ', 'advanced', '时区', 'string', 'Asia/Shanghai', {
+  def('system.backupIntervalMin', 'BACKUP_INTERVAL_MIN', 'ops', '备份间隔（分钟）', 'int', 1440, { min: 0, max: 10080, advanced: true }),
+  def('system.backupInitialDelaySec', 'BACKUP_INITIAL_DELAY_SEC', 'ops', '备份首轮延迟（秒）', 'int', 3600, { min: 0, max: 86400, advanced: true }),
+  def('system.logsPruneEnabled', 'LOGS_PRUNE_ENABLED', 'ops', '定期清理日志', 'bool', true, { advanced: true }),
+  def('system.logsPruneDays', 'LOGS_PRUNE_DAYS', 'ops', '日志保留天数', 'int', 7, { min: 1, max: 365, advanced: true }),
+  def('system.logLevel', 'LOG_LEVEL', 'ops', '日志级别', 'enum', 'info', { options: LOG_LEVELS }),
+  def('system.timezone', 'TZ', 'site', '时区', 'string', 'Asia/Shanghai', {
     help: 'IANA 时区名（如 Asia/Shanghai）：决定数据库按天聚合（current_date/date_trunc）、日志时间与页面时间显示。保存后新数据库连接约 30 秒内生效，重启服务保证全部生效。',
   }),
 
   // ---- 封面图本地缓存（下载一次后由本机磁盘提供）----
-  def('images.enabled', 'IMAGES_ENABLED', 'advanced', '启用封面图补缓存', 'bool', true, { advanced: true, help: '定时把游戏封面下载到 data/images，之后不再依赖 Steam CDN。' }),
-  def('images.intervalMin', 'IMAGES_INTERVAL_MIN', 'advanced', '补图间隔（分钟）', 'int', 240, { min: 0, max: 10080, advanced: true }),
-  def('images.initialDelaySec', 'IMAGES_INITIAL_DELAY_SEC', 'advanced', '补图首轮延迟（秒）', 'int', 1200, { min: 0, max: 86400, advanced: true }),
-  def('images.limit', 'IMAGES_LIMIT', 'advanced', '每轮补图数量', 'int', 500, { min: 1, max: 5000, advanced: true, help: 'BC 批：默认 500，单轮约 20–25 分钟；生产已保存旧值时在设置页改。' }),
-  def('images.sleepMs', 'IMAGES_SLEEP_MS', 'advanced', '每张图间隔（毫秒）', 'int', 300, { min: 0, max: 60000, advanced: true }),
-  def('images.maxBytes', 'IMAGES_MAX_BYTES', 'advanced', '封面图缓存总量上限（字节，0=不限）', 'int', 0, { min: 0, max: 100 * 1024 * 1024 * 1024, advanced: true, help: '缓存超过该值后按最旧文件清理（D2 批）；0 表示不限制。生产约 3200 张图 ≈ 90MB，可设 5GB 量级。' }),
+  def('images.enabled', 'IMAGES_ENABLED', 'ops', '启用封面图补缓存', 'bool', true, { advanced: true, help: '定时把游戏封面下载到 data/images，之后不再依赖 Steam CDN。' }),
+  def('images.intervalMin', 'IMAGES_INTERVAL_MIN', 'ops', '补图间隔（分钟）', 'int', 240, { min: 0, max: 10080, advanced: true }),
+  def('images.initialDelaySec', 'IMAGES_INITIAL_DELAY_SEC', 'ops', '补图首轮延迟（秒）', 'int', 1200, { min: 0, max: 86400, advanced: true }),
+  def('images.limit', 'IMAGES_LIMIT', 'ops', '每轮补图数量', 'int', 500, { min: 1, max: 5000, advanced: true, help: 'BC 批：默认 500，单轮约 20–25 分钟；生产已保存旧值时在设置页改。' }),
+  def('images.sleepMs', 'IMAGES_SLEEP_MS', 'ops', '每张图间隔（毫秒）', 'int', 300, { min: 0, max: 60000, advanced: true }),
+  def('images.maxBytes', 'IMAGES_MAX_BYTES', 'ops', '封面图缓存总量上限（字节，0=不限）', 'int', 0, { min: 0, max: 100 * 1024 * 1024 * 1024, advanced: true, help: '缓存超过该值后按最旧文件清理（D2 批）；0 表示不限制。生产约 3200 张图 ≈ 90MB，可设 5GB 量级。' }),
 ];
 
 export const SETTING_MAP = new Map(SETTINGS.map((d) => [d.key, d]));
 
+// FY-1（docs/SETTINGS-REDESIGN.md §2/§3.2）：分组重划为 7 个「对象」组（只改展示归属，不改 key / 默认值 / 语义）。
+// 组顺序 = 后台左导航顺序（demo：数据源 / 站点与外观 / 账号与安全 / 提醒与通知 / 网络与代理 / 同步与调度 / 运维与存储）。
+// icon 是左导航图标（纯展示，随 schema 下发）；项数由前端按 group 统计（不含「邮件服务」页维护的 8 项）。
 export const GROUPS = [
-  { id: 'sources', title: '数据源与采集', description: '开关、间隔、API Key 与区服。' },
-  { id: 'site', title: '站点与内容', description: '前台展示策略。' },
-  { id: 'auth', title: '账号与登录', description: '开放注册开关等登录相关配置。' },
-  { id: 'security', title: '安全与限流', description: '频率限制与封禁阈值（BR 批：页面/API 分桶）。' },
-  { id: 'alerts', title: '通知与提醒', description: '提醒开关与间隔、Webhook / 企业微信；邮件配置在「邮件服务」页。' },
-  { id: 'network', title: '网络与代理', description: '国内服务器访问 Steam 通常需要代理；只支持 http/https。' },
-  { id: 'advanced', title: '高级', description: '一般保持默认即可。' },
+  { id: 'sources', title: '数据源', icon: '📡', description: '各采集平台的开关、间隔、API Key 与区服。' },
+  { id: 'site', title: '站点与外观', icon: '🌐', description: '前台展示策略、时区与站点外观配置。' },
+  { id: 'access', title: '账号与安全', icon: '🔐', description: '登录与注册开关、会话策略、限流与自动封禁阈值。' },
+  { id: 'alerts', title: '提醒与通知', icon: '🔔', description: '提醒开关与间隔、Webhook / 企业微信；邮件配置在「邮件服务」页。' },
+  { id: 'network', title: '网络与代理', icon: '🛰️', description: '国内服务器访问 Steam 通常需要代理；只支持 http/https。' },
+  { id: 'schedule', title: '同步与调度', icon: '⏱️', description: '任务间隔、熔断、403/429 切换代理与预警。' },
+  { id: 'ops', title: '运维与存储', icon: '🗄️', description: '备份、日志保留与封面图缓存。' },
 ];
 
 const ENV_ALIASES = {

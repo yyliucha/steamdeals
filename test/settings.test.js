@@ -177,7 +177,7 @@ test('FW-2：403/429 切代理 + 全站速率闸门 5 项——默认值/范围/
       assert.equal(settings.validateSetting(d, '1').ok, false, 'bool 只收 true/false（与既有 bool 项一致）');
       assert.deepEqual(settings.validateSetting(d, false), { ok: true, value: false }, `${key} 可关闭（回滚开关）`);
     }
-    assert.equal(d.group, 'advanced', `${key} 归「高级」分组`);
+    assert.equal(d.group, 'schedule', `${key} 归「同步与调度」分组（FY-1 分组重划）`);
     assert.equal(d.section, 'schedule', `${key} 进「调度与熔断」卡（与 system.circuitThreshold 同区）`);
     assert.equal(d.tier, 'advanced', `${key} 进折叠区（该卡常用项会超 3，按 CQ 规则）`);
     assert.ok(d.help && d.help.length > 10, `${key} 有面向管理员的说明`);
@@ -207,7 +207,7 @@ test('FW-3：403 预警节流 2 项——默认 3 次 / 60 分钟、范围、env
     assert.deepEqual(settings.validateSetting(d, String(def)), { ok: true, value: def }, `${key} 默认值合法`);
     assert.equal(settings.validateSetting(d, min - 1).ok, false, `${key} 低于下限拒绝`);
     assert.equal(settings.validateSetting(d, max + 1).ok, false, `${key} 高于上限拒绝`);
-    assert.equal(d.group, 'advanced', `${key} 归「高级」分组`);
+    assert.equal(d.group, 'schedule', `${key} 归「同步与调度」分组（FY-1 分组重划）`);
     assert.equal(d.section, 'schedule', `${key} 进「调度与熔断」卡（与 FW-2 五项同区）`);
     assert.equal(d.tier, 'advanced', `${key} 进折叠区（CQ：每卡常用 ≤3）`);
     assert.ok(d.help && d.help.length > 10, `${key} 有面向管理员的说明`);
@@ -447,10 +447,11 @@ test('事务：回调抛错时整体回滚', async () => {
 
 // ---------------------------------------------------------------- CQ 批（docs/SETTINGS-IA.md）
 
-test('CQ meta：sources/site/advanced 全有 section+tier；6 张平台卡每卡常用 ≤3；高级 4 折叠组', () => {
+test('CQ meta：sources/site/schedule/ops 全有 section+tier；6 张平台卡每卡常用 ≤3；高级拆分后 3 个折叠组', () => {
   const byGroup = {};
   for (const d of settings.SETTINGS) (byGroup[d.group] = byGroup[d.group] || []).push(d);
-  for (const g of ['sources', 'site', 'advanced']) {
+  // FY-1：原「高级」拆成 schedule（同步与调度）+ ops（运维与存储），两者仍全走卡片渲染 → 必须有 section+tier
+  for (const g of ['sources', 'site', 'schedule', 'ops']) {
     for (const d of byGroup[g]) {
       assert.ok(d.section, `${d.key} 缺 section`);
       assert.ok(['primary', 'advanced'].includes(d.tier), `${d.key} tier 非法`);
@@ -471,9 +472,16 @@ test('CQ meta：sources/site/advanced 全有 section+tier；6 张平台卡每卡
   assert.deepEqual(syncRegion.keys, ['sync.contentRegion', 'site.baseRegion', 'site.baseCurrency'], '同步区域卡三项');
   assert.equal(settings.SETTING_MAP.get('site.baseRegion').section, 'sync-region', 'site.baseRegion 展示归同步区域卡');
   assert.equal(settings.SETTING_MAP.get('site.baseCurrency').section, 'sync-region', 'site.baseCurrency 展示归同步区域卡');
-  const adv = sections.filter((s) => s.group === 'advanced');
-  assert.equal(adv.length, 4, '高级 4 折叠组');
-  assert.deepEqual(adv.map((s) => s.id), ['schedule', 'backup', 'cache', 'timezone'], '调度与熔断/备份与日志/缓存与图片/时区与显示');
+  // FY-1（docs/SETTINGS-REDESIGN.md §2）：原「高级 · 4 折叠组」拆到两个对象组——
+  // schedule 组只有「调度与熔断」卡；ops 组是「备份与日志 + 缓存与图片」；「时区与显示」卡删除
+  // （system.timezone 归 site，已在上面「站点与内容」卡的 keys 里，避免同一个 key 跨两组重复渲染）。
+  const sched = sections.filter((s) => s.group === 'schedule');
+  assert.deepEqual(sched.map((s) => s.id), ['schedule'], '同步与调度组只有调度与熔断卡');
+  const ops = sections.filter((s) => s.group === 'ops');
+  assert.deepEqual(ops.map((s) => s.id), ['backup', 'cache'], '运维与存储组 = 备份与日志 + 缓存与图片');
+  assert.ok(!sections.some((s) => s.id === 'timezone'), '「时区与显示」重复分区已删除');
+  assert.equal(settings.SETTING_MAP.get('system.timezone').group, 'site', '时区归「站点与外观」组');
+  assert.equal(settings.SETTING_MAP.get('system.timezone').section, 'site', '时区展示在「站点与内容」卡');
   const site = sections.find((s) => s.group === 'site' && s.id === 'site');
   assert.equal(site.keys.length, 6, '站点常用 6 项（FV 批 head/foot 注入 2 项）');
   assert.ok(site.keys.includes('system.timezone'), '时区在站点常用（§2.3）');
@@ -485,6 +493,97 @@ test('CQ meta：sources/site/advanced 全有 section+tier；6 张平台卡每卡
   assert.equal(recAdv.length, 4, '推荐与评分折叠 4 项');
   assert.ok(recAdv.some((d) => d.key === 'personal.tasteWeight'), '口味权重在折叠内');
   assert.equal(settings.SETTING_MAP.get('personal.behaviorLogEnabled').tier, 'primary', '行为开关在折叠外');
+});
+
+// FY-1（docs/SETTINGS-REDESIGN.md §2 / §5）：分组重划迁移断言——7 个「对象」组，SETTINGS 每一项
+// 恰好落进一组（不重不漏），旧组 id（auth/security/advanced）清零，分区注册表全部挂到新组。
+// 反向自检：把任一 def() 的 group 改回 'advanced'（或把某张卡挂回旧组）→ 本用例必红。
+test('FY-1 分组重划：7 个对象组、112 项每项恰好一组（不重不漏）、旧 auth/security/advanced 清零', async () => {
+  const GROUP_IDS = ['sources', 'site', 'access', 'alerts', 'network', 'schedule', 'ops'];
+  const groups = settings.GROUPS;
+  assert.deepEqual(groups.map((g) => g.id), GROUP_IDS, '7 组，顺序 = 左导航顺序（demo §3.2）');
+  assert.deepEqual(
+    groups.map((g) => g.title),
+    ['数据源', '站点与外观', '账号与安全', '提醒与通知', '网络与代理', '同步与调度', '运维与存储'],
+    '组名全部是「对象」维度，不再有「高级」',
+  );
+  for (const g of groups) {
+    assert.ok(g.icon, `${g.id} 有左导航图标`);
+    assert.ok(g.description && g.description.length >= 8, `${g.id} 有组描述文案`);
+  }
+  assert.equal(groups.find((g) => g.id === 'sources').description, '各采集平台的开关、间隔、API Key 与区服。', '「数据源」描述按规格/demo 文案');
+
+  // ① 每个 key 恰好落一个组，且组 id 必须是新 7 组之一（旧组残留 = 漏改，设置页会渲染成空组）
+  const owned = new Map();
+  for (const d of settings.SETTINGS) {
+    assert.ok(GROUP_IDS.includes(d.group), `${d.key} 的 group=${d.group} 不在新 7 组内（漏改）`);
+    assert.ok(!owned.has(d.key), `${d.key} 重复定义`);
+    owned.set(d.key, d.group);
+  }
+  assert.equal(owned.size, settings.SETTINGS.length, 'SETTINGS 无重复 key');
+  const counts = {};
+  for (const id of GROUP_IDS) counts[id] = settings.SETTINGS.filter((d) => d.group === id).length;
+  // 迁移快照：以后新增设置项请同步更新本行（防漏归组；「邮件服务」页维护的 8 项也计入本组）
+  assert.deepEqual(counts, { sources: 36, site: 15, access: 15, alerts: 16, network: 7, schedule: 12, ops: 11 }, '各组项数快照');
+  assert.equal(Object.values(counts).reduce((a, b) => a + b, 0), 112, '不丢项');
+
+  // ② 旧组 id 三处注册表全部清零
+  const legacy = new Set(['auth', 'security', 'advanced']);
+  assert.deepEqual(groups.filter((g) => legacy.has(g.id)), [], 'GROUPS 无旧组');
+  assert.deepEqual(settings.SETTINGS_SECTIONS.filter((s) => legacy.has(s.group)), [], 'SETTINGS_SECTIONS 无旧组');
+  assert.deepEqual([...settings.PLAIN_GROUPS].filter((g) => legacy.has(g)), [], 'PLAIN_GROUPS 无旧组');
+  assert.deepEqual([...settings.PLAIN_GROUPS].sort(), ['access', 'alerts', 'network'], '平铺组 = 账号与安全 / 提醒与通知 / 网络与代理');
+
+  // ③ 合并与拆分逐项核对（只改展示归属，key 一个不少）
+  assert.equal(settings.SETTINGS.filter((d) => d.group === 'access').length, 15, '账号与安全 = 原账号与登录 4 + 安全与限流 11');
+  for (const key of ['auth.registrationEnabled', 'auth.sessionBindUa', 'security.rateLimit.pageMax', 'security.autoBan.mode', 'security.csp.mode']) {
+    assert.equal(settings.SETTING_MAP.get(key).group, 'access', `${key} 归账号与安全`);
+  }
+  for (const key of ['app.syncIntervalMin', 'system.circuitThreshold', 'system.circuitCooldownMin', 'system.chartOnSync', 'system.backupEnabled', 'sync.rotateOn403', 'sync.rotateOn429', 'sync.rateGatePerMin', 'sync.rotateMaxPerRequest', 'sync.rateMaxWaitMs', 'sync.forbiddenAlertThreshold', 'sync.forbiddenAlertWindowMin']) {
+    assert.equal(settings.SETTING_MAP.get(key).group, 'schedule', `${key} 归同步与调度`);
+  }
+  for (const key of ['system.backupIntervalMin', 'system.backupInitialDelaySec', 'system.logsPruneEnabled', 'system.logsPruneDays', 'system.logLevel', 'images.enabled', 'images.intervalMin', 'images.initialDelaySec', 'images.limit', 'images.sleepMs', 'images.maxBytes']) {
+    assert.equal(settings.SETTING_MAP.get(key).group, 'ops', `${key} 归运维与存储`);
+  }
+
+  // ④ 分区注册表 ↔ SETTINGS 双向一致：section 都挂新组、每个 section 至少渲染 1 项、
+  //    key 没有被两张卡同时渲染（不重不漏的渲染口径）。
+  const sectionIds = new Set(settings.SETTINGS_SECTIONS.map((s) => s.id));
+  assert.equal(sectionIds.size, settings.SETTINGS_SECTIONS.length, 'section id 不重复');
+  for (const s of settings.SETTINGS_SECTIONS) {
+    assert.ok(GROUP_IDS.includes(s.group), `分区 ${s.id} 挂在旧组 ${s.group}`);
+    const fields = s.keys
+      ? s.keys.map((k) => settings.SETTING_MAP.get(k)).filter(Boolean)
+      : settings.SETTINGS.filter((d) => d.section === s.id);
+    assert.ok(fields.length > 0, `分区 ${s.id} 没有任何字段（空卡）`);
+    if (s.keys) assert.equal(fields.length, s.keys.length, `分区 ${s.id} 的 keys 有未定义 key`);
+  }
+  const cardOf = new Map();
+  for (const s of settings.SETTINGS_SECTIONS) {
+    const keys = s.keys ?? settings.SETTINGS.filter((d) => d.section === s.id).map((d) => d.key);
+    for (const key of keys) {
+      assert.ok(!cardOf.has(key), `${key} 同时出现在分区 ${cardOf.get(key)} 与 ${s.id}（重复渲染）`);
+      cardOf.set(key, s.id);
+    }
+  }
+  for (const d of settings.SETTINGS) {
+    if (d.section) assert.ok(sectionIds.has(d.section), `${d.key} 的 section=${d.section} 不在注册表中（会渲染不出）`);
+    else assert.ok(settings.PLAIN_GROUPS.has(d.group), `${d.key} 无 section 但组 ${d.group} 不是平铺组（会渲染不出）`);
+  }
+  // ⑤ 可见项数（左导航项数徽标口径：不含「邮件服务」页维护的 8 项）——前端与后端共用同一份 key 清单
+  const { MAIL_SETTING_KEYS, SETTINGS_GROUP_IDS, DEFAULT_SETTINGS_GROUP, isSettingsGroupId, ADVANCED_SETTINGS_GROUPS } = await import('../frontend/src/utils/settings.js');
+  const visible = Object.fromEntries(GROUP_IDS.map((id) => [id, 0]));
+  for (const d of settings.SETTINGS) if (!MAIL_SETTING_KEYS.includes(d.key)) visible[d.group] += 1;
+  assert.deepEqual(visible, { sources: 36, site: 15, access: 15, alerts: 8, network: 7, schedule: 12, ops: 11 }, '左导航项数（邮件 8 项不在设置页）');
+
+  // ⑥ 路由回落的行为锁：前端 id 白名单 = 服务端 7 组；未知组（含旧组 id / 空）一律非法 → 路由回落 sources
+  assert.deepEqual(SETTINGS_GROUP_IDS, GROUP_IDS, '前端组 id 白名单与服务端 GROUPS 一一对应');
+  assert.equal(DEFAULT_SETTINGS_GROUP, 'sources', '默认组 = sources');
+  for (const id of GROUP_IDS) assert.equal(isSettingsGroupId(id), true, `${id} 是合法组`);
+  for (const bad of ['advanced', 'auth', 'security', 'unknown', '', null, undefined]) {
+    assert.equal(isSettingsGroupId(bad), false, `${String(bad)} 非法组（/console/settings/:group 回落 sources）`);
+  }
+  assert.deepEqual(ADVANCED_SETTINGS_GROUPS, ['schedule', 'ops'], '初始化向导继续跳过原「高级」拆分出的两组');
 });
 
 test('CQ isDefaultValue：int/bool/enum/string 类型敏感比较，null 视作默认', () => {

@@ -297,7 +297,7 @@ test('抽屉化：用户管理/站点通知顶部无内嵌表单，编辑组件�
   assert.match(anDrawer, /form\.id \? 'PATCH' : 'POST'/, '新建/编辑共用同一抽屉（同接口两态）');
 });
 
-test('邮件 3 tab + 发送记录单一入口；设置 6 tab；价格表无「近 7 天」表且有悬停线图（验收 7/8/9）', () => {
+test('邮件 3 tab + 发送记录单一入口；价格表无「近 7 天」表且有悬停线图（验收 7/8/9）', () => {
   const extras = read('../frontend/src/pages/AdminExtras.vue');
   const modules = read('../frontend/src/pages/AdminModules.vue');
   for (const tab of ['邮件配置', '邮件模板', '发送测试']) {
@@ -306,9 +306,7 @@ test('邮件 3 tab + 发送记录单一入口；设置 6 tab；价格表无「�
   assert.ok(!extras.includes('<h3>最近发送记录</h3>'), '邮件页不再有发送记录卡');
   assert.match(extras, /查看发送记录 ↗/, '邮件页头留「查看发送记录」入口');
   assert.match(extras, /goOpLogs\('mail'\)/, '发送记录入口跳操作日志 · 邮件发送（单一入口）');
-  assert.match(modules, /class="settings-tabs"/, '系统设置用 el-tabs');
   assert.ok(!modules.includes('el-collapse'), '系统设置不再用折叠面板');
-  assert.match(modules, /activeSettingsTab/, '设置 tab 状态');
   assert.ok(!modules.includes('近 7 天变化'), '价格变化底部「近 7 天变化」表已删除');
   assert.match(modules, /<PriceSparkline/, '「变化」列挂悬停线图');
   assert.match(modules, /el-popover placement="left"[\s\S]*trigger="hover"/, '悬停弹线图');
@@ -317,6 +315,65 @@ test('邮件 3 tab + 发送记录单一入口；设置 6 tab；价格表无「�
   assert.match(spark, /暂无 7 天数据/, '无数据空态');
   assert.match(spark, /svg viewBox/, '手写 SVG（不引图表库）');
 });
+
+// FY-1（docs/SETTINGS-REDESIGN.md §2/§3.1/§3.2、验收 1/2/3）：
+// 设置页横向 7 tab 下线 → 左侧竖排导航（7 个对象组、项数徽标、当前组高亮 + 品牌色条、底部版本脚注）+
+// `/console/settings/:group` 二级路由（未知组回落 sources、/console 重定向、点组 = push 可后退）+
+// 右侧仍是「面包屑 + 组标题/描述 + 现有卡片/网格/折叠渲染」。
+// 反向自检：把 el-tabs 塞回设置模板 / 删掉 goSettingsGroup 的 push 分支 → 本用例必红。
+test('FY-1：系统设置左导航 7 组 + /console/settings/:group 路由 + 横向 tab 下线（验收 1/2/3）', () => {
+  const modules = read('../frontend/src/pages/AdminModules.vue');
+  const router = read('../frontend/src/router/index.js');
+  const consoleVue = read('../frontend/src/pages/Console.vue');
+  const settingsUtil = read('../frontend/src/utils/settings.js');
+
+  // ① 验收 3：横向 7 tab 静态锁——设置页不再出现 el-tabs / el-tab-pane / 旧 tab 容器
+  assert.ok(!modules.includes('el-tabs'), '设置页不再渲染横向 tab（el-tabs 已移除）');
+  assert.ok(!modules.includes('el-tab-pane'), '设置页不再有 tab-pane');
+  assert.ok(!modules.includes('settings-tabs'), '旧 .settings-tabs 容器/样式已移除');
+  assert.match(modules, /class="settings-sections"/, '右侧仍按分区渲染（本批不改卡片，FY-2 才重写行列表）');
+  assert.match(modules, /class="setting-grid"/, '平铺组仍是网格（不改渲染）');
+  assert.match(modules, /settings-fold/, '折叠入口仍是原按钮（不改渲染）');
+
+  // ② 验收 1：左导航 7 组（图标 + 名称 + 项数徽标）、当前组高亮 + 左侧品牌色条、底部版本脚注
+  assert.match(modules, /class="settings-nav"/, '左侧竖排导航容器');
+  assert.match(modules, /\.settings-nav\{width:236px/, '左导航宽 236px（规格 §3.2）');
+  assert.match(modules, /v-for="g in settingsGroups"[\s\S]{0,220}settings-nav-ico[\s\S]{0,120}settings-nav-name[\s\S]{0,120}groupItemCount\(g\.id\)/, '每组 = 图标 + 名称 + 项数徽标');
+  assert.match(modules, /:class="\{ on: g\.id===activeSettingsGroup \}"/, '当前组高亮');
+  assert.match(modules, /box-shadow:inset 3px 0 0 var\(--brand\)/, '当前组左侧品牌色条');
+  assert.match(modules, /settings-nav-foot/, '左导航底部信息区');
+  assert.match(modules, /版本 \{\{ settingsSchema\?\.version\|\|'—' \}\} · 配置修订 \{\{ settingsSchema\?\.revision\|\|0 \}\}/, '底部显示 版本 · 配置修订');
+  assert.match(modules, /改一项即存，约 15 秒生效/, '底部「改一项即存，约 15 秒生效」（即时保存文案占位，FY-2 才实现）');
+  assert.match(modules, /const settingsGroups=computed[\s\S]{0,220}SETTINGS_GROUP_IDS\.map/, '7 组顺序取前端 id 白名单、标题/图标以 schema 为准');
+
+  // ③ 验收 3：面包屑「管理控制台 / 系统设置 / 当前组」
+  assert.match(modules, /管理控制台 <span>\/<\/span> 系统设置 <span>\/<\/span> \{\{ activeSettingsGroupItem\?\.title \}\}/, '面包屑三级');
+
+  // ④ 验收 1/2：点组 = push 换 URL（后退能回上一组）；未知组回落 sources；/console 无 section 重定向默认组
+  assert.match(modules, /const nav=replace\?router\.replace\(path\):router\.push\(path\)/, '换组默认 router.push（浏览器后退可回上一组）');
+  assert.match(modules, /router\.push\(path\)/, 'push 分支存在');
+  assert.match(modules, /bypassNextGuard\(\)/, '同页换组不丢草稿，放过未保存离开询问');
+  assert.match(router, /path: '\/console\/settings\/:group\?'/, '二级路由 /console/settings/:group?（可选组）');
+  assert.match(router, /isSettingsGroupId\(to\.params\.group\)/, '未知组校验');
+  assert.match(router, /path: `\/console\/settings\/\$\{DEFAULT_SETTINGS_GROUP\}`, query: to\.query/, '未知组 / 无组回落默认组 sources（保留查询串）');
+  assert.match(router, /to\.query\.section \? true : \{ path: `\/console\/settings\/\$\{DEFAULT_SETTINGS_GROUP\}`/, '裸 /console 重定向默认组；带 ?section= 的旧书签保持原行为');
+  assert.match(settingsUtil, /SETTINGS_GROUP_IDS = \['sources', 'site', 'access', 'alerts', 'network', 'schedule', 'ops'\]/, '7 组 id 白名单');
+  assert.match(settingsUtil, /DEFAULT_SETTINGS_GROUP = 'sources'/, '默认组 = sources');
+  assert.match(router, /import \{ DEFAULT_SETTINGS_GROUP, isSettingsGroupId \} from '\.\.\/utils\/settings\.js'/, '路由复用同一份组 id 白名单');
+
+  // ⑤ 移动端 ≤560px：左导航收成顶部「<组名> · N 项 ▾」下拉
+  assert.match(modules, /class="settings-nav-mobile"/, '移动端下拉容器');
+  assert.match(modules, /<el-select :model-value="activeSettingsGroup"[\s\S]{0,160}@change="goSettingsGroup"/, '下拉切组');
+  assert.match(modules, /:label="`\$\{g\.icon\} \$\{g\.title\} · \$\{groupItemCount\(g\.id\)\} 项`"/, '下拉标签 = 组名 · N 项');
+  assert.match(modules, /@media\(max-width:560px\)\{\.settings-page\{display:block\}\.settings-nav\{display:none\}/, '≤560px 竖排导航隐藏、下拉出现');
+
+  // ⑥ Console：/console/settings/* 选中「系统设置」，菜单进设置用 push，旧 ?section=settings 归一
+  assert.match(consoleVue, /const SETTINGS_PATH = '\/console\/settings'/, 'Console 识别二级路由');
+  assert.match(consoleVue, /selected\.value = 'settings'/, '路径变化 → 选中系统设置');
+  assert.match(consoleVue, /router\.push\(DEFAULT_SETTINGS_PATH\)/, '菜单「系统设置」push 进默认组（可后退回上一模块）');
+  assert.match(consoleVue, /id==='settings'&&user\.value\?\.role==='admin'/, '旧书签 ?section=settings → 二级路由');
+});
+
 
 test('组件注册：ElPopover 进 main.js 三处（import / 样式 / app.use），漏注册会静默不渲染', () => {
   const m = read('../frontend/src/main.js');
