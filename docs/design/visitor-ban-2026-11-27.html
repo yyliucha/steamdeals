@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>访问明细 · 封禁后移出列表（2026-11-27）</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#141c2e; --panel2:#182238; --border:#26314d;
+    --fg:#eef2ff; --fg2:#c9d4ec; --muted:#8d9bbb; --brand:#5b8cff;
+    --ok:#34d399; --warn:#fbbf24; --danger:#f87171; --mono:ui-monospace,Consolas,"Courier New",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;padding:30px 34px}
+  h1{font-size:25px;margin:0 0 8px;letter-spacing:-.02em}
+  h2{font-size:17px;margin:0 0 12px}
+  p{margin:0}
+  .sub{color:var(--muted);font-size:14px}
+  .shot{max-width:1240px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:20px 22px}
+  .card + .card{margin-top:20px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{border-bottom:1px solid #1e2942;padding:11px 12px;text-align:left;vertical-align:middle}
+  th{background:#1a2338;color:var(--fg2);font-size:13px;font-weight:600;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:0}
+  .mono{font-family:var(--mono);font-size:13.5px}
+  .muted{color:var(--muted);font-size:13px}
+  .tag{display:inline-block;font-size:11.5px;border-radius:6px;padding:2px 9px;border:1px solid}
+  .t-normal{color:#9fb0d6;border-color:#33415f;background:#1a2338}
+  .t-int{color:var(--warn);border-color:#5a4718;background:#211a0d}
+  .t-ban{color:#f0a04b;border-color:#5a3a18;background:#211508}
+  .t-blocked{color:#ff9b9b;border-color:#5a2b2b;background:#211012}
+  .t-trust{color:var(--ok);border-color:#1f5741;background:#0e2019}
+  .btn{background:#212c47;border:1px solid #33415f;color:var(--fg2);border-radius:8px;padding:0 12px;height:32px;font-size:12.5px;cursor:pointer}
+  .btn.danger{color:#ffb4b4;border-color:#4b2b33}
+  .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+  .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .select{display:flex;align-items:center;gap:8px;background:#0e1524;border:1.5px solid #2c3a5a;border-radius:9px;padding:0 12px;height:38px;font-size:13.5px;color:var(--fg2)}
+  .select .ar{color:#7f8fb3;font-size:11px}
+  .search{flex:1;max-width:340px;background:#0e1524;border:1.5px solid #2c3a5a;border-radius:9px;padding:0 12px;height:38px;display:flex;align-items:center;color:#6f7d9e;font-size:13.5px}
+  .toast{position:absolute;right:26px;top:18px;display:flex;align-items:center;gap:12px;background:#13241c;border:1px solid #1f5741;border-radius:10px;padding:11px 14px;font-size:13.5px;color:#bdf3d6;box-shadow:0 10px 30px #0007}
+  .toast b{color:#fff}
+  .toast .act{color:#7fd7ff;cursor:pointer;font-weight:600}
+  .toast .x{color:#6f8a7c;cursor:pointer;font-size:15px}
+  .rel{position:relative}
+  .notice{background:#1a2340;border:1px solid #2b3a63;border-radius:10px;padding:12px 14px;font-size:13.5px;color:#c2cdea;margin-top:16px}
+  .notice.warn{background:#241d0f;border-color:#4a3a15;color:#f0d79a}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .step{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;margin:14px 0 10px}
+  .num{display:inline-flex;width:21px;height:21px;border-radius:50%;background:var(--brand);color:#fff;font-size:12px;align-items:center;justify-content:center;flex:none}
+  .ghost{opacity:.42}
+  .phone{width:392px;background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:16px}
+  .pcard{background:#0e1524;border:1px solid #2c3a5a;border-radius:10px;padding:12px;margin-bottom:10px;font-size:13px}
+  .k{color:#7f8fb3;font-size:12.5px}
+</style>
+</head>
+<body>
+
+<!-- ============ 图 1：封禁流程 ============ -->
+<section id="s1" class="shot">
+  <h1>访问明细 · 封禁后移出列表</h1>
+  <p class="sub">封禁 / 信任后该 IP 立即从「有效访问」默认视图消失（历史仍可查）；封禁成功给 5 秒撤销。</p>
+
+  <div class="card rel" style="margin-top:22px">
+    <div class="step"><span class="num">1</span>封禁前 · 默认视图「有效访问」</div>
+    <div class="toolbar">
+      <div class="select">有效访问（默认） <span class="ar">▾</span></div>
+      <div class="search">按 IP 搜索</div>
+      <span class="muted">共 73 个 IP（每页 20）</span>
+    </div>
+    <table>
+      <tr><th>IP</th><th>地区</th><th>访问次数</th><th>首次 → 最近</th><th>独立路径</th><th>状态</th><th>操作</th></tr>
+      <tr><td class="mono">223.166.239.55</td><td>中国 上海</td><td>254</td><td class="muted">11-21 07:50 → 11-27 15:36</td><td>30</td><td><span class="tag t-normal">正常</span></td><td><button class="btn danger">封禁 IP</button> <button class="btn">信任</button></td></tr>
+      <tr style="background:#1d1520"><td class="mono"><b>34.88.59.51</b></td><td>芬兰 南卡累利阿</td><td>125</td><td class="muted">11-24 13:19 → 11-24 13:20</td><td>121</td><td><span class="tag t-int">被拦截</span></td><td><button class="btn danger">封禁 IP</button> <button class="btn">信任</button> ← 正在处理</td></tr>
+      <tr><td class="mono">34.81.11.19</td><td>台湾 台北</td><td>125</td><td class="muted">11-22 18:00 → 11-22 18:00</td><td>121</td><td><span class="tag t-int">被拦截</span></td><td><button class="btn danger">封禁 IP</button> <button class="btn">信任</button></td></tr>
+      <tr><td class="mono">35.233.44.84</td><td>比利时 布鲁塞尔</td><td>107</td><td class="muted">11-26 22:56 → 11-26 22:57</td><td>106</td><td><span class="tag t-ban">封禁中 · 剩余 6 分钟</span></td><td><button class="btn danger">封禁 IP</button> <button class="btn">信任</button></td></tr>
+      <tr><td class="mono">23.251.141.4</td><td>比利时 布鲁塞尔</td><td>108</td><td class="muted">11-24 20:44 → 11-24 20:45</td><td>108</td><td><span class="tag t-int">被拦截</span></td><td><button class="btn danger">封禁 IP</button> <button class="btn">信任</button></td></tr>
+    </table>
+  </div>
+
+  <div class="card rel">
+    <div class="step"><span class="num">2</span>点「封禁 IP」→ 确认 → <b>该行立即消失</b>（列表补上第 5 条），右上角 toast 带撤销</div>
+    <div class="toast"><span>✅</span><span><b>34.88.59.51</b> 已封禁</span><span class="act">撤销</span><span class="x">✕</span></div>
+    <div class="toolbar">
+      <div class="select">有效访问（默认） <span class="ar">▾</span></div>
+      <div class="search">按 IP 搜索</div>
+      <span class="muted">共 72 个 IP（每页 20）· 已隐藏 1 个已封禁 IP</span>
+    </div>
+    <table>
+      <tr><th>IP</th><th>地区</th><th>访问次数</th><th>首次 → 最近</th><th>独立路径</th><th>状态</th><th>操作</th></tr>
+      <tr><td class="mono">223.166.239.55</td><td>中国 上海</td><td>254</td><td class="muted">11-21 07:50 → 11-27 15:36</td><td>30</td><td><span class="tag t-normal">正常</span></td><td><button class="btn danger">封禁 IP</button> <button class="btn">信任</button></td></tr>
+      <tr><td class="mono">34.81.11.19</td><td>台湾 台北</td><td>125</td><td class="muted">11-22 18:00 → 11-22 18:00</td><td>121</td><td><span class="tag t-int">被拦截</span></td><td><button class="btn danger">封禁 IP</button> <button class="btn">信任</button></td></tr>
+      <tr><td class="mono">35.233.44.84</td><td>比利时 布鲁塞尔</td><td>107</td><td class="muted">11-26 22:56 → 11-26 22:57</td><td>106</td><td><span class="tag t-ban">封禁中 · 剩余 6 分钟</span></td><td><button class="btn danger">封禁 IP</button> <button class="btn">信任</button></td></tr>
+      <tr><td class="mono">23.251.141.4</td><td>比利时 布鲁塞尔</td><td>108</td><td class="muted">11-24 20:44 → 11-24 20:45</td><td>108</td><td><span class="tag t-int">被拦截</span></td><td><button class="btn danger">封禁 IP</button> <button class="btn">信任</button></td></tr>
+      <tr><td class="mono">130.211.87.56</td><td>比利时 布鲁塞尔</td><td>107</td><td class="muted">11-26 02:41 → 11-26 02:41</td><td>107</td><td><span class="tag t-int">被拦截</span></td><td><button class="btn danger">封禁 IP</button> <button class="btn">信任</button></td></tr>
+    </table>
+    <div class="notice">行消失后<b>重新拉取当前页</b>补齐；若当前页本来只剩这一条 → 自动回上一页。撤销点一下即可把黑名单移除、该行回到原位。</div>
+  </div>
+</section>
+
+<!-- ============ 图 2：筛选口径 + 逐条视图 ============ -->
+<section id="s2" class="shot" style="display:none">
+  <h1>筛选口径 · 逐条视图 · 移动端</h1>
+  <p class="sub">状态筛选新增「有效访问（默认）/ 已信任」；封禁与信任都从默认视图移出，历史随时可查。</p>
+
+  <div class="card" style="margin-top:22px">
+    <h2>状态筛选（下拉）</h2>
+    <div class="toolbar">
+      <div class="select">有效访问（默认） <span class="ar">▾</span></div>
+      <div class="muted">选项：有效访问（默认，排除已封禁/已信任） · 正常 · 被拦截 · 封禁中 · 已封禁 · 已信任 · 全部</div>
+    </div>
+    <div class="grid2" style="margin-top:10px">
+      <div>
+        <p class="k" style="margin-bottom:8px">有效访问（默认）· 5 个</p>
+        <table>
+          <tr><th>IP</th><th>状态</th></tr>
+          <tr><td class="mono">223.166.239.55</td><td><span class="tag t-normal">正常</span></td></tr>
+          <tr><td class="mono">34.81.11.19</td><td><span class="tag t-int">被拦截</span></td></tr>
+          <tr><td class="mono">35.233.44.84</td><td><span class="tag t-ban">封禁中</span></td></tr>
+          <tr><td class="mono">23.251.141.4</td><td><span class="tag t-int">被拦截</span></td></tr>
+          <tr><td class="mono">130.211.87.56</td><td><span class="tag t-int">被拦截</span></td></tr>
+        </table>
+      </div>
+      <div>
+        <p class="k" style="margin-bottom:8px">选「已封禁」· 1 个（历史仍可查）</p>
+        <table>
+          <tr><th>IP</th><th>状态</th><th>操作</th></tr>
+          <tr><td class="mono">34.88.59.51</td><td><span class="tag t-blocked">已封禁</span></td><td><button class="btn">解封</button></td></tr>
+        </table>
+        <p class="k" style="margin:16px 0 8px">选「已信任」· 1 个</p>
+        <table>
+          <tr><th>IP</th><th>状态</th><th>操作</th></tr>
+          <tr><td class="mono">127.0.0.1</td><td><span class="tag t-trust">已信任</span></td><td><button class="btn">移出白名单</button></td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="notice">「封禁中」（临时封禁未到期的 IP）<b>留在默认视图</b>——它是限流临时封禁、到期自动解除，历史访问还在观察期。</div>
+  </div>
+
+  <div class="grid2" style="margin-top:20px">
+    <div class="card">
+      <h2>逐条视图（明细）同步</h2>
+      <p class="k" style="margin-bottom:8px">封禁 34.88.59.51 后，它的逐条记录默认也不再显示</p>
+      <table>
+        <tr><th>时间</th><th>路径</th><th>结果</th></tr>
+        <tr><td class="muted">11-27 15:36:56</td><td class="mono">/api/games</td><td>200</td></tr>
+        <tr><td class="muted">11-27 15:36:52</td><td class="mono">/</td><td>200</td></tr>
+        <tr><td class="muted">11-27 15:36:49</td><td class="mono">/api/site</td><td>200</td></tr>
+      </table>
+      <div class="notice warn">两个视图口径一致；选「已封禁」时逐条视图也能查该 IP 的历史记录。</div>
+    </div>
+
+    <div class="card">
+      <h2>移动端（392px）</h2>
+      <div class="phone">
+        <div class="pcard"><b class="mono">223.166.239.55</b><br><span class="muted">中国 上海 · 访问 254 次</span><br><span class="tag t-normal">正常</span> <button class="btn danger" style="height:28px">封禁</button></div>
+        <div class="pcard" style="display:none">隐藏</div>
+        <div class="toast" style="position:static;margin-top:6px"><span>✅</span><span><b>34.88.59.51</b> 已封禁</span><span class="act">撤销</span></div>
+        <p class="k" style="margin-top:10px">封禁后该卡片立即移除；toast 在底部安全区上方，撤销 5 秒。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const m = new URLSearchParams(location.search).get('shot');
+  if (m) {
+    const keep = 's' + m;
+    document.querySelectorAll('section.shot').forEach((el) => { el.style.display = el.id === keep ? '' : 'none'; });
+  }
+</script>
+</body>
+</html>
+
