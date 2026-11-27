@@ -67,10 +67,13 @@ test('EK-4：Steam 专用代理内联编辑器改弹窗（列表增删/排序/�
 
 test('FX（docs/SECRET-REVEAL.md §4，取代 EK-5 的查看/编辑弹窗）：两个代理密钥改眼睛式密码框', () => {
   // FX 批把 EK-5 的「编辑按钮 + 弹窗」统一成行内 SecretField（密码框 + 眼睛懒加载 + 清除）；
-  // 这里锁的是「入口没被卡片化弄丢」：两个代理 key 仍走同一分支，且渲染 SecretField。
-  assert.match(modules, /field\.key==='network\.httpsProxy'\|\|field\.key==='network\.appSyncProxy'/, '两个代理 key 走同一分支');
-  assert.match(modules, /<SecretField v-else-if="field\.key==='network\.httpsProxy'\|\|field\.key==='network\.appSyncProxy'"/, '分支渲染 SecretField（密码框 + 眼睛）');
-  assert.match(modules, /已设置（点眼睛查看，或用「编辑」修改）/, 'Steam 代理卡保留「点眼睛查看 / 编辑管理」文案');
+  // FY-2（docs/SETTINGS-REDESIGN.md §3.2）：设置页改「一行一项」后，密钥渲染统一收进 SettingsRow 的
+  // type=secret 分支（不再在 AdminModules 里按 key 特判）——两个代理 key 与其它 6 个 secret 走同一分支。
+  const settingsRow = read('../frontend/src/components/SettingsRow.vue');
+  assert.match(settingsRow, /v-else-if="field\.type === 'secret'"/, '按 type=secret 统一分支（两个代理 key 不再单独判）');
+  assert.match(settingsRow, /<SecretField/, '分支渲染 SecretField（密码框 + 眼睛）');
+  assert.match(settingsRow, /field\.key === 'network\.steamProxy' \? 'proxy' : 'single'/, 'Steam 代理走 proxy 模式，其余单值模式');
+  assert.match(modules, /已设置（点眼睛查看，或用「编辑」修改）/, 'Steam 代理行保留「点眼睛查看 / 编辑管理」文案');
   assert.doesNotMatch(modules, /openSecretDialog/, '旧编辑弹窗入口已移除');
   assert.doesNotMatch(modules, /v-model="secretDialog\.visible"/, '旧代理编辑弹窗挂载已移除');
   assert.doesNotMatch(modules, /revealSecretInDialog/, '旧「查看当前值」入口已移除');
