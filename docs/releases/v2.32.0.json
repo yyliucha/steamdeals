@@ -1,0 +1,23 @@
+{
+  "version": "2.32.0",
+  "tag": "v2.32.0",
+  "targets": ["app"],
+  "image": "ccr.ccs.tencentyun.com/tcb-100003189690-pljp/steamdeals",
+  "registryTag": "2.32.0",
+  "ci": {
+    "docker_hub": "success",
+    "docker_tcr": "success"
+  },
+  "scope": ["FX", "FY", "GB"],
+  "notes": "后台三页重设计 + 密钥查看统一：FX 密钥查看（SecretField + 审计 admin.secret_revealed）/ FY 设置页（左导航 7 组 + /console/settings/:group + 行列表 + 每项即时保存 + 跨组搜索）/ GB 图片覆盖看板 503 修复（SQL 聚合 + apple-touch-icon + mobile-web-app-capable）。本批只改 Web/API/前端/文档，未改 scheduler/adapters，targets 仅 app。docker-tcr 首轮 test 偶发失败（coverage 模式 gate 非零退出），重跑 attempt 2 全绿。",
+  "builtAt": "2026-11-27T11:39:00Z",
+  "ciRuns": {
+    "docker_hub": 45983953175,
+    "docker_tcr": 45983953041,
+    "test_main": 45983939129
+  },
+  "release": {
+    "status": "pending",
+    "targets": ["app"]
+  }
+}

@@ -249,11 +249,12 @@ Steam 重任务（价格/目录/回填/热度/改名/状态判定）与后台手
 
 
 
-### 当前状态（2026-11-27，v2.32.0 待发版——FX / FY / GB 三批已质检通过）
+### 当前状态（2026-11-27，v2.32.0 已发布——CI 三绿）
 
 - 本批范围：**FX**（密钥查看统一：`SecretField.vue` + 审计 `admin.secret_revealed`）、**FY-1**（设置页 7 组重划 + `/console/settings/:group` 路由 + 左导航）、**FY-2**（分区标题 + 一行一项 + 每项即时保存 + 跨组搜索 + 只看非默认 + 移动端）、**GB**（图片覆盖看板 503 改 SQL 聚合 + apple-touch-icon 404 + apple mobile meta）。
 - 验证：主链 `test:1~4` 全绿（142 文件 / 1344 用例）、`api.test.js` 41/41、`frontend:build` ✓、`scan` 干净；headless e2e `test/e2e/settings-rows.mjs` 29/29。
-- CI 待确认；服务器部署待执行（发布清单 `targets: ["app"]`，无需重启调度器）。
+- CI：docker-hub `45983953175`（test/smoke/publish 全 success）；docker-tcr `45983953041`（**首轮 test 偶发失败——coverage 模式 gate 把非零退出标成「覆盖率未达标」，实际 all files 81.51/80.19/79.76 远超阈值 60/50/50；重跑 attempt 2 后 test/publish 全 success**）；test-main `45983939129` success。
+- 发布：清单 `docs/releases/v2.32.0.json`（targets `["app"]`，本批未改 scheduler/adapters，无需重启调度器），由 `steamdeals-release` 执行。
 - 未纳入：FZ（访问记录重设计）/ GA（同步页重设计 + 任务精简）/ GC（恢复默认回落刚保存值）——均待开发。
 
 ### 当前状态（2026-11-27，v2.31.0 已发布——CI 三绿）
