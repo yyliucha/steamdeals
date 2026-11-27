@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>同步与回填 · 可交互 demo（2026-11-27）</title>
+<style>
+  :root{
+    --bg:#0b1020; --side:#0e1524; --panel:#141c2e; --panel2:#182238; --border:#26314d;
+    --fg:#eef2ff; --fg2:#c9d4ec; --muted:#8d9bbb; --brand:#5b8cff; --brand-soft:#1c2a4a;
+    --ok:#34d399; --warn:#fbbf24; --danger:#f87171; --mono:ui-monospace,Consolas,"Courier New",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  button{font:inherit}
+  .app{display:flex;min-height:100vh}
+  /* 侧栏 */
+  .side{width:216px;flex:none;background:var(--side);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:14px 10px}
+  .brand{font-weight:700;font-size:15px;padding:6px 10px 14px;letter-spacing:-.01em}
+  .brand span{color:var(--brand)}
+  .side nav{display:flex;flex-direction:column;gap:2px}
+  .grp{font-size:11px;color:#64729a;padding:12px 12px 5px;letter-spacing:.04em}
+  .item{display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:8px;color:var(--fg2);font-size:13.5px;cursor:pointer;border:0;background:transparent;text-align:left;width:100%}
+  .item:hover{background:#182238}
+  .item.on{background:var(--brand-soft);color:#fff;font-weight:600;box-shadow:inset 3px 0 0 var(--brand)}
+  .side-foot{margin-top:auto;padding:12px;font-size:11px;color:#64729a;line-height:1.7}
+  /* 主区 */
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:15px 26px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
+  .topbar .u{display:flex;align-items:center;gap:8px}
+  .avatar{width:24px;height:24px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px}
+  .content{padding:20px 26px 40px;max-width:1180px;width:100%}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:-.02em}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px}
+  /* 概览 */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:13px 16px;cursor:pointer;transition:.12s}
+  .kpi:hover{border-color:var(--brand)}
+  .kpi span{font-size:12px;color:var(--muted);display:block}
+  .kpi b{font-size:24px;display:block;margin-top:5px;letter-spacing:-.03em}
+  .kpi small{font-size:11px;color:var(--muted)}
+  .kpi.run b{color:var(--brand)} .kpi.fail b{color:var(--danger)} .kpi.queue b{color:var(--warn)}
+  /* 任务表 */
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:13px;overflow:hidden;margin-bottom:14px}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}
+  .panel-head h2{font-size:15.5px;margin:0}
+  .panel-head p{font-size:12px;color:var(--muted);margin:3px 0 0}
+  .row-group{display:grid;grid-template-columns:26px minmax(140px,1.4fr) 70px 150px 110px 130px;gap:10px;align-items:center;padding:11px 18px;cursor:pointer;border-bottom:1px solid #1c2438}
+  .row-group:hover{background:#172033}
+  .row-group.open{background:#172033}
+  .caret{color:#64729a;transition:transform .15s}
+  .row-group.open .caret{transform:rotate(90deg)}
+  .gname{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px}
+  .badge{font-size:11px;border-radius:5px;padding:1px 7px;border:1px solid;white-space:nowrap}
+  .b-ok{color:var(--ok);border-color:#1f5741;background:#0e2019}
+  .b-warn{color:var(--warn);border-color:#5a4718;background:#211a0d}
+  .b-bad{color:#ff9b9b;border-color:#5a2b2b;background:#211012}
+  .b-run{color:#8fb6ff;border-color:#27406f;background:#0f1a30}
+  .b-idle{color:var(--muted);border-color:var(--border);background:#121a2b}
+  .muted{color:var(--muted)} .mono{font-family:var(--mono);font-size:12.5px}
+  .btn{background:#212c47;border:1px solid #33415f;color:var(--fg2);border-radius:7px;padding:0 11px;height:30px;font-size:12px;cursor:pointer;white-space:nowrap}
+  .btn:hover{border-color:var(--brand);color:#fff}
+  .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+  .btn.ghost{background:transparent}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .steps{display:none;background:#0f1728;border-bottom:1px solid #1c2438}
+  .steps.show{display:block}
+  .steps table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .steps th,.steps td{padding:8px 14px;text-align:left;border-bottom:1px solid #19223a;white-space:nowrap}
+  .steps th{color:#7f8fb3;font-weight:500;font-size:11.5px;background:#0d1524}
+  .steps tr:last-child td{border-bottom:0}
+  /* 折叠区 */
+  .fold{background:var(--panel);border:1px solid var(--border);border-radius:13px;margin-bottom:12px;overflow:hidden}
+  .fold-head{display:flex;align-items:center;gap:10px;padding:14px 18px;cursor:pointer}
+  .fold-head:hover{background:#172033}
+  .fold-head h2{font-size:14.5px;margin:0}
+  .fold-head .sum{font-size:12px;color:var(--muted);margin-left:auto;text-align:right}
+  .fold-body{display:none;padding:4px 18px 18px;border-top:1px solid #1c2438}
+  .fold.open .fold-body{display:block}
+  .stat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:14px}
+  .stat-4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+  .stat{background:#0f1728;border:1px solid #26314d;border-radius:10px;padding:11px 13px}
+  .stat span{font-size:11.5px;color:var(--muted)}
+  .stat b{display:block;font-size:19px;margin-top:4px}
+  .stat .act{margin-top:8px}
+  .split{height:1px;background:var(--border);margin:18px 0}
+  .tool-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-bottom:1px dashed #1e2942}
+  .tool-row:last-child{border-bottom:0}
+  .tool-row h3{font-size:13.5px;margin:0}
+  .tool-row p{font-size:12px;color:var(--muted);margin:3px 0 0}
+  /* 弹窗与提示 */
+  .mask{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center;z-index:50}
+  .mask.show{display:flex}
+  .dialog{width:420px;max-width:92vw;background:#121a2b;border:1px solid #2c3a5e;border-radius:13px;overflow:hidden;box-shadow:0 20px 60px #000a}
+  .dialog h3{margin:0;padding:15px 18px;font-size:14.5px;border-bottom:1px solid var(--border)}
+  .dialog .body{padding:16px 18px;font-size:13px;color:var(--fg2);line-height:1.65}
+  .dialog .foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid var(--border);background:#0e1626}
+  .toast{position:fixed;top:18px;right:22px;z-index:60;display:flex;align-items:center;gap:10px;background:#13241c;border:1px solid #1f5741;color:#bdf3d6;border-radius:10px;padding:11px 15px;font-size:13px;box-shadow:0 12px 34px #0008;opacity:0;transform:translateY(-8px);transition:.18s;pointer-events:none}
+  .toast.show{opacity:1;transform:none}
+  .toast.bad{background:#251419;border-color:#4a2b33;color:#f4b6c0}
+  @media(max-width:980px){
+    .app{flex-direction:column}
+    .side{width:100%;flex-direction:row;overflow-x:auto;padding:8px;align-items:center}
+    .brand{display:none} .grp{display:none} .side-foot{display:none}
+    .item{white-space:nowrap;width:auto}
+    .content{padding:14px}
+    .row-group{grid-template-columns:20px 1fr;gap:6px}
+    .row-group .col-hide{display:none}
+    .kpis{grid-template-columns:repeat(2,1fr)}
+    .stat-grid,.stat-4{grid-template-columns:repeat(2,1fr)}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">Steam<span>Deals</span> 管理</div>
+    <nav>
+      <div class="grp">内容运营</div>
+      <button class="item" data-page="games">🎮 游戏目录</button>
+      <button class="item on" data-page="sync">🔄 同步与回填</button>
+      <button class="item" data-page="align">🧩 对齐审核</button>
+      <button class="item" data-page="notify">📣 站点通知</button>
+      <button class="item" data-page="wish">★ 愿望单</button>
+      <div class="grp">访问与安全</div>
+      <button class="item" data-page="visits">◉ 访问记录</button>
+      <button class="item" data-page="appeals">❧ 申诉管理</button>
+      <div class="grp">账号与服务</div>
+      <button class="item" data-page="users">♙ 用户管理</button>
+      <button class="item" data-page="sessions">⟳ 登录会话</button>
+      <button class="item" data-page="mail">✉ 邮件服务</button>
+      <div class="grp">系统</div>
+      <button class="item" data-page="settings">⚙ 系统设置</button>
+      <button class="item" data-page="stats">▥ 数据统计</button>
+    </nav>
+    <div class="side-foot">v2.31.0 · 后台<br>同步与回填 demo</div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div id="crumb">管理中心 / 内容运营 / 同步与回填</div>
+      <div class="u"><span class="avatar">A</span> admin</div>
+    </div>
+
+    <div class="content" id="page-sync">
+      <h1>同步与回填</h1>
+      <p class="sub">采集任务的调度、进度与数据质量。任务由服务器自动执行；需要立即跑一次时点「立即运行」。</p>
+
+      <div class="kpis">
+        <div class="kpi run" data-jump="run"><span>运行中</span><b>1</b><small>Steam 状态判定 · 已跑 42 分钟</small></div>
+        <div class="kpi fail" data-jump="fail"><span>需要关注</span><b>2</b><small>热度回填 403 收尾 · App 版本同步失败</small></div>
+        <div class="kpi queue"><span>429 补跑队列</span><b>37</b><small>最近入队 16:02</small></div>
+        <div class="kpi"><span>今日待补</span><b>11,203</b><small>价格 593 · 状态 10,306 · 中文名 16,572</small></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div><h2>任务与调度</h2><p>12 个任务组 · 点组行展开子步骤；「立即运行」使用默认参数</p></div>
+          <button class="btn ghost" id="collapseAll">全部收起</button>
+        </div>
+        <div id="groups"></div>
+      </div>
+
+      <div class="fold" id="foldQuality">
+        <div class="fold-head">
+          <span class="caret">▸</span><h2>数据质量</h2>
+          <span class="sum">分级未回填 112,325 · 价格超 7 天 109,312 · 429 队列 37</span>
+        </div>
+        <div class="fold-body">
+          <p class="muted" style="margin:14px 0 0;font-size:12.5px">内容分级统计（只读计数，全库口径含未上架/已禁用）</p>
+          <div class="stat-grid">
+            <div class="stat"><span>成人内容（宽）</span><b>4,803</b></div>
+            <div class="stat"><span>色情游戏（严格）</span><b>1,034</b></div>
+            <div class="stat"><span>成熟内容</span><b>15,798</b></div>
+            <div class="stat"><span>分级已回填</span><b>90,500</b></div>
+            <div class="stat"><span>分级未回填</span><b style="color:var(--warn)">112,325</b></div>
+          </div>
+          <p class="muted" style="margin:6px 0 0;font-size:12px">最近回填 2026-11-26 10:09:37</p>
+
+          <div class="split"></div>
+          <p class="muted" style="margin:0;font-size:12.5px">数据时效（超 1 / 3 / 7 天未更新；点「补跑」立即触发对应任务）</p>
+          <div class="stat-4">
+            <div class="stat"><span>价格超期</span><b>593</b><span style="font-size:11px">7 天 109,312 · 3 天 44</span><div class="act"><button class="btn" data-run="steam-prices">补跑价格</button></div></div>
+            <div class="stat"><span>状态超期</span><b>10,306</b><span style="font-size:11px">7 天 189,973 · 3 天 2,546</span><div class="act"><button class="btn" data-run="steam-status">补跑状态</button></div></div>
+            <div class="stat"><span>中文名缺失</span><b>16,572</b><span style="font-size:11px">7 天 126,173 · 3 天 32,499</span><div class="act"><button class="btn" data-run="rename">补跑中文名</button></div></div>
+            <div class="stat"><span>缺封面</span><b>4,730</b><span style="font-size:11px">7 天 111,057 · 3 天 28,207</span><div class="act"><button class="btn" data-run="images">补跑图片</button></div></div>
+          </div>
+
+          <div class="split"></div>
+          <p class="muted" style="margin:0;font-size:12.5px">429 补跑队列（撞 429 收轮的 appid 自动入队，下轮优先补）</p>
+          <div class="stat-4" style="grid-template-columns:repeat(4,1fr)">
+            <div class="stat"><span>排队中</span><b>37</b></div>
+            <div class="stat"><span>最大重试次数</span><b>2</b></div>
+            <div class="stat"><span>最早入队</span><b style="font-size:14px">2026-11-26 21:14</b></div>
+            <div class="stat"><span>操作</span><div class="act"><button class="btn primary" data-run="backfill">立即补 429</button></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="fold" id="foldTools">
+        <div class="fold-head">
+          <span class="caret">▸</span><h2>工具</h2>
+          <span class="sum">初始化全量同步 · App 版本 2.25.1（22501）</span>
+        </div>
+        <div class="fold-body">
+          <div class="tool-row">
+            <div><h3>初始化全量同步</h3><p>新部署 / 大规模补数专用：全量回填目录元数据与国区价格（默认 20 万上限、429 自动收尾保留进度）。日常增量维护用上面的任务表。</p></div>
+            <button class="btn" data-run="init-sync">初始化全量同步</button>
+          </div>
+          <div class="tool-row">
+            <div><h3>App 版本</h3><p>站点自托管安卓最新版；发版后点「立即同步」，手机数十秒内可检测到更新。</p></div>
+            <button class="btn primary" data-run="app-sync">立即同步</button>
+          </div>
+          <div class="stat-4" style="margin-top:12px">
+            <div class="stat"><span>当前版本</span><b>2.25.1（22501）</b></div>
+            <div class="stat"><span>上次同步</span><b style="font-size:14px">11-25 17:29</b></div>
+            <div class="stat"><span>失败原因</span><b style="font-size:13px;color:#ff9b9b">apk_download（2.25.1）</b></div>
+            <div class="stat"><span>状态</span><b>就绪</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content" id="page-other" hidden>
+      <h1 id="other-title">该页不在本 demo 范围</h1>
+      <p class="sub">本 demo 只演示「同步与回填」。点左侧其它菜单可以看到切换效果，但内容为占位。</p>
+    </div>
+  </main>
+</div>
+
+<div class="mask" id="mask">
+  <div class="dialog">
+    <h3 id="dlg-title">确认运行</h3>
+    <div class="body" id="dlg-body">确定立即运行该任务？将使用默认参数，与其它任务自动互斥。</div>
+    <div class="foot"><button class="btn ghost" data-close>取消</button><button class="btn primary" id="dlg-ok">确认运行</button></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  // ---------- 假数据：12 个任务组 ----------
+  var GROUPS = [
+    {name:'Steam 价格', health:'ok', last:'16:10', steps:[
+      {n:'steam-prices', l:'价格刷新', f:'每 1440 分', last:'16:10', next:'明天 16:10', r:'ok', t:'2.1 小时'},
+      {n:'backfill', l:'增量回填', f:'每 1440 分', last:'15:20', next:'明天 15:20', r:'oke', t:'0.6 小时'},
+    ]},
+    {name:'Steam 元数据', health:'ok', last:'15:58', steps:[
+      {n:'steam-status', l:'状态判定', f:'每 1440 分', last:'15:58', next:'明天 15:58', r:'run', t:'跑 42 分钟'},
+      {n:'rating-backfill', l:'分级回填', f:'每 1440 分', last:'11:30', next:'明天 11:30', r:'ok', t:'8.3 小时'},
+      {n:'explicit-backfill', l:'色情游戏回填', f:'每 10080 分', last:'11-24 20:22', next:'12-01 20:22', r:'ok', t:'2.1 小时'},
+      {n:'rename', l:'重写名字', f:'每 10080 分', last:'11-25 03:10', next:'12-02 03:10', r:'ok', t:'48 分钟'},
+    ]},
+    {name:'多平台报价', health:'ok', last:'16:06', steps:[
+      {n:'sonkwo', l:'杉果同步', f:'每 60 分', last:'16:06', next:'17:06', r:'ok', t:'2 分钟'},
+      {n:'itad', l:'ITAD 匹配', f:'每 1440 分', last:'14:22', next:'明天 14:22', r:'ok', t:'1 分钟'},
+      {n:'gog', l:'GOG 匹配', f:'每 720 分', last:'13:10', next:'01:10', r:'ok', t:'1 分钟'},
+      {n:'humble', l:'Humble 匹配', f:'每 720 分', last:'13:12', next:'01:12', r:'ok', t:'1 分钟'},
+    ]},
+    {name:'目录与发现', health:'warn', last:'15:40', steps:[
+      {n:'catalog', l:'目录同步', f:'每 10080 分', last:'11-25 03:00', next:'12-02 03:00', r:'ok', t:'6 分钟'},
+      {n:'steam-discovery', l:'Deck 发现', f:'每 30 分', last:'15:40', next:'16:10', r:'ok', t:'24 秒'},
+      {n:'discover', l:'杉果发现', f:'每 720 分', last:'12:20', next:'00:20', r:'warn', t:'12 分钟'},
+    ]},
+    {name:'图片同步', health:'ok', last:'16:05', steps:[
+      {n:'images', l:'封面缓存', f:'每 240 分', last:'16:05', next:'20:05', r:'ok', t:'4 分钟'},
+      {n:'images-backfill', l:'缺图回填', f:'每 360 分', last:'15:30', next:'21:30', r:'ok', t:'2 分钟'},
+    ]},
+    {name:'索引维护', health:'ok', last:'15:00', steps:[
+      {n:'readmodel', l:'读模型对账', f:'每 1440 分', last:'03:00', next:'明天 03:00', r:'ok', t:'40 秒'},
+      {n:'search-tokens-rebuild', l:'搜索词重建', f:'每 360 分', last:'15:00', next:'21:00', r:'ok', t:'1 分钟'},
+    ]},
+    {name:'系统维护', health:'ok', last:'16:00', steps:[
+      {n:'prune', l:'定期清理', f:'每 10080 分', last:'11-24 04:00', next:'12-01 04:00', r:'ok', t:'2 分钟'},
+      {n:'logs', l:'日志清理', f:'每 10080 分', last:'11-24 04:05', next:'12-01 04:05', r:'ok', t:'0.3 秒'},
+    ]},
+    {name:'Steam 账号', health:'ok', last:'12:00', steps:[
+      {n:'steam-accounts', l:'账号同步', f:'每 1440 分', last:'12:00', next:'明天 12:00', r:'ok', t:'3 分钟'},
+      {n:'steam-claim', l:'认领账号', f:'手动', last:'—', next:'—', r:'idle', t:'—'},
+    ]},
+    {name:'热度回填', health:'bad', last:'15:50', steps:[
+      {n:'heat', l:'热度回填', f:'每 10 分', last:'15:50', next:'16:00', r:'bad', t:'2.8 分钟'},
+    ]},
+    {name:'App 版本同步', health:'bad', last:'16:07', steps:[
+      {n:'app-release-sync', l:'App 版本', f:'每 15 分', last:'16:07', next:'16:22', r:'bad', t:'1.2 秒'},
+    ]},
+    {name:'对齐快照', health:'ok', last:'16:00', steps:[
+      {n:'align-snapshot', l:'对齐快照', f:'每 30 分', last:'16:00', next:'16:30', r:'ok', t:'3 秒'},
+    ]},
+    {name:'代理与提醒', health:'ok', last:'16:08', steps:[
+      {n:'proxy-probe', l:'代理探测', f:'每 10 分', last:'16:08', next:'16:18', r:'ok', t:'2 秒'},
+      {n:'alerts', l:'到价提醒', f:'每 360 分', last:'12:00', next:'18:00', r:'ok', t:'8 秒'},
+      {n:'report', l:'价格报表', f:'每 1440 分', last:'09:00', next:'明天 09:00', r:'ok', t:'12 秒'},
+    ]},
+  ];
+  var LABEL = {'ok':'成功','oke':'部分完成（429 收尾）','warn':'失败 1 次','bad':'失败','run':'运行中','idle':'手动'};
+  var CLS = {'ok':'b-ok','oke':'b-warn','warn':'b-bad','bad':'b-bad','run':'b-run','idle':'b-idle'};
+  var HEALTH = {ok:'b-ok', warn:'b-warn', bad:'b-bad'};
+  var HEALTH_TXT = {ok:'正常', warn:'需关注', bad:'失败'};
+
+  var host = document.getElementById('groups');
+  GROUPS.forEach(function(g, i){
+    var row = document.createElement('div');
+    row.className = 'row-group';
+    row.innerHTML = '<span class="caret">▸</span>'
+      + '<span class="gname">' + g.name + '</span>'
+      + '<span class="mono muted col-hide">' + g.steps.length + ' 步</span>'
+      + '<span class="muted col-hide">最近 ' + g.last + '</span>'
+      + '<span class="col-hide"><span class="badge ' + HEALTH[g.health] + '">' + HEALTH_TXT[g.health] + '</span></span>'
+      + '<span class="col-hide"><button class="btn" data-run-group="' + i + '">立即运行</button></span>';
+    var steps = document.createElement('div');
+    steps.className = 'steps';
+    var trs = g.steps.map(function(s){
+      return '<tr><td>' + s.l + '</td><td class="mono muted">' + s.f + '</td><td class="muted">' + s.last + '</td>'
+        + '<td class="muted">' + s.next + '</td>'
+        + '<td><span class="badge ' + CLS[s.r] + '">' + LABEL[s.r] + '</span></td>'
+        + '<td class="muted">' + s.t + '</td>'
+        + '<td><button class="btn ghost" data-run="' + s.n + '">立即运行</button></td></tr>';
+    }).join('');
+    steps.innerHTML = '<table><thead><tr><th>子步骤</th><th>频率</th><th>上次运行</th><th>下次运行</th><th>上次结果</th><th>耗时</th><th>操作</th></tr></thead><tbody>' + trs + '</tbody></table>';
+    row.addEventListener('click', function(e){
+      if (e.target.closest('button')) return;
+      row.classList.toggle('open');
+      steps.classList.toggle('show');
+    });
+    host.appendChild(row);
+    host.appendChild(steps);
+  });
+
+  // ---------- 工具 ----------
+  var toastTimer = null;
+  function toast(msg, bad){
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (bad ? ' bad' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ t.className = 'toast'; }, 2600);
+  }
+  var pendingRun = null;
+  function askRun(label, jobName){
+    pendingRun = jobName;
+    document.getElementById('dlg-title').textContent = '运行「' + label + '」？';
+    document.getElementById('dlg-body').textContent = '将使用默认参数立即执行；与其它任务自动互斥，撞 403/429 会软收尾并保留进度。';
+    document.getElementById('mask').classList.add('show');
+  }
+  document.getElementById('mask').addEventListener('click', function(e){
+    if (e.target === this || e.target.hasAttribute('data-close')) this.classList.remove('show');
+  });
+  document.getElementById('dlg-ok').addEventListener('click', function(){
+    document.getElementById('mask').classList.remove('show');
+    var btn = document.querySelector('[data-run="' + pendingRun + '"]');
+    if (btn) { btn.disabled = true; btn.textContent = '已提交'; }
+    toast('已提交：' + (pendingRun || '任务') + '（约 15 秒内生效）');
+  });
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-run]');
+    if (b) { askRun(b.textContent, b.getAttribute('data-run')); return; }
+    var gb = e.target.closest('[data-run-group]');
+    if (gb) {
+      var g = GROUPS[Number(gb.getAttribute('data-run-group'))];
+      askRun(g.name + '（组）', 'group-' + gb.getAttribute('data-run-group'));
+      return;
+    }
+    var k = e.target.closest('.kpi[data-jump]');
+    if (k) {
+      var kind = k.getAttribute('data-jump');
+      if (kind === 'fail') {
+        var bad = document.querySelectorAll('.row-group');
+        var idx = GROUPS.findIndex(function(g){ return g.health === 'bad'; });
+        if (bad[idx]) { bad[idx].scrollIntoView({behavior:'smooth', block:'center'}); bad[idx].click(); }
+        toast('已定位到需要关注的任务组');
+      } else {
+        toast('运行中任务：Steam 状态判定（已跑 42 分钟）');
+      }
+      return;
+    }
+  });
+
+  // 折叠区
+  ['foldQuality','foldTools'].forEach(function(id){
+    var el = document.getElementById(id);
+    el.querySelector('.fold-head').addEventListener('click', function(){
+      el.classList.toggle('open');
+      el.querySelector('.caret').textContent = el.classList.contains('open') ? '▾' : '▸';
+    });
+  });
+
+  // 全部收起
+  document.getElementById('collapseAll').addEventListener('click', function(){
+    document.querySelectorAll('.row-group').forEach(function(r){ r.classList.remove('open'); });
+    document.querySelectorAll('.steps').forEach(function(s){ s.classList.remove('show'); });
+    toast('已全部收起');
+  });
+
+  // 菜单切换
+  var NAMES = {games:'游戏目录', sync:'同步与回填', align:'对齐审核', notify:'站点通知', wish:'愿望单',
+    visits:'访问记录', appeals:'申诉管理', users:'用户管理', sessions:'登录会话', mail:'邮件服务',
+    settings:'系统设置', stats:'数据统计'};
+  document.querySelectorAll('.item').forEach(function(it){
+    it.addEventListener('click', function(){
+      document.querySelectorAll('.item').forEach(function(x){ x.classList.remove('on'); });
+      it.classList.add('on');
+      var page = it.getAttribute('data-page');
+      var isSync = page === 'sync';
+      document.getElementById('page-sync').hidden = !isSync;
+      document.getElementById('page-other').hidden = isSync;
+      document.getElementById('other-title').textContent = NAMES[page] || '页面';
+      document.getElementById('crumb').textContent = '管理中心 / 内容运营 / ' + (NAMES[page] || '');
+    });
+  });
+
+  // 默认展开第一组，便于一眼看懂；支持 ?open=quality,tools&expand=1,3 控制初始态（截图用）
+  var params = new URLSearchParams(location.search);
+  var first = document.querySelector('.row-group');
+  if (first) { first.click(); }
+  var extra = (params.get('expand') || '').split(',').filter(Boolean);
+  document.querySelectorAll('.row-group').forEach(function(row, idx){
+    if (extra.indexOf(String(idx)) >= 0) row.click();
+  });
+  (params.get('open') || '').split(',').filter(Boolean).forEach(function(name){
+    var el = document.getElementById(name === 'quality' ? 'foldQuality' : 'foldTools');
+    if (el) { el.classList.add('open'); el.querySelector('.caret').textContent = '▾'; }
+  });
+})();
+</script>
+</body>
+</html>
