@@ -156,7 +156,7 @@
 
       <div class="panel">
         <div class="panel-head">
-          <div><h2>任务与调度</h2><p>12 个任务组 · 点组行展开子步骤；「立即运行」使用默认参数</p></div>
+          <div><h2>任务与调度</h2><p>11 个任务组 · <b>17 个定时任务 + 5 个手动任务</b> · 点组行展开子步骤；「立即运行」使用默认参数</p></div>
           <button class="btn ghost" id="collapseAll">全部收起</button>
         </div>
         <div id="groups"></div>
@@ -244,55 +244,52 @@
   var GROUPS = [
     {name:'Steam 价格', health:'ok', last:'16:10', steps:[
       {n:'steam-prices', l:'价格刷新', f:'每 1440 分', last:'16:10', next:'明天 16:10', r:'ok', t:'2.1 小时'},
-      {n:'backfill', l:'增量回填', f:'每 1440 分', last:'15:20', next:'明天 15:20', r:'oke', t:'0.6 小时'},
+      {n:'backfill', l:'增量回填（含中文名）', f:'每 1440 分', last:'15:20', next:'明天 15:20', r:'oke', t:'0.6 小时'},
     ]},
     {name:'Steam 元数据', health:'ok', last:'15:58', steps:[
       {n:'steam-status', l:'状态判定', f:'每 1440 分', last:'15:58', next:'明天 15:58', r:'run', t:'跑 42 分钟'},
-      {n:'rating-backfill', l:'分级回填', f:'每 1440 分', last:'11:30', next:'明天 11:30', r:'ok', t:'8.3 小时'},
-      {n:'explicit-backfill', l:'色情游戏回填', f:'每 10080 分', last:'11-24 20:22', next:'12-01 20:22', r:'ok', t:'2.1 小时'},
-      {n:'rename', l:'重写名字', f:'每 10080 分', last:'11-25 03:10', next:'12-02 03:10', r:'ok', t:'48 分钟'},
+      {n:'rating-backfill', l:'分级回填（含色情分级）', f:'每 1440 分', last:'11:30', next:'明天 11:30', r:'ok', t:'8.3 小时'},
     ]},
     {name:'多平台报价', health:'ok', last:'16:06', steps:[
-      {n:'sonkwo', l:'杉果同步', f:'每 60 分', last:'16:06', next:'17:06', r:'ok', t:'2 分钟'},
+      {n:'sonkwo', l:'杉果同步', f:'每 180 分', last:'16:06', next:'19:06', r:'ok', t:'2 分钟'},
       {n:'itad', l:'ITAD 匹配', f:'每 1440 分', last:'14:22', next:'明天 14:22', r:'ok', t:'1 分钟'},
       {n:'gog', l:'GOG 匹配', f:'每 720 分', last:'13:10', next:'01:10', r:'ok', t:'1 分钟'},
       {n:'humble', l:'Humble 匹配', f:'每 720 分', last:'13:12', next:'01:12', r:'ok', t:'1 分钟'},
     ]},
     {name:'目录与发现', health:'warn', last:'15:40', steps:[
-      {n:'catalog', l:'目录同步', f:'每 10080 分', last:'11-25 03:00', next:'12-02 03:00', r:'ok', t:'6 分钟'},
       {n:'steam-discovery', l:'Deck 发现', f:'每 30 分', last:'15:40', next:'16:10', r:'ok', t:'24 秒'},
       {n:'discover', l:'杉果发现', f:'每 720 分', last:'12:20', next:'00:20', r:'warn', t:'12 分钟'},
     ]},
     {name:'图片同步', health:'ok', last:'16:05', steps:[
-      {n:'images', l:'封面缓存', f:'每 240 分', last:'16:05', next:'20:05', r:'ok', t:'4 分钟'},
-      {n:'images-backfill', l:'缺图回填', f:'每 360 分', last:'15:30', next:'21:30', r:'ok', t:'2 分钟'},
+      {n:'images', l:'封面缓存（含补图）', f:'每 240 分', last:'16:05', next:'20:05', r:'ok', t:'4 分钟'},
     ]},
     {name:'索引维护', health:'ok', last:'15:00', steps:[
-      {n:'readmodel', l:'读模型对账', f:'每 1440 分', last:'03:00', next:'明天 03:00', r:'ok', t:'40 秒'},
-      {n:'search-tokens-rebuild', l:'搜索词重建', f:'每 360 分', last:'15:00', next:'21:00', r:'ok', t:'1 分钟'},
-    ]},
-    {name:'系统维护', health:'ok', last:'16:00', steps:[
-      {n:'prune', l:'定期清理', f:'每 10080 分', last:'11-24 04:00', next:'12-01 04:00', r:'ok', t:'2 分钟'},
-      {n:'logs', l:'日志清理', f:'每 10080 分', last:'11-24 04:05', next:'12-01 04:05', r:'ok', t:'0.3 秒'},
+      {n:'readmodel', l:'读模型对账（含搜索词重建）', f:'每 1440 分', last:'15:00', next:'明天 15:00', r:'ok', t:'41 秒'},
     ]},
     {name:'Steam 账号', health:'ok', last:'12:00', steps:[
       {n:'steam-accounts', l:'账号同步', f:'每 1440 分', last:'12:00', next:'明天 12:00', r:'ok', t:'3 分钟'},
-      {n:'steam-claim', l:'认领账号', f:'手动', last:'—', next:'—', r:'idle', t:'—'},
     ]},
     {name:'热度回填', health:'bad', last:'15:50', steps:[
       {n:'heat', l:'热度回填', f:'每 10 分', last:'15:50', next:'16:00', r:'bad', t:'2.8 分钟'},
     ]},
     {name:'App 版本同步', health:'bad', last:'16:07', steps:[
-      {n:'app-release-sync', l:'App 版本', f:'每 15 分', last:'16:07', next:'16:22', r:'bad', t:'1.2 秒'},
+      {n:'app-release-sync', l:'App 版本', f:'每 60 分', last:'16:07', next:'17:07', r:'bad', t:'1.2 秒'},
     ]},
     {name:'对齐快照', health:'ok', last:'16:00', steps:[
-      {n:'align-snapshot', l:'对齐快照', f:'每 30 分', last:'16:00', next:'16:30', r:'ok', t:'3 秒'},
+      {n:'align-snapshot', l:'对齐快照', f:'每 120 分', last:'16:00', next:'18:00', r:'ok', t:'3 秒'},
     ]},
     {name:'代理与提醒', health:'ok', last:'16:08', steps:[
-      {n:'proxy-probe', l:'代理探测', f:'每 10 分', last:'16:08', next:'16:18', r:'ok', t:'2 秒'},
+      {n:'proxy-probe', l:'代理探测', f:'每 30 分', last:'16:08', next:'16:38', r:'ok', t:'2 秒'},
       {n:'alerts', l:'到价提醒', f:'每 360 分', last:'12:00', next:'18:00', r:'ok', t:'8 秒'},
-      {n:'report', l:'价格报表', f:'每 1440 分', last:'09:00', next:'明天 09:00', r:'ok', t:'12 秒'},
     ]},
+  ];
+  // 精简后不再进调度器、只保留「立即运行」的手动任务
+  var MANUAL = [
+    {n:'catalog', l:'目录同步（全量）', r:'idle', t:'6 分钟'},
+    {n:'prune', l:'定期清理', r:'idle', t:'2 分钟'},
+    {n:'logs', l:'日志清理', r:'idle', t:'0.3 秒'},
+    {n:'report', l:'价格报表', r:'idle', t:'12 秒'},
+    {n:'steam-claim', l:'认领未归属账号', r:'idle', t:'—'},
   ];
   var LABEL = {'ok':'成功','oke':'部分完成（429 收尾）','warn':'失败 1 次','bad':'失败','run':'运行中','idle':'手动'};
   var CLS = {'ok':'b-ok','oke':'b-warn','warn':'b-bad','bad':'b-bad','run':'b-run','idle':'b-idle'};
@@ -327,6 +324,33 @@
     host.appendChild(row);
     host.appendChild(steps);
   });
+
+  // 手动任务组（精简后不再进调度器，只保留「立即运行」）
+  (function(){
+    var row = document.createElement('div');
+    row.className = 'row-group';
+    row.innerHTML = '<span class="caret">▸</span>'
+      + '<span class="gname">手动任务（不进调度器）</span>'
+      + '<span class="mono muted col-hide">' + MANUAL.length + ' 个</span>'
+      + '<span class="muted col-hide">—</span>'
+      + '<span class="col-hide"><span class="badge b-idle">手动</span></span>'
+      + '<span class="col-hide"></span>';
+    var steps = document.createElement('div');
+    steps.className = 'steps';
+    steps.innerHTML = '<table><thead><tr><th>任务</th><th>频率</th><th>上次运行</th><th>下次运行</th><th>上次结果</th><th>耗时</th><th>操作</th></tr></thead><tbody>'
+      + MANUAL.map(function(s){
+          return '<tr><td>' + s.l + '</td><td class="muted">手动</td><td class="muted">—</td><td class="muted">—</td>'
+            + '<td><span class="badge b-idle">手动</span></td><td class="muted">' + s.t + '</td>'
+            + '<td><button class="btn ghost" data-run="' + s.n + '">立即运行</button></td></tr>';
+        }).join('') + '</tbody></table>';
+    row.addEventListener('click', function(e){
+      if (e.target.closest('button')) return;
+      row.classList.toggle('open');
+      steps.classList.toggle('show');
+    });
+    host.appendChild(row);
+    host.appendChild(steps);
+  })();
 
   // ---------- 工具 ----------
   var toastTimer = null;
