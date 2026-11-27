@@ -384,4 +384,7 @@ while attempt < maxAttempts:
 | 18:06 | 工人完成 | FW-2 | 提交 `09c7036`（11 文件 / +1109 −131：`src/rate-gate.js` 新增、`http.js`、`proxy-pool.js`、`settings.js`、`.gitignore`、`package.json` test:1、5 个测试）；QA 第 1 轮 ✅ 放行（7/0/0/4，报告 `docs/QA-FW-2.md`） |
 | 18:12 | 监工审核 | FW-2 | ✅ 通过：① 提交 11 文件全在范围内；② 复核 `test/rate-gate.test.js` 8/8、`test/http-proxy-failover.test.js` 14/14；③ 代码审查——`isSteamReject` 正确排除代理层 403（`proxyStatus != null` 走 AM-1）、全池才写全局冷却（403 从 5 分钟起）、`steamRejected` 标记避免包装成 `PROXY_ALL_FAILED`、闸门在每次真实请求前扣 token（含重试）、5xx 不切；④ 反例自检：工人如实报「字面变异（nextCandidate 恒返第一条）不变红」，原因是按代理冷却预过滤使该变异语义等价；改用 `shouldAdvance=false` 等价变异后 5 条用例变红——解释成立、做法有效；⑤ bool 开关格式核对正确（`valueToEnv` 输出 `'1'/'0'`，与 `envFlag` 的 `!=='0'` 匹配，不存在「关不掉」bug） |
 | 18:13 | 工人启动 | FW-3 | 派工人 C（403 软退出 76 + 预警节流 + 后台展示） |
+| 18:52 | 工人完成 | FW-3 | 提交 `cde8ea9`（14 文件）+ `ee85ffb`（6 文件：steam-status / backfill / fetchMetadata 补 403 重抛，全 Steam 任务统一）+ `9027cb9`（QA 报告入库）；QA 第 1 轮 ✅ 放行（7/0/0/2，报告 `docs/QA-FW-3.md`）；工人自检发现验收第 5 条首版不成立（steam-status 仍 failed、backfill 仍 exit 0），第 2 提交补齐后复检通过 |
+| 13:12 | 监工审核 | FW-3 | ✅ 通过：① 三提交范围合规（无越界改共用文档）；② 复核 `test/forbidden-soft-exit.test.js` 6/6、`test/scheduler.test.js` 50/50、`test/sync-harden.test.js` 22/22；③ 代码审查——`soft-exit.js` 75/76 判定正确（403 排除 `proxyStatus != null` 的代理层 403）、`recordJobResult(76)` 不熔断、`applyRetry(76)` 删旧条目（不重排）、预警节流纯函数 + 恢复通知只发一次、`/api/admin/sync/status` 的 `forbidden`/`rateGate` 形状完整（无冷却时 `active:false`，文件缺失按满桶） |
+| 13:15 | 收尾 | FW | 三批全绿：TODO/INDEX 状态改「已实现待发版」、ACTIVE-SESSIONS 注销、PROJECT-OVERVIEW 回写、心跳收口；**不构建**（等所有者「构建」指令） |
 
