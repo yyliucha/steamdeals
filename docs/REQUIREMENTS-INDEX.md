@@ -184,7 +184,7 @@
 | **FX** | ⚙️ 调整：后台密钥查看统一——8 个 secret 在四种布局分支统一「**密码框 + 眼睛图标**原地切换明文/密文」（懒加载、30 秒自动回密文、未改动不提交）；审计写 `audit_logs`（`admin.secret_revealed`）；抽 `SecretField.vue` | [SECRET-REVEAL.md](SECRET-REVEAL.md)、demo `design/secret-reveal-2026-11-27.html` | 待开发（2026-11-27 确认，含 demo） | ✅ 本轮已给 |
 | **FY** | ⚙️ 调整：系统设置页重设计——左导航 7 组（重划，去「高级」混维度）+ `/console/settings/:group` 二级路由 + 去卡片盒子（层级 3→2）+ 每项即时保存（防抖 + 合并）+ 工具栏只留搜索/只看非默认 | [SETTINGS-REDESIGN.md](SETTINGS-REDESIGN.md)、demo `design/settings-redesign-2026-11-27.html` | 待开发（2026-11-27 确认，含 demo；依赖 FX） | ✅ 本轮已给 |
 | **FZ** | ⚙️ 调整：访问记录重设计——左导航七块（概览/异常处置/访问分析/IP 封禁/设备封禁/临时封禁/白名单）+ 概览 6 张数字卡 + **处置只留异常处置一个入口**（访问分析只读）+ **IP 详情抽屉** + 封禁/信任后移出（toast 5 秒撤销）+ **四类解封各在自己那页 + 状态词统一**；新增 overview 接口、status 加 active/trusted | [VISITORS-REDESIGN.md](VISITORS-REDESIGN.md)、demo `design/visitors-redesign-2026-11-27.html` | 待开发（2026-11-27 确认，含 demo；**暂不排开发**） | ✅ 本轮已给 |
-| **GA** | ⚙️ 调整：游戏管理拆分 + 同步与回填页重设计——内容运营拆三个一级菜单（游戏目录/同步与回填/对齐审核）+ 页内「概览 4 卡 → 任务组表（主）→ 折叠数据质量 / 折叠工具」，告警收表头、运行中并入概览；**+ 定时任务精简 26→17**（合并 4 处 / 转手动 4 个 / 降频 4 处，CLI 命令保留）；拆 GA-1 界面 / GA-2 精简 | [SYNC-PAGE-REDESIGN.md](SYNC-PAGE-REDESIGN.md)、**可交互 demo** `design/sync-page-redesign-2026-11-27.html` | 待开发（2026-11-27 确认，含可交互 demo；两子批） | ✅ 本轮已给 |
+| **GA** | ⚙️ 调整：游戏管理拆分 + 同步与回填页重设计——内容运营拆三个一级菜单（游戏目录/同步与回填/对齐审核）+ 页内「概览 4 卡 → 任务组表（主）→ 折叠数据质量 / 折叠工具」，告警收表头、运行中并入概览；**+ 定时任务精简 26→19**（合并 4 处 / 转手动 3 个 / prune 周→天 / 降频 4 处，CLI 命令保留）；拆 GA-1 界面 / GA-2 精简 | [SYNC-PAGE-REDESIGN.md](SYNC-PAGE-REDESIGN.md)、**可交互 demo** `design/sync-page-redesign-2026-11-27.html` | 待开发（2026-11-27 确认，含可交互 demo；两子批） | ✅ 本轮已给 |
 
 ## 本会话（2026-11-06）讨论过、但**不属于项目文档**的内容
 
@@ -206,6 +206,7 @@
 9. **AO**（后台游戏列 + 链接抽屉改版）2026-11-09 入 TODO，规格 [ADMIN-LINKS-DRAWER.md](ADMIN-LINKS-DRAWER.md)；单批，纯前端；
 10. **AP**（价格历史报表）2026-11-09 入 TODO，规格 [PRICE-HISTORY-REPORT.md](PRICE-HISTORY-REPORT.md)；单批，纯前端；
 11. **AQ / AR**（后台列表排序 / 按 IP 合并）2026-11-09 入 TODO，规格 [ADMIN-REVIEW-LISTS.md](ADMIN-REVIEW-LISTS.md)；AR 依赖 AQ、下一期开发。
+
 
 
 

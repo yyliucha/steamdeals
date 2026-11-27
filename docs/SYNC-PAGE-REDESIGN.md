@@ -37,8 +37,8 @@
 | 4 | 不改任何接口与数据口径（复用现有 `sync/status`、`sync/freshness`、`sync/429queue`、分级统计、App latest） |
 | 5 | 群组「立即运行」与子步骤「立即运行」都保留；批量/组级行为不变 |
 | 6 | 移动端：侧栏变顶部横向菜单；任务组行改为两行（名称 + 状态，子步骤表横向滚动） |
-| 7 | **任务精简（所有者 2026-11-27 追加确认）**：定时任务 **26 → 17**——合并 5 处、转手动 4 个、降频 4 处（详见 §3.7）；界面按「11 个任务组 + 手动任务组」呈现 |
-| 8 | 精简后的手动任务（catalog / prune / logs / report / steam-claim）**保留「立即运行」入口**，不再进调度器 |
+| 7 | **任务精简（所有者 2026-11-27 追加确认）**：定时任务 **26 → 19**——合并 4 处、转手动 3 个、**prune 保留定时但周改天**、降频 4 处（详见 §3.7）；界面按「12 个任务组 + 手动任务组」呈现 |
+| 8 | 精简后的手动任务（catalog / logs / report / steam-claim）**保留「立即运行」入口**，不再进调度器；`prune` 例外——保留定时但改为**天级** |
 
 ## 2. 信息架构
 
@@ -60,7 +60,7 @@
 任务与调度（主区）
   ├ 11 个任务组（17 个定时任务）：名称 / 子步骤数 / 最近运行 / 健康 / 「立即运行」
   ├ 展开：子步骤表（子步骤 / 频率 / 上次 / 下次 / 结果 / 耗时 / 操作）
-  └ 末尾「手动任务（不进调度器）」组：catalog / prune / logs / report / steam-claim（只保留立即运行）
+  └ 末尾「手动任务（不进调度器）」组：catalog / logs / report / steam-claim（只保留立即运行）
 折叠「数据质量」（标题行带摘要）
   ├ 内容分级统计（5 卡 + 最近回填时间）
   ├ 数据时效（4 卡 7/3/1 天 + 补跑按钮）
@@ -79,7 +79,7 @@
 5. **任务实时进度**：运行中任务在概览「运行中」卡与任务组行内显示，不再单独一块占位；
 6. **任务告警**（缺 Key / 被关掉）收进任务表头部的 warning 提示条，不再单独一块。
 
-### 3.7 任务精简（26 → 17，所有者 2026-11-27 追加确认）
+### 3.7 任务精简（26 → 19，所有者 2026-11-27 追加确认）
 
 **现状**：`jobsFromEnv` 里 26 个定时任务（12 个界面组只是分组）；按频率月 5 分钟级 / 8 小时级 / 8 天级 / 5 周级。
 
@@ -89,10 +89,11 @@
 | **合并** | `search-tokens-rebuild` → `readmodel` | readmodel 每日对账后顺带增量重建 token（纯本地计算） |
 | **合并** | `images-backfill` → `images` | images 每轮顺带补缺图（同一批封面） |
 | **合并** | `explicit-backfill` → `rating-backfill` | rating-backfill 候选并入「strict 色情分级」分支（同链路，候选不同） |
-| **转手动** | `catalog` / `prune` / `logs` / `report` | 移除定时，只保留「立即运行」；`report` 仍受 notifier 条件约束 |
+| **转手动** | `catalog` / `logs` / `report` | 移除定时，只保留「立即运行」；`report` 仍受 notifier 条件约束 |
+| **保留 + 改频** | `prune` **10080（周）→ 1440（天）** | 清理过期访问/采集/验证码记录；零外部请求。所有者 2026-11-27 决定「保留定时、周改天」——转手动会让库膨胀，周级又太松 |
 | **降频** | `proxy-probe` 10→30 分、`app-release-sync` 15→60 分、`align-snapshot` 30→120 分、`sonkwo` 60→180 分 | 只改默认 `intervalMin`（env 仍可覆盖） |
 
-**保留不动**：steam-prices、backfill、steam-status、rating-backfill、images、readmodel、alerts、steam-accounts、
+**保留不动**：steam-prices、backfill、steam-status、rating-backfill、images、readmodel、alerts、steam-accounts、prune（改天级）、
 heat（10 分）、steam-discovery（30 分）、itad、gog、humble、discover、app-release-sync、align-snapshot、proxy-probe。
 
 **兼容要求**：被合并的任务**CLI 命令与参数不删**（`rename` / `search-tokens` / `images-backfill` / `explicit-backfill`
@@ -137,7 +138,7 @@ heat（10 分）、steam-discovery（30 分）、itad、gog、humble、discover�
 
 | # | 验收 | 断言 |
 |---|---|---|
-| 5 | `jobsFromEnv` 定时任务 **26 → 17**（合并 5 处 + 转手动 4 个），界面组 12 → 11 + 手动组 | 单测断言任务名集合（不多不少） |
+| 5 | `jobsFromEnv` 定时任务 **26 → 19**（合并 4 + 转手动 3 + prune 保留改天级），界面组 12（含 prune 的「系统维护」组）+ 手动组 4 个 | 单测断言任务名集合（不多不少）与 prune `intervalMin=1440` |
 | 6 | 降频 4 项默认值：proxy-probe 30 / app-release-sync 60 / align-snapshot 120 / sonkwo 180（env 仍可覆盖） | 单测断言 `intervalMin` |
 | 7 | 4 处合并逻辑真生效：backfill 顺带写中文名、readmodel 顺带重建 token、images 顺带补缺图、rating-backfill 含 strict 色情分级 | 各自单测（真 pglite / mock） |
 | 8 | 5 个手动任务仍可「立即运行」（catalog / prune / logs / report / steam-claim），被合并任务的 CLI 命令未删；`npm test`（分段）+ `frontend:build` + `scan` 全绿 | CLI 实跑 + 构建 |
@@ -149,10 +150,12 @@ heat（10 分）、steam-discovery（30 分）、itad、gog、humble、discover�
 | 子批 | 内容 | 验收 |
 |---|---|---|
 | **GA-1** 界面 | 菜单三项 + 页结构（概览/任务表/两折叠）+ 告警收表头 + 手动任务组 + 移动端 | §7 的 1~4 |
-| **GA-2** 任务精简 | 合并 4 处 + 转手动 4 个 + 降频 4 处 + 兼容（CLI 命令不删） | §7 的 5~8 |
+| **GA-2** 任务精简 | 合并 4 处 + 转手动 3 个 + prune 周→天 + 降频 4 处 + 兼容（CLI 命令不删） | §7 的 5~8 |
 
 依赖：两者无强依赖，建议 **GA-1 先**（界面先按「17 定时 + 手动组」渲染，GA-2 再改后端；任务数变化由接口返回驱动，前端不写死）。
 
 ## 9. 待确认
 
-无（四项已于 2026-11-27 确认：三项一级菜单 + 任务优先/两块折叠 / 可交互 demo / 任务精简六类动作（合并 4、转手动 4、降频 4））。
+无（四项已于 2026-11-27 确认：三项一级菜单 + 任务优先/两块折叠 / 可交互 demo / 任务精简（合并 4、转手动 3、prune 周→天、降频 4））。
+
+

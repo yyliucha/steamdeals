@@ -283,7 +283,7 @@
 - **验收**：见规格 §7（8 条）；拆 FZ-1（结构+概览）/ FZ-2（处置+列表）两批。
 - **排期**：当前版本已定稿，可随时派开发（建议排在 FX / FY 之后，复用行组件与左导航样式）；设计若再调整，先改 demo 与规格再同步本条。
 
-## GA. 待开发（⚙️ 调整）：游戏管理拆分 + 同步与回填页重设计——三个一级菜单 + 任务优先 + 两块折叠 + 定时任务精简 26→17
+## GA. 待开发（⚙️ 调整）：游戏管理拆分 + 同步与回填页重设计——三个一级菜单 + 任务优先 + 两块折叠 + 定时任务精简 26→19
 
 **状态：** 待开发
 **类型：** ⚙️ 调整（后台「内容运营」：菜单拆分 + 同页结构重排 + 定时任务精简）
@@ -304,9 +304,10 @@
   | 子批 | 内容 | 状态 | 依赖 |
   |---|---|---|---|
   | **GA-1** | 菜单拆三项（游戏目录/同步与回填/对齐审核）+ 页结构（概览 4 卡 → 任务组表 → 折叠数据质量 → 折叠工具）+ 告警收表头 + 手动任务组 + 移动端 | 待开发 | 无 |
-  | **GA-2** | 定时任务 **26 → 17**：合并 4 处（rename→backfill / search-tokens→readmodel / images-backfill→images / explicit-backfill→rating-backfill）+ 转手动 4 个（catalog/prune/logs/report）+ 降频 4 处（proxy-probe 30 / app-release-sync 60 / align-snapshot 120 / sonkwo 180）；被合并任务的 CLI 命令保留 | 待开发 | 建议 GA-1 先 |
+  | **GA-2** | 定时任务 **26 → 19**：合并 4 处（rename→backfill / search-tokens→readmodel / images-backfill→images / explicit-backfill→rating-backfill）+ 转手动 3 个（catalog/logs/report）+ **prune 保留但周→天** + 降频 4 处（proxy-probe 30 / app-release-sync 60 / align-snapshot 120 / sonkwo 180）；被合并任务的 CLI 命令保留 | 待开发 | 建议 GA-1 先 |
 
 - **验收**：GA-1 = 规格 §7 的 1~4（含 demo 状态↔断言对照）；GA-2 = 规格 §7 的 5~8（任务集合/降频/合并逻辑/CLI 兼容）。
+
 
 
 

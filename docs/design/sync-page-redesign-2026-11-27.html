@@ -156,7 +156,7 @@
 
       <div class="panel">
         <div class="panel-head">
-          <div><h2>任务与调度</h2><p>11 个任务组 · <b>17 个定时任务 + 5 个手动任务</b> · 点组行展开子步骤；「立即运行」使用默认参数</p></div>
+          <div><h2>任务与调度</h2><p>12 个任务组 · <b>19 个定时任务 + 4 个手动任务</b> · 点组行展开子步骤；「立即运行」使用默认参数</p></div>
           <button class="btn ghost" id="collapseAll">全部收起</button>
         </div>
         <div id="groups"></div>
@@ -278,6 +278,9 @@
     {name:'对齐快照', health:'ok', last:'16:00', steps:[
       {n:'align-snapshot', l:'对齐快照', f:'每 120 分', last:'16:00', next:'18:00', r:'ok', t:'3 秒'},
     ]},
+    {name:'系统维护', health:'ok', last:'04:00', steps:[
+      {n:'prune', l:'定期清理（天级）', f:'每 1440 分', last:'04:00', next:'明天 04:00', r:'ok', t:'2 分钟'},
+    ]},
     {name:'代理与提醒', health:'ok', last:'16:08', steps:[
       {n:'proxy-probe', l:'代理探测', f:'每 30 分', last:'16:08', next:'16:38', r:'ok', t:'2 秒'},
       {n:'alerts', l:'到价提醒', f:'每 360 分', last:'12:00', next:'18:00', r:'ok', t:'8 秒'},
@@ -286,7 +289,6 @@
   // 精简后不再进调度器、只保留「立即运行」的手动任务
   var MANUAL = [
     {n:'catalog', l:'目录同步（全量）', r:'idle', t:'6 分钟'},
-    {n:'prune', l:'定期清理', r:'idle', t:'2 分钟'},
     {n:'logs', l:'日志清理', r:'idle', t:'0.3 秒'},
     {n:'report', l:'价格报表', r:'idle', t:'12 秒'},
     {n:'steam-claim', l:'认领未归属账号', r:'idle', t:'—'},
@@ -450,3 +452,5 @@
 </script>
 </body>
 </html>
+
+
