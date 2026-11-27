@@ -16,7 +16,6 @@
 
 | 条目 | 文件面 | 独占资源 | 开始 | 预计结束 | 会话 |
 |---|---|---|---|---|---|
-| **v2.31.0 构建** | `package.json` / `package-lock.json` / `CHANGELOG.md` / `README.md` / docs（CHANGELOG/DONE/TODO/INDEX/DELIVERY/PROJECT-OVERVIEW/SLOW-SYNC/PROXY-POOL） | **打 tag 构建** | 2026-11-27 14:05 | 2026-11-27 15:00 | lead（FW 批监工兼构建） |
 
 ## 独占资源一览（同一时刻只允许一个会话持有）
 
