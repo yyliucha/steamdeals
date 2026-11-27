@@ -403,7 +403,7 @@ test('验收 4：即时保存接线——bool/enum set、int 输入防抖 + blur
   assert.match(ADMIN, /onRollback:\(key,previous\)=>\{settingValues\[key\]=previous\?\?defaultValueOf\(key\);\}/, '失败回滚上次值');
   assert.match(ADMIN, /onState:\(key,kind,message\)=>\{[\s\S]{0,220}?kind==='error'[\s\S]{0,120}?settingsConflict\.value=true/, '失败 → 未保存守卫重新生效');
   assert.match(ADMIN, /flushAll\(\)/, '离开页面强制 flush 待发改动');
-  assert.match(ADMIN, /watch\(\(\)=>props\.section,\(next,prev\)=>\{if\(prev==='settings'&&next!=='settings'\)void flushSettings\(\);\}\)/, '切到别的模块（共用实例不卸载）也要 flush');
+  assert.match(ADMIN, /watch\(\(\)=>props\.section,\(next,prev\)=>\{if\(prev==='settings'&&next!=='settings'\)void flushSettings\(\)\.catch/, '切到别的模块（共用实例不卸载）也要 flush');
   // 工具栏只剩搜索 + 只看非默认：三个全局控件全部移除
   const toolbar = /<div class="settings-toolbar">([\s\S]*?)<\/div>/.exec(ADMIN)?.[1] ?? '';
   assert.match(toolbar, /settings-search/, '工具栏保留搜索');

@@ -839,12 +839,13 @@ async function jumpToSetting(hit){
 // 合并规则见 utils/settingsSave.js 头注释（静默 700ms / 上限 1.5s → 单改 1 秒内出 ✓、1.5 秒内连改只发 1 次 POST）。
 const rowStatus=reactive({});   // key -> { kind: saving|saved|error, message }
 const savedValues={};           // key -> 上次成功保存的值（回滚目标）
+const lastAttempt={};           // key -> 最近一次尝试提交的值（失败后「保存并离开」重试用）
 const saveError=ref('');        // 最近一次提交失败原因
 const settingsConflict=ref(false); // 有保存失败 = 仍存在「未保存」态（其余情况即时保存已完成，离开不拦）
 const settingsSaver=createSettingsSaver({
   save:(values)=>api('/api/admin/settings',json('POST',{values})),
   // 行内状态 + 失败联动未保存守卫：只有「提交失败」才重新变成「未保存」态（§3.3 语义调整）
-  onState:(key,kind,message)=>{if(kind==='idle')delete rowStatus[key];else rowStatus[key]={kind,message};if(kind==='error'){settingsConflict.value=true;saveError.value=message||'保存失败';}},
+  onState:(key,kind,message)=>{if(kind==='idle'||kind==='saved')delete lastAttempt[key];if(kind==='idle')delete rowStatus[key];else rowStatus[key]={kind,message};if(kind==='error'){settingsConflict.value=true;saveError.value=message||'保存失败';}},
   onRollback:(key,previous)=>{settingValues[key]=previous??defaultValueOf(key);},
   onSaved:(view,values)=>{applySavedView(view,values);settingsConflict.value=false;saveError.value='';},
 });
@@ -872,24 +873,37 @@ function typedValue(field,raw){
   const n=Number(s);
   return Number.isFinite(n)?n:s;
 }
-function commitSetting(field,value){settingValues[field.key]=value;settingsSaver.set(field.key,value,()=>savedValues[field.key]);}
+function commitSetting(field,value){settingValues[field.key]=value;lastAttempt[field.key]=value;settingsSaver.set(field.key,value,()=>savedValues[field.key]);}
 function inputSetting(field,raw){
   settingValues[field.key]=raw; // 输入中的草稿只留在页面，600ms 后才入库
   const v=typedValue(field,raw);
   if(v===undefined){settingsSaver.cancelInput(field.key);return;}
+  lastAttempt[field.key]=v;
   settingsSaver.input(field.key,v,()=>savedValues[field.key]);
 }
 function commitSettingNow(field,raw){
   const v=typedValue(field,raw);
   if(v===undefined){settingValues[field.key]=savedValues[field.key]??defaultValueOf(field.key);settingsSaver.cancelInput(field.key);return;}
   settingValues[field.key]=v;
+  lastAttempt[field.key]=v;
   settingsSaver.commitNow(field.key,v,()=>savedValues[field.key]).catch((e)=>{saveError.value=e?.message||String(e);settingsConflict.value=true;});
 }
-// 页面离开（路由卸载 / 切到别的模块 / 标签隐藏）时若有未发出的改动，强制 flush 一次（§3.3：即时保存后不再有「未保存」态）
-function flushSettings(){return settingsSaver.flushAll().catch((e)=>{saveError.value=e?.message||String(e);settingsConflict.value=true;return null;});}
-function onSettingsPageHide(){void flushSettings();}
+// 页面离开（路由卸载 / 切到别的模块 / 标签隐藏）时若有未发出的改动，强制 flush 一次（§3.3：即时保存后不再有「未保存」态）；
+// 未保存守卫的「保存并离开」也走这里：先把待发改动发出去，再把上次失败的值重试一次，仍失败则抛错留在本页。
+async function flushSettings(){
+  const fail=(e)=>{saveError.value=e?.message||String(e);settingsConflict.value=true;};
+  try{await settingsSaver.flushAll();}catch(e){fail(e);}
+  const retry=Object.entries(lastAttempt);
+  if(retry.length){
+    for(const [key,value] of retry)settingsSaver.set(key,value,()=>savedValues[key]);
+    try{await settingsSaver.flush();}catch(e){fail(e);}
+  }
+  if(settingsSaver.hasErrors())throw new Error(saveError.value||'保存失败');
+  return null;
+}
+function onSettingsPageHide(){void flushSettings().catch(() => {});}
 // Console 里系统设置与其它 native 模块共用 AdminModules 实例（只换 section prop，不卸载）→ 切走时也要 flush
-watch(()=>props.section,(next,prev)=>{if(prev==='settings'&&next!=='settings')void flushSettings();});
+watch(()=>props.section,(next,prev)=>{if(prev==='settings'&&next!=='settings')void flushSettings().catch(() => {});});
 async function loadSettings(){loading.value=true;try{const d=await api('/api/admin/settings');settingsSchema.value=d;for(const key of Object.keys(settingValues))delete settingValues[key];for(const field of d.fields||[]){settingValues[field.key]=field.type==='secret'?'':d.values?.[field.key]??field.default??(field.type==='bool'?false:'');savedValues[field.key]=settingValues[field.key];}settingsConflict.value=false;saveError.value='';}catch(e){notifyError(e);}finally{loading.value=false;}}
 // 放弃修改（保存失败后离开时用）：重置代理编辑态并重拉设置，错误态一起清
 function discardSettings(){proxyDialogDirty.value=false;proxyList.value=[];settingsConflict.value=false;saveError.value='';void loadSettings();}
@@ -1046,7 +1060,7 @@ watch(()=>props.section,(section)=>{if(section==='games')loadGames(1);else if(se
 const unregisterUnsaved=[];
 onMounted(()=>{if(props.section==='games')loadGames(1);else if(props.section==='visitors')loadVisitorView();else if(props.section==='announcements'){loadAnnouncements();if(route.query.drawer==='new'){pendingEditId=Number(route.query.id)||null;resolveAnnouncementDrawer();}}else if(props.section==='wishlist')loadWishlists();else if(props.section==='settings'){if(route.query.q)settingQuery.value=String(route.query.q);loadSettings();loadProxyHealth();window.addEventListener('pagehide',onSettingsPageHide);}else if(props.section==='stats'){loadStats();loadCoverage();}startProxyTimer();unregisterUnsaved.push(registerUnsavedSource({id:'settings',label:'系统设置',isDirty:()=>settingsConflict.value,save:flushSettings,discard:discardSettings}),registerUnsavedSource({id:'settings-proxy',label:'Steam 专用代理',isDirty:()=>proxyDialogDirty.value,save:saveProxyDialog,discard:()=>{proxyDialogDirty.value=false;proxyDialogOpen.value=false;}}),registerUnsavedSource({id:'edit-game',label:'编辑游戏',isDirty:gameDirty,save:submitGameSave,discard:closeGameDialog}));if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',onMobileChange);else mobileQuery.addListener(onMobileChange);}});
 const statusTimer=setInterval(()=>{if(props.section==='games'&&gameView.value==='tasks'){loadSyncStatus();loadAppCard();loadFreshness();}},8000);
-onBeforeUnmount(()=>{if(props.section==='settings'){void flushSettings();window.removeEventListener('pagehide',onSettingsPageHide);}settingsSaver.dispose();clearInterval(statusTimer);if(proxyTimer){clearInterval(proxyTimer);proxyTimer=null;}unregisterUnsaved.forEach((fn)=>fn());if(mobileQuery){if(mobileQuery.removeEventListener)mobileQuery.removeEventListener('change',onMobileChange);else mobileQuery.removeListener(onMobileChange);}});
+onBeforeUnmount(()=>{if(props.section==='settings'){void flushSettings().catch(() => {});window.removeEventListener('pagehide',onSettingsPageHide);}settingsSaver.dispose();clearInterval(statusTimer);if(proxyTimer){clearInterval(proxyTimer);proxyTimer=null;}unregisterUnsaved.forEach((fn)=>fn());if(mobileQuery){if(mobileQuery.removeEventListener)mobileQuery.removeEventListener('change',onMobileChange);else mobileQuery.removeListener(onMobileChange);}});
 if(mobileQuery){if(mobileQuery.addEventListener)mobileQuery.addEventListener('change',onMobileChange);else mobileQuery.addListener(onMobileChange);}
 </script>
 

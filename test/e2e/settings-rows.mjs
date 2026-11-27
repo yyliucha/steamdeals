@@ -62,7 +62,10 @@ async function main() {
         try {
           const url = typeof u === 'string' ? u : (u && u.url) || '';
           const method = String((o && o.method) || 'GET').toUpperCase();
-          if (url.includes('/api/admin/settings') && method === 'POST' && o && o.body) window.__posts.push(JSON.parse(o.body).values);
+          // 精确匹配 /api/admin/settings（不把 /api/admin/settings/restore 或 /value 算进来）；
+          // 注意模板字符串里不能写正则转义（\? 会被吃成 ?），用 endsWith 判定路径
+          const pathname = url.split('?')[0];
+          if (pathname.endsWith('/api/admin/settings') && method === 'POST' && o && o.body) window.__posts.push(JSON.parse(o.body).values);
         } catch (e) { /* 记不上不影响业务 */ }
         return window.__origFetch.apply(this, arguments);
       };
@@ -140,6 +143,24 @@ async function main() {
     const singlePosts = await evalJs('window.__posts');
     check('验收 4：toggle 改后 1 秒内出现 ✓ 已保存', savedAppeared && savedElapsed <= 1000, `耗时 ${savedElapsed}ms，文案「${savedState}」`);
     check('验收 4：toggle 只提交该项（局部 values）', singlePosts.length === 1 && Object.keys(singlePosts[0]).length === 1, `POST ${singlePosts.length} 次：${JSON.stringify(singlePosts)}`);
+
+    // ── 行内「恢复默认」未回归：hover 出来的按钮 → 二次确认 → 发出 restore → 来源离开「数据库」
+    // 注：同进程内 hydrateSettings 会把设置值写进 process.env，删库后 readSettings 回落 env（= 保存时的值），
+    // 所以这里只能断言「UI 链路 + 来源回落」，不断言值回到默认（属后端既有的 env 影子问题，见 QA 报告风险 R1）
+    const beforeSrc = await evalJs("document.querySelector('[data-setting-key=\"sources.steam.enabled\"] .item-src')?.textContent.trim() || ''");
+    const restoreProbe = await evalJs(`(() => {
+      const row = document.querySelector('[data-setting-key="sources.steam.enabled"]');
+      const btn = row && row.querySelector('.item-restore');
+      if (!btn) return { clicked: false, hasRow: !!row, text: row ? row.textContent.trim().slice(0, 60) : '' };
+      btn.click();
+      return { clicked: true, hasRow: true, text: btn.textContent.trim() };
+    })()`);
+    const restoreClicked = restoreProbe.clicked;
+    const confirmShown = await waitFor("!!document.querySelector('.el-message-box')", 3000);
+    await evalJs("(() => { const b = [...document.querySelectorAll('.el-message-box button')].find((x) => x.textContent.trim() === '确认恢复'); if (b) b.click(); return true; })()");
+    const restored = await waitFor("(() => { const r = document.querySelector('[data-setting-key=\"sources.steam.enabled\"]'); return !!r && (r.querySelector('.item-src')?.textContent || '').trim() !== '数据库'; })()", 6000);
+    const restoredSrc = await evalJs("document.querySelector('[data-setting-key=\"sources.steam.enabled\"] .item-src')?.textContent.trim() || ''");
+    check('功能：行内「恢复默认」链路可用（二次确认 → 发出 restore → 来源离开「数据库」）', restoreClicked && confirmShown && beforeSrc === '数据库' && restored, `恢复前=${beforeSrc} 确认框=${confirmShown} 恢复后来源=${restoredSrc}`);
 
     // ── 验收 5：1.5 秒内连改 3 项只发 1 次 POST
     await evalJs('window.__posts = []');
